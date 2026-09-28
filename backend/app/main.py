@@ -113,7 +113,14 @@ async def search(
     q: str = Query(..., min_length=1, max_length=200),
     limit: int = Query(20, ge=1, le=50),
     source: str | None = Query(None, description="filtra por una fuente"),
+    mode: str = Query("matched",
+                      description="matched = iTunes+yt-dlp; sources = mezcla; "
+                                  "ytdlp = solo YouTube"),
 ):
+    # ---- modo "matched": iTunes es el catalogo, yt-dlp la descarga ----
+    if mode == "matched" and not source:
+        return await _search_matched(q, limit)
+
     sources = [source] if source else None
     if source and source not in BY_NAME:
         raise HTTPException(400, f"fuente desconocida: {source}")
@@ -123,21 +130,84 @@ async def search(
         log.exception("search fallo")
         raise HTTPException(502, f"error buscando: {e}")
 
-    # marca cuales se pueden descargar sin resolver
     for t in tracks:
         t.extra["needs_resolve"] = (
             t.source in ("archive", "ytdlp") and not t.audio_url)
-    # archive devuelve un item por pista: 30 filas del mismo concierto son
-    # 30 filas con el mismo titulo. Se agrupan en una con su setlist.
     tracks = _group_shows(tracks)
-
-    # baja los resolubles al principio: son los que de verdad se pueden bajar
     tracks.sort(key=lambda t: 0 if t.downloadable or t.extra.get("needs_resolve") else 1)
 
     return {
-        "query": q,
-        "count": len(tracks),
+        "query": q, "mode": mode, "count": len(tracks),
         "results": [t.to_dict() for t in tracks],
+    }
+
+
+async def _search_matched(q: str, limit: int) -> dict:
+    """iTunes da el catalogo (metadata limpia + portada); yt-dlp, la descarga.
+
+    Cada resultado conserva la ficha de iTunes y, si el matcher encontro un
+    video que corresponde, se puede bajar entero. Si no hay match confiable, se
+    muestra igual con su preview de 30s y se dice que no hay version entera.
+    """
+    import yt_dlp
+    from .matcher import enrich_with_ytdlp
+    from .sources import ITunesSource, _register_ytdlp
+    _register_ytdlp()
+    ysrc = BY_NAME.get("ytdlp")
+    yt_on = bool(ysrc and ysrc.available())
+
+    # 1) catalogo de iTunes (metadata cruda, con duracion y portada)
+    isrc = ITunesSource()
+    it_items = await isrc._raw_search(q, limit=min(limit, 30))
+    if not it_items:
+        return {"query": q, "mode": "matched", "count": 0, "results": [],
+                "ytdlp": yt_on}
+
+    # 2) una sola busqueda en YouTube y emparejar
+    matched = await enrich_with_ytdlp(it_items, q, ysrc) if yt_on else {}
+
+    # 3) armar los Tracks
+    out: list[Track] = []
+    for it in it_items:
+        key = str(it.get("trackId") or it.get("collectionId") or
+                  it.get("trackName", ""))
+        m = matched.get(key) or {}
+        vid = m.get("video")
+        t = Track(
+            source="itunes",
+            source_id=key,
+            title=it.get("trackName", ""),
+            artist=it.get("artistName", ""),
+            album=it.get("collectionName"),
+            duration_s=(it.get("trackTimeMillis") or 0) // 1000 or None,
+            artwork_url=(it.get("artworkUrl100") or "").replace(
+                "100x100", "300x300") or None,
+            preview_url=it.get("previewUrl"),
+            year=(it.get("releaseDate") or "")[:4] or None,
+            license="ToS de YouTube (uso personal, riesgo legal)" if vid
+            else "preview de iTunes (30s)",
+            extra={
+                "match_score": m.get("score"),
+                "match_why": m.get("why"),
+                "has_full": bool(vid),
+                "needs_resolve": bool(vid),
+                "downloader": "ytdlp" if vid else None,
+                "item_url": it.get("trackViewUrl"),
+            },
+        )
+        if vid:
+            t.extra["webpage_url"] = m["webpage_url"]
+            t.extra["video_title"] = vid.get("title")
+            t.extra["channel"] = vid.get("uploader")
+        out.append(t)
+
+    # con version entera primero
+    out.sort(key=lambda t: 0 if t.extra.get("has_full") else 1)
+    return {
+        "query": q, "mode": "matched", "ytdlp": yt_on,
+        "count": len(out),
+        "full": sum(1 for t in out if t.extra.get("has_full")),
+        "results": [t.to_dict() for t in out],
     }
 
 
@@ -261,29 +331,42 @@ async def download(payload: DownloadReq, query: str | None = None,
 
     # yt-dlp: su propio pipeline. Por defecto arranca en background y devuelve
     # job_id al toque (la UI hace polling a /api/download/progress/{id}).
-    if payload.source == "ytdlp":
+    # Tambien entra aca lo que viene del modo "matched" (source=itunes con
+    # webpage_url de YouTube): la ficha es de iTunes pero el audio es de yt-dlp.
+    if payload.source == "ytdlp" or (
+        payload.source == "itunes" and track.extra.get("webpage_url")
+    ):
         from .ytdlp_source import new_job
         job_id = new_job(track.title)  # el job lo crea main, no hay race
+        if payload.source == "itunes":
+            # ficha canonica de iTunes: el nombre y los tags van de ahi, no
+            # del titulo del video de YouTube
+            track.extra["from_itunes"] = True
         ident = {
             "match": track.extra.get("match"),
             "match_label": track.extra.get("match_label"),
             "real_title": track.extra.get("real_title"),
             "real_artist": track.extra.get("real_artist"),
-            "item_url": track.extra.get("webpage_url"),
+            "item_url": track.extra.get("webpage_url") or track.extra.get("item_url"),
         }
+        ysrc = BY_NAME.get("ytdlp")
+        if not ysrc or not ysrc.available():
+            raise HTTPException(503, "yt-dlp está desactivado (YTDLP_ENABLED=1)")
+
         if wait:
             try:
-                result = await src.download(track, payload.fmt, job_id=job_id)
+                result = await ysrc.download(track, payload.fmt, job_id=job_id)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except Exception as e:
                 log.exception("ytdlp descarga fallo")
                 raise HTTPException(502, f"yt-dlp: {e}")
-            return {"ok": True, "source": "ytdlp", "job_id": job_id, **ident, **result}
+            return {"ok": True, "source": "ytdlp", "job_id": job_id,
+                    **ident, **result}
 
         async def _bg():
             try:
-                await src.download(track, payload.fmt, job_id=job_id)
+                await ysrc.download(track, payload.fmt, job_id=job_id)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
 

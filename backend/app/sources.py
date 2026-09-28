@@ -138,7 +138,7 @@ class Source:
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         raise NotImplementedError
 
-    async def resolve(self, track: Track) -> Track:
+    async def resolve(self, track: Track, query: str | None = None) -> Track:
         return track
 
 
@@ -148,6 +148,19 @@ class Source:
 # --------------------------------------------------------------------------
 class ITunesSource(Source):
     name = "itunes"
+
+    async def _raw_search(self, q: str, limit: int = 20) -> list[dict]:
+        """Los dicts crudos de la API (con trackTimeMillis, artworkUrl100...).
+
+        El matcher los necesita sin transformar: la duracion y el titulo
+        canonico son los que usan para emparejar con YouTube.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/search",
+            params={"term": q, "media": "music", "limit": limit})
+        r.raise_for_status()
+        return [t for t in r.json().get("results", [])
+                if t.get("kind") == "song"]
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         r = await self.client.get(

@@ -375,10 +375,13 @@ function App() {
       try {
         let track = { ...t };
         delete track.downloadable;
-        // las pistas del setlist ya vienen resueltas por /api/setlist;
-        // yt-dlp gestiona su propia resolucion, no hace falta /api/resolve
+        // Las pistas del setlist ya vienen resueltas por /api/setlist.
+        // En modo "matched" el video de YouTube ya viene en webpage_url:
+        // no hay nada que resolver, la descarga va directo a yt-dlp.
+        const isMatched = t.source === "itunes" && t.extra?.webpage_url;
         if (
           !track.audio_url &&
+          !isMatched &&
           t.source !== "ytdlp" &&
           t.extra?.needs_resolve
         ) {

@@ -48,6 +48,22 @@ class YtDlpSource(Source):
         return os.getenv("YTDLP_ENABLED", "0") == "1"
 
     # ---------------------------------------------------------------- search
+    async def search_candidates(self, q: str, limit: int = 20) -> list[dict]:
+        """Busca cruda en YouTube, sin filtrar por 'musical'. La usa el matcher."""
+        import yt_dlp
+        opts = {
+            "quiet": True, "no_warnings": True, "skip_download": True,
+            "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
+        }
+        loop = asyncio.get_running_loop()
+
+        def _run():
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+
+        data = await loop.run_in_executor(None, _run)
+        return [e for e in (data or {}).get("entries", []) or [] if e]
+
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         if not self.available():
             return []
@@ -237,13 +253,19 @@ class YtDlpSource(Source):
                 JOBS[job_id]["status"] = "error"
             raise RuntimeError("yt-dlp: el archivo no quedó en disco")
 
-        # tags con mutagen (el postprocessor de ffmpeg no los pone). Usar la
-        # metadata real del video que devolvio yt-dlp, no la del placeholder.
+        # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
+        # "matched" la ficha canonica es la de iTunes (title/artist/album), que
+        # es mas limpia que el titulo del video ("Numb (Official Music Video)
+        # [4K UPGRADE] - Linkin Park"). Se usa la del video solo como fallback.
+        info_title = info.get("title") or ""
+        use_itunes = bool(track.extra.get("from_itunes"))
         tag_track = Track(
             source=self.name, source_id=track.source_id,
-            title=info.get("title") or track.title,
-            artist=info.get("uploader") or track.artist,
+            title=(track.title if use_itunes and track.title else info_title),
+            artist=(track.artist if use_itunes and track.artist
+                    else (info.get("uploader") or track.artist)),
             album=track.album,
+            year=track.year,
             duration_s=int(info.get("duration") or 0) or track.duration_s,
         )
         _write_tags(path, tag_track)

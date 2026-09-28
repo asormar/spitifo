@@ -121,6 +121,42 @@ sirve, porque devuelve el nombre con la extensión del stream **original**
 que hay que buscarlo con un glob sobre ese `stem` (con `glob.escape`, porque los
 títulos traen `[` `]`).
 
+## Modo "matched": iTunes cataloga, yt-dlp descarga (default)
+
+`GET /api/search?q=...` usa este modo por defecto. La idea: **iTunes tiene el
+catálogo más completo y la metadata más limpia** (título canónico, artista, álbum,
+año, portada, duración), pero de ahí solo sale un preview de 30 s. **yt-dlp sí
+baja el audio entero**, pero devuelve rips y covers sin distinguir. Se unen:
+
+1. Se busca en iTunes → fichas limpias con portada.
+2. Se hace **una** búsqueda en YouTube y se empareja cada pista con su video
+   (`backend/app/matcher.py`).
+3. Las que tienen match confiable se pueden bajar enteras; las demás se muestran
+   con su preview y se dice que no hay versión entera.
+
+**Por qué el matching no es ingenuo:** varias pistas distintas comparten título
+("Bohemian Rhapsody" de Queen, de Panic! At the Disco y de Pentatonix). Con
+"el video cuyo título más se parece" las tres acababan en el video de Queen. Las
+reglas, ajustadas midiendo contra la API real:
+
+| Señal | Peso | Por qué |
+|---|---|---|
+| canal de YouTube contiene el nombre del artista | +0.3 | señal más fuerte y barata |
+| título coincide Y duración dentro de 12 s | +0.2 | desambigua covers y versions live |
+| duración con más de 90 s de diferencia | rechazo | live vs studio, remix |
+| sin canal **y** sin (título+duración) | **no matchea** | mejor decir "sin" que bajar la canción equivocada |
+
+Un video no se reutiliza para dos pistas distintas. Verificado: para
+`bohemian rhapsody` acierta Queen→Queen Official, Panic!→otro, Pentatonix→otro;
+para `pink floyd` dice "sin versión" en 5 de 6 en vez de inventar.
+
+Los tags del archivo y el nombre salen de **iTunes**, no del video: queda
+`Metallica - Enter Sandman.mp3` con `TIT2=Enter Sandman`, `TALB=Metallica (Deluxe
+Box Set)`, `TDRC=1991`, no el título del video.
+
+Otros modos: `?mode=sources` (mezcla de todas las fuentes, el comportamiento
+anterior) y `?source=ytdlp` (solo YouTube).
+
 ## API
 
 ```bash
