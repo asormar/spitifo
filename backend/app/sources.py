@@ -29,6 +29,70 @@ def _client() -> httpx.AsyncClient:
 
 _STOP_Q = {"the", "a", "an", "de", "la", "el", "y", "en", "of"}
 
+# Palabras que delatan que un item de audio NO es musica (podcast, sermon,
+# noticia, curso). Archive esta lleno de audio en general: sin esto, buscar
+# "Numb Linkin Park" devuelve "HUBS report" y "Chaos in Portland".
+NOT_MUSIC = {
+    "podcast", "episode", "episodes", "news", "interview", "interviews",
+    "sermon", "sermons", "lecture", "lectures", "prayer", "khutbah", "ustadz",
+    "sheikh", "imam", "quran", "bible", "study", "class", "course", "lesson",
+    "meeting", "minutes", "agenda", "report", "hearing", "testimony", "debate",
+    "commentary", "briefing", "press", "conference", "panel", "discussion",
+    "narrated", "narration", "story", "stories", "chapter", "audiobook",
+    "book", "oracion", "iglesia", "church", "vlog", "trailer", "documentary",
+    "documental", "tape", "tapes", "soundcheck", "rehearsal", "soundboard",
+    "university", "college", "seminar", "symposium", "memorial", "funeral",
+    "wedding", "speech", "eulogy", "homily", "recording", "field", "raw",
+    "master", "radio", "radio", "programa", "program", "episode",
+}
+
+# palabras vacias: no ayudan a discriminar un resultado musical
+FILLER = {
+    "the", "a", "an", "and", "or", "but", "de", "la", "el", "los", "las", "un",
+    "una", "y", "e", "o", "u", "en", "of", "to", "in", "for", "on", "with",
+    "at", "from", "by", "is", "it", "as", "that", "this", "be", "are", "was",
+    "were", "has", "have", "my", "me", "i", "you", "we", "they", "no", "not",
+    "so", "if", "than", "then", "there", "here", "para", "por", "con", "sin",
+    "que", "como", "part", "vol", "volume", "no", "number", "one", "two",
+    "three", "version", "versions", "edit", "mix", "remaster", "remastered",
+    "radio", "live", "feat", "featuring", "ft", "track", "song", "songs",
+    "audio", "music", "musica", "música", "full", "album", "cd", "lp", "ep",
+    "hq", "mp3", "flac", "wav", "320", "128", "192", "ape", "dvd", "video",
+    "official", "complete", "new", "best", "top", "hit", "hits",
+}
+
+
+def _words(s: str) -> list[str]:
+    return [w for w in re.findall(r"[\w']+", (s or "").lower()) if len(w) > 1]
+
+
+def _distinctive(s: str) -> set[str]:
+    return {w for w in _words(s) if w not in FILLER and w not in NOT_MUSIC}
+
+
+def looks_like_music(title: str, artist: str = "") -> bool:
+    """Falso si el titulo/artista tiene palabras de audio no musical."""
+    return not (set(_words(f"{title} {artist}")) & NOT_MUSIC)
+
+
+def relevance(query: str, title: str, artist: str = "") -> float:
+    """0..1 exigiendo mayoria de palabras distintivas de la consulta.
+
+    Buscar "Numb Linkin Park" (3 palabras) contra un item que solo dice
+    "Park" (1 de 3) NO es lo que el usuario queria: se penaliza fuerte.
+    """
+    qd = _distinctive(query)
+    if not qd:
+        qd = set(_words(query))
+    td = _distinctive(f"{title} {artist}")
+    if not qd or not td:
+        return 0.0
+    hits = len(qd & td)
+    coverage = hits / len(qd)
+    if len(qd) > 1 and hits < max(2, len(qd) // 2 + 1):
+        return coverage * 0.4
+    return coverage
+
 
 def _loose(q: str) -> str | None:
     """Query de respaldo: usa las palabras MAS largas (titulo/artista) con OR.
@@ -94,6 +158,11 @@ class ITunesSource(Source):
         for t in r.json().get("results", []):
             if t.get("kind") != "song":
                 continue
+            title = t.get("trackName", "")
+            artist = t.get("artistName", "")
+            # iTunes devuelve tambien hablados/intros de podcast en media=music
+            if not looks_like_music(title, artist):
+                continue
             out.append(Track(
                 source=self.name,
                 source_id=str(t["trackId"]),
@@ -138,9 +207,12 @@ class InternetArchiveSource(Source):
 
         out: list[Track] = []
         seen: set[str] = set()
-        for query in queries:
+        used_loose = False
+        for i, query in enumerate(queries):
             if len(out) >= limit:
                 break
+            if i == len(queries) - 1 and query == _loose(q):
+                used_loose = True  # el OR_relajado genera falsos positivos
             batch = await self._search_one(query, limit - len(out))
             for t in batch:
                 if t.source_id in seen:
@@ -148,28 +220,32 @@ class InternetArchiveSource(Source):
                 seen.add(t.source_id)
                 t.extra["match_query"] = q
                 out.append(t)
-        return self._rank(q, out)[:limit]
+        # si hubo que recurrir al OR, descartar lo que no coincide en nada
+        return self._rank(q, out, min_relevance=0.01 if used_loose else 0.0)[:limit]
 
-    def _rank(self, query: str, tracks: list[Track]) -> list[Track]:
-        """Ordena por relevancia REAL, leyendo los tags del top candidato.
+    def _rank(self, query: str, tracks: list[Track],
+              min_relevance: float = 0.0) -> list[Track]:
+        """Ordena por relevancia REAL y descarta audio no-musical / irrelevante.
 
-        El query relajado (OR) trae mucho ruido: "Linkin Park numb" devolvia
-        primero un podcast de vampiros. Se puntua el titulo del item contra la
-        consulta (barato, sin red) y solo se leen los tags de los que vale la
-        pena, para confirmar cual es el bueno.
+        El query relajado (OR) trae mucho ruido: "Numb Linkin Park" devolvia
+        primero "HUBS report" y "Chaos in Portland". Se puntua con
+        `relevance()` (exige mayoria de palabras distintivas) y se eliminan
+        podcast/noticias/sermones con `looks_like_music()`.
+        `min_relevance` descarta ademas lo que no coincide en nada (rel==0),
+        que en el OR son falsos positivos por una sola palabra comun.
         """
-        from .identify import similarity
-
-        def cheap_score(t: Track) -> float:
-            s = similarity(query, t.title)
-            s2 = similarity(query, t.artist)
-            return max(s, s2 * 0.85)
-
-        tracks.sort(key=cheap_score, reverse=True)
-        # los que no tienen nada que ver quedan al final, no se lesen tags
-        top = [t for t in tracks if cheap_score(t) >= 0.4]
-        rest = [t for t in tracks if cheap_score(t) < 0.4]
-        return top + rest
+        scored: list[tuple[float, Track]] = []
+        for t in tracks:
+            if not looks_like_music(t.title, t.artist):
+                continue
+            r = relevance(query, t.title, t.artist)
+            if r <= min_relevance:
+                continue
+            scored.append((r, t))
+        scored.sort(key=lambda x: -x[0])
+        for r, t in scored:
+            t.extra["relevance"] = round(r, 2)
+        return [t for _, t in scored]
 
     async def _search_one(self, q: str, limit: int) -> list[Track]:
         params = [
@@ -383,10 +459,15 @@ class WikimediaSource(Source):
             if not url:
                 continue
             title = p.get("title", "").removeprefix("File:")
+            title = title.rsplit(".", 1)[0]
+            # Wikimedia tiene mucho audio hablado (LL-Q... = pronunciacion de
+            # una palabra de wikipedia), no musica. Solo pasar lo que es musical.
+            if not looks_like_music(title, "Wikimedia Commons"):
+                continue
             out.append(Track(
                 source=self.name,
                 source_id=str(p.get("pageid")),
-                title=title.rsplit(".", 1)[0],
+                title=title,
                 artist="Wikimedia Commons",
                 artwork_url=None,
                 audio_url=url,

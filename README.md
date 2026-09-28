@@ -76,6 +76,23 @@ menor a mayor especificidad y termina con un OR sobre las palabras más largas
 **Al agregar una fuente, sondear contra la API real antes de escribir el adaptador:**
 si no hay resultados, el problema suele ser la query, no la fuente.
 
+## Filtro anti-basura (importante)
+
+Internet Archive (y Wikimedia) tienen audio en general, no solo música: buscando
+`Numb Linkin Park` salían *"HUBS report"*, *"Chaos in Portland"*, *"Toe sucking
+burglar"* y *"VOA Global English"*. Dos filtros en `sources.py` lo evitan:
+
+- **`looks_like_music()`** — descarta items cuyo título/artista tiene palabras de
+  podcast, noticia, sermón, curso, audiobook (`NOT_MUSIC`).
+- **`relevance()`** — puntúa 0..1 exigiendo que el item contenga la **mayoría** de
+  las palabras *distintivas* de la consulta (las que no están en `FILLER`). Un item
+  que solo matchea una palabra común ("park") queda penalizado, y si hubo que
+  recurrir al query relajado (`min_relevance=0.01`) se descarta lo que no coincide
+  en nada.
+
+Verificado: de 40 resultados con 3 podcasts/noticias al frente, a 41 resultados
+todos musicales. Al añadir fuentes, aplicar ambos filtros.
+
 ## API
 
 ```bash
