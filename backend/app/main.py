@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from .downloader import LIBRARY, download_track, library_scan
 from .models import Track
-from .sources import ALL_SOURCES, BY_NAME, search_all
+from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -23,12 +23,14 @@ log = logging.getLogger("spitifo")
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
-# estado en memoria de descargas en curso
-JOBS: dict[str, dict] = {}
+# tasks asyncio en vuelo (descargas ytdlp en background), para que Python
+# no las recolecte a mitad de camino
+BG_TASKS: set = set()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
     log.info("biblioteca: %s", LIBRARY)
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
@@ -94,6 +96,7 @@ class TrackPayload(BaseModel):
 
 @app.get("/api/health")
 async def health():
+    _register_ytdlp()  # mostrar yt-dlp en health si esta habilitada
     return {
         "ok": True,
         "sources": [
@@ -124,7 +127,6 @@ async def search(
     for t in tracks:
         t.extra["needs_resolve"] = (
             t.source in ("archive", "ytdlp") and not t.audio_url)
-
     # archive devuelve un item por pista: 30 filas del mismo concierto son
     # 30 filas con el mismo titulo. Se agrupan en una con su setlist.
     tracks = _group_shows(tracks)
@@ -234,12 +236,17 @@ async def verify(q: str = Query(..., min_length=1, max_length=200),
 
 @app.get("/api/download/progress/{job_id}")
 async def progress(job_id: str):
-    """Endpoint de progreso (placeholder; el progreso real va en el job)."""
-    return JOBS.get(job_id, {"status": "unknown"})
+    """Progreso de una descarga yt-dlp en curso (la UI hace polling)."""
+    from .ytdlp_source import get_job
+    job = get_job(job_id)
+    if job is None:
+        return {"status": "unknown", "job_id": job_id}
+    return {"job_id": job_id, **job}
 
 
 @app.post("/api/download")
-async def download(payload: DownloadReq, query: str | None = None):
+async def download(payload: DownloadReq, query: str | None = None,
+                   wait: bool = Query(False, description="yt-dlp: esperar y devolver resultado, o devolver job_id ya")):
     src = BY_NAME.get(payload.source)
     if not src:
         raise HTTPException(400, f"fuente desconocida: {payload.source}")
@@ -251,6 +258,39 @@ async def download(payload: DownloadReq, query: str | None = None):
     track = TrackPayload(**t).to_track() if "source" in t else None
     if track is None:
         raise HTTPException(400, "payload de track invalido")
+
+    # yt-dlp: su propio pipeline. Por defecto arranca en background y devuelve
+    # job_id al toque (la UI hace polling a /api/download/progress/{id}).
+    if payload.source == "ytdlp":
+        from .ytdlp_source import new_job
+        job_id = new_job(track.title)  # el job lo crea main, no hay race
+        ident = {
+            "match": track.extra.get("match"),
+            "match_label": track.extra.get("match_label"),
+            "real_title": track.extra.get("real_title"),
+            "real_artist": track.extra.get("real_artist"),
+            "item_url": track.extra.get("webpage_url"),
+        }
+        if wait:
+            try:
+                result = await src.download(track, payload.fmt, job_id=job_id)
+            except ValueError as e:
+                raise HTTPException(422, str(e))
+            except Exception as e:
+                log.exception("ytdlp descarga fallo")
+                raise HTTPException(502, f"yt-dlp: {e}")
+            return {"ok": True, "source": "ytdlp", "job_id": job_id, **ident, **result}
+
+        async def _bg():
+            try:
+                await src.download(track, payload.fmt, job_id=job_id)
+            except Exception as e:
+                log.warning("ytdlp bg fallo: %s", e)
+
+        task = asyncio.create_task(_bg())
+        BG_TASKS.add(task)
+        task.add_done_callback(BG_TASKS.discard)
+        return {"ok": True, "source": "ytdlp", "job_id": job_id, **ident}
 
     # si la fuente necesita resolucion, hacerlo aqui (con la query para
     # poder leer los tags y decir si es lo que el usuario buscaba)

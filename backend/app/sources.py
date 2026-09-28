@@ -479,49 +479,6 @@ class WikimediaSource(Source):
 
 
 # --------------------------------------------------------------------------
-# yt-dlp — fuente EXTRA opcional, apagada por defecto. Contra ToS de las
-# plataformas; se activa solo si YTDLP_ENABLED=1.
-# --------------------------------------------------------------------------
-class YtDlpSource(Source):
-    name = "ytdlp"
-
-    def available(self) -> bool:
-        return os.getenv("YTDLP_ENABLED", "0") == "1"
-
-    async def search(self, q: str, limit: int = 20) -> list[Track]:
-        if not self.available():
-            return []
-        import yt_dlp
-        opts = {
-            "quiet": True, "no_warnings": True, "extract_flat": "in_playlist",
-            "skip_download": True, "default_search": f"ytsearch{limit}",
-        }
-        loop = asyncio.get_running_loop()
-
-        def _run():
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
-
-        data = await loop.run_in_executor(None, _run)
-        out = []
-        for e in (data or {}).get("entries", []) or []:
-            if not e:
-                continue
-            out.append(Track(
-                source=self.name,
-                source_id=e["id"],
-                title=e.get("title") or "",
-                artist=e.get("uploader") or e.get("channel") or "",
-                duration_s=e.get("duration"),
-                artwork_url=None,
-                # resolver a URL de audio en la descarga
-                extra={"webpage_url": e.get("webpage_url")},
-                license="ToS de la plataforma (uso personal)",
-            ))
-        return out
-
-
-# --------------------------------------------------------------------------
 # Registro
 # --------------------------------------------------------------------------
 ALL_SOURCES: list[Source] = [
@@ -529,15 +486,26 @@ ALL_SOURCES: list[Source] = [
     InternetArchiveSource(),
     JamendoSource(),
     WikimediaSource(),
-    YtDlpSource(),
 ]
 
 BY_NAME = {s.name: s for s in ALL_SOURCES}
 
 
+def _register_ytdlp():
+    """Registra yt-dlp una vez, al primer uso. Se hace aca (no al importar
+    el modulo) porque ytdlp_source importa sources y downloader, y ambos
+    tocan sources: hacerlo al importacion de sources cerraria un ciclo."""
+    if "ytdlp" not in BY_NAME:
+        from .ytdlp_source import YtDlpSource
+        s = YtDlpSource()
+        ALL_SOURCES.append(s)
+        BY_NAME[s.name] = s
+
+
 async def search_all(q: str, limit: int = 20,
                      sources: list[str] | None = None) -> list[Track]:
     """Busca en paralelo en las fuentes pedidas (todas disponibles por default)."""
+    _register_ytdlp()  # yt-dlp se registra al primer uso (evita ciclo de import)
     chosen = [BY_NAME[n] for n in sources] if sources else list(ALL_SOURCES)
     chosen = [s for s in chosen if s.available()]
     results = await asyncio.gather(

@@ -18,6 +18,20 @@ function fmtTime(s) {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 }
 
+/* Sondea el progreso de una descarga yt-dlp hasta que termine. */
+async function pollJob(jobId, setJob, title) {
+  for (let i = 0; i < 600; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await fetch(`${API}/download/progress/${jobId}`);
+    const d = await r.json();
+    setJob({ ...d, title });
+    if (d.status === "done" || d.status === "error") return d;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((res) => setTimeout(res, 700));
+  }
+  return null;
+}
+
 /* Verificacion: lee los tags reales del audio y compara con lo buscado. */
 function VerifyPanel({ t, query, onVerified }) {
   const [state, setState] = useState("idle");
@@ -189,6 +203,24 @@ function ShowGroup({ t, query, onDownload, busyId }) {
   );
 }
 
+function ProgressBar({ job }) {
+  if (!job) return null;
+  const pct = Math.round(job.progress || 0);
+  const done = job.status === "done";
+  const failed = job.status === "error";
+  return (
+    <div className={`prog ${done ? "done" : ""}`}>
+      <span className="lbl">
+        {failed ? "✗ falló" : done ? "✓ listo" : "⬇ descargando"}
+      </span>
+      <div className="track-bar">
+        <div className="fill" style={{ width: `${done ? 100 : pct}%` }} />
+      </div>
+      <span className="pct">{done ? "100%" : `${pct}%`}</span>
+    </div>
+  );
+}
+
 function Track({ t, query, onDownload, busy, verified, onVerified }) {
   const status = t.extra?.needs_resolve
     ? "resoluble"
@@ -233,6 +265,16 @@ function Track({ t, query, onDownload, busy, verified, onVerified }) {
           {t.extra?.format && <span className="badge">{t.extra.format}</span>}
           {t.extra?.size_mb != null && (
             <span className="badge">{t.extra.size_mb} MB</span>
+          )}
+          {t.source === "ytdlp" && (
+            <a
+              className="badge link"
+              href={t.extra?.webpage_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              ver en YouTube ↗
+            </a>
           )}
           {t.extra?.item_url && (
             <a
@@ -287,6 +329,7 @@ function App() {
   const [lib, setLib] = useState([]);
   const [busyId, setBusyId] = useState(null);
   const [verified, setVerified] = useState({});
+  const [job, setJob] = useState(null);
   const inputRef = useRef();
 
   useEffect(() => {
@@ -328,11 +371,17 @@ function App() {
       setBusyId(t.source + t.source_id);
       setErr(null);
       setDone(null);
+      setJob(null);
       try {
         let track = { ...t };
         delete track.downloadable;
-        // las pistas del setlist ya vienen resueltas por /api/setlist
-        if (!track.audio_url && t.extra?.needs_resolve) {
+        // las pistas del setlist ya vienen resueltas por /api/setlist;
+        // yt-dlp gestiona su propia resolucion, no hace falta /api/resolve
+        if (
+          !track.audio_url &&
+          t.source !== "ytdlp" &&
+          t.extra?.needs_resolve
+        ) {
           const rr = await fetch(
             `${API}/resolve?query=${encodeURIComponent(query)}`,
             {
@@ -361,6 +410,28 @@ function App() {
         );
         const j = await rd.json();
         if (!rd.ok) throw new Error(j.detail || "falló la descarga");
+
+        // yt-dlp devuelve job_id: la descarga corre en background, hacer polling
+        if (j.job_id) {
+          setJob({ status: "pending", progress: 0, title: t.title });
+          const finished = await pollJob(j.job_id, setJob, t.title);
+          if (finished) {
+            if (finished.status === "error") {
+              setErr(finished.error || "la descarga falló");
+            } else {
+              setDone({
+                ...j, ...finished,
+                filename: finished.filename || finished.path,
+                size_mb: finished.size_mb,
+                match: finished.match || j.match,
+                real_title: finished.real_title || j.real_title,
+              });
+              if (libOpen) loadLib();
+            }
+          }
+          return;
+        }
+
         // avisar si lo que se bajo no es lo que se busco
         const finalMatch = j.match || vmatch;
         const finalTitle = j.real_title || vtitle;
@@ -458,6 +529,7 @@ function App() {
       )}
 
       {err && <div className="err">{err}</div>}
+      <ProgressBar job={job} />
       {done && (
         <div className={done.warning ? "warn" : "ok"}>
           {done.warning

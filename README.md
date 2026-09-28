@@ -93,6 +93,34 @@ burglar"* y *"VOA Global English"*. Dos filtros en `sources.py` lo evitan:
 Verificado: de 40 resultados con 3 podcasts/noticias al frente, a 41 resultados
 todos musicales. Al añadir fuentes, aplicar ambos filtros.
 
+## yt-dlp (fuente opcional, ver la nota legal)
+
+Se activa con `YTDLP_ENABLED=1`. Buscá y descargá de YouTube, que es la única vía
+para el catálogo comercial (iTunes sólo da preview de 30 s).
+
+```bash
+# PowerShell, en la terminal
+$env:YTDLP_ENABLED=1; .venv\Scripts\python.exe -m uvicorn backend.app.main:app --port 8000
+```
+
+- **Aviso legal**: descargar de YouTube viola sus ToS y es ilegal en la mayoría de
+  las jurisdicciones. Sirve para uso personal; no lo publiques ni lo distributes.
+- Flujo: `POST /api/download` arranca la descarga en background y devuelve
+  `job_id`; la UI hace polling a `GET /api/download/progress/{job_id}` para la
+  barra de progreso. Con `?wait=true` devuelve el resultado al terminar.
+- `backend/app/ytdlp_source.py` tiene su propio pipeline (formatos + postprocess
+  ffmpeg + progreso); no reutiliza `downloader.download_track`.
+
+### Trampa de yt-dlp (importante)
+
+Con el postprocessor `FFmpegExtractAudio`, **`info['filepath']` viene `None`**:
+yt-dlp lo limpia después del postprocess. Y `ydl.prepare_filename(info)` tampoco
+sirve, porque devuelve el nombre con la extensión del stream **original**
+(webm/opus), no la del postprocess (mp3). El archivo final es
+`folder/<stem>.<ext>`, donde `stem` es el que ya construiste para el `outtmpl`, así
+que hay que buscarlo con un glob sobre ese `stem` (con `glob.escape`, porque los
+títulos traen `[` `]`).
+
 ## API
 
 ```bash

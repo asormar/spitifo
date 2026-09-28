@@ -91,7 +91,7 @@ def _write_tags(path: Path, t: Track) -> None:
                 f["\xa9alb"] = t.album
             f.save()
     except Exception as e:  # tags son un extra, no deben tumbar la descarga
-        log.warning("tags fallaron en %s: %s", path.name, e)
+        log.warning("tags fallaron en %s: %s", os.path.basename(str(path)), e)
 
 
 def _ffmpeg_convert(src: Path, out_path: Path) -> Path:

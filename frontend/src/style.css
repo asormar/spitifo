@@ -142,6 +142,18 @@ h1 { margin: 0; display: flex; align-items: baseline; gap: 12px; }
 .realinfo.mismatch { border-left-color: var(--err); color: #ffc4ca; }
 .realinfo.unknown { border-left-color: #6b6b7b; }
 
+/* barra de progreso de descarga */
+.prog {
+  display: flex; align-items: center; gap: 11px; margin-bottom: 14px;
+  background: var(--panel); border: 1px solid var(--acc); border-radius: 10px;
+  padding: 11px 14px; font-size: 13px;
+}
+.prog .lbl { white-space: nowrap; }
+.prog .track-bar { flex: 1; height: 8px; background: var(--panel2); border-radius: 5px; overflow: hidden; }
+.prog .fill { height: 100%; background: linear-gradient(90deg, var(--acc), var(--acc2)); transition: width .3s; }
+.prog .pct { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; color: var(--acc2); }
+.prog.done { border-color: var(--acc2); }
+
 /* boton + panel de verificacion */
 .vf {
   margin-top: 8px; background: transparent; border: 1px dashed var(--border);
