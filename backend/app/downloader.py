@@ -172,7 +172,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
 
 
 def library_scan() -> list[dict]:
-    """Lista la biblioteca local ya descargada."""
+    """Lista la biblioteca local ya descargada, con la duracion real."""
     exts = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"}
     out = []
     for p in LIBRARY.rglob("*"):
@@ -184,6 +184,19 @@ def library_scan() -> list[dict]:
                 "folder": p.parent.name,
                 "bytes": st.st_size,
                 "size_mb": round(st.st_size / 1_048_576, 2),
+                "duration_s": _duration(p),
                 "modified": st.st_mtime,
             })
     return sorted(out, key=lambda x: -x["modified"])
+
+
+def _duration(p: Path) -> float | None:
+    """Duracion real en segundos, leida con mutagen. None si no se puede."""
+    try:
+        from mutagen import File as MFile
+        f = MFile(p)
+        if f is not None and f.info is not None:
+            return round(float(f.info.length), 1)
+    except Exception:
+        pass
+    return None

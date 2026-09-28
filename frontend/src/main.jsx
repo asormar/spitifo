@@ -294,7 +294,7 @@ function Track({ t, query, onDownload, busy, verified, onVerified }) {
       <div className="dur">{fmtTime(t.duration_s)}</div>
       <div className="acts">
         {t.preview_url && (
-          <audio controls preload="none" src={t.preview_url} className="prev" />
+          <audio controls preload="metadata" src={t.preview_url} className="prev" />
         )}
         {t.downloadable || t.extra?.needs_resolve ? (
           <button
@@ -552,13 +552,14 @@ function App() {
             <div key={f.path} className="librow">
               <audio
                 controls
-                preload="none"
+                preload="metadata"
                 src={`${API}/audio?path=${encodeURIComponent(f.path)}`}
               />
               <div>
                 <div>{f.filename}</div>
                 <small>
                   {f.folder} · {f.size_mb} MB
+                  {f.duration_s ? ` · ${fmtTime(f.duration_s)}` : ""}
                 </small>
               </div>
             </div>
