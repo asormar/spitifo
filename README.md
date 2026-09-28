@@ -56,6 +56,26 @@ descarga queda con un veredicto:
 Los resultados de un mismo concierto se agrupan en una fila que se expande con su
 setlist, y cada pista se puede bajar por separado.
 
+## Colecciones de Internet Archive (importante)
+
+`collection:(etree)` sonaba obvia pero tiene **solo 4 items de audio**. El catálogo
+real está en:
+
+| Colección | Items de audio | Qué hay |
+|---|---|---|
+| `opensource_audio` | 2.960.378 | MP3s subidos, covers, ripeos |
+| `audio_music` | 509.979 | audio en general |
+| `78rpm` | 309.420 | discos de 78rpm (dominio público) |
+| `etree` | 4 | conciertos en vivo |
+
+Además, archive exige **AND entre palabras**: `"linkin park numb"` da 0 resultados
+aunque "Meteora" de Linkin Park esté subida. Por eso `search()` prueba variantes de
+menor a mayor especificidad y termina con un OR sobre las palabras más largas
+(`_loose()`), y después reordena por relevancia real con `_rank()`.
+
+**Al agregar una fuente, sondear contra la API real antes de escribir el adaptador:**
+si no hay resultados, el problema suele ser la query, no la fuente.
+
 ## API
 
 ```bash

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
@@ -24,6 +25,26 @@ def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
                              headers={"User-Agent": UA},
                              limits=httpx.Limits(max_connections=16))
+
+
+_STOP_Q = {"the", "a", "an", "de", "la", "el", "y", "en", "of"}
+
+
+def _loose(q: str) -> str | None:
+    """Query de respaldo: usa las palabras MAS largas (titulo/artista) con OR.
+
+    archive exige AND entre palabras, asi que "linkin park numb" solo matchea
+    items que digan las TRES palabras. Con OR sobre las dos palabras mas
+    largas aparecen los items que digan "numb" y "linkin park".
+    """
+    words = [w.strip(" -_") for w in q.split() if w.strip()]
+    words = [w for w in words if w.lower() not in _STOP_Q and len(w) > 1]
+    if not words:
+        return None
+    # la palabra mas larga suele ser el titulo de la cancion
+    words = sorted(words, key=len, reverse=True)[:3]
+    joined = " OR ".join(f'"{w}"' for w in words)
+    return f"({joined}) AND mediatype:(audio)"
 
 
 class Source:
@@ -94,30 +115,61 @@ class ITunesSource(Source):
 # --------------------------------------------------------------------------
 class InternetArchiveSource(Source):
     name = "archive"
+    # etree (conciertos en vivo) tiene solo ~4 items de audio: queda como extra.
+    # audio_music y opensource_audio son donde vive el catalogo real (500k / 3M).
     COLLECTIONS = [
-        "collection:(etree) AND mediatype:(audio)",
         "collection:(audio_music) AND mediatype:(audio)",
-        "collection:(78rpm) AND mediatype:(audio)",
+        "collection:(opensource_audio) AND mediatype:(audio)",
+        "collection:(etree) AND mediatype:(audio)",
     ]
     AUDIO_EXT = (".mp3", ".flac", ".ogg", ".m4a", ".opus", ".wav")
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
-        per = max(4, limit // len(self.COLLECTIONS))
-        tasks = [self._search_one(f"({q}) AND {c}", per) for c in self.COLLECTIONS]
-        batches = await asyncio.gather(*tasks, return_exceptions=True)
+        # archive matchea TODAS las palabras con AND: "linkin park numb" con
+        # frase exacta da 0. Se prueban variantes de menor a mayor especificidad
+        # y se corta en cuanto se juntan suficientes resultados.
+        queries = [
+            f'({q}) AND mediatype:(audio)',
+            f'({q}) AND mediatype:(audio) AND collection:(audio_music)',
+            f'({q}) AND mediatype:(audio) AND collection:(opensource_audio)',
+            _loose(q),
+        ]
+        queries = [x for x in queries if x]
 
-        seen: set[str] = set()
         out: list[Track] = []
-        for b in batches:
-            if isinstance(b, Exception):
-                log.warning("archive subsearch fallo: %s", b)
-                continue
-            for t in b:
+        seen: set[str] = set()
+        for query in queries:
+            if len(out) >= limit:
+                break
+            batch = await self._search_one(query, limit - len(out))
+            for t in batch:
                 if t.source_id in seen:
                     continue
                 seen.add(t.source_id)
+                t.extra["match_query"] = q
                 out.append(t)
-        return out[:limit]
+        return self._rank(q, out)[:limit]
+
+    def _rank(self, query: str, tracks: list[Track]) -> list[Track]:
+        """Ordena por relevancia REAL, leyendo los tags del top candidato.
+
+        El query relajado (OR) trae mucho ruido: "Linkin Park numb" devolvia
+        primero un podcast de vampiros. Se puntua el titulo del item contra la
+        consulta (barato, sin red) y solo se leen los tags de los que vale la
+        pena, para confirmar cual es el bueno.
+        """
+        from .identify import similarity
+
+        def cheap_score(t: Track) -> float:
+            s = similarity(query, t.title)
+            s2 = similarity(query, t.artist)
+            return max(s, s2 * 0.85)
+
+        tracks.sort(key=cheap_score, reverse=True)
+        # los que no tienen nada que ver quedan al final, no se lesen tags
+        top = [t for t in tracks if cheap_score(t) >= 0.4]
+        rest = [t for t in tracks if cheap_score(t) < 0.4]
+        return top + rest
 
     async def _search_one(self, q: str, limit: int) -> list[Track]:
         params = [
@@ -135,20 +187,34 @@ class InternetArchiveSource(Source):
                 continue
             creator = d.get("creator")
             creator = ", ".join(creator) if isinstance(creator, list) else (creator or "")
+            raw_title = d.get("title") or ident
+            # archive deja vacio el creator en muchos items (subidas de
+            # soundcloud, ripping de mp3). Si el titulo trae "Artista - Cancion"
+            # se puede sacar de ahi para no dejar el nombre como "desconocido".
+            title = raw_title
+            artist = creator
+            if not artist:
+                m = re.match(r"^([^-]{2,40})\s+-\s+(.+)$", raw_title)
+                if m:
+                    artist = m.group(1).strip()
+                    title = m.group(2).strip()
+                else:
+                    # el identificador suele ser junk ("yt-1s", "numb_dev"):
+                    # no ponerlo como nombre de artista
+                    artist = "varios"
             # Los items de etree guardan UN item por pista pero todos comparten el
             # mismo `title` (que es el nombre del concierto). Ese titulo es lo que
             # hay que usar para agrupar: el campo `show` no existe en estos items.
             show = d.get("show") or d.get("event") or d.get("venue")
             if isinstance(show, list):
                 show = ", ".join(show)
-            title = d.get("title") or ident
             if not show:
-                show = title  # fallback: el titulo ES el show
+                show = raw_title  # fallback: el titulo original ES el show
             out.append(Track(
                 source=self.name,
                 source_id=ident,
                 title=title,
-                artist=creator or "desconocido",
+                artist=artist,
                 year=str(d["year"]) if d.get("year") else None,
                 extra={
                     "collection": "Internet Archive",
