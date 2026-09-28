@@ -30,6 +30,32 @@ cd frontend && npm install && npm run dev   # http://localhost:5173 (proxy a :80
 Cada resultado muestra de qué fuente sale, su licencia, y si se puede bajar entero
 o es sólo preview. Nunca te muestra "descargable" algo que no lo sea.
 
+## Verificación de identidad (importante)
+
+Internet Archive guarda **un item por pista**, pero el item se titula con el nombre
+del concierto y el match de la búsqueda cae contra la descripción (el setlist), no
+contra la pista. Buscar "Bohemian Rhapsody" devuelve un concierto de Phish donde esa
+canción aparece en el setlist.
+
+Por eso el resolve **lee los tags reales del audio** (`backend/app/identify.py`, sólo
+los primeros 256 KB con un `Range` implícito) y compara contra la consulta. Cada
+descarga queda con un veredicto:
+
+| Estado | Qué significa |
+|---|---|
+| `match` | el título del archivo es el que buscabas (≥80% de palabras) |
+| `partial` | se parece pero no es (≥40%) |
+| `mismatch` | **no es lo que buscabas** — la UI avisa y el archivo se guarda con su título real |
+| `unknown` | el archivo no trae tags; no se puede verificar |
+
+- `GET /api/verify?q=...&source=archive&source_id=...` — qué hay adentro de un item, sin bajarlo
+- `GET /api/setlist?source_ids=id1,id2&q=...` — resuelve varios items y devuelve el setlist con títulos reales
+- `POST /api/resolve?query=...` — ahora recibe la consulta para poder verificar
+- `POST /api/download?query=...` — devuelve `match` y `real_title`
+
+Los resultados de un mismo concierto se agrupan en una fila que se expande con su
+setlist, y cada pista se puede bajar por separado.
+
 ## API
 
 ```bash

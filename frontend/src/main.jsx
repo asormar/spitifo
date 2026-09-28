@@ -18,17 +18,185 @@ function fmtTime(s) {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 }
 
-function Track({ t, onDownload, busy }) {
+/* Verificacion: lee los tags reales del audio y compara con lo buscado. */
+function VerifyPanel({ t, query, onVerified }) {
+  const [state, setState] = useState("idle");
+  const [data, setData] = useState(null);
+
+  const verify = useCallback(async () => {
+    setState("loading");
+    try {
+      const r = await fetch(
+        `${API}/verify?q=${encodeURIComponent(query)}&source=${t.source}&source_id=${encodeURIComponent(
+          t.source_id
+        )}`
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "no se pudo verificar");
+      setData(d);
+      setState("done");
+      onVerified?.(t.source + t.source_id, d);
+    } catch (e) {
+      setState("error");
+      setData({ error: e.message });
+    }
+  }, [t.source, t.source_id, query, onVerified]);
+
+  if (state === "idle") {
+    return (
+      <button className="vf" onClick={verify}>
+        🔍 ¿es esta la canción?
+      </button>
+    );
+  }
+  if (state === "loading") {
+    return <span className="vf loading">leyendo tags del audio…</span>;
+  }
+  if (state === "error") {
+    return <span className="vf err">no pude verificar: {data?.error}</span>;
+  }
+
+  const m = data.extra || {};
+  return (
+    <div className={`vfbox ${m.match || "unknown"}`}>
+      <div className="vfhead">
+        <strong>{m.real_title || "sin título"}</strong>
+        <span className={`vfpill ${m.match || "unknown"}`}>
+          {m.match_label || "?"}
+        </span>
+      </div>
+      <div className="vfmeta">
+        {m.real_artist && (
+          <>
+            artista real: <b>{m.real_artist}</b> ·{" "}
+          </>
+        )}
+        {m.format && <>{m.format} · </>}
+        {m.size_mb != null && <>{m.size_mb} MB · </>}
+        {m.duration_s ? `${fmtTime(m.duration_s)} · ` : ""}
+        {m.match_score != null && `coincide ${Math.round(m.match_score * 100)}%`}
+      </div>
+      {m.filename && (
+        <div className="vffile">
+          archivo: <code>{m.filename}</code>
+        </div>
+      )}
+      <div className="vfsrc">
+        {m.uploader && <>subido por {m.uploader} · </>}
+        {m.title_source === "item-title" && (
+          <>el archivo no trae tags, el título viene del item · </>
+        )}
+        {m.item_url && (
+          <a href={m.item_url} target="_blank" rel="noreferrer">
+            ver en Internet Archive ↗
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ShowGroup({ t, query, onDownload, busyId }) {
+  const [open, setOpen] = useState(false);
+  const [tracks, setTracks] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const ids = (t.extra?.item_ids || [t.source_id]).join(",");
+      const r = await fetch(
+        `${API}/setlist?source_ids=${encodeURIComponent(ids)}&q=${encodeURIComponent(query)}`
+      );
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || "no se pudo leer el setlist");
+      setTracks(d.tracks);
+    } catch (e) {
+      setTracks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [t.extra?.item_ids, t.source_id, query]);
+
+  const toggle = useCallback(() => {
+    const n = !open;
+    setOpen(n);
+    if (n && !tracks) load();
+  }, [open, tracks, load]);
+
+  return (
+    <div className="track show">
+      <div className="art art-ph">{t.artist?.charAt(0) || "♪"}</div>
+      <div className="meta">
+        <div className="title">
+          {t.title}
+          <span className="grp">{t.extra?.track_count || 1} pistas</span>
+        </div>
+        <div className="sub">
+          {t.artist} · concierto en vivo
+          {t.year ? ` · ${t.year}` : ""}
+        </div>
+        <div className="badges">
+          <span className="badge res">concierto completo</span>
+          <span className="badge src">Internet Archive</span>
+          {t.extra?.item_url && (
+            <a className="badge link" href={t.extra.item_url} target="_blank" rel="noreferrer">
+              procedencia ↗
+            </a>
+          )}
+        </div>
+        <button className="vf" onClick={toggle}>
+          {open ? "▾ ocultar setlist" : "▸ ver qué canciones hay"}
+        </button>
+
+        {open && (
+          <div className="setlist">
+            {loading && <div className="slrow dim">leyendo tags de cada pista…</div>}
+            {!loading && tracks && tracks.length === 0 && (
+              <div className="slrow dim">no pude leer las pistas</div>
+            )}
+            {tracks?.map((s) => (
+              <div className={`slrow ${s.match || "unknown"}`} key={s.source_id}>
+                <div className="slinfo">
+                  <b>{s.real_title || s.filename}</b>
+                  {s.real_artist && s.real_artist !== t.artist && (
+                    <span className="slart"> · {s.real_artist}</span>
+                  )}
+                  <div className="slmeta">
+                    <span className={`vfpill ${s.match || "unknown"}`}>
+                      {s.match_label || "?"}
+                    </span>
+                    {s.format && <> {s.format} · </>}
+                    {s.size_mb != null && <>{s.size_mb} MB · </>}
+                    {fmtTime(s.duration_s)}
+                  </div>
+                </div>
+                <button
+                  className="dlbtn sm"
+                  disabled={busyId === s.source_id}
+                  onClick={() => onDownload(s)}
+                >
+                  ↓
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="dur"></div>
+      <div className="acts"></div>
+    </div>
+  );
+}
+
+function Track({ t, query, onDownload, busy, verified, onVerified }) {
   const status = t.extra?.needs_resolve
     ? "resoluble"
     : t.downloadable
     ? "descargable"
     : "solo preview";
-  const cls = t.extra?.needs_resolve
-    ? "res"
-    : t.downloadable
-    ? "dl"
-    : "pv";
+  const cls = t.extra?.needs_resolve ? "res" : t.downloadable ? "dl" : "pv";
+  const v = verified?.[t.source + t.source_id];
 
   return (
     <div className="track">
@@ -38,12 +206,26 @@ function Track({ t, onDownload, busy }) {
         <div className="art art-ph">{t.artist?.charAt(0) || "♪"}</div>
       )}
       <div className="meta">
-        <div className="title">{t.title || "—"}</div>
+        <div className="title">
+          {t.title || "—"}
+          {t.extra?.is_group && t.extra?.track_count > 1 && (
+            <span className="grp">{t.extra.track_count} pistas</span>
+          )}
+        </div>
         <div className="sub">
           {t.artist || "—"}
           {t.album && t.album !== t.title ? ` · ${t.album}` : ""}
           {t.year ? ` · ${t.year}` : ""}
         </div>
+        {v && (
+          <div className={`realinfo ${v.extra?.match || "unknown"}`}>
+            <span className="rt">en el archivo:</span>{" "}
+            <b>{v.extra?.real_title || "?"}</b>
+            {v.extra?.real_artist && v.extra.real_artist !== t.artist && (
+              <> — {v.extra.real_artist}</>
+            )}
+          </div>
+        )}
         <div className="badges">
           <span className={`badge ${cls}`}>{status}</span>
           <span className="badge src">{SOURCE_LABEL[t.source] || t.source}</span>
@@ -52,7 +234,20 @@ function Track({ t, onDownload, busy }) {
           {t.extra?.size_mb != null && (
             <span className="badge">{t.extra.size_mb} MB</span>
           )}
+          {t.extra?.item_url && (
+            <a
+              className="badge link"
+              href={t.extra.item_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              procedencia ↗
+            </a>
+          )}
         </div>
+        {t.source === "archive" && (
+          <VerifyPanel t={t} query={query} onVerified={onVerified} />
+        )}
       </div>
       <div className="dur">{fmtTime(t.duration_s)}</div>
       <div className="acts">
@@ -80,6 +275,7 @@ function Track({ t, onDownload, busy }) {
 
 function App() {
   const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
@@ -90,6 +286,7 @@ function App() {
   const [libOpen, setLibOpen] = useState(false);
   const [lib, setLib] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [verified, setVerified] = useState({});
   const inputRef = useRef();
 
   useEffect(() => {
@@ -99,25 +296,32 @@ function App() {
       .catch(() => setHealth(null));
   }, []);
 
-  const doSearch = useCallback(async (e) => {
-    e?.preventDefault();
-    if (!q.trim()) return;
-    setLoading(true);
-    setErr(null);
-    setDone(null);
-    try {
-      const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}&limit=40`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || "error de búsqueda");
-      setResults(d.results);
-      if (!d.results.length) setErr("Sin resultados.");
-    } catch (e) {
-      setErr(e.message);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [q]);
+  const doSearch = useCallback(
+    async (e) => {
+      e?.preventDefault();
+      if (!q.trim()) return;
+      setLoading(true);
+      setErr(null);
+      setDone(null);
+      setVerified({});
+      try {
+        const r = await fetch(
+          `${API}/search?q=${encodeURIComponent(q)}&limit=40`
+        );
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || "error de búsqueda");
+        setResults(d.results);
+        setQuery(q);
+        if (!d.results.length) setErr("Sin resultados.");
+      } catch (e) {
+        setErr(e.message);
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [q]
+  );
 
   const onDownload = useCallback(
     async (t) => {
@@ -125,15 +329,18 @@ function App() {
       setErr(null);
       setDone(null);
       try {
-        // resolver primero si la fuente lo necesita
         let track = { ...t };
         delete track.downloadable;
-        if (t.extra?.needs_resolve) {
-          const rr = await fetch(`${API}/resolve`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(track),
-          });
+        // las pistas del setlist ya vienen resueltas por /api/setlist
+        if (!track.audio_url && t.extra?.needs_resolve) {
+          const rr = await fetch(
+            `${API}/resolve?query=${encodeURIComponent(query)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(track),
+            }
+          );
           if (!rr.ok) {
             const d = await rr.json();
             throw new Error(d.detail || "no se pudo resolver");
@@ -141,14 +348,32 @@ function App() {
           track = await rr.json();
           delete track.downloadable;
         }
-        const rd = await fetch(`${API}/download`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: track.source, track, fmt }),
-        });
+        // /api/setlist devuelve el veredicto en la raiz, /api/resolve en extra
+        const vmatch = t.match || track.extra?.match || track.match;
+        const vtitle = t.real_title || track.extra?.real_title || track.real_title;
+        const rd = await fetch(
+          `${API}/download?query=${encodeURIComponent(query)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: track.source, track, fmt }),
+          }
+        );
         const j = await rd.json();
         if (!rd.ok) throw new Error(j.detail || "falló la descarga");
-        setDone(j);
+        // avisar si lo que se bajo no es lo que se busco
+        const finalMatch = j.match || vmatch;
+        const finalTitle = j.real_title || vtitle;
+        if (finalMatch === "mismatch" || finalMatch === "unknown") {
+          setDone({
+            ...j,
+            warning: `Ojo: en el archivo dice "${
+              finalTitle || "sin título"
+            }", no "${query}".`,
+          });
+        } else {
+          setDone(j);
+        }
         if (libOpen) loadLib();
       } catch (e) {
         setErr(e.message);
@@ -156,7 +381,7 @@ function App() {
         setBusyId(null);
       }
     },
-    [fmt, libOpen]
+    [fmt, libOpen, query]
   );
 
   const loadLib = useCallback(async () => {
@@ -198,7 +423,11 @@ function App() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscá una canción, un artista, un género…"
         />
-        <select value={fmt} onChange={(e) => setFmt(e.target.value)} title="Formato">
+        <select
+          value={fmt}
+          onChange={(e) => setFmt(e.target.value)}
+          title="Formato"
+        >
           <option value="mp3">mp3</option>
           <option value="m4a">m4a</option>
           <option value="original">original</option>
@@ -217,7 +446,11 @@ function App() {
             </span>
           ))}
           {inactive.map((s) => (
-            <span key={s.name} className="chip off" title={`requiere ${s.needs_key}`}>
+            <span
+              key={s.name}
+              className="chip off"
+              title={`requiere ${s.needs_key}`}
+            >
               {SOURCE_LABEL[s.name] || s.name} (off)
             </span>
           ))}
@@ -226,8 +459,13 @@ function App() {
 
       {err && <div className="err">{err}</div>}
       {done && (
-        <div className="ok">
-          ✓ {done.filename} · {done.size_mb} MB → descargado
+        <div className={done.warning ? "warn" : "ok"}>
+          {done.warning
+            ? `⚠ ${done.warning}`
+            : `✓ ${done.filename} · ${done.size_mb} MB → descargado`}
+          {!done.warning && done.real_title && done.match === "match" && (
+            <span className="okmatch"> · verificado: {done.real_title}</span>
+          )}
         </div>
       )}
 
@@ -237,10 +475,16 @@ function App() {
           {lib.length === 0 && <p className="empty">Todavía no descargaste nada.</p>}
           {lib.map((f) => (
             <div key={f.path} className="librow">
-              <audio controls preload="none" src={`${API}/audio?path=${encodeURIComponent(f.path)}`} />
+              <audio
+                controls
+                preload="none"
+                src={`${API}/audio?path=${encodeURIComponent(f.path)}`}
+              />
               <div>
                 <div>{f.filename}</div>
-                <small>{f.folder} · {f.size_mb} MB</small>
+                <small>
+                  {f.folder} · {f.size_mb} MB
+                </small>
               </div>
             </div>
           ))}
@@ -260,29 +504,54 @@ function App() {
               className={filter === "dl" ? "on" : ""}
               onClick={() => setFilter("dl")}
             >
-              se puede bajar ({results.filter((t) => t.downloadable || t.extra?.needs_resolve).length})
+              se puede bajar (
+              {
+                results.filter(
+                  (t) => t.downloadable || t.extra?.needs_resolve
+                ).length
+              }
+              )
             </button>
           </div>
           <div className="list">
-            {shown.map((t) => (
-              <Track
-                key={t.source + t.source_id}
-                t={t}
-                busy={busyId === t.source + t.source_id}
-                onDownload={onDownload}
-              />
-            ))}
-            {!shown.length && <p className="empty">Nada descargable en esta búsqueda.</p>}
+            {shown.map((t) =>
+              t.extra?.is_group && t.extra?.track_count > 1 ? (
+                <ShowGroup
+                  key={t.source + t.source_id}
+                  t={t}
+                  query={query}
+                  onDownload={onDownload}
+                  busyId={busyId}
+                />
+              ) : (
+                <Track
+                  key={t.source + t.source_id}
+                  t={t}
+                  query={query}
+                  busy={busyId === t.source + t.source_id}
+                  onDownload={onDownload}
+                  verified={verified}
+                  onVerified={(k, d) => setVerified((s) => ({ ...s, [k]: d }))}
+                />
+              )
+            )}
+            {!shown.length && (
+              <p className="empty">Nada descargable en esta búsqueda.</p>
+            )}
           </div>
         </>
       )}
 
       {!results.length && !loading && (
         <div className="hero">
-          <p>Escribí algo arriba. Cada resultado dice de dónde sale y si podés bajarlo entero.</p>
+          <p>
+            Escribí algo arriba. Cada resultado dice de dónde sale y si podés bajarlo
+            entero.
+          </p>
           <p className="fine">
-            Fuentes con licencia libre (Internet Archive, Wikimedia, Jamendo). El catálogo de iTunes
-            aparece para encontrar el tema, pero de ahí sólo sale un preview de 30 s.
+            Fuentes con licencia libre (Internet Archive, Wikimedia, Jamendo). El
+            catálogo de iTunes aparece para encontrar el tema, pero de ahí sólo sale
+            un preview de 30 s.
           </p>
         </div>
       )}

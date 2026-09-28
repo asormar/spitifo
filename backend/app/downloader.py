@@ -110,13 +110,24 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     if not t.audio_url:
         raise ValueError("la pista no tiene audio_url (no es descargable)")
 
-    folder = LIBRARY / safe_name(t.artist or "desconocido", 60)
+    # Si los tags dijeron el titulo REAL (p.ej. "Ghost>") y el match no es bueno,
+    # usar el real: el archivo en disco no debe mentir.
+    real = t.extra.get("real_title")
+    swapped = bool(real) and t.extra.get("match") in ("mismatch", "unknown")
+    if swapped:
+        base_title = real
+        base_artist = t.extra.get("real_artist") or t.artist
+    else:
+        base_title = t.title
+        base_artist = t.artist
+
+    folder = LIBRARY / safe_name(base_artist or "desconocido", 60)
     folder.mkdir(parents=True, exist_ok=True)
 
     src_ext = Path(t.audio_url.split("?")[0]).suffix.lower() or ".mp3"
     if len(src_ext) > 5 or not src_ext.startswith("."):
         src_ext = ".mp3"
-    stem = safe_name(f"{t.artist} - {t.title}", 100)
+    stem = safe_name(f"{base_artist} - {base_title}", 100)
     tmp = folder / f".{uuid.uuid4().hex[:8]}{src_ext}"
     final: Path
 

@@ -135,59 +135,130 @@ class InternetArchiveSource(Source):
                 continue
             creator = d.get("creator")
             creator = ", ".join(creator) if isinstance(creator, list) else (creator or "")
+            # Los items de etree guardan UN item por pista pero todos comparten el
+            # mismo `title` (que es el nombre del concierto). Ese titulo es lo que
+            # hay que usar para agrupar: el campo `show` no existe en estos items.
+            show = d.get("show") or d.get("event") or d.get("venue")
+            if isinstance(show, list):
+                show = ", ".join(show)
+            title = d.get("title") or ident
+            if not show:
+                show = title  # fallback: el titulo ES el show
             out.append(Track(
                 source=self.name,
                 source_id=ident,
-                title=d.get("title") or ident,
+                title=title,
                 artist=creator or "desconocido",
                 year=str(d["year"]) if d.get("year") else None,
-                extra={"collection": "Internet Archive", "needs_resolve": True},
+                extra={
+                    "collection": "Internet Archive",
+                    "needs_resolve": True,
+                    "show": show,
+                    "item_url": f"https://archive.org/details/{ident}",
+                },
             ))
         return out
 
-    async def resolve(self, track: Track) -> Track:
-        """Busca el primer archivo de audio real del item y arma la URL directa."""
+    async def resolve(self, track: Track, query: str | None = None) -> Track:
+        """Elige el archivo que REALMENTE corresponde a la consulta.
+
+        Antes elegia el primer mp3 por extension/tamano, que podia ser una pista
+        distinta de la que se pidio. Ahora:
+          1. agrupa los archivos de audio (mp3+flac del mismo take)
+          2. lee los tags de cada grupo (identify.identify_with_item)
+          3. puntua contra la consulta y devuelve el mejor
+        """
+        from .identify import identify_with_item, similarity, verdict
+
         r = await self.client.get(f"https://archive.org/metadata/{track.source_id}")
         r.raise_for_status()
         data = r.json()
         files = data.get("files", [])
         server = data.get("server", "archive.org")
         d1 = data.get("dir", "")
+        meta = data.get("metadata", {})
 
-        best = None
+        def _url(fname: str) -> str:
+            from urllib.parse import quote
+            return f"https://{server}{d1}/{quote(fname)}"
+
+        def _rank_ext(ext: str) -> int:
+            return {".mp3": 0, ".m4a": 1, ".opus": 2, ".ogg": 2, ".flac": 4}.get(ext, 3)
+
+        # 1) agrupa por "track logico": quita extension y sufijos sXtNN
+        import re
+        groups: dict[str, list[dict]] = {}
         for f in files:
             name = f.get("name", "")
             low = name.lower()
-            if not low.endswith(self.AUDIO_EXT):
+            if not low.endswith(self.AUDIO_EXT) or low.endswith((".xml", ".meta.xml")):
                 continue
-            if low.endswith(("_files.xml", ".meta.xml")):
-                continue
-            # prioriza mp3 > opus/ogg > flac por compatibilidad/tamano
-            ext = low.rsplit(".", 1)[-1]
-            rank = {".mp3": 0, ".m4a": 1, ".opus": 2, ".ogg": 2, ".flac": 4, ".wav": 5}
-            size = int(f.get("size") or 0)
-            cand = (rank.get("." + ext, 3), 0 if size else 1, size, name)
-            if best is None or cand < best:
-                best = cand
-        if best is None:
+            base = re.sub(r"\.[a-z0-9]{2,4}$", "", name, flags=re.I)
+            groups.setdefault(base, []).append(f)
+
+        if not groups:
             raise LookupError(f"{track.source_id}: sin archivos de audio")
 
-        fname = best[3]
-        from urllib.parse import quote
-        url = f"https://{server}{d1}/{quote(fname)}"
+        # 2) puntua cada grupo (top 6 candidatos, el resto solo por nombre)
+        cands = sorted(
+            groups.items(),
+            key=lambda kv: (min(_rank_ext(f["name"][f["name"].rfind("."):].lower())
+                                 for f in kv[1]),
+                            sum(int(f.get("size") or 0) for f in kv[1])),
+        )[:6]
+
+        scored = []
+        for base, gfiles in cands:
+            best_file = min(
+                gfiles,
+                key=lambda f: (_rank_ext("." + f["name"].rsplit(".", 1)[-1].lower()),
+                               -int(f.get("size") or 0)))
+            url = _url(best_file["name"])
+            info = await identify_with_item(
+                url, best_file["name"], meta if track.source_id else None)
+            real_title = info.get("title")
+            sim = similarity(query, real_title) if query else 0.0
+            if not query:
+                # sin consulta: prioriza el nombre del archivo que se parezca al titulo del item
+                sim = similarity(track.title, real_title)
+            scored.append((sim, best_file, url, info, base))
+
+        scored.sort(key=lambda t: -t[0])
+        sim, best_file, url, info, base = scored[0]
+
         track.audio_url = url
-        track.extra["format"] = fname.rsplit(".", 1)[-1].upper()
-        track.extra["size_mb"] = round(best[2] / 1_048_576, 1)
-        track.license = "Public Domain / varies por item"
-        track.album = track.album or track.title
-        # duracion real del archivo elegido (la API la trae por archivo)
-        dur = next((f.get("length") for f in files
-                    if f.get("name") == fname and f.get("length")), None)
+        track.extra["format"] = best_file["name"].rsplit(".", 1)[-1].upper()
+        track.extra["size_mb"] = round(int(best_file.get("size") or 0) / 1_048_576, 1)
+        track.extra["filename"] = best_file["name"]
+        track.extra["item_url"] = f"https://archive.org/details/{track.source_id}"
+        track.extra["uploader"] = meta.get("uploader")
+        track.extra["license_url"] = meta.get("licenseurl")
+        track.license = meta.get("licenseurl") or meta.get("rights") or "sin licencia declarada en el item"
+
+        # duracion del archivo elegido
+        dur = best_file.get("length")
         if dur:
             try:
                 track.duration_s = int(float(dur))
             except (TypeError, ValueError):
                 pass
+
+        # identidad real vs lo pedido
+        real_title = info.get("title")
+        if real_title:
+            state, label = verdict(query or track.title, real_title)
+            track.extra["real_title"] = real_title
+            track.extra["real_artist"] = info.get("artist")
+            track.extra["real_album"] = info.get("album")
+            track.extra["match"] = state
+            track.extra["match_label"] = label
+            track.extra["match_score"] = round(sim, 2)
+            track.extra["title_source"] = info.get("_source", "tags")
+        # si el archivo no tiene nada utilizable, avisarlo explicitamente
+        if info.get("_source") in ("derived", "none"):
+            track.extra["match"] = "unknown"
+            track.extra["match_label"] = "no se pudo verificar (el archivo no trae tags)"
+        track.album = track.album or info.get("album") or track.title
         return track
 
 

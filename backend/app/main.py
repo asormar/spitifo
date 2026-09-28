@@ -61,6 +61,15 @@ class TrackPayload(BaseModel):
     license: str | None = None
     year: str | None = None
     extra: dict = {}
+    # campos que devuelve /api/setlist en la raiz (ver to_track)
+    real_title: str | None = None
+    real_artist: str | None = None
+    match: str | None = None
+    match_label: str | None = None
+    item_url: str | None = None
+    filename: str | None = None
+    format: str | None = None
+    size_mb: float | None = None
 
     @classmethod
     def from_track(cls, t: Track) -> "TrackPayload":
@@ -68,6 +77,18 @@ class TrackPayload(BaseModel):
 
     def to_track(self) -> Track:
         d = self.model_dump()
+        # /api/setlist devuelve la identidad verificada en la RAIZ (real_title,
+        # real_artist, match); downloader.py la lee de extra. Normalizar aca.
+        extra = dict(d.get("extra") or {})
+        for k in ("real_title", "real_artist", "match", "match_label",
+                  "item_url", "filename", "format", "size_mb"):
+            if k in d and k not in extra and d[k] is not None:
+                extra[k] = d[k]
+        d["extra"] = extra
+        # quitar campos que no son del dataclass Track
+        for k in ("real_title", "real_artist", "match", "match_label",
+                  "item_url", "filename", "format", "size_mb", "downloadable"):
+            d.pop(k, None)
         return Track(**d)
 
 
@@ -104,6 +125,13 @@ async def search(
         t.extra["needs_resolve"] = (
             t.source in ("archive", "ytdlp") and not t.audio_url)
 
+    # archive devuelve un item por pista: 30 filas del mismo concierto son
+    # 30 filas con el mismo titulo. Se agrupan en una con su setlist.
+    tracks = _group_shows(tracks)
+
+    # baja los resolubles al principio: son los que de verdad se pueden bajar
+    tracks.sort(key=lambda t: 0 if t.downloadable or t.extra.get("needs_resolve") else 1)
+
     return {
         "query": q,
         "count": len(tracks),
@@ -111,9 +139,37 @@ async def search(
     }
 
 
+def _group_shows(tracks: list[Track]) -> list[Track]:
+    """Agrupa los items de un mismo concierto en una fila con el setlist."""
+    out: list[Track] = []
+    by_show: dict[str, Track] = {}
+    for t in tracks:
+        show = t.extra.get("show")
+        if not show or t.source != "archive":
+            out.append(t)
+            continue
+        key = f"{t.artist}|{show}"
+        if key in by_show:
+            g = by_show[key]
+            n = g.extra.setdefault("track_count", 1) + 1
+            g.extra["track_count"] = n
+            g.extra.setdefault("item_ids", [g.source_id]).append(t.source_id)
+        else:
+            t.extra["track_count"] = 1
+            t.extra["item_ids"] = [t.source_id]
+            t.extra["is_group"] = True
+            by_show[key] = t
+            out.append(t)
+    return out
+
+
 @app.post("/api/resolve")
-async def resolve(payload: TrackPayload):
-    """Completa audio_url en fuentes que lo dejan pendiente (archive, ytdlp)."""
+async def resolve(payload: TrackPayload, query: str | None = None):
+    """Completa audio_url y VERIFICA la identidad real del archivo.
+
+    query: lo que el usuario escribio. Se usa para leer los tags del audio y
+    decir si lo que vas a bajar es realmente lo que buscabas.
+    """
     src = BY_NAME.get(payload.source)
     if not src:
         raise HTTPException(400, f"fuente desconocida: {payload.source}")
@@ -132,7 +188,6 @@ async def resolve(payload: TrackPayload):
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                     fmts = info.get("formats", [])
-                    # mejor audio-only que el navegador pueda reproducir
                     audio = [f for f in fmts if f.get("acodec") != "none"
                              and f.get("vcodec") == "none"]
                     pick = max(audio, key=lambda f: f.get("abr") or 0) if audio else info
@@ -140,13 +195,40 @@ async def resolve(payload: TrackPayload):
 
             t.audio_url = await loop.run_in_executor(None, _run)
             t.license = "ToS de la plataforma (uso personal)"
+            from .identify import similarity, verdict
+            state, label = verdict(query or t.title, t.title)
+            t.extra.update({"real_title": t.title, "match": state,
+                            "match_label": label, "match_score": round(
+                                similarity(query or t.title, t.title), 2)})
         else:
-            t = await src.resolve(t)
+            t = await src.resolve(t, query=query)
     except LookupError as e:
         raise HTTPException(404, str(e))
     except Exception as e:
         log.exception("resolve fallo en %s", payload.source)
         raise HTTPException(502, f"no se pudo resolver: {e}")
+    return t.to_dict()
+
+
+@app.get("/api/verify")
+async def verify(q: str = Query(..., min_length=1, max_length=200),
+                 source: str = Query("archive"),
+                 source_id: str = Query(...)):
+    """Dice que hay adentro de un resultado SIN bajarlo.
+
+    Devuelve el titulo real leido de los tags, de donde viene (item/file/URL)
+    y si coincide con lo que buscabas.
+    """
+    src = BY_NAME.get(source)
+    if not src:
+        raise HTTPException(400, f"fuente desconocida: {source}")
+    t = Track(source=source, source_id=source_id, title=q, artist="")
+    try:
+        t = await src.resolve(t, query=q)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"no se pudo verificar: {e}")
     return t.to_dict()
 
 
@@ -157,7 +239,7 @@ async def progress(job_id: str):
 
 
 @app.post("/api/download")
-async def download(payload: DownloadReq):
+async def download(payload: DownloadReq, query: str | None = None):
     src = BY_NAME.get(payload.source)
     if not src:
         raise HTTPException(400, f"fuente desconocida: {payload.source}")
@@ -170,9 +252,16 @@ async def download(payload: DownloadReq):
     if track is None:
         raise HTTPException(400, "payload de track invalido")
 
-    # si la fuente necesita resolucion, hacerlo aqui
+    # si la fuente necesita resolucion, hacerlo aqui (con la query para
+    # poder leer los tags y decir si es lo que el usuario buscaba)
     if not track.audio_url and track.extra.get("needs_resolve"):
-        track = Track(**(await resolve_payload(track)).to_dict())
+        try:
+            track = await src.resolve(track, query=query)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except Exception as e:
+            log.exception("resolve previo a descarga fallo")
+            raise HTTPException(502, f"no se pudo resolver: {e}")
 
     if not track.audio_url:
         raise HTTPException(422, "esta pista no es descargable (solo preview)")
@@ -185,12 +274,60 @@ async def download(payload: DownloadReq):
         log.exception("descarga fallo")
         raise HTTPException(502, f"error descargando: {e}")
 
-    return {"ok": True, "source": payload.source, **result}
+    # propagar la identidad verificada para que la UI pueda avisar
+    return {
+        "ok": True,
+        "source": payload.source,
+        "match": track.extra.get("match"),
+        "match_label": track.extra.get("match_label"),
+        "real_title": track.extra.get("real_title"),
+        "real_artist": track.extra.get("real_artist"),
+        "item_url": track.extra.get("item_url"),
+        **result,
+    }
 
 
-async def resolve_payload(track: Track) -> Track:
-    src = BY_NAME[track.source]
-    return await src.resolve(track)
+@app.get("/api/setlist")
+async def setlist(source_ids: str = Query(..., description="ids separados por coma"),
+                  q: str = Query("", description="consulta original")):
+    """Resuelve varios items y dice que cancion hay REALMENTE en cada uno.
+
+    Es lo que necesita la vista de concierto: los items de etree traen el
+    nombre del show como titulo, asi que hay que leer los tags de cada pista
+    para saber cuales son.
+    """
+    src = BY_NAME.get("archive")
+    ids = [i.strip() for i in source_ids.split(",") if i.strip()][:60]
+    if not ids:
+        return {"tracks": []}
+
+    async def one(i: str) -> dict | None:
+        t = Track(source="archive", source_id=i, title=q, artist="")
+        try:
+            r = await src.resolve(t, query=q or None)
+        except Exception:
+            return None
+        d = r.to_dict()
+        d["match"] = r.extra.get("match")
+        d["match_label"] = r.extra.get("match_label")
+        d["real_title"] = r.extra.get("real_title")
+        d["real_artist"] = r.extra.get("real_artist")
+        d["item_url"] = r.extra.get("item_url")
+        d["filename"] = r.extra.get("filename")
+        d["audio_url"] = r.audio_url
+        d["format"] = r.extra.get("format")
+        d["size_mb"] = r.extra.get("size_mb")
+        d["duration_s"] = r.duration_s
+        d["title_source"] = r.extra.get("title_source")
+        d.pop("extra", None)
+        return d
+
+    res = await asyncio.gather(*(one(i) for i in ids))
+    tracks = [r for r in res if r]
+    # las que coinciden con la consulta primero
+    order = {"match": 0, "partial": 1, "unknown": 2, "mismatch": 3}
+    tracks.sort(key=lambda t: order.get(t.get("match") or "unknown", 2))
+    return {"tracks": tracks}
 
 
 @app.get("/api/library")
