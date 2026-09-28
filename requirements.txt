@@ -1,0 +1,6 @@
+fastapi==0.141.1
+"uvicorn[standard]"
+httpx
+mutagen
+python-multipart
+yt-dlp
