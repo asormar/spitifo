@@ -272,36 +272,62 @@ body {
   text-overflow: ellipsis;
 }
 
-.btn {
+/* Boton de biblioteca. Es una accion SECUNDARIA: la primaria es buscar, asi
+   que no lleva fondo lleno ni peso de boton principal. Pildora (--r-pill)
+   porque es un control compacto de la cabecera, no un contenedor.
+   El contador va en mono con cifras tabulares: es un dato, no una etiqueta. */
+.libbtn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: var(--surface);
-  color: var(--fg);
+  min-height: 32px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--muted);
   border: 1px solid var(--border);
-  border-radius: var(--r-box);
-  padding: 8px 13px;
+  border-radius: var(--r-pill);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
   transition: background-color var(--t-press) var(--ease),
-    border-color var(--t-press) var(--ease), transform var(--t-press) var(--ease),
-    color var(--t-press) var(--ease);
+    border-color var(--t-press) var(--ease), color var(--t-press) var(--ease),
+    transform var(--t-press) var(--ease);
 }
 
-.btn:active {
+.libbtn:active {
   transform: scale(0.98);
 }
 
-.btn--ghost {
-  background: transparent;
+/* Abierto: el unico estado con relleno, para que se lea "estas mirando esto". */
+.libbtn.is-on {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--fg);
 }
 
-.btn__count {
+/* Vacia: no hay nada que abrir, asi que se apaga. Sigue siendo pulsable
+   (aria-disabled no, disabled no) para que el title explique por que. */
+.libbtn.is-empty {
+  color: var(--faint);
+  border-color: transparent;
+  cursor: default;
+}
+
+/* La etiqueta no se parte en dos lineas: el boton mantiene su ancho cuando el
+   contador aparece o desaparece. */
+.libbtn__lbl {
+  white-space: nowrap;
+}
+
+.count {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--r-badge);
+  background: var(--surface-2);
 }
 
 /* ---------------------------------------------------------------------------
@@ -352,19 +378,11 @@ body {
 }
 
 /* Selector de formato: segmentado, en la linea del buscador. El valor actual
-   se lee sin abrir nada y la etiqueta vive en el grupo, no en un dropdown. */
+   se lee sin abrir nada. Sin etiqueta visible: los valores (mp3, m4a,
+   original) ya dicen que es, y el nombre accesible va en el radiogroup. */
 .fmts {
   display: flex;
   align-items: stretch;
-  gap: 9px;
-}
-
-.fmts__lbl {
-  display: inline-flex;
-  align-items: center;
-  color: var(--faint);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .fmts__group {
@@ -445,11 +463,14 @@ body {
    viaja derivada del modo, no de un control aparte.
    ------------------------------------------------------------------------- */
 
+/* El panel ya no lleva el aviso legal debajo: son el selector de modo y su
+   explicacion. El padding vertical se aprieta para que no quede un bloque
+   medio vacio con un solo renglon de texto. */
 .controls {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-box);
-  padding: 14px 16px 15px;
+  padding: 12px 16px 13px;
   margin-bottom: 16px;
 }
 
@@ -486,29 +507,23 @@ body {
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
+/* Fuente apagada en el servidor: se marca sin deshabilitar, para que el
+   title explique el 0 de resultados en vez de dejarlo como un fallo. */
+.mode--dead {
+  color: var(--faint);
+}
+
+/* Explicacion del modo activo. El filete la ata al selector de arriba: sin
+   el aviso legal al lado es lo unico que hay, y sin ancla se leeria como
+   texto suelto. Alineado a la izquierda, con el mismo origen que los modos. */
 .why {
-  margin: 11px 0 0;
+  margin: 10px 0 0;
+  padding-left: 11px;
+  border-left: 2px solid var(--border-strong);
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.55;
   max-width: 68ch;
-}
-
-/* El aviso legal de YouTube va UNA sola vez, aca, debajo del modo activo. */
-.note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 12px 0 0;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.5;
-  max-width: 72ch;
-}
-
-.note svg {
-  flex: none;
-  margin-top: 2px;
-  color: var(--faint);
 }
 
 /* ---------------------------------------------------------------------------
@@ -695,6 +710,14 @@ body {
 .panel__title svg {
   color: var(--accent);
   align-self: center;
+}
+
+/* El contador del titulo va plano: el .count del boton lleva fondo porque
+   esta sobre transparente, aqui seria un bloque flotando en el encabezado. */
+.panel__title .count {
+  background: transparent;
+  padding: 0;
+  color: var(--faint);
 }
 
 .panel__path {
@@ -965,15 +988,6 @@ body {
 
 .meta--mute {
   color: var(--faint);
-}
-
-.lic {
-  color: var(--muted);
-  font-size: 12px;
-  max-width: 40ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sep {
@@ -1489,7 +1503,6 @@ body {
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .btn:hover,
   .search__go:hover,
   .example:hover,
   .seg:hover,
@@ -1497,9 +1510,25 @@ body {
     border-color: var(--border-strong);
   }
 
-  .btn--ghost:hover,
   .example:hover {
     background: var(--surface-2);
+  }
+
+  .libbtn:hover {
+    background: var(--surface-2);
+    border-color: var(--border-strong);
+    color: var(--fg);
+  }
+
+  .libbtn.is-on:hover {
+    background: var(--surface-3);
+  }
+
+  /* Vacia no "enciende" al pasar por encima: no hay nada que abrir. */
+  .libbtn.is-empty:hover {
+    background: transparent;
+    border-color: transparent;
+    color: var(--faint);
   }
 
   .fmt:not(.is-on):hover {
@@ -1560,16 +1589,17 @@ body {
     display: none;
   }
 
+  .libbtn {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
   .search {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .search__field {
     grid-column: 1 / -1;
-  }
-
-  .fmts__lbl {
-    display: none;
   }
 
   .fmt {

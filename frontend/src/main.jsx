@@ -7,13 +7,12 @@ import {
   CheckCircle,
   CircleNotch,
   DownloadSimple,
-  FolderOpen,
-  Info,
   ListBullets,
   MagnifyingGlass,
   MusicNotes,
   Prohibit,
   Sparkle,
+  Stack,
   Waveform,
   WarningCircle,
   X,
@@ -34,11 +33,14 @@ const SOURCE_LABEL = {
 
 /* Los tres modos que ve el usuario. Los nombres internos (matched, sources,
    ytdlp) no salen nunca a la pantalla. */
+/* `why` explica QUE HACE el modo activo (informacion funcional, se queda).
+   El aviso legal que vivia al lado ya no esta en la UI: se elimino por
+   decision del usuario, no por descuido. */
 const MODES = [
   {
     id: "matched",
     label: "Recomendado",
-    why: "iTunes aporta la ficha limpia y la portada, YouTube aporta el archivo. Es la forma más directa de descargar el tema completo.",
+    why: "iTunes aporta la ficha limpia y la portada, YouTube aporta el audio. Es la forma más directa de descargar el tema completo.",
   },
   {
     id: "sources",
@@ -48,7 +50,7 @@ const MODES = [
   {
     id: "ytdlp",
     label: "Solo YouTube",
-    why: "Solo resultados de YouTube. Casi todo se descarga completo, pero el riesgo legal es tuyo.",
+    why: "Resultados solo de YouTube. Casi todo llega completo, sin el preview de 30 segundos de iTunes.",
   },
 ];
 
@@ -107,22 +109,9 @@ const STATE_UI = {
   none: { label: "no coincide", tone: "bad" },
 };
 
-/* La licencia larga no se repite en cada fila: el aviso entero vive una sola
-   vez en la zona de control. Acá va la version corta, con el texto completo
-   en el title para quien lo necesite. */
-const LIC_SHORT = {
-  "ToS de YouTube (uso personal, riesgo legal)": "uso personal",
-  "preview de iTunes (30s)": "solo 30 s",
-};
-
-function shortLic(lic) {
-  if (!lic) return null;
-  return LIC_SHORT[lic] || lic;
-}
-
 /* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Recomendado no
    son la misma cosa: iTunes pone los datos y la portada, YouTube pone el
-   audio que se baja. Sin esto, "iTunes | 3:07" se lee como si el archivo
+   audio que se descarga. Sin esto, "iTunes | 3:07" se lee como si el archivo
    entero fuera de iTunes, y es falso. */
 function provenance(t) {
   const label = SOURCE_LABEL[t.source] || t.source;
@@ -276,7 +265,6 @@ function ShowGroup({ t, query, onDownload, busyId }) {
 
   const st = trackState(t);
   const prov = provenance(t);
-  const lic = shortLic(t.license);
 
   return (
     <li className={`row show row--${STATE_UI[st].tone}`}>
@@ -301,14 +289,6 @@ function ShowGroup({ t, query, onDownload, busyId }) {
         </p>
         <div className="row__meta">
           <span className="src">{prov.archivo}</span>
-          {lic && (
-            <>
-              <span className="sep" />
-              <span className="lic" title={t.license}>
-                {lic}
-              </span>
-            </>
-          )}
           {t.extra?.item_url && (
             <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
               procedencia <ArrowUpRight size={12} />
@@ -425,7 +405,6 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
   const size = fmtSize(t.extra?.size_mb);
   const web = t.extra?.webpage_url;
   const prov = provenance(t);
-  const lic = shortLic(t.license);
 
   return (
     <li className={`row row--${ui.tone}`} style={{ "--i": index ?? 0 }}>
@@ -468,14 +447,6 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
             {dur && size && <span className="meta meta--mute">/</span>}
             {size && <span className="meta">{size}</span>}
             {t.extra?.format && <span className="meta">{t.extra.format}</span>}
-            {lic && (
-              <>
-                <span className="sep" />
-                <span className="lic" title={t.license}>
-                  {lic}
-                </span>
-              </>
-            )}
             {web && (
               <a className="ext" href={web} target="_blank" rel="noreferrer">
                 vídeo <ArrowUpRight size={12} />
@@ -578,8 +549,11 @@ function FmtPicker({ value, onChange }) {
 
   return (
     <div className="fmts">
-      <span className="fmts__lbl">Formato</span>
-      <div className="fmts__group" role="radiogroup" aria-label="Formato del archivo">
+      <div
+        className="fmts__group"
+        role="radiogroup"
+        aria-label="Formato de descarga"
+      >
         {FORMATS.map((f, i) => (
           <button
             key={f.value}
@@ -628,14 +602,16 @@ function App() {
   const [fmt, setFmt] = useState("mp3");
   const [filter, setFilter] = useState("all");
   const [libOpen, setLibOpen] = useState(false);
-  const [lib, setLib] = useState([]);
+  /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
+     sin esto el boton arrancaria atenuado y el contador no apareceria hasta
+     abrir el panel, que es justo cuando ya no hace falta. */
+  const [lib, setLib] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [verified, setVerified] = useState({});
   const [job, setJob] = useState(null);
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
   const inputRef = useRef();
-  const libRef = useRef(false);
   const lastSig = useRef("");
 
   useEffect(() => {
@@ -764,7 +740,7 @@ function App() {
                 match: finished.match || j.match,
                 real_title: finished.real_title || j.real_title,
               });
-              if (libRef.current) loadLib();
+              loadLib();
             }
           }
           return;
@@ -783,7 +759,7 @@ function App() {
         } else {
           setDone(j);
         }
-        if (libRef.current) loadLib();
+        loadLib();
       } catch (e) {
         setErr(e.message);
       } finally {
@@ -801,11 +777,31 @@ function App() {
   }, []);
 
   const toggleLib = useCallback(() => {
-    const n = !libOpen;
-    setLibOpen(n);
-    libRef.current = n;
-    if (n) loadLib();
-  }, [libOpen, loadLib]);
+    setLibOpen((n) => !n);
+  }, []);
+
+  /* El contador del boton tiene que ser real desde el primer render, asi que
+     /api/library se pide al montar y no solo al abrir el panel. Es una lista
+     de archivos locales: no toca red. */
+  useEffect(() => {
+    loadLib();
+  }, [loadLib]);
+
+  /* null = la consulta sigue en vuelo. Sin esta distincion el boton
+     arrancaria atenuado como si la biblioteca estuviera vacia. */
+  const libFiles = lib || [];
+  const libReady = lib !== null;
+  const libCount = libFiles.length;
+  const libTitle = libOpen
+    ? "Ocultar la biblioteca"
+    : libCount > 0
+      ? `Abrir la biblioteca (${libCount} ${libCount === 1 ? "tema" : "temas"})`
+      : "Biblioteca vacía: todavía no has descargado nada";
+  const libAria = libOpen
+    ? "Cerrar la biblioteca"
+    : libCount > 0
+      ? `Biblioteca, ${libCount} ${libCount === 1 ? "tema" : "temas"}`
+      : "Biblioteca, vacía";
 
   /* El estado vive en la URL: el link se puede compartir y sobrevive al F5. */
   const writeUrl = useCallback((m, text) => {
@@ -860,7 +856,11 @@ function App() {
     return m;
   }, [health]);
 
+  /* Con yt-dlp apagado el modo "Solo YouTube" no devuelve nada. No se
+     deshabilita (el usuario podria estar reactivandolo desde otra pestana),
+     pero se marca para que el 0 de resultados no parezca un fallo. */
   const ytOn = healthByName.ytdlp?.active;
+  const ytDead = health !== null && !ytOn;
 
   return (
     <div className="app">
@@ -870,10 +870,22 @@ function App() {
           <h1 className="brand__name">spitifo</h1>
           <span className="brand__tag">música libre para descargar</span>
         </div>
-        <button className="btn btn--ghost" onClick={toggleLib} aria-expanded={libOpen}>
-          {libOpen ? <X size={15} /> : <FolderOpen size={15} />}
-          {libOpen ? "cerrar biblioteca" : "biblioteca"}
-          {!libOpen && lib.length > 0 && <span className="btn__count">{lib.length}</span>}
+        <button
+          className={[
+            "libbtn",
+            libOpen ? "is-on" : "",
+            libReady && libCount === 0 ? "is-empty" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={toggleLib}
+          aria-expanded={libOpen}
+          aria-label={libAria}
+          title={libTitle}
+        >
+          {libOpen ? <X size={15} /> : <Stack size={15} />}
+          <span className="libbtn__lbl">{libOpen ? "cerrar" : "biblioteca"}</span>
+          {!libOpen && libCount > 0 && <span className="count">{libCount}</span>}
         </button>
       </header>
 
@@ -902,25 +914,25 @@ function App() {
               type="button"
               role="radio"
               aria-checked={mode === m.id}
-              className={`mode ${mode === m.id ? "is-on" : ""}`}
+              className={[
+                "mode",
+                mode === m.id ? "is-on" : "",
+                m.id === "ytdlp" && ytDead ? "mode--dead" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               onClick={() => setMode(m.id)}
+              title={
+                m.id === "ytdlp" && ytDead
+                  ? "YouTube está apagado en este servidor: no devolverá resultados"
+                  : undefined
+              }
             >
               {m.label}
             </button>
           ))}
         </div>
         <p className="why">{activeMode.why}</p>
-
-        {ytOn && (
-          <p className="note">
-            <Info size={14} />
-            <span>
-              YouTube no es una fuente libre. Lo que sale de ahí se descarga con yt-dlp
-              y el riesgo legal es tuyo. iTunes solo aporta la ficha y 30 segundos de
-              audio.
-            </span>
-          </p>
-        )}
       </section>
 
       {err && (
@@ -954,19 +966,19 @@ function App() {
         <section className="panel">
           <div className="panel__head">
             <h2 className="panel__title">
-              <FolderOpen size={17} />
+              <Stack size={17} />
               Tu biblioteca
-              <span className="btn__count">{lib.length}</span>
+              <span className="count">{libCount}</span>
             </h2>
             {health?.library && <span className="panel__path">{health.library}</span>}
           </div>
           <div className="panel__body">
-            {lib.length === 0 && (
+            {libCount === 0 && (
               <p className="slrow slrow--dim" style={{ margin: "10px 14px" }}>
                 Todavía no has descargado nada.
               </p>
             )}
-            {lib.map((f) => (
+            {libFiles.map((f) => (
               <div key={f.path} className="librow">
                 <audio controls preload="metadata" src={`${API}/audio?path=${encodeURIComponent(f.path)}`} />
                 <div style={{ minWidth: 0 }}>
@@ -1077,8 +1089,8 @@ function App() {
           </ul>
           <p className="intro__fine">
             Internet Archive y Wikimedia liberan archivos. iTunes sirve para encontrar
-            la ficha, pero de ahí solo sale un preview de 30 s. YouTube se descarga con
-            yt-dlp y el riesgo legal es tuyo.
+            la ficha, pero de ahí solo sale un preview de 30 s. De YouTube sale el
+            audio completo del tema.
           </p>
         </section>
       )}
