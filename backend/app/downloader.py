@@ -11,8 +11,8 @@ from pathlib import Path
 
 import httpx
 
+from .config import USER_AGENT
 from .models import Track, safe_name
-from .sources import UA
 
 log = logging.getLogger("spitifo.download")
 
@@ -31,7 +31,7 @@ async def _download_to(url: str, dest: Path,
                        progress: "asyncio.Queue | None" = None) -> Path:
     timeout = httpx.Timeout(300.0, connect=15.0, read=60.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
-                                 headers={"User-Agent": UA}) as c:
+                                 headers={"User-Agent": USER_AGENT}) as c:
         async with c.stream("GET", url) as r:
             r.raise_for_status()
             total = int(r.headers.get("content-length") or 0)

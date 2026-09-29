@@ -14,16 +14,16 @@ from typing import Any
 
 import httpx
 
+from .config import USER_AGENT
 from .models import Track
 
 log = logging.getLogger("spitifo.sources")
-UA = "spitifo/0.1 (+https://github.com/asormar/spitifo)"
 TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
 
 def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
-                             headers={"User-Agent": UA},
+                             headers={"User-Agent": USER_AGENT},
                              limits=httpx.Limits(max_connections=16))
 
 

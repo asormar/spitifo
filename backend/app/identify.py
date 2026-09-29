@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from .sources import UA
+from .config import USER_AGENT
 
 log = logging.getLogger("spitifo.identify")
 
@@ -73,7 +73,7 @@ async def identify(url: str, fname: str) -> dict[str, Any]:
     try:
         timeout = TIMEOUT
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
-                                     headers={"User-Agent": UA}) as c:
+                                     headers={"User-Agent": USER_AGENT}) as c:
             async with c.stream("GET", url) as r:
                 r.raise_for_status()
                 buf = bytearray()

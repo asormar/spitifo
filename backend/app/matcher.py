@@ -25,7 +25,6 @@ from typing import Any
 
 import httpx
 
-from .config import UA
 from .identify import similarity
 from .models import Track
 from .sources import ITunesSource

@@ -17,6 +17,7 @@ import glob
 import logging
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -30,14 +31,57 @@ log = logging.getLogger("spitifo.ytdlp")
 JOBS: dict[str, dict] = {}
 _JOBS_LOCK = threading.Lock()
 
+# Estados finales: un job en cualquiera de estos ya no se va a tocar mas.
+_DONE_STATES = ("done", "error")
+
+# Cuanto tiempo se quedan los jobs terminados antes de purgarse. 1 hora es
+# mucho mas que lo que tarda la UI en terminar de hacer polling (la descarga
+# dura minutos) y deja margen para recargar la pagina y ver el resultado, pero
+# acota el crecimiento del dict en sesiones largas.
+JOBS_TTL_S = 3600.0
+
+
+def _purge_jobs(now: float | None = None) -> int:
+    """Saca los jobs YA terminados hace rato. Devuelve cuantos saco.
+
+    Solo toca estados finales (`_DONE_STATES`) con `finished_at` viejo: un job
+    pending/downloading/processing nunca se purgea, asi que la UI puede seguir
+    consultando su job_id por HTTP sin colgarse. Purgar es perezoso (llama
+    new_job), no un thread que corre para siempre.
+    """
+    now = time.time() if now is None else now
+    with _JOBS_LOCK:
+        viejo = [jid for jid, j in JOBS.items()
+                 if j.get("status") in _DONE_STATES
+                 and j.get("finished_at") is not None
+                 and now - j["finished_at"] > JOBS_TTL_S]
+        for jid in viejo:
+            del JOBS[jid]
+    if viejo:
+        log.info("purga de jobs: %d terminados de mas de %ds fuera", len(viejo),
+                 int(JOBS_TTL_S))
+    return len(viejo)
+
+
+def _finish(job_id: str, **campos) -> None:
+    """Marca el job como terminado y le clava el finished_at."""
+    with _JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            return
+        job.update(campos)
+        job["finished_at"] = time.time()
+
 
 def new_job(title: str) -> str:
     """Crea un job y devuelve su id. Lo llama main.py ANTES de arrancar la
     descarga en background, para que la UI sepa que job_id hacer polling."""
+    _purge_jobs()  # perezoso: aprovecho que se va a crear un job
     job_id = uuid.uuid4().hex[:8]
     with _JOBS_LOCK:
         JOBS[job_id] = {"status": "pending", "progress": 0.0,
-                        "speed": None, "eta": None, "title": title}
+                        "speed": None, "eta": None, "title": title,
+                        "finished_at": None}
     return job_id
 
 
@@ -183,8 +227,9 @@ class YtDlpSource(Source):
         state = {"total": None, "downloaded": 0}
 
         def hook(d):
+            estado = d["status"]
             with _JOBS_LOCK:
-                if d["status"] == "downloading":
+                if estado == "downloading":
                     total = d.get("total_bytes") or d.get("total_bytes_estimate")
                     got = d.get("downloaded_bytes") or 0
                     if total:
@@ -193,10 +238,12 @@ class YtDlpSource(Source):
                     JOBS[job_id]["downloaded_bytes"] = got
                     JOBS[job_id]["speed"] = d.get("speed")
                     JOBS[job_id]["eta"] = d.get("eta")
-                elif d["status"] == "finished":
+                elif estado == "finished":
                     JOBS[job_id]["status"] = "processing"
-                elif d["status"] == "error":
-                    JOBS[job_id]["status"] = "error"
+            if estado == "error":
+                # FUERA del with de arriba: _finish toma el lock y Lock no es
+                # reentrante, asi que llamarlo adentro cuelga el hook.
+                _finish(job_id, status="error")
 
         opts = {
             "quiet": True, "no_warnings": True, "noprogress": True,
@@ -241,16 +288,13 @@ class YtDlpSource(Source):
         try:
             info, fp = await loop.run_in_executor(None, _run)
         except Exception as e:
-            with _JOBS_LOCK:
-                JOBS[job_id]["status"] = "error"
-                JOBS[job_id]["error"] = str(e)
+            _finish(job_id, status="error", error=str(e))
             log.warning("ytdlp download fallo: %s", e)
             raise RuntimeError(f"yt-dlp: {e}")
 
         path = Path(fp)
         if not path.exists():
-            with _JOBS_LOCK:
-                JOBS[job_id]["status"] = "error"
+            _finish(job_id, status="error")
             raise RuntimeError("yt-dlp: el archivo no quedó en disco")
 
         # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
@@ -270,12 +314,9 @@ class YtDlpSource(Source):
         )
         _write_tags(path, tag_track)
         size = path.stat().st_size
-        with _JOBS_LOCK:
-            JOBS[job_id].update({"status": "done", "progress": 100.0,
-                                 "path": str(path),
-                                 "filename": path.name,
-                                 "size_mb": round(size / 1_048_576, 2),
-                                 "format": path.suffix.lstrip(".").upper()})
+        _finish(job_id, status="done", progress=100.0, path=str(path),
+                filename=path.name, size_mb=round(size / 1_048_576, 2),
+                format=path.suffix.lstrip(".").upper())
         return {
             "path": str(path), "filename": path.name, "folder": str(folder),
             "bytes": size, "size_mb": round(size / 1_048_576, 2),

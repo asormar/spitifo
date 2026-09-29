@@ -4,3 +4,5 @@ httpx
 mutagen
 python-multipart
 yt-dlp
+pytest
+pytest-timeout
