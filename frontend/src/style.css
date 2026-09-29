@@ -515,7 +515,8 @@ body {
 
 /* Explicacion del modo activo. El filete la ata al selector de arriba: sin
    el aviso legal al lado es lo unico que hay, y sin ancla se leeria como
-   texto suelto. Alineado a la izquierda, con el mismo origen que los modos. */
+   texto suelto. Alineado a la izquierda, con el mismo origen que los modos.
+   Sin max-width: el texto llega hasta el borde derecho del panel. */
 .why {
   margin: 10px 0 0;
   padding-left: 11px;
@@ -523,7 +524,6 @@ body {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.55;
-  max-width: 68ch;
 }
 
 /* ---------------------------------------------------------------------------

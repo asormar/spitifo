@@ -1072,9 +1072,8 @@ function App() {
           <Sparkle size={26} weight="fill" className="intro__mark" />
           <h2 className="intro__h">Escribe un tema y descárgalo completo</h2>
           <p className="intro__p">
-            Spitifo pregunta a varias fuentes de música libre y te dice, resultado por
-            resultado, si el archivo se descarga completo, si solo hay un preview de 30
-            segundos, o si no hubo coincidencia.
+            Spitifo busca a la vez en varias fuentes de música libre y te dice, resultado
+            por resultado, si el archivo se descarga completo.
           </p>
           <p className="intro__lbl">Prueba con alguno de estos</p>
           <ul className="examples">
@@ -1088,9 +1087,8 @@ function App() {
             ))}
           </ul>
           <p className="intro__fine">
-            Internet Archive y Wikimedia liberan archivos. iTunes sirve para encontrar
-            la ficha, pero de ahí solo sale un preview de 30 s. De YouTube sale el
-            audio completo del tema.
+            Internet Archive y Wikimedia liberan los archivos. iTunes sirve para
+            encontrar la ficha y la portada. De YouTube sale el audio completo del tema.
           </p>
         </section>
       )}
