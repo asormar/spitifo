@@ -1,3 +1,5 @@
+import "@fontsource-variable/outfit";
+import "@fontsource-variable/figtree";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -21,6 +23,9 @@ import "./style.css";
 
 const API = "/api";
 
+/* Cuanto tarda en desaparecer el aviso de descarga una vez terminada. */
+const JOB_DISMISS_MS = 5000;
+
 document.title = "Spitifo: descarga música libre";
 
 const SOURCE_LABEL = {
@@ -32,26 +37,13 @@ const SOURCE_LABEL = {
 };
 
 /* Los tres modos que ve el usuario. Los nombres internos (matched, sources,
-   ytdlp) no salen nunca a la pantalla. */
-/* `why` explica QUE HACE el modo activo (informacion funcional, se queda).
-   El aviso legal que vivia al lado ya no esta en la UI: se elimino por
-   decision del usuario, no por descuido. */
+   ytdlp) no salen nunca a la pantalla. La explicacion que vivia debajo del
+   selector (y el aviso legal antes que ella) ya no esta en la UI: se
+   eliminaron por decision del usuario, no por descuido. */
 const MODES = [
-  {
-    id: "matched",
-    label: "Recomendado",
-    why: "iTunes aporta la ficha limpia y la portada, YouTube aporta el audio. Es la forma más directa de descargar el tema completo.",
-  },
-  {
-    id: "sources",
-    label: "Todas las fuentes",
-    why: "Consulta las cinco fuentes a la vez. Más resultados y más ruido: el primero no siempre es el mejor.",
-  },
-  {
-    id: "ytdlp",
-    label: "Solo YouTube",
-    why: "Resultados solo de YouTube. Casi todo llega completo, sin el preview de 30 segundos de iTunes.",
-  },
+  { id: "matched", label: "Recomendado" },
+  { id: "sources", label: "Todas las fuentes" },
+  { id: "ytdlp", label: "Solo YouTube" },
 ];
 
 const MODE_IDS = MODES.map((m) => m.id);
@@ -105,8 +97,14 @@ function trackState(t) {
 
 const STATE_UI = {
   full: { label: "Completo", tone: "ok" },
-  preview: { label: "solo preview de 30 s", tone: "warn" },
-  none: { label: "no coincide", tone: "bad" },
+  preview: { label: "Solo preview", tone: "warn" },
+  none: { label: "No coincide", tone: "bad" },
+};
+
+/* El "30 s" ya no cabe en el chip: vive en el tooltip del icono sin descarga. */
+const NODL_TITLE = {
+  preview: "De esta fuente solo sale un preview de 30 s",
+  none: "No encontramos una versión completa de este tema",
 };
 
 /* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Recomendado no
@@ -182,14 +180,14 @@ function VerifyPanel({ t, query, onVerified }) {
   if (state === "loading") {
     return (
       <button className="vf" onClick={verify} disabled aria-live="polite">
-        <CircleNotch size={14} className="prog__ico--spin" />
+        <CircleNotch size={14} className="spin" />
         leyendo las etiquetas del audio
       </button>
     );
   }
   if (state === "error") {
     return (
-      <span className="vf" style={{ cursor: "default", borderStyle: "dashed" }}>
+      <span className="vf vf--static">
         <WarningCircle size={14} />
         no pude verificar: {data?.error}
       </span>
@@ -267,27 +265,28 @@ function ShowGroup({ t, query, onDownload, busyId }) {
   const prov = provenance(t);
 
   return (
-    <li className={`row show row--${STATE_UI[st].tone}`}>
+    <li className="card card--wide">
       {t.artwork_url ? (
-        <img className="row__art" src={t.artwork_url} alt="" loading="lazy" />
+        <img className="card__art" src={t.artwork_url} alt="" loading="lazy" />
       ) : (
-        <div className="row__art row__art--ph">
-          <MusicNotes size={20} />
+        <div className="card__art card__art--ph">
+          <MusicNotes size={52} />
         </div>
       )}
-      <div className="row__main">
-        <div className="row__head">
-          <h3 className="row__title">{t.title}</h3>
-          <span className="grp">{t.extra?.track_count || 1} pistas</span>
+      <div className="card__body">
+        <div className="wide__head">
+          <div className="wide__titles">
+            <h3 className="card__title card__title--lg">{t.title}</h3>
+            <p className="card__sub">{[t.artist, t.year].filter(Boolean).join(", ")}</p>
+          </div>
           <span className={`st st--${STATE_UI[st].tone}`} key={st}>
             {STATE_UI[st].label}
           </span>
         </div>
-        <p className="row__sub">
-          {t.artist} {t.year ? `, ${t.year}` : ""}
-          <span className="sep" /> concierto en vivo
-        </p>
-        <div className="row__meta">
+        <div className="card__facts">
+          <span className="meta">
+            Concierto en vivo, {t.extra?.track_count || 1} pistas
+          </span>
           <span className="src">{prov.archivo}</span>
           {t.extra?.item_url && (
             <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
@@ -303,11 +302,11 @@ function ShowGroup({ t, query, onDownload, busyId }) {
 
         {open && (
           <ul className="setlist">
-            {loading && <li className="slrow slrow--dim">leyendo las etiquetas de cada pista</li>}
+            {loading && <li className="tr tr--dim">leyendo las etiquetas de cada pista</li>}
             {!loading && tracks && tracks.length === 0 && (
-              <li className="slrow slrow--dim">no pude leer las pistas</li>
+              <li className="tr tr--dim">no pude leer las pistas</li>
             )}
-            {tracks?.map((s) => {
+            {tracks?.map((s, n) => {
               const tone =
                 s.match === "match"
                   ? "ok"
@@ -316,35 +315,37 @@ function ShowGroup({ t, query, onDownload, busyId }) {
                   : s.match === "mismatch"
                   ? "bad"
                   : "mute";
+              const otherArtist = s.real_artist && s.real_artist !== t.artist;
               return (
-                <li className={`slrow slrow--${tone}`} key={s.source_id}>
-                  <div className="slrow__main">
-                    <div className="slrow__title">
-                      {s.real_title || s.filename}
-                      {s.real_artist && s.real_artist !== t.artist && (
-                        <span className="meta meta--mute"> {s.real_artist}</span>
-                      )}
-                    </div>
-                    <div className="slrow__meta">
-                      <span className={`st st--${tone}`} key={s.match || "unknown"}>
-                        {s.match_label || "?"}
-                      </span>
-                      {s.format && <span className="meta">{s.format}</span>}
-                      {fmtSize(s.size_mb) && <span className="meta">{fmtSize(s.size_mb)}</span>}
-                      <span className="meta">{fmtTime(s.duration_s)}</span>
-                    </div>
+                <li className="tr" key={s.source_id}>
+                  <span className="tr__n">{String(n + 1).padStart(2, "0")}</span>
+                  <div className="tr__main">
+                    <div className="tr__title">{s.real_title || s.filename}</div>
+                    {(otherArtist || s.format || fmtSize(s.size_mb)) && (
+                      <div className="tr__meta">
+                        {otherArtist && <span>{s.real_artist}</span>}
+                        {s.format && <span>{s.format}</span>}
+                        {fmtSize(s.size_mb) && <span>{fmtSize(s.size_mb)}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="tr__info">
+                    <span className={`st st--${tone}`} key={s.match || "unknown"}>
+                      {s.match_label || "?"}
+                    </span>
+                    <span className="meta">{fmtTime(s.duration_s)}</span>
                   </div>
                   <button
-                    className="dlbtn dlbtn--sm"
+                    className="dl dl--sm"
                     disabled={busyId === s.source_id}
                     onClick={() => onDownload(s)}
                     title="Descargar a la biblioteca"
                     aria-label={`Descargar ${s.real_title || s.filename}`}
                   >
                     {busyId === s.source_id ? (
-                      <CircleNotch size={15} className="prog__ico--spin" />
+                      <CircleNotch size={16} className="spin" />
                     ) : (
-                      <DownloadSimple size={15} weight="bold" />
+                      <DownloadSimple size={16} weight="bold" />
                     )}
                   </button>
                 </li>
@@ -353,7 +354,6 @@ function ShowGroup({ t, query, onDownload, busyId }) {
           </ul>
         )}
       </div>
-      <div className="row__acts" />
     </li>
   );
 }
@@ -365,34 +365,40 @@ function ProgressBar({ job }) {
   const failed = job.status === "error";
   const shown = done ? 100 : Math.max(pct, 2);
   return (
-    <div className={`prog ${done ? "is-done" : ""}`} role="status" aria-live="polite">
-      <span className={`prog__ico ${failed ? "prog__ico--fail" : ""}`}>
-        {failed ? (
-          <WarningCircle size={20} weight="fill" />
-        ) : done ? (
-          <CheckCircle size={20} weight="fill" />
-        ) : (
-          <CircleNotch size={20} className="prog__ico--spin" />
-        )}
-      </span>
-      <div className="prog__body">
-        <div className="prog__top">
-          <span className="prog__title">{job.title}</span>
-          <span className="prog__state">
-            {failed ? "falló la descarga" : done ? "listo, está en tu biblioteca" : "descargando con yt-dlp"}
-          </span>
-        </div>
-        <div
-          className="prog__bar"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={done ? 100 : pct}
-        >
-          <div className="prog__fill" style={{ transform: `scaleX(${shown / 100})` }} />
-        </div>
+    <div
+      className={`prog ${done ? "is-done" : ""} ${failed ? "is-failed" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="prog__top">
+        <span className="prog__ico">
+          {failed ? (
+            <WarningCircle size={19} weight="fill" />
+          ) : done ? (
+            <CheckCircle size={19} weight="fill" />
+          ) : (
+            <CircleNotch size={19} className="spin" />
+          )}
+        </span>
+        <span className="prog__title">{job.title}</span>
+        <span className="prog__state">
+          {failed
+            ? "Falló la descarga"
+            : done
+            ? "Listo, está en tu biblioteca"
+            : `Descargando, ${pct}%`}
+        </span>
       </div>
-      <span className="prog__pct">{done ? "100%" : `${pct}%`}</span>
+      <div
+        className="prog__bar"
+        role="progressbar"
+        aria-label="Progreso de la descarga"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={done ? 100 : pct}
+      >
+        <div className="prog__fill" style={{ transform: `scaleX(${shown / 100})` }} />
+      </div>
     </div>
   );
 }
@@ -407,58 +413,51 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
   const prov = provenance(t);
 
   return (
-    <li className={`row row--${ui.tone}`} style={{ "--i": index ?? 0 }}>
+    <li className="card" style={{ "--i": index ?? 0 }}>
       {t.artwork_url ? (
-        <img className="row__art" src={t.artwork_url} alt="" loading="lazy" />
+        <img className="card__art" src={t.artwork_url} alt="" loading="lazy" />
       ) : (
-        <div className="row__art row__art--ph">
-          <MusicNotes size={20} />
+        <div className="card__art card__art--ph">
+          <MusicNotes size={44} />
         </div>
       )}
-      <div className="row__main">
-        <div className="row__head">
-          <h3 className="row__title">{t.title || "sin título"}</h3>
-          {t.extra?.is_group && t.extra?.track_count > 1 && (
-            <span className="grp">{t.extra.track_count} pistas</span>
-          )}
-          <span className={`st st--${ui.tone}`} key={st}>
-            {ui.label}
-          </span>
-        </div>
-        <p className="row__sub">
+      <div className="card__body">
+        <h3 className="card__title">{t.title || "sin título"}</h3>
+        <p className="card__sub">
           {t.artist || "artista desconocido"}
           {t.album && t.album !== t.title ? `, ${t.album}` : ""}
           {t.year ? `, ${t.year}` : ""}
         </p>
-        <div className="row__meta">
-          <div className="row__prov">
-            {prov.split ? (
-              <>
-                <span className="src">ficha: {prov.ficha}</span>
-                <span className="sep" />
-                <span className="src">archivo: {prov.archivo}</span>
-              </>
-            ) : (
-              <span className="src">{prov.archivo}</span>
-            )}
-          </div>
-          <div className="row__facts">
-            {dur && <span className="meta">{dur}</span>}
-            {dur && size && <span className="meta meta--mute">/</span>}
-            {size && <span className="meta">{size}</span>}
-            {t.extra?.format && <span className="meta">{t.extra.format}</span>}
-            {web && (
-              <a className="ext" href={web} target="_blank" rel="noreferrer">
-                vídeo <ArrowUpRight size={12} />
-              </a>
-            )}
-            {t.extra?.item_url && (
-              <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
-                procedencia <ArrowUpRight size={12} />
-              </a>
-            )}
-          </div>
+        <div className="card__prov">
+          {prov.split ? (
+            <>
+              <span className="src">ficha: {prov.ficha}</span>
+              <span className="sep" />
+              <span className="src">archivo: {prov.archivo}</span>
+            </>
+          ) : (
+            <span className="src">{prov.archivo}</span>
+          )}
         </div>
+        <div className="card__facts">
+          {dur && <span className="meta">{dur}</span>}
+          {dur && size && <span className="meta meta--mute">/</span>}
+          {size && <span className="meta">{size}</span>}
+          {t.extra?.format && <span className="meta">{t.extra.format}</span>}
+          {web && (
+            <a className="ext" href={web} target="_blank" rel="noreferrer">
+              vídeo <ArrowUpRight size={12} />
+            </a>
+          )}
+          {t.extra?.item_url && (
+            <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
+              procedencia <ArrowUpRight size={12} />
+            </a>
+          )}
+        </div>
+        {t.preview_url && (
+          <audio controls preload="metadata" src={t.preview_url} className="preview" />
+        )}
         {v && (
           <div
             className={`realinfo realinfo--${
@@ -479,52 +478,52 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
           </div>
         )}
         {t.source === "archive" && <VerifyPanel t={t} query={query} onVerified={onVerified} />}
-      </div>
-      <div className="row__acts">
-        {t.preview_url && (
-          <audio controls preload="metadata" src={t.preview_url} className="preview" />
-        )}
-        {st === "full" ? (
-          <button
-            className="dlbtn"
-            disabled={busy}
-            onClick={() => onDownload(t)}
-            title="Descargar a la biblioteca"
-            aria-label={`Descargar ${t.title || "este resultado"}`}
-          >
-            {busy ? (
-              <CircleNotch size={18} className="prog__ico--spin" />
-            ) : (
-              <DownloadSimple size={18} weight="bold" />
-            )}
-          </button>
-        ) : (
-          <span
-            className="row__nodl"
-            title={
-              st === "preview"
-                ? "De esta fuente solo sale un preview de 30 s"
-                : "No encontramos una versión completa de este tema"
-            }
-          >
-            <Prohibit size={17} />
+        <div className="card__foot">
+          <span className={`st st--${ui.tone}`} key={st}>
+            {ui.label}
           </span>
-        )}
+          {st === "full" ? (
+            <button
+              className="dl"
+              disabled={busy}
+              onClick={() => onDownload(t)}
+              title="Descargar a la biblioteca"
+              aria-label={`Descargar ${t.title || "este resultado"}`}
+            >
+              {busy ? (
+                <CircleNotch size={19} className="spin" />
+              ) : (
+                <DownloadSimple size={19} weight="bold" />
+              )}
+            </button>
+          ) : (
+            <span
+              className="dl dl--off"
+              role="img"
+              title={NODL_TITLE[st]}
+              aria-label={NODL_TITLE[st]}
+            >
+              <Prohibit size={19} />
+            </span>
+          )}
+        </div>
       </div>
     </li>
   );
 }
 
+/* Esqueleto con la forma real de una tarjeta, nunca un spinner generico. */
 function SkeletonRow({ i }) {
   return (
-    <li className="skel skel--pulse" style={{ "--i": i }} aria-hidden="true">
-      <div className="skelrow">
-        <div className="skel__art" />
-        <div className="skelrow__main">
-          <div className="skel__t skelrow__t" />
-          <div className="skel__m skelrow__m" />
+    <li className="card skel skel--pulse" style={{ "--i": i }} aria-hidden="true">
+      <div className="skel__art" />
+      <div className="skel__body">
+        <div className="skel__t" />
+        <div className="skel__m" />
+        <div className="skel__foot">
+          <div className="skel__chip" />
+          <div className="skel__btn" />
         </div>
-        <div className="skel__btn" />
       </div>
     </li>
   );
@@ -532,8 +531,10 @@ function SkeletonRow({ i }) {
 
 /* Selector de formato. Son tres opciones cortas: un desplegable del sistema
    ocupa media pantalla para mostrar tres palabras, asi que va segmentado y a
-   la vista, en la misma linea que el buscador. Radiogroup real, navegable con
-   flechas (roving tabindex) y con el valor actual siempre visible. */
+   la vista, en la segunda fila del panel de busqueda, junto al modo. Radiogroup
+   real, navegable con flechas (roving tabindex) y con el valor actual siempre
+   visible. La etiqueta "Formato" es solo visual: el nombre accesible ya lo
+   lleva el radiogroup. */
 function FmtPicker({ value, onChange }) {
   const refs = useRef([]);
   const current = Math.max(
@@ -549,8 +550,11 @@ function FmtPicker({ value, onChange }) {
 
   return (
     <div className="fmts">
+      <span className="fmts__lbl" aria-hidden="true">
+        Formato
+      </span>
       <div
-        className="fmts__group"
+        className="segs"
         role="radiogroup"
         aria-label="Formato de descarga"
       >
@@ -565,7 +569,7 @@ function FmtPicker({ value, onChange }) {
             aria-checked={value === f.value}
             tabIndex={value === f.value ? 0 : -1}
             title={f.title}
-            className={`fmt ${value === f.value ? "is-on" : ""}`}
+            className={`seg ${value === f.value ? "is-on" : ""}`}
             onClick={() => onChange(f.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowRight" || e.key === "ArrowDown") {
@@ -620,6 +624,15 @@ function App() {
       .then(setHealth)
       .catch(() => setHealth(null));
   }, []);
+
+  /* El aviso de descarga se retira solo unos segundos despues de terminar
+     (bien o mal). Mientras corre no se toca. Si arranca otra descarga, onDownload
+     lo resetea y el cleanup cancela el temporizador pendiente. */
+  useEffect(() => {
+    if (job?.status !== "done" && job?.status !== "error") return undefined;
+    const id = setTimeout(() => setJob(null), JOB_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [job?.status]);
 
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
@@ -836,8 +849,6 @@ function App() {
     }
   }, [runSearch]);
 
-  const activeMode = MODES.find((m) => m.id === mode) || MODES[0];
-
   const fullCount = useMemo(
     () => results.filter((t) => trackState(t) === "full").length,
     [results]
@@ -864,11 +875,12 @@ function App() {
 
   return (
     <div className="app">
+      <div className="blob blob--coral" aria-hidden="true" />
+      <div className="blob blob--sky" aria-hidden="true" />
       <header className="top">
         <div className="brand">
-          <Waveform size={22} weight="bold" className="brand__mark" />
-          <h1 className="brand__name">spitifo</h1>
-          <span className="brand__tag">música libre para descargar</span>
+          <Waveform size={24} weight="bold" className="brand__mark" />
+          <span className="brand__name">spitifo</span>
         </div>
         <button
           className={[
@@ -883,56 +895,59 @@ function App() {
           aria-label={libAria}
           title={libTitle}
         >
-          {libOpen ? <X size={15} /> : <Stack size={15} />}
-          <span className="libbtn__lbl">{libOpen ? "cerrar" : "biblioteca"}</span>
+          {libOpen ? <X size={17} /> : <Stack size={17} />}
+          <span className="libbtn__lbl">{libOpen ? "Cerrar" : "Biblioteca"}</span>
           {!libOpen && libCount > 0 && <span className="count">{libCount}</span>}
         </button>
       </header>
 
-      <form onSubmit={doSearch} className="search">
-        <div className="search__field">
-          <MagnifyingGlass size={17} className="search__icon" />
-          <input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Busca una canción, un artista, un género"
-            aria-label="Qué quieres escuchar"
-          />
-        </div>
-        <FmtPicker value={fmt} onChange={setFmt} />
-        <button type="submit" className="search__go" disabled={loading}>
-          {loading ? "buscando" : "buscar"}
-        </button>
-      </form>
+      <section className="hero">
+        <h1 className="hero__title">Descarga música de forma libre</h1>
 
-      <section className="controls" aria-label="Cómo buscar">
-        <div className="modes" role="radiogroup" aria-label="Modo de búsqueda">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              role="radio"
-              aria-checked={mode === m.id}
-              className={[
-                "mode",
-                mode === m.id ? "is-on" : "",
-                m.id === "ytdlp" && ytDead ? "mode--dead" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => setMode(m.id)}
-              title={
-                m.id === "ytdlp" && ytDead
-                  ? "YouTube está apagado en este servidor: no devolverá resultados"
-                  : undefined
-              }
-            >
-              {m.label}
+        <div className="finder">
+          <form onSubmit={doSearch} className="search">
+            <MagnifyingGlass size={22} className="search__icon" />
+            <input
+              ref={inputRef}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Busca una canción, un artista, un género"
+              aria-label="Qué quieres escuchar"
+            />
+            <button type="submit" className="search__go" disabled={loading}>
+              {loading ? "Buscando" : "Buscar"}
             </button>
-          ))}
+          </form>
+
+          <section className="controls" aria-label="Cómo buscar">
+            <div className="segs" role="radiogroup" aria-label="Modo de búsqueda">
+              {MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === m.id}
+                  className={[
+                    "seg",
+                    mode === m.id ? "is-on" : "",
+                    m.id === "ytdlp" && ytDead ? "mode--dead" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setMode(m.id)}
+                  title={
+                    m.id === "ytdlp" && ytDead
+                      ? "YouTube está apagado en este servidor: no devolverá resultados"
+                      : undefined
+                  }
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <FmtPicker value={fmt} onChange={setFmt} />
+          </section>
         </div>
-        <p className="why">{activeMode.why}</p>
       </section>
 
       {err && (
@@ -974,14 +989,12 @@ function App() {
           </div>
           <div className="panel__body">
             {libCount === 0 && (
-              <p className="slrow slrow--dim" style={{ margin: "10px 14px" }}>
-                Todavía no has descargado nada.
-              </p>
+              <p className="panel__empty">Todavía no has descargado nada.</p>
             )}
             {libFiles.map((f) => (
               <div key={f.path} className="librow">
                 <audio controls preload="metadata" src={`${API}/audio?path=${encodeURIComponent(f.path)}`} />
-                <div style={{ minWidth: 0 }}>
+                <div className="librow__text">
                   <div className="librow__name" title={f.filename}>
                     {f.filename}
                   </div>
@@ -1002,7 +1015,7 @@ function App() {
           <div className="results__head">
             <span className="results__count">
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
-              <b>{fullCount}</b> con descarga completa
+              <b>{fullCount} descargables</b>
             </span>
             <div className="segs" role="group" aria-label="Filtrar resultados">
               <button
@@ -1011,7 +1024,7 @@ function App() {
                 aria-pressed={filter === "all"}
                 onClick={() => setFilter("all")}
               >
-                todos <span className="seg__n">{results.length}</span>
+                Todos <span className="seg__n">{results.length}</span>
               </button>
               <button
                 type="button"
@@ -1019,7 +1032,7 @@ function App() {
                 aria-pressed={filter === "full"}
                 onClick={() => setFilter("full")}
               >
-                descarga completa <span className="seg__n">{fullCount}</span>
+                Descarga completa <span className="seg__n">{fullCount}</span>
               </button>
             </div>
           </div>
@@ -1061,7 +1074,7 @@ function App() {
 
       {loading && (
         <ul className="rows" aria-label="Buscando" aria-busy="true">
-          {[0, 1, 2, 3, 4].map((i) => (
+          {[0, 1, 2, 3].map((i) => (
             <SkeletonRow key={i} i={i} />
           ))}
         </ul>
