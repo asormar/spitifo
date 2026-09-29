@@ -351,15 +351,59 @@ body {
   background: var(--surface-2);
 }
 
-.search select {
+/* Selector de formato: segmentado, en la linea del buscador. El valor actual
+   se lee sin abrir nada y la etiqueta vive en el grupo, no en un dropdown. */
+.fmts {
+  display: flex;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.fmts__lbl {
+  display: inline-flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.fmts__group {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-box);
-  color: var(--fg);
+}
+
+.fmt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
   font: inherit;
-  font-size: 14px;
-  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 13px;
+  border-radius: var(--r-badge);
   cursor: pointer;
+  transition: background-color var(--t-press) var(--ease),
+    color var(--t-press) var(--ease), box-shadow var(--t-press) var(--ease),
+    transform var(--t-press) var(--ease);
+}
+
+.fmt:active {
+  transform: scale(0.98);
+}
+
+.fmt.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
 .search__go {
@@ -394,10 +438,11 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   6. ZONA DE CONTROL: modo + fuentes
+   6. ZONA DE CONTROL: modo de busqueda
 
-   Los chips de fuente son filtros de verdad, no texto informativo. Un filtro
-   activo se puede volver a tocar para limpiarlo.
+   El filtro por fuente se fue: el selector de modo ya cubre el caso (Recomendado
+   empareja, Todas las fuentes pregunta a todas, Solo YouTube acota). La fuente
+   viaja derivada del modo, no de un control aparte.
    ------------------------------------------------------------------------- */
 
 .controls {
@@ -448,66 +493,7 @@ body {
   max-width: 68ch;
 }
 
-.sources {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 14px;
-  padding-top: 13px;
-  border-top: 1px solid var(--border);
-}
-
-.sources__label {
-  color: var(--faint);
-  font-size: 12px;
-  margin-right: 2px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  color: var(--muted);
-  font: inherit;
-  font-size: 12.5px;
-  padding: 4px 12px;
-  cursor: pointer;
-  transition: background-color var(--t-press) var(--ease),
-    border-color var(--t-press) var(--ease), color var(--t-press) var(--ease),
-    transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
-}
-
-.chip:active {
-  transform: scale(0.98);
-}
-
-.chip.is-on {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: var(--accent);
-}
-
-.chip:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.chip:disabled:active {
-  transform: none;
-}
-
-.chip__n {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.75;
-}
-
-/* El aviso legal de YouTube va UNA sola vez, aca. Calmado y visible. */
+/* El aviso legal de YouTube va UNA sola vez, aca, debajo del modo activo. */
 .note {
   display: flex;
   align-items: flex-start;
@@ -523,14 +509,6 @@ body {
   flex: none;
   margin-top: 2px;
   color: var(--faint);
-}
-
-.note--warn {
-  color: #f7d9a4;
-}
-
-.note--warn svg {
-  color: var(--warn);
 }
 
 /* ---------------------------------------------------------------------------
@@ -1514,7 +1492,6 @@ body {
   .btn:hover,
   .search__go:hover,
   .example:hover,
-  .chip:not(:disabled):hover,
   .seg:hover,
   .mode:hover {
     border-color: var(--border-strong);
@@ -1525,13 +1502,12 @@ body {
     background: var(--surface-2);
   }
 
-  .chip:not(:disabled):hover {
-    border-color: var(--border-strong);
+  .fmt:not(.is-on):hover {
+    background: var(--surface-2);
     color: var(--fg);
   }
 
-  .chip.is-on:hover {
-    border-color: var(--accent);
+  .fmt.is-on:hover {
     color: var(--accent);
   }
 
@@ -1588,8 +1564,21 @@ body {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .search__go {
+  .search__field {
     grid-column: 1 / -1;
+  }
+
+  .fmts__lbl {
+    display: none;
+  }
+
+  .fmt {
+    padding: 0 11px;
+  }
+
+  .search__go {
+    grid-column: 2;
+    grid-row: 2;
     justify-content: center;
     min-height: 42px;
   }

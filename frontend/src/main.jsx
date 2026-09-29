@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   CaretDown,
   CaretRight,
-  Check,
   CheckCircle,
   CircleNotch,
   DownloadSimple,
@@ -23,7 +22,7 @@ import "./style.css";
 
 const API = "/api";
 
-document.title = "Spitifo: descargá música libre";
+document.title = "Spitifo: descarga música libre";
 
 const SOURCE_LABEL = {
   itunes: "iTunes",
@@ -33,30 +32,39 @@ const SOURCE_LABEL = {
   ytdlp: "YouTube",
 };
 
-/* Orden de presentacion de las fuentes, el que tiene sentido para el usuario. */
-const SOURCE_ORDER = ["itunes", "archive", "wikimedia", "ytdlp", "jamendo"];
-
 /* Los tres modos que ve el usuario. Los nombres internos (matched, sources,
    ytdlp) no salen nunca a la pantalla. */
 const MODES = [
   {
     id: "matched",
     label: "Recomendado",
-    why: "iTunes trae la ficha limpia y la portada, YouTube trae el archivo. Es la forma más corta de bajar algo entero.",
+    why: "iTunes aporta la ficha limpia y la portada, YouTube aporta el archivo. Es la forma más directa de descargar el tema completo.",
   },
   {
     id: "sources",
     label: "Todas las fuentes",
-    why: "Pregunta a las cinco fuentes a la vez. Más resultados y más ruido: el primero no siempre es el mejor.",
+    why: "Consulta las cinco fuentes a la vez. Más resultados y más ruido: el primero no siempre es el mejor.",
   },
   {
     id: "ytdlp",
     label: "Solo YouTube",
-    why: "Solo resultados de YouTube. Casi todo se baja entero, pero el riesgo legal es tuyo.",
+    why: "Solo resultados de YouTube. Casi todo se descarga completo, pero el riesgo legal es tuyo.",
   },
 ];
 
 const MODE_IDS = MODES.map((m) => m.id);
+
+/* Formatos que acepta el backend. El valor que viaja en el POST de descarga es
+   exactamente este string, sin traducirlo. */
+const FORMATS = [
+  { value: "mp3", label: "mp3", title: "Convertir el audio a MP3" },
+  { value: "m4a", label: "m4a", title: "Convertir el audio a M4A" },
+  {
+    value: "original",
+    label: "original",
+    title: "Descargar el archivo tal cual, sin convertir",
+  },
+];
 
 const EXAMPLES = [
   "Nick Cave Into My Arms",
@@ -94,13 +102,13 @@ function trackState(t) {
 }
 
 const STATE_UI = {
-  full: { label: "se baja entero", tone: "ok" },
+  full: { label: "Completo", tone: "ok" },
   preview: { label: "solo preview de 30 s", tone: "warn" },
   none: { label: "no coincide", tone: "bad" },
 };
 
 /* La licencia larga no se repite en cada fila: el aviso entero vive una sola
-   vez en la zona de fuentes. Acá va la version corta, con el texto completo
+   vez en la zona de control. Acá va la version corta, con el texto completo
    en el title para quien lo necesite. */
 const LIC_SHORT = {
   "ToS de YouTube (uso personal, riesgo legal)": "uso personal",
@@ -125,18 +133,14 @@ function provenance(t) {
 
 /* Arma la query contra /api/search respetando los comportamientos reales:
    - YouTube solo filtra con mode=ytdlp&source=ytdlp (mode solo no filtra).
-   - mode=matched con un source degrada el emparejamiento: se avisa en la UI. */
-function buildSearchParams(q, mode, src) {
+   - mode=matched con un source degrada el emparejamiento, asi que la fuente
+     ya no es un filtro del usuario: se deriva siempre del modo. */
+function buildSearchParams(q, mode) {
   const p = new URLSearchParams();
   p.set("q", q);
   p.set("limit", "40");
-  if (mode === "ytdlp") {
-    p.set("mode", "ytdlp");
-    p.set("source", "ytdlp");
-    return p;
-  }
   p.set("mode", mode);
-  if (src) p.set("source", src);
+  if (mode === "ytdlp") p.set("source", "ytdlp");
   return p;
 }
 
@@ -182,7 +186,7 @@ function VerifyPanel({ t, query, onVerified }) {
     return (
       <button className="vf" onClick={verify}>
         <Sparkle size={14} />
-        ¿es esta la canción?
+        ¿Es esta la canción?
       </button>
     );
   }
@@ -190,7 +194,7 @@ function VerifyPanel({ t, query, onVerified }) {
     return (
       <button className="vf" onClick={verify} disabled aria-live="polite">
         <CircleNotch size={14} className="prog__ico--spin" />
-        leyendo los tags del audio
+        leyendo las etiquetas del audio
       </button>
     );
   }
@@ -231,7 +235,7 @@ function VerifyPanel({ t, query, onVerified }) {
       )}
       <div className="vfbox__src">
         {m.uploader && <>subido por {m.uploader}. </>}
-        {m.title_source === "item-title" && <>el archivo no trae tags, el título viene del item. </>}
+        {m.title_source === "item-title" && <>el archivo no trae etiquetas, el título viene del item. </>}
         {m.item_url && (
           <a className="ext" href={m.item_url} target="_blank" rel="noreferrer">
             ver en Internet Archive <ArrowUpRight size={12} />
@@ -319,7 +323,7 @@ function ShowGroup({ t, query, onDownload, busyId }) {
 
         {open && (
           <ul className="setlist">
-            {loading && <li className="slrow slrow--dim">leyendo los tags de cada pista</li>}
+            {loading && <li className="slrow slrow--dim">leyendo las etiquetas de cada pista</li>}
             {!loading && tracks && tracks.length === 0 && (
               <li className="slrow slrow--dim">no pude leer las pistas</li>
             )}
@@ -395,7 +399,7 @@ function ProgressBar({ job }) {
         <div className="prog__top">
           <span className="prog__title">{job.title}</span>
           <span className="prog__state">
-            {failed ? "falló la descarga" : done ? "listo, está en tu biblioteca" : "bajando con yt-dlp"}
+            {failed ? "falló la descarga" : done ? "listo, está en tu biblioteca" : "descargando con yt-dlp"}
           </span>
         </div>
         <div
@@ -474,7 +478,7 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
             )}
             {web && (
               <a className="ext" href={web} target="_blank" rel="noreferrer">
-                video <ArrowUpRight size={12} />
+                vídeo <ArrowUpRight size={12} />
               </a>
             )}
             {t.extra?.item_url && (
@@ -528,7 +532,7 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
             className="row__nodl"
             title={
               st === "preview"
-                ? "De esta fuente sólo sale un preview de 30 s"
+                ? "De esta fuente solo sale un preview de 30 s"
                 : "No encontramos una versión completa de este tema"
             }
           >
@@ -555,6 +559,64 @@ function SkeletonRow({ i }) {
   );
 }
 
+/* Selector de formato. Son tres opciones cortas: un desplegable del sistema
+   ocupa media pantalla para mostrar tres palabras, asi que va segmentado y a
+   la vista, en la misma linea que el buscador. Radiogroup real, navegable con
+   flechas (roving tabindex) y con el valor actual siempre visible. */
+function FmtPicker({ value, onChange }) {
+  const refs = useRef([]);
+  const current = Math.max(
+    0,
+    FORMATS.findIndex((f) => f.value === value)
+  );
+
+  const move = (next) => {
+    const i = (next + FORMATS.length) % FORMATS.length;
+    onChange(FORMATS[i].value);
+    refs.current[i]?.focus();
+  };
+
+  return (
+    <div className="fmts">
+      <span className="fmts__lbl">Formato</span>
+      <div className="fmts__group" role="radiogroup" aria-label="Formato del archivo">
+        {FORMATS.map((f, i) => (
+          <button
+            key={f.value}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={value === f.value}
+            tabIndex={value === f.value ? 0 : -1}
+            title={f.title}
+            className={`fmt ${value === f.value ? "is-on" : ""}`}
+            onClick={() => onChange(f.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                e.preventDefault();
+                move(current + 1);
+              } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                e.preventDefault();
+                move(current - 1);
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                move(0);
+              } else if (e.key === "End") {
+                e.preventDefault();
+                move(FORMATS.length - 1);
+              }
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -571,12 +633,10 @@ function App() {
   const [verified, setVerified] = useState({});
   const [job, setJob] = useState(null);
   const [mode, setMode] = useState("matched");
-  const [src, setSrc] = useState("");
   const [searched, setSearched] = useState(false);
   const inputRef = useRef();
   const libRef = useRef(false);
   const lastSig = useRef("");
-  const srcBeforeYtdlp = useRef("");
 
   useEffect(() => {
     fetch(`${API}/health`)
@@ -585,21 +645,21 @@ function App() {
       .catch(() => setHealth(null));
   }, []);
 
-  /* Una sola funcion de busqueda, con el texto, el modo y la fuente que
-     llegan POR PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el
-     resync automatico comparten exactamente el mismo camino, y no importa que
-     el setState de mode/src todavia no haya pegado cuando se la llama. */
-  const runSearch = useCallback(async (text, m, s) => {
+  /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
+     PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
+     automatico comparten exactamente el mismo camino, y no importa que el
+     setState de mode todavia no haya pegado cuando se la llama. */
+  const runSearch = useCallback(async (text, m) => {
     const t = text.trim();
     if (!t) return;
-    lastSig.current = `${m}|${s}|${t}`;
+    lastSig.current = `${m}|${t}`;
     setLoading(true);
     setErr(null);
     setDone(null);
     setVerified({});
     setSearched(true);
     setFilter("all");
-    const params = buildSearchParams(t, m, s);
+    const params = buildSearchParams(t, m);
     try {
       const r = await fetch(`${API}/search?${params.toString()}`);
       const d = await r.json();
@@ -617,29 +677,29 @@ function App() {
   const doSearch = useCallback(
     (e) => {
       e?.preventDefault();
-      runSearch(q, mode, src);
+      runSearch(q, mode);
     },
-    [q, mode, src, runSearch]
+    [q, mode, runSearch]
   );
 
   const runExample = useCallback(
     (text) => {
       setQ(text);
-      runSearch(text, mode, src);
+      runSearch(text, mode);
     },
-    [mode, src, runSearch]
+    [mode, runSearch]
   );
 
-  /* Cambiar el modo o la fuente tiene que volver a consultar la API, no solo
-     repintar el control. La firma evita el loop: si la peticion que corresponde
-     al modo/fuente actual ya se ejecuto, no se repite. Tambien evita el doble
-     fetch del arranque, que setea la misma firma. */
+  /* Cambiar de modo tiene que volver a consultar la API, no solo repintar el
+     control. La firma evita el loop: si la peticion que corresponde al modo
+     actual ya se ejecuto, no se repite. Tambien evita el doble fetch del
+     arranque, que setea la misma firma. */
   useEffect(() => {
     if (!searched || !query) return;
-    const sig = `${mode}|${src}|${query}`;
+    const sig = `${mode}|${query}`;
     if (sig === lastSig.current) return;
-    runSearch(query, mode, src);
-  }, [mode, src, searched, query, runSearch]);
+    runSearch(query, mode);
+  }, [mode, searched, query, runSearch]);
 
   const onDownload = useCallback(
     async (t) => {
@@ -718,7 +778,7 @@ function App() {
             ...j,
             warning: `Ojo: en el archivo dice "${
               finalTitle || "sin título"
-            }" y vos buscaste "${query}".`,
+            }" y tú buscaste "${query}".`,
           });
         } else {
           setDone(j);
@@ -748,10 +808,9 @@ function App() {
   }, [libOpen, loadLib]);
 
   /* El estado vive en la URL: el link se puede compartir y sobrevive al F5. */
-  const writeUrl = useCallback((m, s, text) => {
+  const writeUrl = useCallback((m, text) => {
     const p = new URLSearchParams();
     if (m) p.set("mode", m);
-    if (s) p.set("src", s);
     if (text) p.set("q", text);
     const qs = p.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
@@ -759,43 +818,29 @@ function App() {
 
   useEffect(() => {
     if (!searched) return;
-    writeUrl(mode, src, query);
-  }, [mode, src, query, searched, writeUrl]);
+    writeUrl(mode, query);
+  }, [mode, query, searched, writeUrl]);
 
   /* Arranque: si la URL trae consulta, se recupera sola. Usa runSearch para
-     que la firma quede seteada y el resync no dispare un segundo fetch. */
+     que la firma quede seteada y el resync no dispare un segundo fetch.
+     Los links viejos con ?src=ytdlp equivalen al modo Solo YouTube; cualquier
+     otra fuente ya no se puede filtrar porque los chips se fueron. */
   const booted = useRef(false);
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;
     const p = new URLSearchParams(window.location.search);
     const m = p.get("mode");
-    const s = p.get("src");
     const text = p.get("q");
-    const mm = m && MODE_IDS.includes(m) ? m : "matched";
-    const ss = s && SOURCE_ORDER.includes(s) ? s : "";
-    if (m && MODE_IDS.includes(m)) setMode(mm);
-    if (s && SOURCE_ORDER.includes(s)) setSrc(ss);
+    const mm = m && MODE_IDS.includes(m) ? m : p.get("src") === "ytdlp" ? "ytdlp" : "matched";
+    setMode(mm);
     if (text) {
       setQ(text);
-      runSearch(text, mm, ss);
+      runSearch(text, mm);
     }
   }, [runSearch]);
 
   const activeMode = MODES.find((m) => m.id === mode) || MODES[0];
-
-  /* Modo Recomendado + filtro de fuente: el backend corta el emparejamiento con
-     YouTube y devuelve resultados crudos de esa fuente. Se deriva del estado,
-     no del resultado, para avisar antes de que el usuario busque. */
-  const degraded = mode === "matched" && !!src;
-
-  const sourceCounts = useMemo(() => {
-    const c = {};
-    results.forEach((t) => {
-      c[t.source] = (c[t.source] || 0) + 1;
-    });
-    return c;
-  }, [results]);
 
   const fullCount = useMemo(
     () => results.filter((t) => trackState(t) === "full").length,
@@ -815,22 +860,7 @@ function App() {
     return m;
   }, [health]);
 
-  const sources = useMemo(() => {
-    const names = SOURCE_ORDER.filter((n) => healthByName[n]);
-    const extra = (health?.sources || []).map((s) => s.name).filter((n) => !names.includes(n));
-    return [...names, ...extra];
-  }, [health, healthByName]);
-
   const ytOn = healthByName.ytdlp?.active;
-  const forced = mode === "ytdlp";
-
-  const pickSource = useCallback(
-    (name) => {
-      if (forced) return;
-      setSrc((cur) => (cur === name ? "" : name));
-    },
-    [forced]
-  );
 
   return (
     <div className="app">
@@ -838,7 +868,7 @@ function App() {
         <div className="brand">
           <Waveform size={22} weight="bold" className="brand__mark" />
           <h1 className="brand__name">spitifo</h1>
-          <span className="brand__tag">música libre, en el momento</span>
+          <span className="brand__tag">música libre para descargar</span>
         </div>
         <button className="btn btn--ghost" onClick={toggleLib} aria-expanded={libOpen}>
           {libOpen ? <X size={15} /> : <FolderOpen size={15} />}
@@ -854,15 +884,11 @@ function App() {
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscá una canción, un artista, un género"
-            aria-label="Qué querés escuchar"
+            placeholder="Busca una canción, un artista, un género"
+            aria-label="Qué quieres escuchar"
           />
         </div>
-        <select value={fmt} onChange={(e) => setFmt(e.target.value)} aria-label="Formato del archivo">
-          <option value="mp3">mp3</option>
-          <option value="m4a">m4a</option>
-          <option value="original">original</option>
-        </select>
+        <FmtPicker value={fmt} onChange={setFmt} />
         <button type="submit" className="search__go" disabled={loading}>
           {loading ? "buscando" : "buscar"}
         </button>
@@ -877,17 +903,7 @@ function App() {
               role="radio"
               aria-checked={mode === m.id}
               className={`mode ${mode === m.id ? "is-on" : ""}`}
-              onClick={() => {
-                if (m.id === "ytdlp") {
-                  // Solo YouTube manda source=ytdlp siempre. Se guarda el
-                  // filtro previo para restaurarlo al salir del modo.
-                  if (mode !== "ytdlp") srcBeforeYtdlp.current = src;
-                  setSrc("ytdlp");
-                } else if (mode === "ytdlp") {
-                  setSrc(srcBeforeYtdlp.current);
-                }
-                setMode(m.id);
-              }}
+              onClick={() => setMode(m.id)}
             >
               {m.label}
             </button>
@@ -895,58 +911,13 @@ function App() {
         </div>
         <p className="why">{activeMode.why}</p>
 
-        <div className="sources">
-          <span className="sources__label">Fuentes</span>
-          {sources.map((name) => {
-            const info = healthByName[name];
-            const isOff = !info?.active;
-            const on = forced ? name === "ytdlp" : src === name;
-            const disabled = isOff || (forced && name !== "ytdlp");
-            const label = SOURCE_LABEL[name] || name;
-            return (
-              <button
-                key={name}
-                type="button"
-                className={`chip ${on ? "is-on" : ""}`}
-                disabled={disabled}
-                aria-pressed={on}
-                title={
-                  isOff
-                    ? `apagada, necesita ${info?.needs_key || "una clave"}`
-                    : forced && name !== "ytdlp"
-                    ? "en Solo YouTube no se mezclan otras fuentes"
-                    : on
-                    ? "tocá para quitar el filtro"
-                    : `filtrar por ${label}`
-                }
-                onClick={() => pickSource(name)}
-              >
-                {on && <Check size={12} weight="bold" />}
-                {label}
-                {isOff && <span className="chip__n">sin clave</span>}
-                {!isOff && sourceCounts[name] ? <span className="chip__n">{sourceCounts[name]}</span> : null}
-              </button>
-            );
-          })}
-        </div>
-
-        {degraded && (
-          <p className="note note--warn" role="status">
-            <WarningCircle size={14} weight="fill" />
-            <span>
-              Estás en Recomendado con un filtro de{" "}
-              {SOURCE_LABEL[src] || src}. El emparejamiento con YouTube se desactiva y
-              vas a ver resultados crudos de esa fuente: más ruido y más previews de 30 s.
-            </span>
-          </p>
-        )}
-
         {ytOn && (
           <p className="note">
             <Info size={14} />
             <span>
-              YouTube no es una fuente libre. Lo que sale de ahí se baja con yt-dlp y
-              el riesgo legal es tuyo. iTunes solo aporta la ficha y 30 segundos de audio.
+              YouTube no es una fuente libre. Lo que sale de ahí se descarga con yt-dlp
+              y el riesgo legal es tuyo. iTunes solo aporta la ficha y 30 segundos de
+              audio.
             </span>
           </p>
         )}
@@ -992,7 +963,7 @@ function App() {
           <div className="panel__body">
             {lib.length === 0 && (
               <p className="slrow slrow--dim" style={{ margin: "10px 14px" }}>
-                Todavía no bajaste nada.
+                Todavía no has descargado nada.
               </p>
             )}
             {lib.map((f) => (
@@ -1019,7 +990,7 @@ function App() {
           <div className="results__head">
             <span className="results__count">
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
-              <b>{fullCount}</b> se bajan enteros
+              <b>{fullCount}</b> con descarga completa
             </span>
             <div className="segs" role="group" aria-label="Filtrar resultados">
               <button
@@ -1036,7 +1007,7 @@ function App() {
                 aria-pressed={filter === "full"}
                 onClick={() => setFilter("full")}
               >
-                se baja entero <span className="seg__n">{fullCount}</span>
+                descarga completa <span className="seg__n">{fullCount}</span>
               </button>
             </div>
           </div>
@@ -1066,10 +1037,10 @@ function App() {
           </ul>
           {shown.length === 0 && (
             <div className="none">
-              <h3 className="none__h">Nada se baja entero en esta búsqueda</h3>
+              <h3 className="none__h">Ningún resultado con descarga completa</h3>
               <p className="none__p">
                 Hay {results.length} resultados, pero todos son previews de 30 segundos o
-                temas que no coinciden con lo que buscaste. Probá con Todas las fuentes.
+                temas que no coinciden con lo que buscaste. Prueba con Todas las fuentes.
               </p>
             </div>
           )}
@@ -1087,13 +1058,13 @@ function App() {
       {!loading && !results.length && !err && !searched && (
         <section className="intro">
           <Sparkle size={26} weight="fill" className="intro__mark" />
-          <h2 className="intro__h">Escribí un tema y bajalo entero</h2>
+          <h2 className="intro__h">Escribe un tema y descárgalo completo</h2>
           <p className="intro__p">
             Spitifo pregunta a varias fuentes de música libre y te dice, resultado por
-            resultado, si el archivo se baja completo, si solo hay un preview de 30
+            resultado, si el archivo se descarga completo, si solo hay un preview de 30
             segundos, o si no hubo coincidencia.
           </p>
-          <p className="intro__lbl">Probá con alguno de estos</p>
+          <p className="intro__lbl">Prueba con alguno de estos</p>
           <ul className="examples">
             {EXAMPLES.map((ex) => (
               <li key={ex}>
@@ -1106,7 +1077,7 @@ function App() {
           </ul>
           <p className="intro__fine">
             Internet Archive y Wikimedia liberan archivos. iTunes sirve para encontrar
-            la ficha, pero de ahí solo sale un preview de 30 s. YouTube se baja con
+            la ficha, pero de ahí solo sale un preview de 30 s. YouTube se descarga con
             yt-dlp y el riesgo legal es tuyo.
           </p>
         </section>
@@ -1116,7 +1087,7 @@ function App() {
         <div className="none">
           <h3 className="none__h">No encontré nada para "{query}"</h3>
           <p className="none__p">
-            Probá con menos palabras, con el nombre del artista solo, o cambiá a Todas
+            Prueba con menos palabras, con el nombre del artista solo, o cambia a Todas
             las fuentes para buscar en iTunes, Internet Archive, Wikimedia y YouTube.
           </p>
         </div>
