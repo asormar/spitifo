@@ -114,6 +114,65 @@ function fetchErr(e, fallback) {
   return fallback;
 }
 
+/* Una URL que viene del servidor no se pone en `href` sin revisarle el
+   esquema.
+
+   Motivo concreto: `item_url` y `webpage_url` vienen de APIs externas
+   (archive.org, iTunes, YouTube) y llegan tal cual al DOM. Con
+   `javascript:...` en un href, un click ejecuta codigo en el ORIGEN de esta
+   pagina, no en el sitio de la URL. No se demostro que hoy exista una URL
+   asi —las fuentes actuales no la producen y el HeadlessChrome la bloquea—,
+   pero el dato es externo y no verificado: la defensa va aca y no depende de
+   que la fuente de hoy sea benigna.
+
+   Solo pasan http/https. Una src relativa tambien, porque la genera la propia
+   app. Cualquier otra cosa (javascript:, data:, vbscript:, blob:) devuelve
+   null y el link no se renderiza. */
+function safeUrl(u) {
+  if (typeof u !== "string") return null;
+  const s = u.trim();
+  if (!s) return null;
+  /* Relativa de un solo slash: la genera la app (ej. /api/audio?path=...).
+     Un `//host` NO: es protocol-relativa, y `new URL` la resolveria contra
+     el origin dandonos un http:// VALIDO que nunca fue una URL absoluta del
+     servidor. Por eso se rechazan las dos barras. */
+  if (s.startsWith("/")) return s.startsWith("//") ? null : s;
+  /* Sin esquema explicito NO se toca. `new URL("basura", origin)` no lanza:
+     la resuelve como ruta relativa y devuelve un http:// propio, o sea,
+     ACEPTARIA cualquier cadena sin esquema como si fuera nuestra. Solo pasan
+     las que traen http:// o https:// de verdad. */
+  if (!/^https?:\/\//i.test(s)) return null;
+  try {
+    const parsed = new URL(s);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/* El unico lugar del componente que abre una URL externa. Si el esquema no
+   pasa safeUrl no se renderiza nada: el link desaparece en vez de quedar roto
+   o ejecutable. `rel="noopener noreferrer"` en todos: sin noopear, la pagina
+   de destino recibe una referencia a `window.opener` y puede navegar esta
+   pestana (reverse tabnabbing). */
+function ExtLink({ url, className, children }) {
+  const href = safeUrl(url);
+  if (!href) return null;
+  return (
+    <a className={className} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
+
+/* La clave que identifica una fila para el estado de "descargando". Antes se
+   usaba `t.source + t.source_id` en Track pero SOLO `s.source_id` en las
+   pistas del setlist (ShowGroup), asi que el ahi nunca coincidia con lo que
+   guardaba onDownload y su spinner no aparebia nunca. Una sola funcion. */
+const rowKey = (t) => (t?.source || "") + (t?.source_id || "");
+
 function fmtTime(s) {
   if (!s) return "--:--";
   const m = Math.floor(s / 60);
@@ -209,7 +268,7 @@ function buildSearchParams(q, mode) {
    transcodificar) lo revienta sin que el usuario se entere de nada: el toast
    queda girando en "processing" para siempre. Con "timeout" el llamador puede
    al menos avisar que la descarga sigue corriendo en el servidor. */
-async function pollJob(jobId, setJob, title) {
+async function pollJob(jobId, setJobFor, key, title) {
   for (let i = 0; i < 600; i++) {
     let d;
     try {
@@ -222,7 +281,7 @@ async function pollJob(jobId, setJob, title) {
       // Se marca como fallido para que ProgressBar lo muestre y el aviso
       // se retire solo con el mismo temporizador que un final normal.
       const failed = { status: "error", error: "se perdió la conexión con el servidor" };
-      setJob({ ...failed, title });
+      setJobFor(key, { ...failed, title });
       return failed;
     }
     /* "unknown" es lo que devuelve el backend para un job que ya no existe
@@ -230,10 +289,10 @@ async function pollJob(jobId, setJob, title) {
        aparecer es trabajo perdido: se corta aca. */
     if (d.status === "unknown") {
       const gone = { status: "gone", error: "el servidor ya no tiene esta descarga" };
-      setJob({ ...gone, title });
+      setJobFor(key, { ...gone, title });
       return gone;
     }
-    setJob({ ...d, title });
+    setJobFor(key, { ...d, title });
     if (d.status === "done" || d.status === "error") return d;
     // eslint-disable-next-line no-await-in-loop
     await new Promise((res) => setTimeout(res, 700));
@@ -241,7 +300,7 @@ async function pollJob(jobId, setJob, title) {
   // El tope se vencio, pero la descarga puede seguir corriendo en el server:
   // NO se marca como error (eso diria "Falló" y seria falso). Se retira igual
   // el toast, asi que el useEffect de JOB_DISMISS_MS tiene que incluirlo.
-  setJob({ status: "timeout", title });
+  setJobFor(key, { status: "timeout", title });
   return { status: "timeout" };
 }
 
@@ -324,16 +383,16 @@ function VerifyPanel({ t, query, onVerified }) {
         {m.uploader && <>subido por {m.uploader}. </>}
         {m.title_source === "item-title" && <>el archivo no trae etiquetas, el título viene del item. </>}
         {m.item_url && (
-          <a className="ext" href={m.item_url} target="_blank" rel="noreferrer">
+          <ExtLink className="ext" url={m.item_url}>
             ver en Internet Archive <ArrowUpRight size={12} />
-          </a>
+          </ExtLink>
         )}
       </div>
     </div>
   );
 }
 
-function ShowGroup({ t, query, onDownload, busyId }) {
+function ShowGroup({ t, query, onDownload, busyIds }) {
   const [open, setOpen] = useState(false);
   const [tracks, setTracks] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -388,11 +447,9 @@ function ShowGroup({ t, query, onDownload, busyId }) {
             Concierto en vivo, {t.extra?.track_count || 1} pistas
           </span>
           <span className="src">{prov.archivo}</span>
-          {t.extra?.item_url && (
-            <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
-              procedencia <ArrowUpRight size={12} />
-            </a>
-          )}
+          <ExtLink className="ext" url={t.extra?.item_url}>
+            procedencia <ArrowUpRight size={12} />
+          </ExtLink>
         </div>
         <button className="disclosure" onClick={toggle} aria-expanded={open}>
           {open ? <CaretDown size={13} /> : <CaretRight size={13} />}
@@ -437,12 +494,12 @@ function ShowGroup({ t, query, onDownload, busyId }) {
                   </div>
                   <button
                     className="dl dl--sm"
-                    disabled={busyId === s.source_id}
+                    disabled={busyIds.has(rowKey(s))}
                     onClick={() => onDownload(s)}
                     title="Descargar a la biblioteca"
                     aria-label={`Descargar ${s.real_title || s.filename}`}
                   >
-                    {busyId === s.source_id ? (
+                    {busyIds.has(rowKey(s)) ? (
                       <CircleNotch size={16} className="spin" />
                     ) : (
                       <DownloadSimple size={16} weight="bold" />
@@ -455,6 +512,22 @@ function ShowGroup({ t, query, onDownload, busyId }) {
         )}
       </div>
     </li>
+  );
+}
+
+/* Un toast por descarga en curso. Con dos a la vez se apilan en columna: el
+   primero se apila pegado al borde inferior. Cada uno se retira solo a los 5 s
+   de terminar, con su propio temporizador. */
+function ProgressStack({ jobs }) {
+  const lista = Object.values(jobs || {});
+  if (!lista.length) return null;
+  const varios = lista.length > 1;
+  return (
+    <div className={`progstack ${varios ? "is-multi" : ""}`}>
+      {lista.map((j, i) => (
+        <ProgressBar key={j.key || j.title + i} job={j} />
+      ))}
+    </div>
   );
 }
 
@@ -551,16 +624,12 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
           {dur && size && <span className="meta meta--mute">/</span>}
           {size && <span className="meta">{size}</span>}
           {t.extra?.format && <span className="meta">{t.extra.format}</span>}
-          {web && (
-            <a className="ext" href={web} target="_blank" rel="noreferrer">
-              vídeo <ArrowUpRight size={12} />
-            </a>
-          )}
-          {t.extra?.item_url && (
-            <a className="ext" href={t.extra.item_url} target="_blank" rel="noreferrer">
-              procedencia <ArrowUpRight size={12} />
-            </a>
-          )}
+          <ExtLink className="ext" url={web}>
+            vídeo <ArrowUpRight size={12} />
+          </ExtLink>
+          <ExtLink className="ext" url={t.extra?.item_url}>
+            procedencia <ArrowUpRight size={12} />
+          </ExtLink>
         </div>
         {t.preview_url && (
           <audio controls preload="metadata" src={t.preview_url} className="preview" />
@@ -782,9 +851,16 @@ function App() {
      sin esto el boton arrancaria atenuado y el contador no apareceria hasta
      abrir el panel, que es justo cuando ya no hace falta. */
   const [lib, setLib] = useState(null);
-  const [busyId, setBusyId] = useState(null);
+  /* `busyId` era un unico string: con dos descargas en curso la segunda
+     escribia su clave encima de la primera, y el setBusyId(null) del finally
+     de la una apagaba el spinner de la otra. Ahora es un Set con TODAS las
+     claves en curso: cada fila enciende y apaga su spinner sin tocar el de
+     las demas. */
+  const [busyIds, setBusyIds] = useState(() => new Set());
   const [verified, setVerified] = useState({});
-  const [job, setJob] = useState(null);
+  /* Un solo `job` tambien se pisaba entre descargas simultaneas. Ahora es un
+     mapa clave -> job, y ProgressBar dibuja uno por descarga en curso. */
+  const [jobs, setJobs] = useState({});
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
   const inputRef = useRef();
@@ -798,17 +874,35 @@ function App() {
       .catch(() => setHealth(null));
   }, []);
 
-  /* El aviso de descarga se retira solo unos segundos despues de terminar
-     (bien o mal). Mientras corre no se toca. Si arranca otra descarga, onDownload
-     lo resetea y el cleanup cancela el temporizador pendiente. */
+  /* Un job terminal (done/error/timeout/gone) se retira solo a los 5 s. Con
+     varias descargas en curso cada uno tiene su propio temporizador: el de la
+     primera no puede borrar el toast de la segunda, que es justo lo que
+     pasaba antes. */
   useEffect(() => {
-    if (job?.status !== "done"
-        && job?.status !== "error"
-        && job?.status !== "timeout"
-        && job?.status !== "gone") return undefined;
-    const id = setTimeout(() => setJob(null), JOB_DISMISS_MS);
-    return () => clearTimeout(id);
-  }, [job?.status]);
+    const terminales = Object.entries(jobs).filter(
+      ([, j]) =>
+        j?.status === "done"
+        || j?.status === "error"
+        || j?.status === "timeout"
+        || j?.status === "gone"
+    );
+    if (!terminales.length) return undefined;
+    const ids = terminales.map(([k]) => k);
+    const t = setTimeout(() => {
+      setJobs((cur) => {
+        const next = { ...cur };
+        ids.forEach((k) => delete next[k]);
+        return next;
+      });
+    }, JOB_DISMISS_MS);
+    return () => clearTimeout(t);
+  }, [jobs]);
+
+  /* Actualiza UN job sin tocar los demas. El setJob viejo pisaba el estado
+     entero en cada tick del polling. */
+  const setJobFor = useCallback((key, patch) => {
+    setJobs((cur) => ({ ...cur, [key]: { ...cur[key], ...patch, key } }));
+  }, []);
 
   /* La franja de exito/aviso (.msg) NO se retiraba nunca: se quedaba en
      pantalla hasta que otra accion la limpiara, mientras el toast de progreso
@@ -889,10 +983,14 @@ function App() {
 
   const onDownload = useCallback(
     async (t) => {
-      setBusyId(t.source + t.source_id);
+      /* Todo el estado de ESTA descarga queda bajo su clave. Con dos a la vez
+         cada una enciende su spinner, tiene su toast y anuncia su resultado
+         sin pisar a la otra. `err`/`done` siguen siendo globales a proposito:
+         son el ultimo mensaje de la pantalla, no uno por fila. */
+      const key = rowKey(t);
+      setBusyIds((cur) => new Set(cur).add(key));
       setErr(null);
       setDone(null);
-      setJob(null);
       try {
         let track = { ...t };
         delete track.downloadable;
@@ -937,8 +1035,8 @@ function App() {
 
         // yt-dlp devuelve job_id: la descarga corre en background, hacer polling
         if (j.job_id) {
-          setJob({ status: "pending", progress: 0, title: t.title });
-          const finished = await pollJob(j.job_id, setJob, t.title);
+          setJobFor(key, { status: "pending", progress: 0, title: t.title });
+          const finished = await pollJob(j.job_id, setJobFor, key, t.title);
           if (finished?.status === "timeout" || finished?.status === "gone") {
             setErr(
               finished.error
@@ -973,11 +1071,17 @@ function App() {
       } catch (e) {
         setErr(fetchErr(e, e.message));
       } finally {
-        setBusyId(null);
+        /* Solo se saca ESTA clave del Set: antes `setBusyId(null)` apagaba el
+           spinner de la descarga que siguiera corriendo. */
+        setBusyIds((cur) => {
+          const next = new Set(cur);
+          next.delete(key);
+          return next;
+        });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fmt, query, setQuery]
+    [fmt, query, setQuery, setJobFor]
   );
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
@@ -1147,7 +1251,7 @@ function App() {
           <span>{err}</span>
         </div>
       )}
-      <ProgressBar job={job} />
+      <ProgressStack jobs={jobs} />
       {matchedDead && (
         <div className="msg msg--warn" role="status">
           <WarningCircle size={17} weight="fill" />
@@ -1245,14 +1349,14 @@ function App() {
                   t={t}
                   query={query}
                   onDownload={onDownload}
-                  busyId={busyId}
+                  busyIds={busyIds}
                 />
               ) : (
                 <Track
                   key={t.source + t.source_id}
                   t={t}
                   query={query}
-                  busy={busyId === t.source + t.source_id}
+                  busy={busyIds.has(rowKey(t))}
                   onDownload={onDownload}
                   verified={verified}
                   onVerified={(k, d) => setVerified((s) => ({ ...s, [k]: d }))}

@@ -271,6 +271,62 @@ con 200. Ahora hay un `favicon.svg` propio en `frontend/public/` y un
 `<link rel="icon">` en `index.html`. Verificado: `/favicon.svg` → 200
 `image/svg+xml`, `/favicon.ico` → 404 (ya no devuelve HTML).
 
+## Tercera tanda: los dos últimos abiertos — 30 sep 2026
+
+### Descargas simultáneas: `busyId`/`job` eran estado único — ARREGLADO
+
+`busyId` era un string y `job` un objeto. Con dos descargas en curso la segunda
+escribía su clave encima de la primera, y el `setBusyId(null)` del `finally` de
+una apagaba el spinner de la otra. Solo se anunciaba una de las dos, aunque las
+dos terminaran bien en el servidor.
+
+Ahora:
+- `busyIds` es un **Set** con todas las claves en curso; cada fila enciende y
+  apaga su spinner sin tocar el de las demás.
+- `jobs` es un **mapa clave → job**; `setJobFor(key, patch)` actualiza una
+  descarga sin pisar el estado de las otras.
+- `ProgressStack` dibuja un toast por descarga, apilados en columna. El
+  auto-borrado a los 5 s es **por job**, con su propio temporizador.
+- `err`/`done` siguen siendo globales a propósito: son "el último mensaje de
+  la pantalla", no uno por fila.
+
+**Verificado en el navegador, no por lectura:** 3 descargas simultáneas → 3
+spinners encendidos y 3 toasts apilados (tops 369/449/530, sin solaparse),
+cada uno con su estado y su título. Con una sola descarga el toast queda
+exactamente donde estaba antes (380px de ancho, `right: 1231`).
+
+### Bug extra que salió al arreglar lo anterior: el spinner del setlist nunca aparecía
+`ShowGroup` comparaba `busyId === s.source_id`, pero `onDownload` guardaba
+`t.source + t.source_id`. La comparación nunca era cierta: **el spinner de las
+pistas de un concierto no se veía nunca**. Ahora ambos lados usan `rowKey()`.
+
+### `href` sin sanitizar de esquema — ARREGLADO
+`item_url` y `webpage_url` vienen de archive.org, iTunes y YouTube y llegaban
+tal cual al `href`. Con `javascript:...`, un click ejecutaría código en **el
+origen de esta página**.
+
+No se demostró que hoy exista una URL así (las fuentes actuales no la producen y
+el HeadlessChrome la bloquea), pero el dato es externo: la defensa va en el
+código y no depende de que la fuente de hoy sea benigna.
+
+`safeUrl()` deja pasar solo `http:`/`https:` y las relativas de un slash (que
+genera la propia app). `ExtLink` es el único componente que abre una URL
+externa: si el esquema no pasa, no renderiza nada — el link desaparece en vez
+de quedar roto o ejecutable. Todos llevan `rel="noopener noreferrer"` (sin
+`noopener`, la página de destino recibe `window.opener` y puede navegar esta
+pestaña).
+
+**Trampa de `safeUrl` que la primera versión tenía** (la encontraron las
+pruebas): `new URL("basura", location.origin)` **no lanza**; resuelve la cadena
+como ruta relativa y devuelve un `http://` propio, o sea que aceptaba
+cualquier texto sin esquema como si fuera una URL nuestra. Y `//evil.com` es
+protocolo-relativa: `new URL` la resolvía a `http://evil.com`, también válida.
+Por eso ahora solo pasa lo que trae `^https?://` de verdad, y `//` se rechaza
+por separado. **Verificado con 16 casos**: `javascript:` (y con otro case, y
+con espacios), `data:`, `vbscript:`, `blob:`, `//host`, basura, `null` y
+vacío rechazados; `http`, `https` y relativas propias pasan. En la app viva:
+47 links externos, todos `https:`, todos con `noopener noreferrer`.
+
 ## Lecciones de esta revisión (importan para la próxima)
 
 - **Cuidado al "verificar" un hallazgo mirando el estado DESPUÉS del arreglo.**
@@ -298,15 +354,14 @@ Ninguno rompe el loop central, que se verificó entero con descargas reales
 
 **La mayoría se/arreglaron en la segunda tanda (ver arriba).** Queda esto:
 
-### SIGUE ABIERTO: dos descargas simultáneas se pisan
-`job`/`busyId` es un estado único: las dos terminan en el server pero solo se
-anuncia una, y el `setBusyId(null)` de la primera apaga el spinner de la segunda.
-Decisión de diseño pendiente, no bug accidental.
+### Los dos que quedaban, ARREGLADOS en la tercera tanda
+- **Descargas simultáneas** → `busyIds` es un Set y `jobs` un mapa; un toast por descarga. Verificado con 3 a la vez.
+- **`href` sin sanitizar** → `safeUrl()` + `ExtLink`; solo http/https y relativas propias. Verificado con 16 casos.
 
-### SIGUE ABIERTO: `href` sin sanitizar de esquema
-`main.jsx` pasa URLs del servidor a `href` sin validar el esquema. **No demostrado
-como vulnerabilidad** (el HeadlessChrome las bloquea, probado también con un `<a>`
-nativo), pero no hay validación ni CSP. Queda como superficie.
+Al arreglarlos salió un **tercero**: `ShowGroup` comparaba `busyId` contra
+`s.source_id` cuando `onDownload` guardaba `source + source_id`, así que el
+spinner de las pistas de un concierto nunca se veía. Ambos lados usan ahora
+`rowKey()`.
 
 ### ARREGLADO en la segunda tanda
 - El aviso de "esto no es lo que buscabas" nunca se dispara → **arreglado** (doble causa, backend + frontend).

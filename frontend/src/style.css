@@ -535,6 +535,28 @@ button {
    final de la pagina. Va abajo a la DERECHA, donde la lista tiene menos
    texto, y con un ancho mas angosto. Sigue siendo fixed (tiene que verse
    mientras scrollea) pero ya no se sienta encima de lo que estas leyendo. */
+/* Varias descargas a la vez: una columna de toasts apilados hacia arriba desde
+   abajo a la derecha. Con una sola, .progstack no tiene fondo ni padding y el
+   toast se posiciona exactamente como antes (esto no cambia el caso comum). */
+.progstack {
+  position: fixed;
+  z-index: 50;
+  right: 16px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.progstack .prog {
+  position: static;
+  width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
 .prog {
   position: fixed;
   z-index: 50;
@@ -1435,11 +1457,17 @@ button {
   /* En movil no hay "derecha libre": el toast vuelve a ocupar el ancho, pero
      centrado y por ENCIMA de una banda de contenido, que es lo unico que
      funciona sin tapar la fila que se esta leyendo. */
-  .prog {
+  .progstack {
     left: 0;
     right: 0;
     width: min(560px, calc(100% - 32px));
     margin: 0 auto;
+  }
+
+  /* En movil el toast suelto nunca deberia verse: el stack es quien posiciona.
+     Si se deja, apareceria dos veces (una fija, una en el stack). */
+  .progstack > .prog {
+    position: static;
   }
 
   .finder {
