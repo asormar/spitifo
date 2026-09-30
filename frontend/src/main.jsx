@@ -56,7 +56,10 @@ const FORMATS = [
   {
     value: "original",
     label: "original",
-    title: "Descargar el archivo tal cual, sin convertir",
+    // El backend no tiene modo "sin convertir": preferredcodec cae a mp3
+    // para todo fmt que no sea mp3/m4a (ytdlp_source.py). Decir lo contrario
+    // seria prometer algo que no pasa.
+    title: "Se guarda en MP3, igual que la primera opcion",
   },
 ];
 
@@ -66,6 +69,22 @@ const EXAMPLES = [
   "Radiohead Creep",
   "Miles Davis So What",
 ];
+
+/* El `detail` de FastAPI no siempre es un string: en un 422 es un array de
+   {loc, msg, type}. Con `new Error(detail)` eso se convierte en
+   "[object Object]" y el usuario lee eso en el aviso. Aplanar a los `msg`.
+   Un string se devuelve tal cual; si no hay nada util, el fallback. */
+function errMsg(d, fallback) {
+  const detail = d?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((e) => (typeof e === "string" ? e : e?.msg))
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+  return fallback;
+}
 
 function fmtTime(s) {
   if (!s) return "--:--";
@@ -131,18 +150,48 @@ function buildSearchParams(q, mode) {
   return p;
 }
 
-/* Sondea el progreso de una descarga yt-dlp hasta que termine. */
+/* Sondea el progreso de una descarga yt-dlp hasta que termine.
+
+   Devuelve el estado terminal, o { status: "timeout" } si se venció el tope.
+   El tope existe porque el poll no puede colgar el navegador para siempre,
+   pero una pista larga (un concierto de 114 min puede tardar 10 min en
+   transcodificar) lo revienta sin que el usuario se entere de nada: el toast
+   queda girando en "processing" para siempre. Con "timeout" el llamador puede
+   al menos avisar que la descarga sigue corriendo en el servidor. */
 async function pollJob(jobId, setJob, title) {
   for (let i = 0; i < 600; i++) {
-    // eslint-disable-next-line no-await-in-loop
-    const r = await fetch(`${API}/download/progress/${jobId}`);
-    const d = await r.json();
+    let d;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await fetch(`${API}/download/progress/${jobId}`);
+      d = await r.json();
+    } catch (e) {
+      // El server se cae o la red se corta: sin esto el rechazo sube sin
+      // catch y el toast queda girando en "Descargando, N%" para siempre.
+      // Se marca como fallido para que ProgressBar lo muestre y el aviso
+      // se retire solo con el mismo temporizador que un final normal.
+      const failed = { status: "error", error: "se perdió la conexión con el servidor" };
+      setJob({ ...failed, title });
+      return failed;
+    }
+    /* "unknown" es lo que devuelve el backend para un job que ya no existe
+       (purgado por el TTL). Seguir sondeando 600 veces un job que no va a
+       aparecer es trabajo perdido: se corta aca. */
+    if (d.status === "unknown") {
+      const gone = { status: "gone", error: "el servidor ya no tiene esta descarga" };
+      setJob({ ...gone, title });
+      return gone;
+    }
     setJob({ ...d, title });
     if (d.status === "done" || d.status === "error") return d;
     // eslint-disable-next-line no-await-in-loop
     await new Promise((res) => setTimeout(res, 700));
   }
-  return null;
+  // El tope se vencio, pero la descarga puede seguir corriendo en el server:
+  // NO se marca como error (eso diria "Falló" y seria falso). Se retira igual
+  // el toast, asi que el useEffect de JOB_DISMISS_MS tiene que incluirlo.
+  setJob({ status: "timeout", title });
+  return { status: "timeout" };
 }
 
 /* Verificacion: lee los tags reales del audio y compara con lo buscado. */
@@ -159,7 +208,7 @@ function VerifyPanel({ t, query, onVerified }) {
         )}`
       );
       const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || "no se pudo verificar");
+      if (!r.ok) throw new Error(errMsg(d, "no se pudo verificar"));
       setData(d);
       setState("done");
       onVerified?.(t.source + t.source_id, d);
@@ -246,7 +295,7 @@ function ShowGroup({ t, query, onDownload, busyId }) {
         `${API}/setlist?source_ids=${encodeURIComponent(ids)}&q=${encodeURIComponent(query)}`
       );
       const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || "no se pudo leer el setlist");
+      if (!r.ok) throw new Error(errMsg(d, "no se pudo leer el setlist"));
       setTracks(d.tracks);
     } catch (e) {
       setTracks([]);
@@ -363,16 +412,19 @@ function ProgressBar({ job }) {
   const pct = Math.round(job.progress || 0);
   const done = job.status === "done";
   const failed = job.status === "error";
+  /* El tope de espera se vencio o el job ya no existe: no fallo, pero tampoco
+     se puede seguir mirando. No es "descargando" porque ya no lo sabemos. */
+  const halted = job.status === "timeout" || job.status === "gone";
   const shown = done ? 100 : Math.max(pct, 2);
   return (
     <div
-      className={`prog ${done ? "is-done" : ""} ${failed ? "is-failed" : ""}`}
+      className={`prog ${done ? "is-done" : ""} ${failed || halted ? "is-failed" : ""}`}
       role="status"
       aria-live="polite"
     >
       <div className="prog__top">
         <span className="prog__ico">
-          {failed ? (
+          {failed || halted ? (
             <WarningCircle size={19} weight="fill" />
           ) : done ? (
             <CheckCircle size={19} weight="fill" />
@@ -386,6 +438,10 @@ function ProgressBar({ job }) {
             ? "Falló la descarga"
             : done
             ? "Listo, está en tu biblioteca"
+            : halted
+            ? job.status === "gone"
+              ? "El servidor ya no tiene esta descarga"
+              : "Sigue descargando en el servidor"
             : `Descargando, ${pct}%`}
         </span>
       </div>
@@ -595,6 +651,71 @@ function FmtPicker({ value, onChange }) {
   );
 }
 
+/* El selector de modo es el mismo componente visual que el de formato (.seg) y
+   comparte rol, asi que comparte tambien el patron: radiogroup navegable con
+   flechas y roving tabindex. Sin esto el patron ARIA prometia flechas que no
+   existian, y el teclado necesitaba tres tab stops para recorrer tres modos. */
+function ModePicker({ value, onChange, ytDead }) {
+  const refs = useRef([]);
+  const current = Math.max(
+    0,
+    MODES.findIndex((m) => m.id === value)
+  );
+
+  const move = (next) => {
+    const i = (next + MODES.length) % MODES.length;
+    onChange(MODES[i].id);
+    refs.current[i]?.focus();
+  };
+
+  return (
+    <div className="segs" role="radiogroup" aria-label="Modo de búsqueda">
+      {MODES.map((m, i) => (
+        <button
+          key={m.id}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
+          type="button"
+          role="radio"
+          aria-checked={value === m.id}
+          tabIndex={value === m.id ? 0 : -1}
+          className={[
+            "seg",
+            value === m.id ? "is-on" : "",
+            m.id === "ytdlp" && ytDead ? "mode--dead" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={() => onChange(m.id)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+              e.preventDefault();
+              move(current + 1);
+            } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+              e.preventDefault();
+              move(current - 1);
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              move(0);
+            } else if (e.key === "End") {
+              e.preventDefault();
+              move(MODES.length - 1);
+            }
+          }}
+          title={
+            m.id === "ytdlp" && ytDead
+              ? "YouTube está apagado en este servidor: no devolverá resultados"
+              : undefined
+          }
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function App() {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -617,6 +738,7 @@ function App() {
   const [searched, setSearched] = useState(false);
   const inputRef = useRef();
   const lastSig = useRef("");
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     fetch(`${API}/health`)
@@ -629,7 +751,10 @@ function App() {
      (bien o mal). Mientras corre no se toca. Si arranca otra descarga, onDownload
      lo resetea y el cleanup cancela el temporizador pendiente. */
   useEffect(() => {
-    if (job?.status !== "done" && job?.status !== "error") return undefined;
+    if (job?.status !== "done"
+        && job?.status !== "error"
+        && job?.status !== "timeout"
+        && job?.status !== "gone") return undefined;
     const id = setTimeout(() => setJob(null), JOB_DISMISS_MS);
     return () => clearTimeout(id);
   }, [job?.status]);
@@ -641,6 +766,11 @@ function App() {
   const runSearch = useCallback(async (text, m) => {
     const t = text.trim();
     if (!t) return;
+    /* Cada busqueda toma un numero. Dos overlapping (o el resync)(devuelven
+       en cualquier orden: si la lenta llega despues no puede pisar a la que
+       el usuario acaba de pedir, ni la URL, ni disparar una tercera peticion
+       con el setQuery de la respuesta vieja. */
+    const seq = ++searchSeq.current;
     lastSig.current = `${m}|${t}`;
     setLoading(true);
     setErr(null);
@@ -652,14 +782,16 @@ function App() {
     try {
       const r = await fetch(`${API}/search?${params.toString()}`);
       const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || "error de búsqueda");
+      if (!r.ok) throw new Error(errMsg(d, "error de búsqueda"));
+      if (seq !== searchSeq.current) return;
       setResults(d.results || []);
       setQuery(t);
     } catch (e) {
+      if (seq !== searchSeq.current) return;
       setErr(e.message);
       setResults([]);
     } finally {
-      setLoading(false);
+      if (seq === searchSeq.current) setLoading(false);
     }
   }, []);
 
@@ -719,7 +851,7 @@ function App() {
           );
           if (!rr.ok) {
             const d = await rr.json();
-            throw new Error(d.detail || "no se pudo resolver");
+            throw new Error(errMsg(d, "no se pudo resolver"));
           }
           track = await rr.json();
           delete track.downloadable;
@@ -736,13 +868,18 @@ function App() {
           }
         );
         const j = await rd.json();
-        if (!rd.ok) throw new Error(j.detail || "falló la descarga");
+        if (!rd.ok) throw new Error(errMsg(j, "falló la descarga"));
 
         // yt-dlp devuelve job_id: la descarga corre en background, hacer polling
         if (j.job_id) {
           setJob({ status: "pending", progress: 0, title: t.title });
           const finished = await pollJob(j.job_id, setJob, t.title);
-          if (finished) {
+          if (finished?.status === "timeout" || finished?.status === "gone") {
+            setErr(
+              finished.error
+                || "Esta descarga sigue corriendo en el servidor y va a aparecer en tu biblioteca cuando termine."
+            );
+          } else if (finished) {
             if (finished.status === "error") {
               setErr(finished.error || "la descarga falló");
             } else {
@@ -783,10 +920,16 @@ function App() {
     [fmt, query, setQuery]
   );
 
+  /* Si el server no responde, el contador queda en null (consultando) en vez
+     de romperse: el panel se abre vacio y el error se ve en la consola. */
   const loadLib = useCallback(async () => {
-    const r = await fetch(`${API}/library`);
-    const d = await r.json();
-    setLib(d.files || []);
+    try {
+      const r = await fetch(`${API}/library`);
+      const d = await r.json();
+      setLib(d.files || []);
+    } catch (e) {
+      setLib((cur) => cur || []);
+    }
   }, []);
 
   const toggleLib = useCallback(() => {
@@ -920,31 +1063,7 @@ function App() {
           </form>
 
           <section className="controls" aria-label="Cómo buscar">
-            <div className="segs" role="radiogroup" aria-label="Modo de búsqueda">
-              {MODES.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={mode === m.id}
-                  className={[
-                    "seg",
-                    mode === m.id ? "is-on" : "",
-                    m.id === "ytdlp" && ytDead ? "mode--dead" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => setMode(m.id)}
-                  title={
-                    m.id === "ytdlp" && ytDead
-                      ? "YouTube está apagado en este servidor: no devolverá resultados"
-                      : undefined
-                  }
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+            <ModePicker value={mode} onChange={setMode} ytDead={ytDead} />
             <FmtPicker value={fmt} onChange={setFmt} />
           </section>
         </div>

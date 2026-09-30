@@ -459,11 +459,22 @@ async def library():
     return {"library": str(LIBRARY), "count": len(files), "files": files}
 
 
+# Solo formatos de audio: el endpoint sirve para preview, no para leer
+# cualquier archivo que haya quedado en un subdirectorio de la biblioteca.
+AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"}
+
+
 @app.get("/api/audio")
 async def audio(path: str):
     """Sirve un archivo de la biblioteca para preview en el navegador."""
     p = Path(path).resolve()
-    if not str(p).startswith(str(LIBRARY.resolve())) or not p.is_file():
+    # is_relative_to y NO startswith de string: un startswith deja pasar
+    # cualquier carpeta hermana que empiece con el nombre de la biblioteca
+    # (library_backup, library-temp, library2...). is_relative_to compara
+    # por componentes, asi que solo entra lo que esta de verdad adentro.
+    if not p.is_relative_to(LIBRARY.resolve()):
+        raise HTTPException(404, "no encontrado")
+    if p.suffix.lower() not in AUDIO_EXTS or not p.is_file():
         raise HTTPException(404, "no encontrado")
     return FileResponse(p)
 

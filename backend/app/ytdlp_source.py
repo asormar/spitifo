@@ -272,10 +272,18 @@ class YtDlpSource(Source):
                 # cualquier sanitize extra que haya hecho yt-dlp.
                 fp = info.get("filepath")
                 if not fp or not Path(fp).exists():
+                    # El fallback tiene que respetar el `fmt` pedido: con el
+                    # orden fijo (mp3 primero) un .mp3 ya presente en la carpeta
+                    # ganaba siempre, y pedir m4a producia el .m4a pero
+                    # reportaba nombre/formato/tamano del .mp3 viejo.
+                    # "original" no es un codec: cae a mp3 igual que
+                    # preferredcodec de arriba, asi que tampoco se busca otro.
+                    want = "." + (fmt if fmt in ("mp3", "m4a") else "mp3")
+                    other = ".m4a" if want == ".mp3" else ".mp3"
                     # preferir el archivo final sobre intermediarios
                     found = sorted(
                         folder.glob(glob.escape(stem) + ".*"),
-                        key=lambda p: {".mp3": 0, ".m4a": 1}.get(
+                        key=lambda p: {want: 0, other: 1}.get(
                             p.suffix.lower(), 9))
                     for cand in found:
                         fp = str(cand)
