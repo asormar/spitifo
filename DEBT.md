@@ -73,8 +73,10 @@ Los 4 scripts sueltos (`smoke_test.py`, `test_convert.py`, `test_wav.py`,
 `test_ytdlp_flow.py`) se conservaron por historial, pero ya no son la única
 cobertura: hay una suite pytest en `tests/`.
 
-**134 tests, 133 pasan, exit=0** (125 offline en ~1s + 8 de integración contra
-la red real).
+**134 tests, 131 pasan, exit=1** (125 offline en ~1s + 8 de integración contra la red real). El 1 que falla es `test_search_resolve_download_verifica_tags`:
+el 403 de archive.org (ítem 8 de abajo) deja al resolve sin tags, y el
+veredicto no se escribe. **Es preexistente**: verificado con `git stash`, falla
+igual sin los cambios de esta tanda.
 
 `pytest.ini` lleva `testpaths = tests` y es **imprescindible**: sin eso pytest
 colecta los 4 scripts de la raíz, que llaman `asyncio.run()` a nivel de módulo,
@@ -169,7 +171,7 @@ como el de formato, que sí estaba bien.
 
 ## Lo que queda abierto
 
-### Dos descargas simultáneas se pisan
+### Dos descargas simultáneas se pisan (SIGUE ABIERTO)
 `job`/`busyId` es un estado único: las dos terminan en el server pero solo se
 anuncia una, y el `setBusyId(null)` de la primera apaga el spinner de la segunda.
 Decisión de diseño pendiente, no bug accidental.
@@ -183,6 +185,91 @@ nativo), pero no hay validación ni CSP. Queda como superficie.
 `setLib((cur) => cur || [])` deja la biblioteca como "vacía consultada" ante un
 fallo de red, que es justo lo que `lib === null` servía para distinguir. Es una
 regresión chica del arreglo de arriba: la forma correcta es no tocar `lib`.
+
+## Segunda tanda: lo que se ARREGLÓ — 30 sep 2026 (después de la revisión)
+
+Todo verificado con ejecución real, no por lectura: descargas completas de
+yt-dlp contra la API viva y pantalla abierta en el navegador.
+
+### El aviso de identidad NUNCA se disparaba (el más grave de todos)
+Era la función central del proyecto y estaba muerta. **Doble causa**, y por eso
+bastaba con arreglar una para que siguiera sin avisar:
+
+1. `main.jsx` hacía `return` en el camino con `job_id` **antes** del chequeo de
+   `match`. Ese camino es el modo Recomendado, que es el que se abre por
+   defecto: es decir, el 90% de las descargas.
+2. El job de yt-dlp nunca publicaba el veredicto. `download()` receive el
+   `track` de iTunes y escribía tags con esa ficha, así que no comparaba nada
+   contra el archivo real; y `/api/download` armaba `ident` con
+   `track.extra.get("match")`, que en ese flujo siempre era `None`.
+
+El veredicto se calcula ahora **después** de descargar, en
+`ytdlp_source.download()`, contra el título real del video, y se publica en el
+job (`_finish(..., match=, match_label=, real_title=)`). `main.py` pasa el
+`query` que ya recibía por parámetro. La comprobación de la UI se movió a una
+función pura, `mismatchNotice()`, usada por los dos caminos.
+
+**Verificado con 4 descargas reales contra YouTube:**
+
+| query | archivo | `match` que llegó a la UI |
+|---|---|---|
+| Creep Radiohead | Creep (Acoustic) | `partial` → sin aviso |
+| Smells Like Teen Spirit | Smells Like Teen Spirit (Official MV) | `match` → sin aviso |
+| Wuthering Heights Kate Bush | Wuthering Heights - Official MV | `match` → sin aviso |
+| So What Miles Davis (con el `webpage_url` de otro tema, a proposito) | Numb, de Linkin Park | **`mismatch` → aviso** |
+
+El caso del aviso se forzó a mano (ficha de iTunes de "So What" apuntando al
+video de "Numb") porque con queries reales el matcher acierta y no hay forma
+natural de que el aviso aparezca. Salió `match: "mismatch"`,
+`real_title: "Numb (Official Music Video) [4K UPGRADE] – Linkin Park"`.
+
+`unknown` también genera aviso, y a propósito: "no se pudo verificar" es más
+honesto que un visto bueno que nadie emitió.
+
+### El toast pisaba la fila que estabas leyendo
+`position: fixed` + `padding-bottom: 128px` solo protege el final de la página:
+a mitad de scroll se superponía a los resultados. Ahora va **abajo a la
+derecha** (380px de ancho), que es donde la lista tiene menos texto. En móvil
+(`max-width: 720px`) vuelve a ocupar el ancho, porque ahí no hay "derecha
+libre". Verificado en pantalla: `width: 380`, `right: 1231`.
+
+### La "navegación flotante" era `position: static`
+`88e8ff5` la describía como flotante pero no tenía `position`. Medido con scroll
+560: `y: -536` (se iba con el scroll, y con ella el contador de biblioteca).
+Ahora es `sticky` con `top: 12px`. Verificado: `y: 12` con scroll 560.
+
+### Modo Recomendado con yt-dlp apagado: 0 descargables sin avisar
+El aviso `.mode--dead` solo cubría el modo que se elige a mano. El modo
+**Recomendado**, que es el que se abre solo, respondía "30 resultados, 0
+descargables" sin mencionar nada — y con el server sin `YTDLP_ENABLED=1` esa
+es la primera pantalla que ve el usuario. Nuevo aviso `matchedDead` que explica
+que el audio completo sale de YouTube y que iTunes solo tiene previews.
+
+### El `catch` de `loadLib` confundía "vacía" con "sin consultar"
+`setLib((cur) => cur || [])` convertía un fallo de red en "biblioteca vacía",
+que es justo lo que `lib === null` servía para distinguir. Ahora el `catch` no
+toca `lib`, y además se mira `r.ok` para que un 500 no pise el contador.
+
+### La franja `.msg` no se auto-borraba nunca
+El toast (`.prog`) sí se retiraba a los 5 s; la franja de éxito se quedaba en
+pantalla hasta que otra acción la limpiara. Ahora usa el mismo temporizador
+(`JOB_DISMISS_MS`). **No** se retiran el aviso de error ni el de "esto no es lo
+que buscabas": esos son información que el usuario necesita leer.
+
+### Portada rota: ícono del navegador
+`onError` faltante en los dos `<img class="card__art">` (Track y ShowGroup).
+Ahora salen por el componente `Artwork`, que cae al placeholder con la nota
+musical que ya existía en CSS (`.card__art--ph`).
+
+### Servidor caído: "Failed to fetch" crudo, en inglés
+`fetchErr()` traduce el `TypeError` de fetch a un mensaje en español. Los otros
+errores pasan tal cual.
+
+### Sin favicon
+`/favicon.ico` caía en el `StaticFiles(html=True)` y devolvía el `index.html`
+con 200. Ahora hay un `favicon.svg` propio en `frontend/public/` y un
+`<link rel="icon">` en `index.html`. Verificado: `/favicon.svg` → 200
+`image/svg+xml`, `/favicon.ico` → 404 (ya no devuelve HTML).
 
 ## Lecciones de esta revisión (importan para la próxima)
 
@@ -204,44 +291,41 @@ regresión chica del arreglo de arriba: la forma correcta es no tocar `lib`.
   `duration_s` de la API, así que el "Numb = 17:29" del diseño viejo es
   estructuralmente imposible ahí. Verificado 3:07 con ffprobe.
 
-## Más hallazgos de la revisión (30 sep) que quedan abiertos
+## Más hallazgos de la revisión (30 sep) — estado
 
 Ninguno rompe el loop central, que se verificó entero con descargas reales
 (Numb, Chopin, So What, Creep): buscar → resultados → descargar → reproducir.
 
-### El aviso de "esto no es lo que buscabas" nunca se dispara (preexistente)
-`main.jsx:742` hace `return` en el camino con `job_id`, así que el `match:
-mismatch` que devuelve la descarga nunca llega a la UI: sale verde (`msg--ok`).
-Doble causa: el `return` idéntico ya estaba en `a2020c9`, y el job de `progress`
-tampoco lleva el campo `match`. No es una regresión del rediseño, pero el aviso de
-identidad —una de las funciones de este proyecto— no está en pantalla.
+**La mayoría se/arreglaron en la segunda tanda (ver arriba).** Queda esto:
 
-### Con yt-dlp apagado, el modo Recomendado da 0 descargables sin avisar
-El aviso de "YouTube está apagado" solo cubre el modo que elegís a mano
-(`.mode--dead`). El modo **Recomendado**, que es el que se abre por defecto,
-responde "30 resultados, 0 descargables" sin mencionar nada. Con el server sin
-`YTDLP_ENABLED=1` es la primera pantalla que ve el usuario.
+### SIGUE ABIERTO: dos descargas simultáneas se pisan
+`job`/`busyId` es un estado único: las dos terminan en el server pero solo se
+anuncia una, y el `setBusyId(null)` de la primera apaga el spinner de la segunda.
+Decisión de diseño pendiente, no bug accidental.
 
-### El toast fijo pisa la fila que estás leyendo
-`position: fixed` + `padding-bottom: 128px` solo protege el final de la página: a
-mitad de scroll el toast se superpone a los resultados.
+### SIGUE ABIERTO: `href` sin sanitizar de esquema
+`main.jsx` pasa URLs del servidor a `href` sin validar el esquema. **No demostrado
+como vulnerabilidad** (el HeadlessChrome las bloquea, probado también con un `<a>`
+nativo), pero no hay validación ni CSP. Queda como superficie.
 
-### La "navegación flotante" es `position: static`
-Medido con scroll 560: `y: -536`. Desaparece al bajar, y con ella el contador de
-biblioteca. El commit `88e8ff5` la describe como flotante.
+### ARREGLADO en la segunda tanda
+- El aviso de "esto no es lo que buscabas" nunca se dispara → **arreglado** (doble causa, backend + frontend).
+- Con yt-dlp apagado, el modo Recomendado da 0 descargables sin avisar → **arreglado** (`matchedDead`).
+- El toast fijo pisa la fila que estás leyendo → **arreglado** (abajo a la derecha, 380px).
+- La "navegación flotante" es `position: static` → **arreglado** (`sticky`, verificado y=12 con scroll 560).
+- La franja de éxito `.msg` no se auto-borra nunca → **arreglado** (mismo temporizador que el toast).
+- Servidor caído: "Failed to fetch" crudo en inglés → **arreglado** (`fetchErr`).
+- Portada que falla al cargar → **arreglado** (`onError`, componente `Artwork`).
+- Sin favicon → **arreglado** (`favicon.svg` + `<link rel="icon">`).
+- El `catch` de `loadLib` confunde "vacía" con "sin consultar" → **arreglado** (el catch no toca `lib`, y se mira `r.ok`).
 
-### La franja de éxito `.msg` no se auto-borra nunca
-El `.prog` (el toast del commit) sí, a los ~6 s. La franja "X está en tu
-biblioteca" queda en pantalla hasta que otra acción la limpie.
-
-### Otros menores
-- Servidor caído: muestra `Failed to fetch` crudo, en inglés.
-- Portada que falla al cargar: aparece el ícono roto del navegador, no el
-  placeholder con la nota musical (falta `onError`).
-- Sin favicon: `/favicon.ico` devuelve el `index.html` con 200, porque el backend
-  monta `dist/` con `html=True`.
+### Sigue siendo deuda
+- `test_search_resolve_download_verifica_tags` falla: el 403 de archive.org
+  deja al resolve sin tags y el veredicto no se escribe. Preexistente, verificado
+  con `git stash`. Es el ítem 8.
 - Flakiness de integración: 1 de 6 corridas salteó por rate-limit de **YouTube**
-  (403), que es distinto del 403 de archive.org del ítem 8 de arriba.
+  (403), que es distinto del 403 de archive.org del ítem 8.
+- `looks_like_music()` no filtra "curso" (xfail estricto, ítem 7).
 
 ## Legal — decisión del usuario
 

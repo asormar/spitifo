@@ -86,6 +86,34 @@ function errMsg(d, fallback) {
   return fallback;
 }
 
+/* El aviso de identidad, en un solo lugar. Antes vivia inline en el camino sin
+   job_id, asi que el camino CON job_id (modo Recomendado, que es el default)
+   salia con `return` antes de llegar y nunca avisaba: te bajabas la cancion
+   equivocada con un cartel verde.
+
+   "unknown" tambien avisa, y a proposito: significa que nadie pudo leer de
+   donde viene el audio. "No se pudo verificar" es mas honesto que un visto
+   bueno que nadie emitio. */
+function mismatchNotice(d, match, realTitle, query) {
+  if (match === "mismatch" || match === "unknown") {
+    const donde = realTitle
+      ? `en el archivo dice "${realTitle}"`
+      : "no se pudo verificar de donde viene el audio";
+    return { ...d, warning: `Ojo: ${donde} y tu buscaste "${query}".` };
+  }
+  return d;
+}
+
+/* fetch() tira TypeError con "Failed to fetch" (en ingles) cuando el server esta
+   caido o se corta la red. Sin esto el usuario lee eso crudo en el aviso. */
+function fetchErr(e, fallback) {
+  const m = typeof e?.message === "string" ? e.message : "";
+  if (/failed to fetch|networkerror|load failed/i.test(m)) {
+    return "No se pudo contactar con el servidor. Esta sigue en marcha?";
+  }
+  return fallback;
+}
+
 function fmtTime(s) {
   if (!s) return "--:--";
   const m = Math.floor(s / 60);
@@ -125,6 +153,29 @@ const NODL_TITLE = {
   preview: "De esta fuente solo sale un preview de 30 s",
   none: "No encontramos una versión completa de este tema",
 };
+
+/* La portada viene de iTunes y a veces no carga (o no existe). Sin onError el
+   navegador pinta su icono roto de imagen. Con esto, si falla, sale el
+   placeholder con la nota musical. */
+function Artwork({ t }) {
+  const [broken, setBroken] = useState(false);
+  if (!t.artwork_url || broken) {
+    return (
+      <div className="card__art card__art--ph" aria-hidden="true">
+        <Waveform size={26} />
+      </div>
+    );
+  }
+  return (
+    <img
+      className="card__art"
+      src={t.artwork_url}
+      alt=""
+      loading="lazy"
+      onError={() => setBroken(true)}
+    />
+  );
+}
 
 /* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Recomendado no
    son la misma cosa: iTunes pone los datos y la portada, YouTube pone el
@@ -214,7 +265,7 @@ function VerifyPanel({ t, query, onVerified }) {
       onVerified?.(t.source + t.source_id, d);
     } catch (e) {
       setState("error");
-      setData({ error: e.message });
+      setData({ error: fetchErr(e, e.message) });
     }
   }, [t.source, t.source_id, query, onVerified]);
 
@@ -316,7 +367,7 @@ function ShowGroup({ t, query, onDownload, busyId }) {
   return (
     <li className="card card--wide">
       {t.artwork_url ? (
-        <img className="card__art" src={t.artwork_url} alt="" loading="lazy" />
+        <Artwork t={t} />
       ) : (
         <div className="card__art card__art--ph">
           <MusicNotes size={52} />
@@ -471,7 +522,7 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
   return (
     <li className="card" style={{ "--i": index ?? 0 }}>
       {t.artwork_url ? (
-        <img className="card__art" src={t.artwork_url} alt="" loading="lazy" />
+        <Artwork t={t} />
       ) : (
         <div className="card__art card__art--ph">
           <MusicNotes size={44} />
@@ -759,6 +810,20 @@ function App() {
     return () => clearTimeout(id);
   }, [job?.status]);
 
+  /* La franja de exito/aviso (.msg) NO se retiraba nunca: se quedaba en
+     pantalla hasta que otra accion la limpiara, mientras el toast de progreso
+     si se va solo a los 5 s. Se usa el mismo temporizador.
+
+     NO se retira el aviso de ERROR ni el de "esto no es lo que buscabas": esos
+     son informacion que el usuario necesita leer, y desaparecen al buscar de
+     nuevo o al descargar otra cosa (setDone(null) / setErr(null) en
+     onDownload). */
+  useEffect(() => {
+    if (!done || done.warning) return undefined;
+    const id = setTimeout(() => setDone(null), JOB_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [done]);
+
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
      automatico comparten exactamente el mismo camino, y no importa que el
@@ -883,35 +948,30 @@ function App() {
             if (finished.status === "error") {
               setErr(finished.error || "la descarga falló");
             } else {
-              setDone({
-                ...j, ...finished,
+              // El veredicto lo publica el backend DENTRO del job (lo calcula
+              // en download contra el titulo real del video). Antes este
+              // camino hacia `return` y el `match` nunca llegaba a la UI.
+              const d = {
+                ...j,
+                ...finished,
                 filename: finished.filename || finished.path,
                 size_mb: finished.size_mb,
                 match: finished.match || j.match,
                 real_title: finished.real_title || j.real_title,
-              });
+              };
+              setDone(
+                mismatchNotice(d, d.match || vmatch, d.real_title || vtitle, query)
+              );
               loadLib();
             }
           }
           return;
         }
 
-        // avisar si lo que se bajo no es lo que se busco
-        const finalMatch = j.match || vmatch;
-        const finalTitle = j.real_title || vtitle;
-        if (finalMatch === "mismatch" || finalMatch === "unknown") {
-          setDone({
-            ...j,
-            warning: `Ojo: en el archivo dice "${
-              finalTitle || "sin título"
-            }" y tú buscaste "${query}".`,
-          });
-        } else {
-          setDone(j);
-        }
+        setDone(mismatchNotice(j, j.match || vmatch, j.real_title || vtitle, query));
         loadLib();
       } catch (e) {
-        setErr(e.message);
+        setErr(fetchErr(e, e.message));
       } finally {
         setBusyId(null);
       }
@@ -925,10 +985,13 @@ function App() {
   const loadLib = useCallback(async () => {
     try {
       const r = await fetch(`${API}/library`);
+      if (!r.ok) return; // un 500 no puede pisar el contador
       const d = await r.json();
       setLib(d.files || []);
     } catch (e) {
-      setLib((cur) => cur || []);
+      /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
+         en "biblioteca vacia", que es justo lo que `lib === null` servia para
+         distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
   }, []);
 
@@ -1016,6 +1079,15 @@ function App() {
   const ytOn = healthByName.ytdlp?.active;
   const ytDead = health !== null && !ytOn;
 
+  /* Con yt-dlp apagado, el modo Recomendado es el que se abre por defecto y
+     devuelve "30 resultados, 0 descargables" sin decir por que: iTunes solo
+     tiene previews de 30 s y el audio completo sale de YouTube. El aviso
+     existia para el modo que se elige a mano (.mode--dead), no para el que
+     arranca solo. Sin esto, con el server sin YTDLP_ENABLED=1, la primera
+     pantalla parece una app rota. */
+  const matchedDead =
+    ytDead && mode === "matched" && results.length > 0 && fullCount === 0;
+
   return (
     <div className="app">
       <div className="blob blob--coral" aria-hidden="true" />
@@ -1076,6 +1148,16 @@ function App() {
         </div>
       )}
       <ProgressBar job={job} />
+      {matchedDead && (
+        <div className="msg msg--warn" role="status">
+          <WarningCircle size={17} weight="fill" />
+          <span>
+            YouTube está apagado en el servidor, y es de ahí de donde sale el
+            audio completo. Por eso estos {results.length} resultados no se
+            pueden descargar: iTunes solo tiene previews de 30 segundos.
+          </span>
+        </div>
+      )}
       {done && (
         <div className={`msg ${done.warning ? "msg--warn" : "msg--ok"}`} role="status">
           {done.warning ? (

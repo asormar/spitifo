@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#CFE6F5" />
+    <!-- El favicon va declarado porque /favicon.ico cae en el StaticFiles con
+         html=True y devuelve el index.html con 200: el navegador lo tomaba por
+         una pagina, no por una imagen. -->
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Spitifo: descarga música libre</title>
   </head>
   <body>

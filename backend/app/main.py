@@ -355,7 +355,8 @@ async def download(payload: DownloadReq, query: str | None = None,
 
         if wait:
             try:
-                result = await ysrc.download(track, payload.fmt, job_id=job_id)
+                result = await ysrc.download(track, payload.fmt, job_id=job_id,
+                                             query=query)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except Exception as e:
@@ -366,7 +367,8 @@ async def download(payload: DownloadReq, query: str | None = None,
 
         async def _bg():
             try:
-                await ysrc.download(track, payload.fmt, job_id=job_id)
+                await ysrc.download(track, payload.fmt, job_id=job_id,
+                                    query=query)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
 

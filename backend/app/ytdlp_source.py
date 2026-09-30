@@ -202,16 +202,23 @@ class YtDlpSource(Source):
 
     # -------------------------------------------------------------- download
     async def download(self, track: Track, fmt: str = "mp3",
-                       job_id: str | None = None) -> dict:
+                       job_id: str | None = None,
+                       query: str | None = None) -> dict:
         """Descarga via yt-dlp (usa su postprocessor de ffmpeg) con progreso.
 
         No reutiliza downloader.download_track porque yt-dlp gestiona su propio
         pipeline de formatos + postprocess. `job_id` lo puede crear el caller
         (main.py) para que la UI sepa que id hacer polling desde el arranque.
+
+        `query` es lo que el usuario escribio. Se usa DESPUES de descargar,
+        contra el titulo real del video, para publicar el veredicto de
+        identidad en el job: sin esto la UI recibe status=done sin `match` y
+        nunca puede avisar "esto no es lo que buscabas".
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
         from .downloader import LIBRARY, _write_tags
+        from .identify import verdict
         url = track.extra.get("webpage_url")
         if not url:
             raise ValueError("ytdlp: falta webpage_url")
@@ -322,13 +329,23 @@ class YtDlpSource(Source):
         )
         _write_tags(path, tag_track)
         size = path.stat().st_size
+
+        # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
+        # calcula aca y no antes de la descarga porque hasta ahora no se
+        # publicaba en ningun lado del camino con job_id: la UI recibia
+        # status=done sin `match` y no podia avisar nada. `query` es lo que el
+        # usuario escribio; el titulo real del video es la otra mitad.
+        estado, etiqueta = verdict(query or track.title, info_title)
         _finish(job_id, status="done", progress=100.0, path=str(path),
                 filename=path.name, size_mb=round(size / 1_048_576, 2),
-                format=path.suffix.lstrip(".").upper())
+                format=path.suffix.lstrip(".").upper(),
+                match=estado, match_label=etiqueta, real_title=info_title or None)
         return {
             "path": str(path), "filename": path.name, "folder": str(folder),
             "bytes": size, "size_mb": round(size / 1_048_576, 2),
             "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
+            "match": estado, "match_label": etiqueta,
+            "real_title": info_title or None,
         }
 
 

@@ -188,7 +188,15 @@ button {
    3. NAV
    ------------------------------------------------------------------------- */
 
+/* Pildora flotante de verdad: el commit 88e8ff5 la describia como flotante
+   pero no tenia position, asi que con scroll 560 media quedaba en y:-536 (se
+   iba con el scroll) y con ella el contador de biblioteca. `sticky` la deja
+   pegada arriba sin sacar nada del flujo; el `top` con margen mantiene el
+   respiro del gutter. */
 .top {
+  position: sticky;
+  top: 12px;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -522,14 +530,18 @@ button {
    scaleX, nunca con width.
    ------------------------------------------------------------------------- */
 
+/* El toast NO va fijo al centro: con position:fixed se superponia a los
+   resultados a mitad de scroll, y el padding-bottom de .app solo protege el
+   final de la pagina. Va abajo a la DERECHA, donde la lista tiene menos
+   texto, y con un ancho mas angosto. Sigue siendo fixed (tiene que verse
+   mientras scrollea) pero ya no se sienta encima de lo que estas leyendo. */
 .prog {
   position: fixed;
   z-index: 50;
-  left: 0;
-  right: 0;
+  right: 16px;
   bottom: max(24px, env(safe-area-inset-bottom));
-  width: min(560px, calc(100% - 32px));
-  margin: 0 auto;
+  width: min(380px, calc(100% - 32px));
+  /* sin margin:auto: centraria el toast y anularia el right de arriba */
   padding: 16px 20px;
   border-radius: var(--r-card);
   background: rgba(20, 32, 43, 0.94);
@@ -1418,6 +1430,16 @@ button {
 @media (max-width: 720px) {
   .top {
     padding-left: 18px;
+  }
+
+  /* En movil no hay "derecha libre": el toast vuelve a ocupar el ancho, pero
+     centrado y por ENCIMA de una banda de contenido, que es lo unico que
+     funciona sin tapar la fila que se esta leyendo. */
+  .prog {
+    left: 0;
+    right: 0;
+    width: min(560px, calc(100% - 32px));
+    margin: 0 auto;
   }
 
   .finder {
