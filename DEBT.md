@@ -186,11 +186,15 @@ regresión chica del arreglo de arriba: la forma correcta es no tocar `lib`.
 
 ## Lecciones de esta revisión (importan para la próxima)
 
-- **Un hallazgo de un subagente hay que verificarlo.** Se reportó "286 KB de
-  fuentes IBM Plex muertas en el `dist/` servido": falso, no hay Plex en `dist` ni
-  en el CSS servido (usa figtree/outfit). Las fuentes **sí** sobraban en
-  `frontend/public/fonts/`, así que borrarlas era correcto — el diagnóstico
-  apuntaba al sitio equivocado.
+- **Cuidado al "verificar" un hallazgo mirando el estado DESPUÉS del arreglo.**
+  Aquí se reportó "286 KB de fuentes IBM Plex muertas en el `dist/` servido", que
+  es **cierto**: los 10 `.woff2` seguían trackeados en `frontend/public/fonts/`, y
+  Vite copia `public/` a la raíz de `dist/` en cada build, así que se servían por
+  HTTP (200, 45 KB cada uno) sin que el CSS los referenciara (0 apariciones de
+  "plex"; el CSS usa Outfit/Figtree). Al verificar, `dist/` ya estaba reconstruido
+  sin ellas y el `find` dio vacío, lo que se Tomó como prueba de que nunca
+  existieron. **Comprobar el estado antes del arreglo, o contra el commit
+  anterior**, no el de después.
 - **La carrera de búsqueda es alcanzable, no teórica**: la latencia real medida la
   hace trivialmente reproducible.
 - **Verificar el archivo en disco, no el HTTP 200**: el `.m4a` de 8.8 MB existía y
@@ -199,6 +203,45 @@ regresión chica del arreglo de arriba: la forma correcta es no tocar `lib`.
   es del navegador sin decodificar, no del `preload`. La biblioteca muestra
   `duration_s` de la API, así que el "Numb = 17:29" del diseño viejo es
   estructuralmente imposible ahí. Verificado 3:07 con ffprobe.
+
+## Más hallazgos de la revisión (30 sep) que quedan abiertos
+
+Ninguno rompe el loop central, que se verificó entero con descargas reales
+(Numb, Chopin, So What, Creep): buscar → resultados → descargar → reproducir.
+
+### El aviso de "esto no es lo que buscabas" nunca se dispara (preexistente)
+`main.jsx:742` hace `return` en el camino con `job_id`, así que el `match:
+mismatch` que devuelve la descarga nunca llega a la UI: sale verde (`msg--ok`).
+Doble causa: el `return` idéntico ya estaba en `a2020c9`, y el job de `progress`
+tampoco lleva el campo `match`. No es una regresión del rediseño, pero el aviso de
+identidad —una de las funciones de este proyecto— no está en pantalla.
+
+### Con yt-dlp apagado, el modo Recomendado da 0 descargables sin avisar
+El aviso de "YouTube está apagado" solo cubre el modo que elegís a mano
+(`.mode--dead`). El modo **Recomendado**, que es el que se abre por defecto,
+responde "30 resultados, 0 descargables" sin mencionar nada. Con el server sin
+`YTDLP_ENABLED=1` es la primera pantalla que ve el usuario.
+
+### El toast fijo pisa la fila que estás leyendo
+`position: fixed` + `padding-bottom: 128px` solo protege el final de la página: a
+mitad de scroll el toast se superpone a los resultados.
+
+### La "navegación flotante" es `position: static`
+Medido con scroll 560: `y: -536`. Desaparece al bajar, y con ella el contador de
+biblioteca. El commit `88e8ff5` la describe como flotante.
+
+### La franja de éxito `.msg` no se auto-borra nunca
+El `.prog` (el toast del commit) sí, a los ~6 s. La franja "X está en tu
+biblioteca" queda en pantalla hasta que otra acción la limpie.
+
+### Otros menores
+- Servidor caído: muestra `Failed to fetch` crudo, en inglés.
+- Portada que falla al cargar: aparece el ícono roto del navegador, no el
+  placeholder con la nota musical (falta `onError`).
+- Sin favicon: `/favicon.ico` devuelve el `index.html` con 200, porque el backend
+  monta `dist/` con `html=True`.
+- Flakiness de integración: 1 de 6 corridas salteó por rate-limit de **YouTube**
+  (403), que es distinto del 403 de archive.org del ítem 8 de arriba.
 
 ## Legal — decisión del usuario
 
