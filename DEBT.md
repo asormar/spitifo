@@ -107,12 +107,104 @@ migrarla a Wikimedia.
 Los 4 scripts viejos se pueden borrar del repo cuando querás: sus casos ya
 están en `tests/`.
 
+---
+
+# Revisión del rediseño "Cristal" — 30 sep 2026
+
+`88e8ff5` rediseñó la UI (tema claro, grilla de tarjetas, toast que se borra solo).
+Seis bloques de revisión en paralelo sobre la app real; los hallazgos verificados
+quedaron arreglados en `e722dc8`. Verificado con ejecución real: build OK y **132
+tests pasan** (1 skip por el 403 de archive.org, 1 xfail que es la deuda de
+`NOT_MUSIC` de arriba).
+
+## Bugs del rediseño que se ARREGLARON (`e722dc8`)
+
+### Lectura arbitraria de archivos — `/api/audio` (el más grave)
+El guardián era `str(p).startswith(str(LIBRARY.resolve()))`: un prefijo de **string**,
+no de camino, así que una carpeta hermana que arrancara con el nombre de la
+biblioteca (`library_backup`, `library2`…) pasaba el filtro y se servía por HTTP.
+
+Ahora: `p.is_relative_to(LIBRARY.resolve())` (compara por componentes) + filtro por
+`AUDIO_EXTS`. Verificado con el guard real: los tres hermanos con prefijo común dan
+**404**, un archivo fuera del repo da **404**, y los `.mp3` reales siguen sirviéndose.
+
+### Pedir `m4a` informaba un `.mp3`
+Con `FFmpegExtractAudio` `info['filepath']` viene `None`, así que el fallback por
+`glob` es el camino **normal**. Ordenaba con `.mp3` hardcodeado por delante, sin
+mirar el `fmt`: si ya había un `.mp3` con el mismo nombre, el `.m4a` se producía
+pero se informaban el nombre, el formato y el tamaño del `.mp3` viejo. El toast
+decía "4.3 MB" habiendo pedido m4a. Ahora se prefiere la extensión pedida y se cae
+a la otra si no está.
+
+### "original" prometía no convertir
+`preferredcodec` cae a mp3 para todo `fmt` que no sea mp3/m4a, así que "original"
+siempre convertía. El tooltip decía *"sin convertir"*: la UI ofrecía una opción
+que no existe. Ahora dice la verdad.
+
+### La respuesta vieja de una búsqueda pisaba a la nueva
+`runSearch` no abortaba ni numeraba las peticiones. Medido: las búsquedas reales
+tardan **1.75 s–2.97 s**, así que dos solapadas resolvían en cualquier orden con
+facilidad. Síntoma: resultados de la query vieja, URL compartible corrupta y una
+**tercera** petición por el efecto de resync. Ahora cada búsqueda toma un número y
+solo la última escribe estado.
+
+### El toast de descarga se congelaba para siempre
+Tres caminos: job purgado por TTL (la UI polleaba ~12,5 min y después nada), red
+caída en pleno sondeo (`TypeError` sin catch), y el `null` por el tope de 600
+iteraciones (7 min) que el llamador ignoraba en silencio. B midió un concierto de
+114 min que tardó **581 s** — ese caso lo revienta sin avisar. Ahora distingue
+`timeout` y error de red, y avisa que la descarga sigue corriendo en el servidor.
+
+### `[object Object]` como mensaje de error
+El `detail` de FastAPI en un 422 es un **array**, y se pasaba tal cual a
+`new Error(...)`. Cuatro sitios: búsqueda, verificación, setlist y resolve.
+
+### `loadLib` sin `try/catch` y sin mirar `r.ok`
+Un 500 se traducía en "Biblioteca, vacía" con 22 archivos en disco.
+
+### El selector de modo no se podía usar con flechas
+Tenía `role="radiogroup"` (que promete navegación con flechas) sin implementarla:
+tres tab stops ajenos al patrón ARIA. Extraído a `ModePicker` con roving tabindex,
+como el de formato, que sí estaba bien.
+
+## Lo que queda abierto
+
+### Dos descargas simultáneas se pisan
+`job`/`busyId` es un estado único: las dos terminan en el server pero solo se
+anuncia una, y el `setBusyId(null)` de la primera apaga el spinner de la segunda.
+Decisión de diseño pendiente, no bug accidental.
+
+### `href` sin sanitizar de esquema
+`main.jsx` pasa URLs del servidor a `href` sin validar el esquema. **No demostrado
+como vulnerabilidad** (el HeadlessChrome las bloquea, probado también con un `<a>`
+nativo), pero no hay validación ni CSP. Queda como superficie.
+
+### El `catch` de `loadLib` confunde "vacía" con "sin consultar"
+`setLib((cur) => cur || [])` deja la biblioteca como "vacía consultada" ante un
+fallo de red, que es justo lo que `lib === null` servía para distinguir. Es una
+regresión chica del arreglo de arriba: la forma correcta es no tocar `lib`.
+
+## Lecciones de esta revisión (importan para la próxima)
+
+- **Un hallazgo de un subagente hay que verificarlo.** Se reportó "286 KB de
+  fuentes IBM Plex muertas en el `dist/` servido": falso, no hay Plex en `dist` ni
+  en el CSS servido (usa figtree/outfit). Las fuentes **sí** sobraban en
+  `frontend/public/fonts/`, así que borrarlas era correcto — el diagnóstico
+  apuntaba al sitio equivocado.
+- **La carrera de búsqueda es alcanzable, no teórica**: la latencia real medida la
+  hace trivialmente reproducible.
+- **Verificar el archivo en disco, no el HTTP 200**: el `.m4a` de 8.8 MB existía y
+  era válido mientras la API informaba el `.mp3` de 4.4 MB.
+- **Aislar el headless antes de culpar al código**: `readyState: 0` en los `<audio>`
+  es del navegador sin decodificar, no del `preload`. La biblioteca muestra
+  `duration_s` de la API, así que el "Numb = 17:29" del diseño viejo es
+  estructuralmente imposible ahí. Verificado 3:07 con ffprobe.
+
 ## Legal — decisión del usuario
 
 yt-dlp contra YouTube viola los ToS y es ilegal en la mayoría de las
-jurisdicciones (incluida Argentina). Para uso personal está bien. La UI lo dice
-una sola vez, en el panel de fuentes, sin sermón. Si el repo se hace público o
-la app se distribuye, deja de ser un tema de uso personal.
+jurisdicciones (incluida Argentina). Para uso personal está bien. Si el repo se hace
+público o la app se distribuye, deja de ser un tema de uso personal.
 
 ## Notas
 
