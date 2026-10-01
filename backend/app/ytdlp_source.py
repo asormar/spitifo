@@ -40,6 +40,42 @@ _DONE_STATES = ("done", "error")
 # acota el crecimiento del dict en sesiones largas.
 JOBS_TTL_S = 3600.0
 
+# Una descarga por ruta de salida a la vez.
+#
+# DOS resultados que resuelven al MISMO video (iTunes devuelve "Yesterday" tres
+# veces) comparten `folder/<artista> - <titulo>` como nombre de salida. Windows no
+# deja abrir dos veces el mismo archivo: la segunda muere con
+# `[WinError 32] El proceso no tiene acceso al archivo porque esta siendo
+# utilizado por otro proceso` y el toast dice "Falló la descarga" sin motivo
+# visible. Los archivos .webm/.mp3 nunca quedan a medias.
+#
+# Con un lock por ruta, la segunda espera a que la primera termine de bajar Y de
+# escribir los tags, y recien despues usa el archivo. No se renombra nada: el
+# nombre en la biblioteca sigue siendo el canonico, y descargar dos veces la misma
+# pista es redundante de todos modos.
+#
+# Es un `asyncio.Lock` porque las descargas son asincronas (el trabajo
+# bloqueante de yt-dlp corre en un executor). El `_JOBS_LOCK` de arriba es un
+# `threading.Lock` para el dict de jobs: son cosas distintas y no se mezclan.
+# Ojo: NO llamar `_finish()` adentro de `_JOBS_LOCK` (no es reentrante) — el
+# camino de espera de este lock solo publica `status`, nunca `_finish`.
+_LOCKS_POR_RUTA: dict[str, asyncio.Lock] = {}
+_LOCKS_LOCK = threading.Lock()
+
+
+def _lock_de_ruta(destino: str) -> asyncio.Lock:
+    """Lock de una ruta de salida. Se crea una vez y se reusa.
+
+    El dict crece sin limite a proposito: son un par de entradas por pista
+    distinta descargada en toda la sesion, y un lock liberated no molesta.
+    """
+    with _LOCKS_LOCK:
+        lock = _LOCKS_POR_RUTA.get(destino)
+        if lock is None:
+            lock = asyncio.Lock()
+            _LOCKS_POR_RUTA[destino] = lock
+        return lock
+
 
 def _purge_jobs(now: float | None = None) -> int:
     """Saca los jobs YA terminados hace rato. Devuelve cuantos saco.
@@ -297,38 +333,49 @@ class YtDlpSource(Source):
                         break
                 return info, fp
 
-        with _JOBS_LOCK:
-            JOBS[job_id]["status"] = "downloading"
+        # Una descarga por ruta de salida (ver `_lock_de_ruta`). Si otro job ya
+        # esta bajando ESTE archivo, este espera en vez de chocar: se publica
+        # "pending" para que la UI no diga "Descargando, 0%" mientras espera.
+        lock = _lock_de_ruta(str(folder / stem))
+        if lock.locked():
+            with _JOBS_LOCK:
+                JOBS[job_id]["status"] = "pending"
 
-        try:
-            info, fp = await loop.run_in_executor(None, _run)
-        except Exception as e:
-            _finish(job_id, status="error", error=str(e))
-            log.warning("ytdlp download fallo: %s", e)
-            raise RuntimeError(f"yt-dlp: {e}")
+        # El lock cubre tambien `_write_tags`: si se soltara antes, el otro job
+        # podria empezar a reescribir el mp3 mientras mutagen lo tiene abierto.
+        async with lock:
+            with _JOBS_LOCK:
+                JOBS[job_id]["status"] = "downloading"
 
-        path = Path(fp)
-        if not path.exists():
-            _finish(job_id, status="error")
-            raise RuntimeError("yt-dlp: el archivo no quedó en disco")
+            try:
+                info, fp = await loop.run_in_executor(None, _run)
+            except Exception as e:
+                _finish(job_id, status="error", error=str(e))
+                log.warning("ytdlp download fallo: %s", e)
+                raise RuntimeError(f"yt-dlp: {e}")
 
-        # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
-        # "matched" la ficha canonica es la de iTunes (title/artist/album), que
-        # es mas limpia que el titulo del video ("Numb (Official Music Video)
-        # [4K UPGRADE] - Linkin Park"). Se usa la del video solo como fallback.
-        info_title = info.get("title") or ""
-        use_itunes = bool(track.extra.get("from_itunes"))
-        tag_track = Track(
-            source=self.name, source_id=track.source_id,
-            title=(track.title if use_itunes and track.title else info_title),
-            artist=(track.artist if use_itunes and track.artist
-                    else (info.get("uploader") or track.artist)),
-            album=track.album,
-            year=track.year,
-            duration_s=int(info.get("duration") or 0) or track.duration_s,
-        )
-        _write_tags(path, tag_track)
-        size = path.stat().st_size
+            path = Path(fp)
+            if not path.exists():
+                _finish(job_id, status="error")
+                raise RuntimeError("yt-dlp: el archivo no quedó en disco")
+
+            # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
+            # "matched" la ficha canonica es la de iTunes (title/artist/album), que
+            # es mas limpia que el titulo del video ("Numb (Official Music Video)
+            # [4K UPGRADE] - Linkin Park"). Se usa la del video solo como fallback.
+            info_title = info.get("title") or ""
+            use_itunes = bool(track.extra.get("from_itunes"))
+            tag_track = Track(
+                source=self.name, source_id=track.source_id,
+                title=(track.title if use_itunes and track.title else info_title),
+                artist=(track.artist if use_itunes and track.artist
+                        else (info.get("uploader") or track.artist)),
+                album=track.album,
+                year=track.year,
+                duration_s=int(info.get("duration") or 0) or track.duration_s,
+            )
+            _write_tags(path, tag_track)
+            size = path.stat().st_size
 
         # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
         # calcula aca y no antes de la descarga porque hasta ahora no se
