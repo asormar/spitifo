@@ -8,6 +8,21 @@
          html=True y devuelve el index.html con 200: el navegador lo tomaba por
          una pagina, no por una imagen. -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- El tema se fija ANTES del primer pintado: lo guardado por el usuario y,
+         si no hay nada, la preferencia del sistema. Sin esto la pagina pinta
+         clara un instante y salta a oscuro (destello). -->
+    <script>
+      (function () {
+        var t = null;
+        try {
+          t = localStorage.getItem("spitifo-theme");
+        } catch (e) {}
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      })();
+    </script>
     <title>Spitifo: descarga música libre</title>
   </head>
   <body>

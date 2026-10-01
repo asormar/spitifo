@@ -14,6 +14,7 @@
    9. RESULTADOS   cabecera, rejilla de tarjetas, chips, botones
    10. CONCIERTOS  tarjeta ancha + setlist
    11. VACIOS      pantalla inicial, sin resultados, skeletons
+   8b. REPRODUCTOR  fila de biblioteca + preview de tarjeta
    12. HOVER / TACTIL / RESPONSIVE / MOVIMIENTO
    ========================================================================== */
 
@@ -63,14 +64,44 @@
   --accent-hover: #bb3622;
   --accent-badge: #f0563f;
   --accent-fill: #ff8a75;
+  /* El coral como TEXTO o icono. Los rellenos (botones) usan --accent, que con
+     texto blanco da 4.6:1; sobre fondo oscuro ese mismo coral como glifo se
+     queda corto, asi que en oscuro este token se aclara. */
+  --accent-fg: #d3402b;
 
   --glass: rgba(255, 255, 255, 0.72);
   --glass-card: rgba(255, 255, 255, 0.78);
   --glass-edge: rgba(255, 255, 255, 0.95);
-  --shadow-nav: 0 8px 30px rgba(40, 90, 130, 0.12);
-  --shadow-card: 0 10px 30px rgba(40, 90, 130, 0.1);
-  --shadow-panel: 0 20px 60px rgba(40, 90, 130, 0.16);
-  --shadow-raise: 0 2px 8px rgba(40, 90, 130, 0.16);
+  --nav-bg: rgba(255, 255, 255, 0.7);
+  --shadow-rgb: 40, 90, 130;
+  --shadow-nav: 0 8px 30px rgba(var(--shadow-rgb), 0.12);
+  --shadow-card: 0 10px 30px rgba(var(--shadow-rgb), 0.1);
+  --shadow-panel: 0 20px 60px rgba(var(--shadow-rgb), 0.16);
+  --shadow-raise: 0 2px 8px rgba(var(--shadow-rgb), 0.16);
+
+  /* Superficies y estados que antes eran #fff / hex sueltos. Con tokens, el
+     tema oscuro solo redefine valores; ningun componente cambia. */
+  --surface: #fff;
+  --surface-hover: #f1f6f9;
+  /* Pastilla activa de los segmentados: debe separarse de su pista. */
+  --seg-on: #fff;
+  --on-ink: #fff;
+  --ink-hover: #2a3d4e;
+  --track-hover: #d7e6ef;
+  --seg-hover: rgba(255, 255, 255, 0.6);
+  --row-hover: rgba(228, 238, 244, 0.55);
+  --line-strong: #b9c8d4;
+  --link-line: #9db2c2;
+  --ring-gap: #fff;
+  --badge-text: #14202b;
+  --toast-bg: rgba(20, 32, 43, 0.94);
+  --toast-edge: transparent;
+  --page-top: #cfe6f5;
+  --page-mid: #e6f1f7;
+  --blob-coral: #ffd6c9;
+  --blob-coral-o: 0.6;
+  --blob-sky: #bfe3f5;
+  --blob-sky-o: 0.7;
 
   --ok-bg: #d5f1e1;
   --ok-fg: #0f6b3a;
@@ -96,8 +127,77 @@
   /* Movimiento: una sola curva de entrada, 160ms para presion. Solo se
      animan transform y opacity. */
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Con un poco de rebote: SOLO para momentos raros y con carga emocional
+     (descarga terminada, contador que sube). Nunca en controles de uso
+     continuo. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Ease-in-out simetrica para superficies grandes que empujan el contenido
+     (la biblioteca): arranca y frena despacio, sin tirón al principio. */
+  --ease-drawer: cubic-bezier(0.65, 0, 0.35, 1);
   --t-press: 160ms;
   --t-enter: 260ms;
+}
+
+/* ---------------------------------------------------------------------------
+   TEMA OSCURO
+   Mismo sistema, otros valores. Fondo azul noche, cristal oscuro con borde de
+   luz al 9 %, tinta clara. El boton "oscuro" de la web (biblioteca, descarga)
+   se INVIERTE: pildora clara con texto oscuro, que es lo que hace de primario
+   sobre fondo oscuro. Los tonos semanticos pasan a fondo apagado + texto claro
+   (contraste >= 4.5:1). El coral de relleno no cambia; como texto se aclara.
+   El atributo lo pone un script en index.html antes del primer pintado, para
+   que no haya destello.
+   ------------------------------------------------------------------------- */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: #e8eff5;
+  --muted: #b6c5d1;
+  --faint: #95a8b7;
+  --icon-dim: #71869a;
+  --line: #243648;
+  --track: #1c2b3a;
+  --bg: #0b131a;
+
+  --accent-fg: #ff7a63;
+
+  --glass: rgba(20, 32, 44, 0.72);
+  --glass-card: rgba(22, 34, 47, 0.78);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --nav-bg: rgba(20, 32, 44, 0.7);
+  --shadow-rgb: 0, 0, 0;
+  --shadow-nav: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.3);
+  --shadow-panel: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --shadow-raise: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  --ok-bg: #123a2b;
+  --ok-fg: #7fdda8;
+  --warn-bg: #40330f;
+  --warn-fg: #f3cb6f;
+  --bad-bg: #4a211d;
+  --bad-fg: #ff9c8f;
+
+  --surface: #162331;
+  --surface-hover: #1d2d3d;
+  --seg-on: #30465c;
+  --on-ink: #0b131a;
+  --ink-hover: #ffffff;
+  --track-hover: #27394c;
+  --seg-hover: rgba(255, 255, 255, 0.06);
+  --row-hover: rgba(255, 255, 255, 0.05);
+  --line-strong: #33485c;
+  --link-line: #5b7288;
+  --ring-gap: #0b131a;
+  --toast-bg: rgba(30, 45, 60, 0.96);
+  --toast-edge: rgba(255, 255, 255, 0.1);
+  --page-top: #14293b;
+  --page-mid: #0f1e2b;
+  --blob-coral: #6b2f27;
+  --blob-coral-o: 0.35;
+  --blob-sky: #1d5a80;
+  --blob-sky-o: 0.4;
 }
 
 /* ---------------------------------------------------------------------------
@@ -120,7 +220,7 @@ body {
 
 html {
   background-color: var(--bg);
-  background-image: linear-gradient(180deg, #cfe6f5 0, #e6f1f7 420px, var(--bg) 880px);
+  background-image: linear-gradient(180deg, var(--page-top) 0, var(--page-mid) 420px, var(--bg) 880px);
   background-repeat: no-repeat;
 }
 
@@ -149,7 +249,7 @@ button {
 :focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--ring-gap);
 }
 
 .blob {
@@ -159,22 +259,27 @@ button {
   border-radius: 50%;
   filter: blur(60px);
   pointer-events: none;
+  /* Deriva ambiental: transform puro sobre una capa ya rasterizada. */
+  will-change: transform;
+  animation: drift 30s ease-in-out infinite alternate;
 }
 
 .blob--coral {
   left: -120px;
   top: 120px;
   width: clamp(240px, 33vw, 420px);
-  background: #ffd6c9;
-  opacity: 0.6;
+  background: var(--blob-coral);
+  opacity: var(--blob-coral-o);
 }
 
 .blob--sky {
   right: -100px;
   top: 340px;
   width: clamp(260px, 36vw, 460px);
-  background: #bfe3f5;
-  opacity: 0.7;
+  background: var(--blob-sky);
+  opacity: var(--blob-sky-o);
+  animation-duration: 38s;
+  animation-direction: alternate-reverse;
 }
 
 .app {
@@ -206,11 +311,12 @@ button {
   margin: 0 auto;
   padding: 0 10px 0 24px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: var(--nav-bg);
+  border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-nav);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
+  animation: drop-in 460ms var(--ease) backwards;
 }
 
 .brand {
@@ -222,12 +328,121 @@ button {
 
 .brand__mark {
   flex: none;
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .brand__name {
   font: 700 21px/1 var(--font-display);
   letter-spacing: -0.02em;
+}
+
+/* Cambio de tema: cortina vertical. La foto vieja queda fija debajo y la nueva
+   se descubre de arriba a abajo con una mascara de 300 % de alto: opaca el
+   primer tercio, degradado el segundo, transparente el ultimo. Al deslizar la
+   mascara el borde sube por toda la pantalla, sin arista. 1400 ms con
+   ease-in-out simetrica: arranca y frena despacio. Sirve igual de claro a oscuro
+   que al reves, porque siempre es la foto "nueva" la que se descubre. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
+  -webkit-mask-size: 100% 300%;
+  mask-size: 100% 300%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  animation: theme-curtain 1400ms cubic-bezier(0.45, 0, 0.55, 1) both;
+}
+
+@keyframes theme-curtain {
+  from {
+    -webkit-mask-position: 0% 100%;
+    mask-position: 0% 100%;
+  }
+  to {
+    -webkit-mask-position: 0% 0%;
+    mask-position: 0% 0%;
+  }
+}
+
+.top__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Interruptor de tema: pista + bola con el icono del tema. Es un control de
+   dos estados (role="switch"), no un boton de accion. La bola viaja con
+   transform; la pista cambia de color. El area de toque se ensancha con
+   ::after hasta 44 px sin agrandar lo que se ve. */
+.themesw {
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease),
+    background-color 420ms var(--ease-drawer);
+}
+
+.themesw::after {
+  content: "";
+  position: absolute;
+  inset: -8px -4px;
+}
+
+.themesw:active {
+  transform: scale(0.96);
+}
+
+.themesw[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.themesw__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 420ms var(--ease-drawer), background-color 420ms var(--ease-drawer),
+    color 420ms var(--ease-drawer);
+}
+
+.themesw[aria-checked="true"] .themesw__knob {
+  transform: translateX(22px);
+}
+
+/* Luna en claro, sol en oscuro: cada icono entra girando y escalando. */
+.themesw__ico {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.4);
+  transition: opacity 260ms var(--ease), transform 420ms var(--ease);
+}
+
+.themesw[aria-checked="false"] .themesw__ico--moon,
+.themesw[aria-checked="true"] .themesw__ico--sun {
+  opacity: 1;
+  transform: none;
 }
 
 /* Boton de biblioteca: pildora oscura, es la accion de la cabecera. Abierto
@@ -243,7 +458,7 @@ button {
   border: 0;
   border-radius: var(--r-pill);
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -255,7 +470,7 @@ button {
 }
 
 .libbtn.is-on {
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--line);
 }
@@ -263,6 +478,18 @@ button {
 .libbtn.is-empty {
   background: var(--track);
   color: var(--muted);
+}
+
+/* Icono (Stack <-> X) y contador: entran con un pequeno giro de escala cada
+   vez que cambian, por eso llevan `key` en el JSX. */
+.swap {
+  display: inline-grid;
+  place-items: center;
+  animation: swap-in 200ms var(--ease) both;
+}
+
+.count--bump {
+  animation: pop-spring 360ms var(--ease-spring) both;
 }
 
 /* La etiqueta no se parte en dos lineas: el boton mantiene su ancho cuando el
@@ -276,7 +503,7 @@ button {
   padding: 2px 8px;
   border-radius: var(--r-pill);
   background: var(--accent-badge);
-  color: var(--ink);
+  color: var(--badge-text);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
@@ -298,6 +525,7 @@ button {
   letter-spacing: -0.035em;
   text-wrap: balance;
   overflow-wrap: anywhere;
+  animation: enter-up 600ms var(--ease) 60ms backwards;
 }
 
 .finder {
@@ -311,6 +539,7 @@ button {
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   text-align: left;
+  animation: enter-up 600ms var(--ease) 160ms backwards;
 }
 
 .search {
@@ -320,7 +549,7 @@ button {
   height: 68px;
   padding: 0 8px 0 22px;
   border-radius: var(--r-field);
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
 }
 
@@ -329,12 +558,18 @@ button {
 .search:has(input:focus) {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  box-shadow: 0 0 0 2px #fff;
+  box-shadow: 0 0 0 2px var(--ring-gap);
 }
 
 .search__icon {
   flex: none;
   color: var(--icon-dim);
+  transition: color 200ms var(--ease);
+}
+
+.search.is-scanning .search__icon {
+  color: var(--accent-fg);
+  animation: scan 1.2s linear infinite;
 }
 
 .search input {
@@ -410,10 +645,33 @@ button {
    ------------------------------------------------------------------------- */
 
 .segs {
+  position: relative;
   display: inline-flex;
   padding: 4px;
   border-radius: var(--r-inner);
   background: var(--track);
+}
+
+/* La pastilla blanca del activo NO es el fondo del boton: es una sola pieza que
+   se desliza hasta la opcion elegida (useSlidingPill publica --ix y --iw).
+   `data-ready` llega un frame despues de medir para que no vuele desde 0 al
+   montar. */
+.segs::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--iw, 0px);
+  transform: translateX(var(--ix, 0px));
+  border-radius: var(--r-sm);
+  background: var(--seg-on);
+  box-shadow: var(--shadow-raise);
+  pointer-events: none;
+}
+
+.segs[data-ready]::before {
+  transition: transform 300ms var(--ease), width 300ms var(--ease);
 }
 
 .seg {
@@ -432,17 +690,21 @@ button {
   line-height: 1.2;
   text-align: center;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
+  transition: transform var(--t-press) var(--ease), color 200ms var(--ease),
+    background-color 200ms var(--ease);
 }
 
 .seg:active {
   transform: scale(0.97);
 }
 
+.seg {
+  position: relative;
+  z-index: 1;
+}
+
 .seg.is-on {
-  background: #fff;
   color: var(--ink);
-  box-shadow: var(--shadow-raise);
 }
 
 .seg__n {
@@ -502,7 +764,7 @@ button {
   margin: 20px auto 0;
   padding: 14px 18px;
   border-radius: var(--r-field);
-  background: color-mix(in srgb, var(--tone-bg) 60%, #fff);
+  background: color-mix(in srgb, var(--tone-bg) 60%, var(--surface));
   border: 1px solid var(--tone-bg);
   color: var(--tone-fg);
   font-size: 15px;
@@ -511,9 +773,21 @@ button {
   animation: reveal var(--t-enter) var(--ease) both;
 }
 
+/* El aviso de exito se retira solo a los 5 s (JOB_DISMISS_MS, que llega como
+   --dismiss): antes desaparecia de golpe. La salida arranca 240 ms antes de
+   que React lo desmonte. Error y "esto no es lo que buscabas" NO se retiran. */
+.msg--ok {
+  animation: reveal var(--t-enter) var(--ease) both,
+    msg-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+}
+
 .msg svg {
   flex: none;
   margin-top: 2px;
+}
+
+.msg--ok svg {
+  animation: pop-spring 420ms var(--ease-spring) 120ms both;
 }
 
 .msg__sub {
@@ -566,7 +840,8 @@ button {
   /* sin margin:auto: centraria el toast y anularia el right de arriba */
   padding: 16px 20px;
   border-radius: var(--r-card);
-  background: rgba(20, 32, 43, 0.94);
+  background: var(--toast-bg);
+  border: 1px solid var(--toast-edge);
   color: #fff;
   box-shadow: 0 20px 50px rgba(20, 32, 43, 0.35);
   animation: toast-in var(--t-enter) var(--ease) both;
@@ -580,10 +855,23 @@ button {
   font-size: 15px;
 }
 
+/* Toast terminado: sale por donde entro, en los ultimos 240 ms de su vida. */
+.prog.is-done,
+.prog.is-failed {
+  animation: toast-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+}
+
 .prog__ico {
   display: inline-flex;
   flex: none;
   color: var(--accent-fill);
+}
+
+/* El giro del spinner se queda en .spin; el icono final (check o aviso) entra
+   con rebote, que es el unico momento de celebracion de la app. */
+.prog.is-done .prog__ico svg,
+.prog.is-failed .prog__ico svg {
+  animation: pop-spring 420ms var(--ease-spring) both;
 }
 
 .prog.is-done .prog__ico {
@@ -624,6 +912,20 @@ button {
   transform-origin: left center;
   transform: scaleX(0);
   transition: transform 260ms var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Brillo que recorre el relleno mientras la descarga sigue en curso: dice que
+   el proceso esta vivo aunque el porcentaje no se mueva (la conversion final
+   puede tardar minutos en el 99%). */
+.prog:not(.is-done):not(.is-failed) .prog__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: sheen 1.4s ease-in-out infinite;
 }
 
 .prog.is-done .prog__fill {
@@ -638,6 +940,35 @@ button {
    8. BIBLIOTECA
    ------------------------------------------------------------------------- */
 
+/* Cajon: la biblioteca no "aparece" encima, ABRE hueco. Lo brusco de antes no
+   era el fundido sino que los resultados de debajo saltaban de golpe. La altura
+   se anima con grid-template-rows 0fr <-> 1fr; el panel entra con un fundido
+   y un deslizamiento corto. Mientras se mueve, el contenido se recorta
+   (overflow hidden); al asentarse (data-settled, lo pone el JSX al terminar la
+   animacion) se libera para que la sombra del panel no quede cortada. */
+.drawer {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: drawer-in 600ms var(--ease-drawer) backwards;
+}
+
+.drawer[data-state="closed"] {
+  animation: drawer-out 400ms var(--ease-drawer) forwards;
+  pointer-events: none;
+}
+
+.drawer__in {
+  min-height: 0;
+  overflow: hidden;
+  /* flow-root: el margin-top del panel cuenta dentro de la altura animada en
+     vez de escaparse por arriba. */
+  display: flow-root;
+}
+
+.drawer[data-settled] .drawer__in {
+  overflow: visible;
+}
+
 .panel {
   max-width: 860px;
   margin: 20px auto 0;
@@ -646,7 +977,18 @@ button {
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  animation: reveal var(--t-enter) var(--ease) both;
+  animation: panel-in 520ms var(--ease) 90ms backwards;
+  transition: box-shadow 360ms var(--ease);
+}
+
+/* Sin sombra mientras el cajon recorta: aparece suave al asentarse en vez de
+   "saltar" cuando se libera el recorte. */
+.drawer:not([data-settled]) .panel {
+  box-shadow: 0 0 0 rgba(var(--shadow-rgb), 0);
+}
+
+.drawer[data-state="closed"] .panel {
+  animation: panel-out 280ms var(--ease) forwards;
 }
 
 .panel__head {
@@ -668,7 +1010,7 @@ button {
 }
 
 .panel__title svg {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .panel__path {
@@ -694,29 +1036,141 @@ button {
   color: var(--muted);
 }
 
-.librow {
+/* ---------------------------------------------------------------------------
+   8b. REPRODUCTOR
+   El <audio> queda oculto en el DOM (sin `controls` no pinta nada) y esto es la
+   interfaz que se ve. Mismo vocabulario que el resto: pildoras (--r-pill),
+   coral (--accent) para "suena", cifras tabulares. Solo transform y opacity,
+   salvo el ancho del volumen, que se anima una sola vez al activarse la fila.
+   Dos niveles: .pl (fila de biblioteca) y .pv (preview discreto de tarjeta).
+   ------------------------------------------------------------------------- */
+
+.pl {
+  position: relative;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px;
+  border-radius: var(--r-inner);
+  transition: background-color 220ms var(--ease);
+  animation: rise-soft 360ms var(--ease) backwards;
+  animation-delay: calc(140ms + min(320ms, calc(var(--i, 0) * 32ms)));
 }
 
-.librow + .librow {
-  border-top: 1px solid var(--line);
+.pl.is-active {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
-.librow audio {
-  display: block;
-  width: 100%;
-  height: 36px;
+/* Filo coral a la izquierda: con 31 filas, saber cual es la activa no puede
+   depender de mirar la barra. Crece desde el centro. */
+.pl::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: scaleY(0);
+  transition: transform 280ms var(--ease);
 }
 
-.librow__text {
+.pl.is-active::before {
+  transform: scaleY(1);
+}
+
+/* Boton de reproducir: los tres iconos (play, pausa, cargando) viven apilados y
+   se intercambian con escala + giro, no con un salto. */
+.pbtn {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color 220ms var(--ease),
+    border-color 220ms var(--ease), color 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+
+.pbtn:active {
+  transform: scale(0.94);
+}
+
+.pbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pbtn:disabled:active {
+  transform: none;
+}
+
+.pbtn__ico {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.5) rotate(-60deg);
+  transition: opacity 140ms var(--ease), transform 240ms var(--ease);
+}
+
+/* El triangulo de play pesa a la izquierda: se centra opticamente. */
+.pbtn__ico--play {
+  padding-left: 2px;
+}
+
+.pbtn[data-icon="play"] .pbtn__ico--play,
+.pbtn[data-icon="pause"] .pbtn__ico--pause,
+.pbtn[data-icon="load"] .pbtn__ico--load {
+  opacity: 1;
+  transform: none;
+}
+
+.pl.is-active .pbtn,
+.pv.is-active .pbtn {
+  border-color: var(--accent-fill);
+  color: var(--accent-fg);
+}
+
+.pl.is-playing .pbtn,
+.pv.is-playing .pbtn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(211, 64, 43, 0.28);
+}
+
+/* Onda que sale del boton mientras suena. */
+.pl.is-playing .pbtn::after,
+.pv.is-playing .pbtn::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--accent);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: ring 1.9s var(--ease) infinite;
+}
+
+.pl__mid {
   min-width: 0;
 }
 
-.librow__name {
+.pl__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pl__title {
+  min-width: 0;
   font-size: 15px;
   font-weight: 600;
   overflow: hidden;
@@ -724,14 +1178,290 @@ button {
   white-space: nowrap;
 }
 
-.librow__meta {
-  margin-top: 2px;
+.pl__time {
+  flex: none;
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pl__meta {
+  margin-top: 1px;
   color: var(--faint);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pl.is-failed .pl__meta {
+  color: var(--bad-fg);
+}
+
+/* Ecualizador: tres barras que escalan desde la base. Solo se mueven mientras
+   suena de verdad (no mientras carga). */
+.eq {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  opacity: 0;
+  transform: scale(0.7);
+  transform-origin: left bottom;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+
+.eq[data-on] {
+  opacity: 1;
+  transform: none;
+}
+
+.eq i {
+  width: 3px;
+  height: 12px;
+  border-radius: 1.5px;
+  background: var(--accent);
+  transform: scaleY(0.3);
+  transform-origin: bottom;
+}
+
+.eq[data-on] i {
+  animation: eq 900ms ease-in-out infinite;
+}
+
+.eq[data-on] i:nth-child(2) {
+  animation-delay: 180ms;
+}
+
+.eq[data-on] i:nth-child(3) {
+  animation-delay: 360ms;
+}
+
+.pl__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Barra de progreso. La zona de toque mide 20 px; el trazo visible, 5. El
+   relleno se mueve con scaleX (nunca con width) y el tirador con `left`, que
+   es un elemento de 14 px. Mientras se arrastra no hay transicion: el dedo
+   manda. */
+.scrub {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  height: 20px;
+  cursor: pointer;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.scrub[aria-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scrub:focus-visible {
+  border-radius: var(--r-pill);
+}
+
+.scrub__rail {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  overflow: hidden;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.scrub__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 250ms linear, background-color 220ms var(--ease);
+}
+
+.scrub__knob {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.3);
+  opacity: 0;
+  transform: scale(0.6);
+  pointer-events: none;
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease), left 250ms linear;
+}
+
+.pl.is-active .scrub__knob,
+.pv.is-active .scrub__knob,
+.scrub:focus-visible .scrub__knob {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.scrub.is-drag .scrub__fill {
+  transition: none;
+}
+
+.scrub.is-drag .scrub__knob {
+  transform: scale(1.25);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.scrub.is-drag .scrub__rail {
+  transform: scaleY(1.5);
+}
+
+/* Volumen: solo en la fila activa. Se abre de 0 a un ancho fijo; el input
+   necesita flex:none o el navegador lo colapsa a 0 dentro del contenedor que
+   se esta animando. */
+.pl__vol {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: width 280ms var(--ease), opacity 200ms var(--ease), transform 280ms var(--ease);
+}
+
+.pl.is-active .pl__vol {
+  width: 132px;
+  margin-left: 10px;
+  opacity: 1;
+  transform: none;
+}
+
+.pl__mute {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), color 200ms var(--ease);
+}
+
+.pl__mute:active {
+  transform: scale(0.9);
+}
+
+.vol {
+  flex: none;
+  width: 84px;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.vol::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(to right, var(--muted) var(--v, 80%), var(--track) var(--v, 80%));
+}
+
+.vol::-webkit-slider-thumb {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform var(--t-press) var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.vol:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.vol::-moz-range-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+}
+
+.vol::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--muted);
+}
+
+.vol::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+/* --- Preview de 30 s en una tarjeta: prueba de sabor, no compite con la
+   portada ni con el boton de descarga. Boton chico, barra fina, sin volumen. */
+
+.pv {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pv .pbtn {
+  width: 34px;
+  height: 34px;
+}
+
+.pv .pbtn__ico--play {
+  padding-left: 1px;
+}
+
+.pv .scrub__rail {
+  height: 4px;
+}
+
+.pv .scrub__fill {
+  background: var(--muted);
+}
+
+.pv.is-playing .scrub__fill {
+  background: var(--accent);
+}
+
+.pv__time {
+  flex: none;
+  min-width: 3.3ch;
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* ---------------------------------------------------------------------------
@@ -778,8 +1508,11 @@ button {
   background: var(--glass-card);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
-  animation: rise var(--t-enter) var(--ease) both;
+  /* `backwards` y no `both`: con `both` el ultimo keyframe (transform: none)
+     se queda aplicado para siempre y le gana al transform del hover. */
+  animation: rise var(--t-enter) var(--ease) backwards;
   animation-delay: min(400ms, calc(var(--i, 0) * 22ms));
+  transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
 }
 
 .card__art {
@@ -795,7 +1528,7 @@ button {
 .card__art--ph {
   display: grid;
   place-items: center;
-  background: linear-gradient(200deg, #b9c8d4, var(--track));
+  background: linear-gradient(200deg, var(--line-strong), var(--track));
   color: var(--faint);
 }
 
@@ -861,7 +1594,7 @@ button {
   flex: none;
   width: 1px;
   height: 11px;
-  background: #b9c8d4;
+  background: var(--line-strong);
 }
 
 .ext {
@@ -871,17 +1604,9 @@ button {
   color: var(--muted);
   font-weight: 600;
   text-decoration: underline;
-  text-decoration-color: #9db2c2;
+  text-decoration-color: var(--link-line);
   text-underline-offset: 3px;
   white-space: nowrap;
-}
-
-.preview {
-  display: block;
-  width: 100%;
-  height: 36px;
-  margin-top: 12px;
-  color-scheme: light;
 }
 
 /* Fila inferior: el estado a la izquierda, la accion a la derecha. */
@@ -896,11 +1621,18 @@ button {
 
 /* --- Chip de estado ------------------------------------------------------ */
 
+/* Etiqueta de estado, diseno "contorno": sin relleno, borde de 1.5 px del
+   tono, icono delante (lo pone StatusChip) y texto del mismo tono. La mas ligera
+   de las opciones: sobre una tarjeta de cristal no compite con la portada ni
+   con el boton de descarga. */
 .st {
-  display: inline-block;
-  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 8px;
+  border: 1.5px solid var(--tone-fg);
   border-radius: var(--r-pill);
-  background: var(--tone-bg);
+  background: transparent;
   color: var(--tone-fg);
   font-size: 12.5px;
   font-weight: 600;
@@ -909,8 +1641,13 @@ button {
   animation: pop 200ms var(--ease) both;
 }
 
-/* Las etiquetas del backend ("coincide", "no coincide") llegan en minuscula. */
-.st::first-letter {
+.st svg {
+  flex: none;
+}
+
+/* Las etiquetas del backend ("coincide", "no coincide") llegan en minuscula.
+   ::first-letter no aplica a un contenedor flex, por eso va en el texto. */
+.st__t::first-letter {
   text-transform: uppercase;
 }
 
@@ -927,7 +1664,7 @@ button {
   border: 0;
   border-radius: var(--r-md);
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
 }
@@ -969,7 +1706,7 @@ button {
   margin-top: 10px;
   padding: 8px 12px;
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--tone-bg) 40%, #fff);
+  background: color-mix(in srgb, var(--tone-bg) 40%, var(--surface));
   border: 1px solid var(--tone-bg);
   animation: reveal var(--t-enter) var(--ease) both;
 }
@@ -1120,11 +1857,44 @@ button {
   transform: scale(0.97);
 }
 
+.disclosure__caret {
+  transition: transform 260ms var(--ease);
+}
+
+.disclosure[aria-expanded="true"] .disclosure__caret {
+  transform: rotate(90deg);
+}
+
+/* Acordeon: la altura se anima con grid-template-rows 0fr -> 1fr (no hace falta
+   medir nada) y el contenido entra con un fundido. Cerrado es `inert`, asi que
+   no recibe foco ni lo lee un lector de pantalla. */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 320ms var(--ease), opacity 220ms var(--ease);
+}
+
+.fold[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.fold__in {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .setlist {
   margin: 14px 0 0;
   padding: 0;
   list-style: none;
-  animation: reveal var(--t-enter) var(--ease) both;
+}
+
+/* Las pistas entran una tras otra cada vez que se abre. */
+.fold[data-open] .tr {
+  animation: rise-soft 300ms var(--ease) backwards;
+  animation-delay: min(260ms, calc(var(--i, 0) * 30ms));
 }
 
 /* Fila de pista: numero, titulo, veredicto + duracion, descarga. */
@@ -1222,12 +1992,13 @@ button {
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   text-align: center;
-  animation: reveal var(--t-enter) var(--ease) both;
+  animation: enter-up 600ms var(--ease) 240ms backwards;
 }
 
 .intro__mark {
   margin-bottom: 14px;
-  color: var(--accent);
+  color: var(--accent-fg);
+  animation: pop-spring 600ms var(--ease-spring) 480ms backwards;
 }
 
 .intro__h {
@@ -1261,6 +2032,11 @@ button {
   list-style: none;
 }
 
+.examples li {
+  animation: enter-up 460ms var(--ease) backwards;
+  animation-delay: calc(420ms + var(--i, 0) * 70ms);
+}
+
 .example {
   display: inline-flex;
   align-items: center;
@@ -1269,12 +2045,12 @@ button {
   padding: 0 18px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: #fff;
+  background: var(--surface);
   color: var(--ink);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
+  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
 }
 
 .example:active {
@@ -1392,15 +2168,19 @@ button {
 
 @media (hover: hover) and (pointer: fine) {
   .libbtn:hover {
-    background: #2a3d4e;
+    background: var(--ink-hover);
+  }
+
+  .themesw:hover {
+    filter: brightness(1.06);
   }
 
   .libbtn.is-on:hover {
-    background: #f1f6f9;
+    background: var(--surface-hover);
   }
 
   .libbtn.is-empty:hover {
-    background: #d7e6ef;
+    background: var(--track-hover);
   }
 
   .search__go:not(:disabled):hover {
@@ -1408,17 +2188,17 @@ button {
   }
 
   .seg:not(.is-on):hover {
-    background: rgba(255, 255, 255, 0.6);
+    background: var(--seg-hover);
     color: var(--ink);
   }
 
   .dl:not(:disabled):not(.dl--off):hover {
-    background: #2a3d4e;
+    background: var(--ink-hover);
   }
 
   .vf:not(:disabled):not(.vf--static):hover,
   .disclosure:hover {
-    background: #d7e6ef;
+    background: var(--track-hover);
   }
 
   .example:hover {
@@ -1426,12 +2206,49 @@ button {
   }
 
   .ext:hover {
-    color: var(--accent);
-    text-decoration-color: var(--accent);
+    color: var(--accent-fg);
+    text-decoration-color: var(--accent-fg);
   }
 
-  .librow:hover {
-    background: rgba(228, 238, 244, 0.5);
+  .pl:not(.is-active):hover {
+    background: var(--row-hover);
+  }
+
+  .pl:hover .scrub__knob {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .scrub:hover .scrub__rail {
+    transform: scaleY(1.5);
+  }
+
+  :is(.pl, .pv):not(.is-playing) .pbtn:not(:disabled):hover {
+    border-color: var(--accent-fill);
+    color: var(--accent-fg);
+  }
+
+  :is(.pl, .pv).is-playing .pbtn:hover {
+    background: var(--accent-hover);
+  }
+
+  .pl__mute:hover {
+    color: var(--ink);
+  }
+
+  /* Tarjeta: se eleva un poco. Las anchas (conciertos) no: llevan botones
+     dentro y moverse bajo el puntero cansa. */
+  .card:not(.card--wide):not(.skel):hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 40px rgba(var(--shadow-rgb), 0.16);
+  }
+
+  .example:not(:active):hover {
+    transform: translateY(-2px);
+  }
+
+  .example:hover svg {
+    animation: wiggle 520ms var(--ease);
   }
 }
 
@@ -1532,9 +2349,9 @@ button {
     width: min(100%, 260px);
   }
 
-  .librow {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+  /* El volumen no tiene sentido en movil: el sistema manda. */
+  .pl__vol {
+    display: none;
   }
 
   .panel__path {
@@ -1551,6 +2368,178 @@ button {
    Solo transiciones de estado: entrada de tarjetas y avisos, progreso, cambio
    de chip. Sin animacion por scroll ni parallax. Solo transform y opacity.
    ------------------------------------------------------------------------- */
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(56px, 40px, 0) scale(1.12);
+  }
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rise-soft {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pop-spring {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    grid-template-rows: 0fr;
+  }
+  to {
+    grid-template-rows: 1fr;
+  }
+}
+
+@keyframes drawer-out {
+  from {
+    grid-template-rows: 1fr;
+  }
+  to {
+    grid-template-rows: 0fr;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.985);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes msg-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* La lupa recorre un circulo pequeno, como quien barre la zona con el cristal.
+   El circulo pasa POR el punto de reposo (gira alrededor de un centro a 4 px),
+   asi que empieza y acaba donde esta el icono: sin salto al arrancar y, como el
+   JSX deja terminar la vuelta antes de quitar la clase, sin corte al parar.
+   El ultimo rotate contrarresta el giro para que la lupa no rote sobre si. */
+@keyframes scan {
+  from {
+    transform: translate(4px, 0) rotate(0deg) translate(-4px, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(4px, 0) rotate(360deg) translate(-4px, 0) rotate(-360deg);
+  }
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-14deg);
+  }
+  65% {
+    transform: rotate(10deg);
+  }
+}
 
 @keyframes rise {
   from {
@@ -1628,7 +2617,16 @@ button {
   }
 
   .spin,
-  .skel--pulse {
+  .skel--pulse,
+  .blob,
+  .eq i,
+  .pbtn::after,
+  .prog__fill::after,
+  .search.is-scanning .search__icon {
     animation: none !important;
+  }
+
+  .eq i {
+    transform: scaleY(0.6);
   }
 }
