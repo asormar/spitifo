@@ -1,20 +1,38 @@
 import "@fontsource-variable/outfit";
 import "@fontsource-variable/figtree";
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import {
   ArrowUpRight,
-  CaretDown,
   CaretRight,
+  Check,
   CheckCircle,
   CircleNotch,
   DownloadSimple,
+  Headphones,
   ListBullets,
   MagnifyingGlass,
   MusicNotes,
+  Pause,
+  Play,
   Prohibit,
+  Question,
+  SpeakerHigh,
+  SpeakerLow,
+  SpeakerSlash,
   Sparkle,
   Stack,
+  Sun,
+  Moon,
   Waveform,
   WarningCircle,
   X,
@@ -213,6 +231,492 @@ const NODL_TITLE = {
   none: "No encontramos una versión completa de este tema",
 };
 
+const cx = (...parts) => parts.filter(Boolean).join(" ");
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+/* "m:ss" para el reproductor. fmtTime devuelve "--:--" para 0, que aqui seria
+   mentira: el principio de una cancion es 0:00, no un dato que falta. */
+function clock(s) {
+  const t = Math.max(0, Math.floor(s || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/* Tema claro/oscuro. El valor inicial ya lo puso index.html en <html> antes de
+   pintar; aqui solo se lee de ahi. Se guarda en localStorage cuando el usuario
+   lo elige a mano; mientras no haya eleccion guardada, sigue al sistema. */
+const THEME_KEY = "spitifo-theme";
+const THEME_COLOR = { light: "#CFE6F5", dark: "#14293B" };
+
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", THEME_COLOR[t]);
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState(
+    () => document.documentElement.getAttribute("data-theme") || "light"
+  );
+
+  const choose = useCallback((t) => {
+    /* El cambio se hace dentro de una View Transition: el navegador congela la
+       pagina vieja y el tema nuevo se descubre encima con una cortina que baja
+       (ver ::view-transition-new en style.css). flushSync hace que React pinte
+       el boton y el resto ya en el nuevo estado antes de que el navegador
+       tome la foto "nueva". Sin la API, o con movimiento reducido, se cambia
+       directamente. */
+    const commit = () =>
+      flushSync(() => {
+        applyTheme(t);
+        setTheme(t);
+      });
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (document.startViewTransition && !reduce) {
+      /* La transicion RECHAZA si el documento queda oculto (el usuario cambia
+         de pestana justo al apretar) y tambien si `commit` tira. El rechazo
+         llega como `unhandledrejection` aunque el tema se aplique igual, porque
+         el callback se corre en cualquier caso: por eso se tragan las tres
+         promesas. Sin esto la consola del usuario se llena de
+         "InvalidStateError: Transition was aborted". */
+      try {
+        const vt = document.startViewTransition(commit);
+        vt.ready.catch(() => {});
+        vt.finished.catch(() => {});
+        vt.updateCallbackDone.catch(() => {});
+      } catch (e) {
+        commit();
+      }
+    } else {
+      commit();
+    }
+    try {
+      localStorage.setItem(THEME_KEY, t);
+    } catch (e) {
+      /* Sin almacenamiento (modo privado): el tema vale para esta visita. */
+    }
+  }, []);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  /* Sin eleccion guardada, cambiar el tema del sistema se refleja en vivo. */
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e) => {
+      let saved = null;
+      try {
+        saved = localStorage.getItem(THEME_KEY);
+      } catch (err) {
+        /* igual que arriba */
+      }
+      if (saved === "light" || saved === "dark") return;
+      const t = e.matches ? "dark" : "light";
+      applyTheme(t);
+      setTheme(t);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  return [theme, choose];
+}
+
+/* Monta/desmonta con margen para una animacion de salida. `show` manda; el
+   componente sigue montado `ms` despues de que pase a false, y mientras tanto
+   el llamador pone data-state="closed" para que el CSS lo retire. Sin esto un
+   `{open && <X/>}` desaparece de golpe y no hay nada que animar. */
+function usePresence(show, ms) {
+  const [mounted, setMounted] = useState(show);
+  useEffect(() => {
+    if (show) {
+      setMounted(true);
+      return undefined;
+    }
+    const id = setTimeout(() => setMounted(false), ms);
+    return () => clearTimeout(id);
+  }, [show, ms]);
+  return show || mounted;
+}
+
+/* La pastilla blanca de un segmentado se DESLIZA hasta la opcion activa en
+   vez de saltar. Mide el boton activo y publica --ix / --iw en el contenedor;
+   el CSS hace el resto con transform. `data-ready` se pone justo despues de
+   la primera medida para que la pastilla no vuele desde 0 al montar. El
+   ResizeObserver cubre fuentes que cargan tarde, el cambio de ancho del
+   contador de "Todos 40" y el responsive. */
+function useSlidingPill(ref, activeKey) {
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (!box) return undefined;
+    const place = () => {
+      const on = box.querySelector(".seg.is-on");
+      if (!on) {
+        box.style.setProperty("--iw", "0px");
+        return;
+      }
+      box.style.setProperty("--ix", `${on.offsetLeft}px`);
+      box.style.setProperty("--iw", `${on.offsetWidth}px`);
+    };
+    place();
+    /* Se lee offsetWidth para forzar el calculo de estilo con la posicion ya
+       puesta; solo DESPUES se habilita la transicion. Asi el primer colocado
+       nunca anima, y no depende de requestAnimationFrame (que no dispara en una
+       pestana oculta). */
+    void box.offsetWidth;
+    box.setAttribute("data-ready", "");
+    const ro = new ResizeObserver(place);
+    ro.observe(box);
+    box.querySelectorAll(".seg").forEach((b) => ro.observe(b));
+    return () => ro.disconnect();
+  }, [ref, activeKey]);
+}
+
+/* ---------------------------------------------------------------------------
+   REPRODUCTOR
+
+   El <audio> nativo no admite casi ningun estilo (solo width, height,
+   color-scheme y accent-color), asi que sale como una caja oscura de esquinas
+   rectas en medio de una interfaz clara. Aqui el <audio> SIGUE en el DOM, sin
+   `controls` (no pinta nada), y se le dibuja encima una interfaz propia. Se
+   conserva el elemento a proposito: las teclas multimedia del sistema, la
+   pestana de Chrome y los lectores de pantalla siguen hablando con el.
+
+   Dos niveles: "row" (biblioteca: boton, barra, tiempo y volumen) y "compact"
+   (preview de 30 s en una tarjeta de resultados: prueba de sabor, sin volumen).
+
+   UNA sola cancion suena a la vez. Con 31 <audio> independientes se podian
+   tener cinco superpuestas. El registro `players` lo resuelve en el evento
+   `play`, asi tambien cubre las teclas multimedia, que no pasan por el boton.
+   El volumen y el silencio se comparten entre todos los reproductores.
+   ------------------------------------------------------------------------- */
+
+const players = new Set();
+const shared = { volume: 0.8, muted: false };
+
+/* La fila "activa" (filo coral, volumen, tirador) es solo la ULTIMA que sono.
+   Una pausada a medias conserva su progreso, pero no se queda con el volumen
+   abierto: tras probar cinco canciones serian cinco sliders. Los Player se
+   suscriben para repintarse cuando cambia. */
+let current = null;
+const watchers = new Set();
+function setCurrent(a) {
+  current = a;
+  watchers.forEach((w) => w());
+}
+
+function Player({ src, label, title, meta, duration, variant = "row", index = 0 }) {
+  const audioRef = useRef(null);
+  const railRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [realDur, setRealDur] = useState(0);
+  /* Posicion (0..1) mientras se arrastra la barra. null = no se arrastra. */
+  const [drag, setDrag] = useState(null);
+  const [vol, setVol] = useState(shared.volume);
+  const [muted, setMuted] = useState(shared.muted);
+  const [, repaint] = useReducer((n) => n + 1, 0);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    players.add(a);
+    watchers.add(repaint);
+    a.volume = shared.volume;
+    a.muted = shared.muted;
+    return () => {
+      players.delete(a);
+      watchers.delete(repaint);
+      if (current === a) setCurrent(null);
+      a.pause();
+    };
+  }, []);
+
+  const dur = realDur || duration || 0;
+  const pct = drag !== null ? drag : dur ? clamp(cur / dur, 0, 1) : 0;
+  const shownTime = drag !== null ? drag * dur : cur;
+  const isCurrent = !!audioRef.current && current === audioRef.current;
+  const active = !failed && isCurrent && (playing || cur > 0 || drag !== null);
+  const total = dur ? clock(Math.round(dur)) : "--:--";
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a || failed) return;
+    if (a.paused) {
+      a.volume = shared.volume;
+      a.muted = shared.muted;
+      setBuffering(true);
+      /* play() rechaza con AbortError si se pausa antes de arrancar: no es un
+         fallo del audio. Los fallos reales llegan por onError. */
+      a.play().catch(() => setBuffering(false));
+    } else {
+      a.pause();
+    }
+  };
+
+  const seekTo = (t) => {
+    const a = audioRef.current;
+    const v = clamp(t, 0, dur || 0);
+    if (a && dur) a.currentTime = v;
+    setCur(v);
+  };
+
+  const pctAt = (e) => {
+    const r = railRef.current.getBoundingClientRect();
+    return clamp((e.clientX - r.left) / r.width, 0, 1);
+  };
+
+  const onPointerDown = (e) => {
+    if (!dur || failed) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag(pctAt(e));
+  };
+  const onPointerMove = (e) => {
+    if (drag !== null) setDrag(pctAt(e));
+  };
+  const onPointerUp = (e) => {
+    if (drag === null) return;
+    seekTo(pctAt(e) * dur);
+    setDrag(null);
+  };
+
+  const onKeyDown = (e) => {
+    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
+    if (step !== undefined) {
+      e.preventDefault();
+      /* Se parte del reloj real del <audio>, no de `cur`: ese estado se
+         refresca ~4 veces por segundo y las flechas repetidas no sumaban. */
+      seekTo((audioRef.current?.currentTime ?? cur) + step);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seekTo(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seekTo(dur - 1);
+    } else if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      toggle();
+    }
+  };
+
+  const onVolume = (e) => {
+    const v = Number(e.target.value) / 100;
+    shared.volume = v;
+    shared.muted = v === 0;
+    setVol(v);
+    setMuted(v === 0);
+    const a = audioRef.current;
+    a.volume = v;
+    a.muted = v === 0;
+  };
+
+  const toggleMute = () => {
+    const next = !(muted || vol === 0);
+    if (!next && vol === 0) {
+      shared.volume = 0.8;
+      setVol(0.8);
+    }
+    shared.muted = next;
+    setMuted(next);
+    const a = audioRef.current;
+    a.muted = next;
+    a.volume = shared.volume;
+  };
+
+  const icon = failed ? "play" : buffering ? "load" : playing ? "pause" : "play";
+  const verb = playing ? "Pausar" : "Reproducir";
+  const small = variant === "compact";
+  const iconSize = small ? 13 : 16;
+
+  const audio = (
+    <audio
+      ref={audioRef}
+      src={src}
+      /* Con la duracion ya conocida no hace falta pedir metadatos de cada fila:
+         31 filas eran 31 peticiones al abrir la biblioteca. */
+      preload={duration ? "none" : "metadata"}
+      onLoadedMetadata={(e) => {
+        if (Number.isFinite(e.currentTarget.duration)) setRealDur(e.currentTarget.duration);
+      }}
+      onDurationChange={(e) => {
+        if (Number.isFinite(e.currentTarget.duration)) setRealDur(e.currentTarget.duration);
+      }}
+      onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
+      onPlay={(e) => {
+        players.forEach((o) => {
+          if (o !== e.currentTarget) o.pause();
+        });
+        e.currentTarget.volume = shared.volume;
+        e.currentTarget.muted = shared.muted;
+        setCurrent(e.currentTarget);
+        setVol(shared.volume);
+        setMuted(shared.muted);
+        setPlaying(true);
+      }}
+      onPlaying={() => setBuffering(false)}
+      onWaiting={() => setBuffering(true)}
+      onPause={() => {
+        setPlaying(false);
+        setBuffering(false);
+      }}
+      onEnded={(e) => {
+        e.currentTarget.currentTime = 0;
+        setPlaying(false);
+        setCur(0);
+      }}
+      onError={() => {
+        setFailed(true);
+        setPlaying(false);
+        setBuffering(false);
+      }}
+    />
+  );
+
+  const button = (
+    <button
+      type="button"
+      className="pbtn"
+      data-icon={icon}
+      onClick={toggle}
+      disabled={failed}
+      aria-label={`${verb} ${label}`}
+    >
+      <span className="pbtn__ico pbtn__ico--play">
+        <Play size={iconSize} weight="fill" />
+      </span>
+      <span className="pbtn__ico pbtn__ico--pause">
+        <Pause size={iconSize} weight="fill" />
+      </span>
+      <span className="pbtn__ico pbtn__ico--load">
+        <CircleNotch size={iconSize} weight="bold" className="spin" />
+      </span>
+    </button>
+  );
+
+  const rail = (
+    <div
+      ref={railRef}
+      className={cx("scrub", drag !== null && "is-drag")}
+      role="slider"
+      tabIndex={failed ? -1 : 0}
+      aria-label={`Progreso de ${label}`}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(pct * 100)}
+      aria-valuetext={`${clock(shownTime)} de ${total}`}
+      aria-disabled={failed || undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => setDrag(null)}
+      onKeyDown={onKeyDown}
+    >
+      <span className="scrub__rail">
+        <span className="scrub__fill" style={{ transform: `scaleX(${pct})` }} />
+      </span>
+      <span className="scrub__knob" style={{ left: `${pct * 100}%` }} />
+    </div>
+  );
+
+  if (small) {
+    return (
+      <div className={cx("pv", active && "is-active", playing && "is-playing")}>
+        {audio}
+        {button}
+        {rail}
+        <span className="pv__time">{active ? clock(shownTime) : total}</span>
+      </div>
+    );
+  }
+
+  const quiet = muted || vol === 0;
+  return (
+    <div
+      className={cx("pl", active && "is-active", playing && "is-playing", failed && "is-failed")}
+      style={{ "--i": index }}
+    >
+      {audio}
+      {button}
+      <div className="pl__mid">
+        <div className="pl__top">
+          <span className="pl__title" title={title}>
+            {title}
+          </span>
+          <span className="eq" aria-hidden="true" data-on={playing && !buffering ? "" : undefined}>
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="pl__time">
+            {clock(shownTime)} / {total}
+          </span>
+        </div>
+        <div className="pl__meta" title={failed ? undefined : meta}>
+          {failed ? "No se pudo reproducir este audio" : meta}
+        </div>
+        <div className="pl__bar">
+          {rail}
+          {/* El volumen solo existe en la fila activa: 31 filas con 31
+              deslizadores serian ruido. Vive en la fila de la barra para que su
+              aparicion no mueva el titulo. */}
+          <div className="pl__vol" aria-hidden={!active}>
+            <button
+              type="button"
+              className="pl__mute"
+              tabIndex={active ? 0 : -1}
+              onClick={toggleMute}
+              aria-label={quiet ? "Activar el sonido" : "Silenciar"}
+            >
+              {quiet ? (
+                <SpeakerSlash size={17} />
+              ) : vol < 0.45 ? (
+                <SpeakerLow size={17} />
+              ) : (
+                <SpeakerHigh size={17} />
+              )}
+            </button>
+            <input
+              type="range"
+              className="vol"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round((quiet ? 0 : vol) * 100)}
+              tabIndex={active ? 0 : -1}
+              aria-label={`Volumen de ${label}`}
+              style={{ "--v": `${Math.round((quiet ? 0 : vol) * 100)}%` }}
+              onChange={onVolume}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Etiqueta de estado: contorno fino del tono, icono y texto. Cada tono lleva el
+   suyo (bien, solo preview, mal, sin veredicto) para que el estado no dependa
+   solo del color. El `key` lo pone quien la usa: al cambiar de estado se
+   remonta y repite su entrada. */
+const CHIP_ICON = {
+  ok: Check,
+  warn: Headphones,
+  bad: X,
+  mute: Question,
+};
+
+function StatusChip({ tone, children }) {
+  const Icon = CHIP_ICON[tone] || Question;
+  return (
+    <span className={`st st--${tone}`}>
+      <Icon size={13} weight="bold" aria-hidden="true" />
+      <span className="st__t">{children}</span>
+    </span>
+  );
+}
+
 /* La portada viene de iTunes y a veces no carga (o no existe). Sin onError el
    navegador pinta su icono roto de imagen. Con esto, si falla, sale el
    placeholder con la nota musical. */
@@ -259,6 +763,12 @@ function buildSearchParams(q, mode) {
   if (mode === "ytdlp") p.set("source", "ytdlp");
   return p;
 }
+
+const isTerminal = (j) =>
+  j?.status === "done"
+  || j?.status === "error"
+  || j?.status === "timeout"
+  || j?.status === "gone";
 
 /* Sondea el progreso de una descarga yt-dlp hasta que termine.
 
@@ -359,9 +869,9 @@ function VerifyPanel({ t, query, onVerified }) {
     <div className={`vfbox vfbox--${tone}`}>
       <div className="vfbox__head">
         <strong className="vfbox__title">{m.real_title || "sin título"}</strong>
-        <span className={`st st--${tone}`} key={m.match || "unknown"}>
+        <StatusChip tone={tone} key={m.match || "unknown"}>
           {m.match_label || "?"}
-        </span>
+        </StatusChip>
       </div>
       <div className="vfbox__meta">
         {m.real_artist && (
@@ -414,9 +924,14 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
     }
   }, [t.extra?.item_ids, t.source_id, query]);
 
+  /* El setlist se queda montado una vez abierto: si se desmontara al cerrar no
+     habria altura que animar. Antes de la primera apertura no existe. */
+  const [everOpened, setEverOpened] = useState(false);
+
   const toggle = useCallback(() => {
     const n = !open;
     setOpen(n);
+    if (n) setEverOpened(true);
     if (n && !tracks) load();
   }, [open, tracks, load]);
 
@@ -438,9 +953,9 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
             <h3 className="card__title card__title--lg">{t.title}</h3>
             <p className="card__sub">{[t.artist, t.year].filter(Boolean).join(", ")}</p>
           </div>
-          <span className={`st st--${STATE_UI[st].tone}`} key={st}>
+          <StatusChip tone={STATE_UI[st].tone} key={st}>
             {STATE_UI[st].label}
-          </span>
+          </StatusChip>
         </div>
         <div className="card__facts">
           <span className="meta">
@@ -452,63 +967,71 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
           </ExtLink>
         </div>
         <button className="disclosure" onClick={toggle} aria-expanded={open}>
-          {open ? <CaretDown size={13} /> : <CaretRight size={13} />}
+          <CaretRight size={13} className="disclosure__caret" />
           <ListBullets size={13} />
           {open ? "ocultar las canciones" : "ver qué canciones hay"}
         </button>
 
-        {open && (
-          <ul className="setlist">
-            {loading && <li className="tr tr--dim">leyendo las etiquetas de cada pista</li>}
-            {!loading && tracks && tracks.length === 0 && (
-              <li className="tr tr--dim">no pude leer las pistas</li>
-            )}
-            {tracks?.map((s, n) => {
-              const tone =
-                s.match === "match"
-                  ? "ok"
-                  : s.match === "partial"
-                  ? "warn"
-                  : s.match === "mismatch"
-                  ? "bad"
-                  : "mute";
-              const otherArtist = s.real_artist && s.real_artist !== t.artist;
-              return (
-                <li className="tr" key={s.source_id}>
-                  <span className="tr__n">{String(n + 1).padStart(2, "0")}</span>
-                  <div className="tr__main">
-                    <div className="tr__title">{s.real_title || s.filename}</div>
-                    {(otherArtist || s.format || fmtSize(s.size_mb)) && (
-                      <div className="tr__meta">
-                        {otherArtist && <span>{s.real_artist}</span>}
-                        {s.format && <span>{s.format}</span>}
-                        {fmtSize(s.size_mb) && <span>{fmtSize(s.size_mb)}</span>}
+        {everOpened && (
+          <div className="fold" data-open={open ? "" : undefined} inert={open ? undefined : ""}>
+            <div className="fold__in">
+              <ul className="setlist">
+                {loading && <li className="tr tr--dim">leyendo las etiquetas de cada pista</li>}
+                {!loading && tracks && tracks.length === 0 && (
+                  <li className="tr tr--dim">no pude leer las pistas</li>
+                )}
+                {tracks?.map((s, n) => {
+                  const tone =
+                    s.match === "match"
+                      ? "ok"
+                      : s.match === "partial"
+                      ? "warn"
+                      : s.match === "mismatch"
+                      ? "bad"
+                      : "mute";
+                  const otherArtist = s.real_artist && s.real_artist !== t.artist;
+                  return (
+                    <li className="tr" key={s.source_id} style={{ "--i": n }}>
+                      <span className="tr__n">{String(n + 1).padStart(2, "0")}</span>
+                      <div className="tr__main">
+                        <div className="tr__title">{s.real_title || s.filename}</div>
+                        {(otherArtist || s.format || fmtSize(s.size_mb)) && (
+                          <div className="tr__meta">
+                            {otherArtist && <span>{s.real_artist}</span>}
+                            {s.format && <span>{s.format}</span>}
+                            {fmtSize(s.size_mb) && <span>{fmtSize(s.size_mb)}</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="tr__info">
-                    <span className={`st st--${tone}`} key={s.match || "unknown"}>
-                      {s.match_label || "?"}
-                    </span>
-                    <span className="meta">{fmtTime(s.duration_s)}</span>
-                  </div>
-                  <button
-                    className="dl dl--sm"
-                    disabled={busyIds.has(rowKey(s))}
-                    onClick={() => onDownload(s)}
-                    title="Descargar a la biblioteca"
-                    aria-label={`Descargar ${s.real_title || s.filename}`}
-                  >
-                    {busyIds.has(rowKey(s)) ? (
-                      <CircleNotch size={16} className="spin" />
-                    ) : (
-                      <DownloadSimple size={16} weight="bold" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                      <div className="tr__info">
+                        <StatusChip tone={tone} key={s.match || "unknown"}>
+                          {s.match_label || "?"}
+                        </StatusChip>
+                        <span className="meta">{fmtTime(s.duration_s)}</span>
+                      </div>
+                      <button
+                        className="dl dl--sm"
+                        disabled={busyIds.has(rowKey(s))}
+                        onClick={() => onDownload(s)}
+                        title="Descargar a la biblioteca"
+                        aria-label={`Descargar ${s.real_title || s.filename}`}
+                      >
+                        {busyIds.has(rowKey(s)) ? (
+                          <span className="swap" key="busy">
+                            <CircleNotch size={16} className="spin" />
+                          </span>
+                        ) : (
+                          <span className="swap" key="idle">
+                            <DownloadSimple size={16} weight="bold" />
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
         )}
       </div>
     </li>
@@ -543,6 +1066,7 @@ function ProgressBar({ job }) {
   return (
     <div
       className={`prog ${done ? "is-done" : ""} ${failed || halted ? "is-failed" : ""}`}
+      style={{ "--dismiss": `${JOB_DISMISS_MS}ms` }}
       role="status"
       aria-live="polite"
     >
@@ -566,6 +1090,8 @@ function ProgressBar({ job }) {
             ? job.status === "gone"
               ? "El servidor ya no tiene esta descarga"
               : "Sigue descargando en el servidor"
+            : job.status === "pending"
+            ? "En cola"
             : `Descargando, ${pct}%`}
         </span>
       </div>
@@ -632,7 +1158,12 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
           </ExtLink>
         </div>
         {t.preview_url && (
-          <audio controls preload="metadata" src={t.preview_url} className="preview" />
+          <Player
+            variant="compact"
+            src={t.preview_url}
+            label={`el preview de ${t.title || "este resultado"}`}
+            duration={30}
+          />
         )}
         {v && (
           <div
@@ -655,9 +1186,9 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
         )}
         {t.source === "archive" && <VerifyPanel t={t} query={query} onVerified={onVerified} />}
         <div className="card__foot">
-          <span className={`st st--${ui.tone}`} key={st}>
+          <StatusChip tone={ui.tone} key={st}>
             {ui.label}
-          </span>
+          </StatusChip>
           {st === "full" ? (
             <button
               className="dl"
@@ -667,9 +1198,13 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
               aria-label={`Descargar ${t.title || "este resultado"}`}
             >
               {busy ? (
-                <CircleNotch size={19} className="spin" />
+                <span className="swap" key="busy">
+                  <CircleNotch size={19} className="spin" />
+                </span>
               ) : (
-                <DownloadSimple size={19} weight="bold" />
+                <span className="swap" key="idle">
+                  <DownloadSimple size={19} weight="bold" />
+                </span>
               )}
             </button>
           ) : (
@@ -713,6 +1248,8 @@ function SkeletonRow({ i }) {
    lleva el radiogroup. */
 function FmtPicker({ value, onChange }) {
   const refs = useRef([]);
+  const segsRef = useRef(null);
+  useSlidingPill(segsRef, value);
   const current = Math.max(
     0,
     FORMATS.findIndex((f) => f.value === value)
@@ -730,6 +1267,7 @@ function FmtPicker({ value, onChange }) {
         Formato
       </span>
       <div
+        ref={segsRef}
         className="segs"
         role="radiogroup"
         aria-label="Formato de descarga"
@@ -777,6 +1315,8 @@ function FmtPicker({ value, onChange }) {
    existian, y el teclado necesitaba tres tab stops para recorrer tres modos. */
 function ModePicker({ value, onChange, ytDead }) {
   const refs = useRef([]);
+  const segsRef = useRef(null);
+  useSlidingPill(segsRef, value);
   const current = Math.max(
     0,
     MODES.findIndex((m) => m.id === value)
@@ -789,7 +1329,7 @@ function ModePicker({ value, onChange, ytDead }) {
   };
 
   return (
-    <div className="segs" role="radiogroup" aria-label="Modo de búsqueda">
+    <div ref={segsRef} className="segs" role="radiogroup" aria-label="Modo de búsqueda">
       {MODES.map((m, i) => (
         <button
           key={m.id}
@@ -836,6 +1376,34 @@ function ModePicker({ value, onChange, ytDead }) {
   );
 }
 
+/* Filtro de resultados. Es un componente aparte (y no JSX en App) porque el
+   grupo solo existe cuando hay resultados: el hook de la pastilla deslizante
+   tiene que montarse con el, no con App. */
+function FilterSegs({ filter, onChange, total, full }) {
+  const ref = useRef(null);
+  useSlidingPill(ref, filter);
+  return (
+    <div ref={ref} className="segs" role="group" aria-label="Filtrar resultados">
+      <button
+        type="button"
+        className={`seg ${filter === "all" ? "is-on" : ""}`}
+        aria-pressed={filter === "all"}
+        onClick={() => onChange("all")}
+      >
+        Todos <span className="seg__n">{total}</span>
+      </button>
+      <button
+        type="button"
+        className={`seg ${filter === "full" ? "is-on" : ""}`}
+        aria-pressed={filter === "full"}
+        onClick={() => onChange("full")}
+      >
+        Descarga completa <span className="seg__n">{full}</span>
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -863,6 +1431,23 @@ function App() {
   const [jobs, setJobs] = useState({});
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
+  /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
+     hasta cerrar la vuelta en curso (la orbita empieza y acaba en reposo), asi
+     que se detiene sin saltar. El timeout es la red de seguridad para
+     prefers-reduced-motion, donde no hay animacion ni evento que esperar. */
+  const [scanning, setScanning] = useState(false);
+  useEffect(() => {
+    if (loading) {
+      setScanning(true);
+      return undefined;
+    }
+    const id = setTimeout(() => setScanning(false), 1500);
+    return () => clearTimeout(id);
+  }, [loading]);
+
+  const [theme, chooseTheme] = useTheme();
+  const dark = theme === "dark";
+
   const inputRef = useRef();
   const lastSig = useRef("");
   const searchSeq = useRef(0);
@@ -878,25 +1463,36 @@ function App() {
      varias descargas en curso cada uno tiene su propio temporizador: el de la
      primera no puede borrar el toast de la segunda, que es justo lo que
      pasaba antes. */
+  const dismissTimers = useRef(new Map());
   useEffect(() => {
-    const terminales = Object.entries(jobs).filter(
-      ([, j]) =>
-        j?.status === "done"
-        || j?.status === "error"
-        || j?.status === "timeout"
-        || j?.status === "gone"
-    );
-    if (!terminales.length) return undefined;
-    const ids = terminales.map(([k]) => k);
-    const t = setTimeout(() => {
-      setJobs((cur) => {
-        const next = { ...cur };
-        ids.forEach((k) => delete next[k]);
-        return next;
-      });
-    }, JOB_DISMISS_MS);
-    return () => clearTimeout(t);
+    /* Un temporizador POR job, creado una sola vez cuando el job pasa a
+       terminal. Antes habia uno global que se reiniciaba en cada cambio de
+       `jobs`: con otra descarga todavia sondeando (un tick cada 700 ms) el
+       toast ya terminado no se retiraba nunca, y el CSS de salida (que cuenta
+       los mismos 5 s) lo dejaba invisible pero ocupando su hueco en la pila. */
+    Object.entries(jobs).forEach(([k, j]) => {
+      if (!isTerminal(j) || dismissTimers.current.has(k)) return;
+      dismissTimers.current.set(
+        k,
+        setTimeout(() => {
+          dismissTimers.current.delete(k);
+          setJobs((cur) => {
+            /* Si la misma cancion se volvio a bajar en estos 5 s, el job ya no
+               es terminal y NO se toca: no se le retira una descarga viva. */
+            if (!isTerminal(cur[k])) return cur;
+            const next = { ...cur };
+            delete next[k];
+            return next;
+          });
+        }, JOB_DISMISS_MS)
+      );
+    });
   }, [jobs]);
+
+  useEffect(() => {
+    const timers = dismissTimers.current;
+    return () => timers.forEach((id) => clearTimeout(id));
+  }, []);
 
   /* Actualiza UN job sin tocar los demas. El setJob viejo pisaba el estado
      entero en cada tick del polling. */
@@ -1103,6 +1699,15 @@ function App() {
     setLibOpen((n) => !n);
   }, []);
 
+  /* El panel sigue montado tras cerrarse para poder animar la salida (400 ms
+     de drawer-out + margen). `libSettled` dice que el cajon ya termino de
+     abrirse: hasta entonces recorta su contenido, despues lo libera. */
+  const libMounted = usePresence(libOpen, 440);
+  const [libSettled, setLibSettled] = useState(false);
+  useEffect(() => {
+    if (!libOpen) setLibSettled(false);
+  }, [libOpen]);
+
   /* El contador del boton tiene que ser real desde el primer render, asi que
      /api/library se pide al montar y no solo al abrir el panel. Es una lista
      de archivos locales: no toca red. */
@@ -1201,6 +1806,29 @@ function App() {
           <Waveform size={24} weight="bold" className="brand__mark" />
           <span className="brand__name">spitifo</span>
         </div>
+        <div className="top__actions">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={dark}
+          className="themesw"
+          onClick={() => chooseTheme(dark ? "light" : "dark")}
+          aria-label="Modo oscuro"
+          title={
+            dark
+              ? "Modo oscuro: cambiar a modo claro"
+              : "Modo claro: cambiar a modo oscuro"
+          }
+        >
+          <span className="themesw__knob">
+            <span className="themesw__ico themesw__ico--moon">
+              <Moon size={12} weight="fill" />
+            </span>
+            <span className="themesw__ico themesw__ico--sun">
+              <Sun size={12} weight="fill" />
+            </span>
+          </span>
+        </button>
         <button
           className={[
             "libbtn",
@@ -1214,17 +1842,30 @@ function App() {
           aria-label={libAria}
           title={libTitle}
         >
-          {libOpen ? <X size={17} /> : <Stack size={17} />}
+          <span className="swap" key={libOpen ? "x" : "stack"}>
+            {libOpen ? <X size={17} /> : <Stack size={17} />}
+          </span>
           <span className="libbtn__lbl">{libOpen ? "Cerrar" : "Biblioteca"}</span>
-          {!libOpen && libCount > 0 && <span className="count">{libCount}</span>}
+          {!libOpen && libCount > 0 && (
+            <span className="count count--bump" key={libCount}>
+              {libCount}
+            </span>
+          )}
         </button>
+        </div>
       </header>
 
       <section className="hero">
-        <h1 className="hero__title">Descarga música de forma libre</h1>
+        <h1 className="hero__title">Descarga música libremente</h1>
 
         <div className="finder">
-          <form onSubmit={doSearch} className="search">
+          <form
+            onSubmit={doSearch}
+            className={cx("search", scanning && "is-scanning")}
+            onAnimationIteration={(e) => {
+              if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
+            }}
+          >
             <MagnifyingGlass size={22} className="search__icon" />
             <input
               ref={inputRef}
@@ -1263,7 +1904,12 @@ function App() {
         </div>
       )}
       {done && (
-        <div className={`msg ${done.warning ? "msg--warn" : "msg--ok"}`} role="status">
+        <div
+          key={done.filename || done.warning}
+          className={`msg ${done.warning ? "msg--warn" : "msg--ok"}`}
+          style={{ "--dismiss": `${JOB_DISMISS_MS}ms` }}
+          role="status"
+        >
           {done.warning ? (
             <WarningCircle size={17} weight="fill" />
           ) : (
@@ -1282,37 +1928,46 @@ function App() {
         </div>
       )}
 
-      {libOpen && (
-        <section className="panel">
-          <div className="panel__head">
-            <h2 className="panel__title">
-              <Stack size={17} />
-              Tu biblioteca
-              <span className="count">{libCount}</span>
-            </h2>
-            {health?.library && <span className="panel__path">{health.library}</span>}
-          </div>
-          <div className="panel__body">
-            {libCount === 0 && (
-              <p className="panel__empty">Todavía no has descargado nada.</p>
-            )}
-            {libFiles.map((f) => (
-              <div key={f.path} className="librow">
-                <audio controls preload="metadata" src={`${API}/audio?path=${encodeURIComponent(f.path)}`} />
-                <div className="librow__text">
-                  <div className="librow__name" title={f.filename}>
-                    {f.filename}
-                  </div>
-                  <div className="librow__meta" title={f.folder}>
-                    {f.folder}
-                    {f.size_mb != null && ` \u00b7 ${fmtSize(f.size_mb)}`}
-                    {f.duration_s ? ` \u00b7 ${fmtTime(f.duration_s)}` : ""}
-                  </div>
-                </div>
+      {libMounted && (
+        <div
+          className="drawer"
+          data-state={libOpen ? "open" : "closed"}
+          data-settled={libSettled && libOpen ? "" : undefined}
+          onAnimationEnd={(e) => {
+            if (e.target === e.currentTarget && e.animationName === "drawer-in") {
+              setLibSettled(true);
+            }
+          }}
+        >
+          <div className="drawer__in">
+            <section className="panel">
+              <div className="panel__head">
+                <h2 className="panel__title">
+                  <Stack size={17} />
+                  Tu biblioteca
+                  <span className="count">{libCount}</span>
+                </h2>
+                {health?.library && <span className="panel__path">{health.library}</span>}
               </div>
-            ))}
+              <div className="panel__body">
+                {libCount === 0 && (
+                  <p className="panel__empty">Todavía no has descargado nada.</p>
+                )}
+                {libFiles.map((f, n) => (
+                  <Player
+                    key={f.path}
+                    src={`${API}/audio?path=${encodeURIComponent(f.path)}`}
+                    label={f.filename}
+                    title={f.filename}
+                    meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}
+                    duration={f.duration_s}
+                    index={n}
+                  />
+                ))}
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       )}
 
       {results.length > 0 && (
@@ -1322,24 +1977,12 @@ function App() {
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
               <b>{fullCount} descargables</b>
             </span>
-            <div className="segs" role="group" aria-label="Filtrar resultados">
-              <button
-                type="button"
-                className={`seg ${filter === "all" ? "is-on" : ""}`}
-                aria-pressed={filter === "all"}
-                onClick={() => setFilter("all")}
-              >
-                Todos <span className="seg__n">{results.length}</span>
-              </button>
-              <button
-                type="button"
-                className={`seg ${filter === "full" ? "is-on" : ""}`}
-                aria-pressed={filter === "full"}
-                onClick={() => setFilter("full")}
-              >
-                Descarga completa <span className="seg__n">{fullCount}</span>
-              </button>
-            </div>
+            <FilterSegs
+              filter={filter}
+              onChange={setFilter}
+              total={results.length}
+              full={fullCount}
+            />
           </div>
           <ul className="rows">
             {shown.map((t, i) =>
@@ -1395,8 +2038,8 @@ function App() {
           </p>
           <p className="intro__lbl">Prueba con alguno de estos</p>
           <ul className="examples">
-            {EXAMPLES.map((ex) => (
-              <li key={ex}>
+            {EXAMPLES.map((ex, i) => (
+              <li key={ex} style={{ "--i": i }}>
                 <button type="button" className="example" onClick={() => runExample(ex)}>
                   <Waveform size={13} />
                   {ex}
