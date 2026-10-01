@@ -1,5 +1,5 @@
 fastapi==0.141.1
-"uvicorn[standard]"
+uvicorn[standard]
 httpx
 mutagen
 python-multipart
