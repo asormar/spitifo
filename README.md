@@ -1,202 +1,340 @@
-# Spitifo
+<div align="center">
 
-Buscá una canción, bajala al momento. Web app que consulta fuentes con licencia libre
-y descarga el archivo completo con los tags ya puestos.
+# 🎵 Spitifo
 
-## Arranque rápido
+**Search a song, download it in full — with the tags already written**
+
+Free-licence catalogues + YouTube as a last resort · Identity verification on every file
+
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-20232A?logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![yt-dlp](https://img.shields.io/badge/yt--dlp-ff0000?logo=youtube&logoColor=white)
+![mutagen](https://img.shields.io/badge/mutagen-43B02A?logo=python&logoColor=white)
+
+<img src="docs/app-home.png" alt="Spitifo home screen: dark interface with search bar, mode selector (Recommended / All sources / YouTube only) and format selector" width="820">
+
+*Local-first. No accounts, no cloud, no tracking.*
+
+</div>
+
+---
+
+## Table of contents
+
+- [Overview](#overview)
+- [The hard part: knowing what you downloaded](#the-hard-part-knowing-what-you-downloaded)
+- [How the sources work](#how-the-sources-work)
+- [The matcher](#the-matcher)
+- [Results in the browser](#results-in-the-browser)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [API](#api)
+- [Project structure](#project-structure)
+- [Tests](#tests)
+- [Legal](#legal)
+
+## Overview
+
+Most "download this song" tools hand you a file and stop. Spitifo goes one step
+further: after every download it **opens the file and checks that it is actually the
+song you asked for**, and if it isn't, it says so in plain language.
+
+That single feature is what the rest of the project is built around. It exists because
+the obvious implementations are quietly wrong:
+
+- Internet Archive stores **one item per track**, but titles the item after the
+  *concert*. Search "Bohemian Rhapsody" and you get a Phish show because that song is
+  number 21 on the setlist.
+- The audio filenames are meaningless: `ph2022-12-31_s3t04.mp3` never says which song
+  it holds.
+- YouTube is full of rips, covers and hour-long compilations, all titled "Bohemian
+  Rhapsody".
+
+So a naive downloader will confidently save you 45 seconds of the wrong track and call
+it a day.
+
+| Feature | What it does |
+| --- | --- |
+| **Identity verification** | Reads the real ID3 tags of the downloaded bytes and scores them against your query. Reports `match`, `partial`, `mismatch` or `unknown`. |
+| **Honest file naming** | A mismatch is saved under the title actually in the file, never under the title you searched for. |
+| **Multi-source search** | Internet Archive, Wikimedia Commons, iTunes and Jamendo queried in parallel, then merged and de-duplicated. |
+| **Matched mode** | iTunes supplies clean metadata; yt-dlp supplies the full-length audio. Best of both. |
+| **Concurrent downloads** | Every download is tracked independently: its own progress toast, its own spinner, its own auto-dismiss. |
+| **Light and dark themes** | Follows your system preference, remembers your choice, no flash on load. |
+| **Built-in player** | Custom scrubber, volume and keyboard controls. Native `<audio>` chrome is hidden on purpose. |
+| **Show grouping** | Archive concerts expand into their real setlist, each track downloadable on its own. |
+
+## The hard part: knowing what you downloaded
+
+After the audio lands on disk, `identify.py` reads the **first 256 KB** with mutagen and
+compares the parsed tags against your query. The comparison is a word-overlap score with
+stopwords removed (`live`, `remix`, `feat.`, `version`, `remaster…`).
+
+| Verdict | Meaning | What you see |
+| --- | --- | --- |
+| `match` | ≥ 0.8 overlap — this is the track you asked for | nothing, it's fine |
+| `partial` | ≥ 0.4 — related, but not certainly the same recording | nothing |
+| `mismatch` | **this is not what you searched for** | a warning naming the real title |
+| `unknown` | the file carries no tags to check | a warning: *could not verify* |
+
+Two deliberate decisions here:
+
+**`unknown` warns too.** "I could not verify this" is more honest than a green tick that
+nobody ever issued.
+
+**The filename comes from the file.** If a download does not match, it is written to disk
+under the title its tags actually contain. The file on your disk never lies about its
+own contents.
+
+> [!NOTE]
+> The verdict is computed **after** the download, against the real title of the file that
+> landed — not against the metadata you searched with. Publishing it through the job
+> payload is what lets the UI show it without a second round trip.
+
+## How the sources work
+
+| Source | Status | What you actually get |
+| --- | --- | --- |
+| **Internet Archive** | Works, no key | Full downloads. Live concerts, 78rpm transfers, community uploads |
+| **Wikimedia Commons** | Works, no key | Full downloads. CC and public-domain audio |
+| **iTunes Search** | Works, no key | Huge, clean catalogue — but **30-second previews only** |
+| **Jamendo** | Needs `JAMENDO_CLIENT_ID` | Full MP3s from independent artists (free key) |
+| **yt-dlp** | Off by default | Full-length audio from YouTube — see [Legal](#legal) |
+
+The asymmetry in that table *is* the design problem. iTunes has the best metadata and
+the worst audio; YouTube has the audio and the worst metadata. Matched mode exists to
+join them.
+
+### Two traps worth knowing about
+
+**Archive is not just music.** It is audio in general. Searching `Numb Linkin Park`
+returns *"HUBS report"*, *"Chaos in Portland"* and *"Toe sucking burglar strikes in
+Florida"*. Two filters in `sources.py` prevent that:
+
+- `looks_like_music()` drops titles carrying podcast / news / sermon / audiobook words.
+- `relevance()` scores 0–1 and requires the item to contain **most of the distinctive
+  words** of your query. An item matching only "park" scores 0.13; the correct one, 0.67.
+
+Together they turn a search whose first three hits were podcasts into one where every
+result is music. **Apply both to any new source.**
+
+**Archive needs AND between words.** `advancedsearch` requires every term, so
+`"linkin park numb"` returns zero even though *Meteora* is uploaded. The adapter tries
+progressively looser variants and falls back to an OR over the longest words, then
+re-ranks by real relevance. And `httpx` needs `params` as a **list of tuples** — repeating
+keys in a dict silently returns documents with every field empty.
+
+## The matcher
+
+Matched mode pairs each iTunes track with the right YouTube video. This is not a
+similarity search: *Bohemian Rhapsody* exists by Queen, by Panic! At the Disco and by
+Pentatonix, and "closest title wins" sent all three to Queen's video.
+
+| Signal | Weight | Why |
+| --- | --- | --- |
+| Channel name contains the artist | +0.3 | Strongest and cheapest signal available |
+| Title matches **and** duration within 12 s | +0.2 | Separates covers and live versions |
+| Duration off by more than 90 s | Reject | Live vs studio, remix vs original |
+| No channel **and** no (title + duration) | **No match** | Better to say "none" than to download the wrong song |
+
+A video is never reused for two different tracks.
+
+<div align="center">
+
+| Query | Behaviour |
+| --- | --- |
+| `bohemian rhapsody` | Queen → Queen official, Panic! → a different video, Pentatonix → a different video |
+| `pink floyd` | Reports "no full version" for 5 of 6 instead of inventing one |
+
+</div>
+
+## Results in the browser
+
+<img src="docs/app-results.png" alt="Search results as a card grid: album artwork, title, artist and album, provenance line reading 'ficha: iTunes · archivo: YouTube', duration, a 30-second preview player and a download button labelled Completo" width="820">
+
+Each card states where **every** piece of data came from:
+
+> `ficha: iTunes` · `archivo: YouTube` · `3:07` · vídeo · procedencia
+
+The labels are not decoration. In matched mode iTunes only *contributes metadata* while
+yt-dlp *downloads the audio*, so an unlabelled "iTunes · 3:07" reads as if the complete
+track came from iTunes — which would be false, since iTunes only serves 30-second
+previews.
+
+**Verified accessibility:** every text/background pair was measured, not eyeballed.
+The lowest ratio in either theme is **6.04:1** (dark) and **7.43:1** (light), all above
+the WCAG AA threshold of 4.5:1. The layout is verified down to 390 px wide with no
+horizontal overflow and 44 px minimum touch targets.
+
+## Getting started
+
+**Requirements:** Python ≥ 3.11, Node.js ≥ 18, and **ffmpeg** on your `PATH` for format
+conversion. Without ffmpeg everything still works, but `.ogg` / `.opus` / `.wav` files
+are stored unconverted.
 
 ```bash
-# backend (incluye la UI compilada en el mismo puerto)
+git clone https://github.com/asormar/spitifo.git
+cd spitifo
+
+python -m venv .venv
+.venv/Scripts/pip install -r requirements.txt      # Windows
+# .venv/bin/pip install -r requirements.txt        # macOS / Linux
+
+cd frontend && npm install && npm run build && cd ..
+```
+
+The API serves the built frontend, so everything runs on one port:
+
+```bash
 .venv/Scripts/python.exe -m uvicorn backend.app.main:app --port 8000
-# -> http://127.0.0.1:8000
 ```
 
-Para desarrollo con hot-reload del frontend:
+Open **http://127.0.0.1:8000**.
+
+<details>
+<summary><b>Frontend development</b></summary>
 
 ```bash
-cd frontend && npm install && npm run dev   # http://localhost:5173 (proxy a :8000)
+cd frontend
+npm run dev      # http://localhost:5173, proxies /api to :8000
 ```
 
-## Fuentes
+Vite reloads on save. Run the backend separately as shown above.
 
-| Fuente | Qué hace | Key |
-|---|---|---|
-| **Internet Archive** | Descarga real completa. `collection:(etree)` = conciertos en vivo, `audio_music`, `78rpm` | — |
-| **Wikimedia Commons** | Descarga real completa. Audio CC / dominio público | — |
-| **iTunes Search** | Catálogo grande para *encontrar* el tema. Sólo preview 30 s | — |
-| **Jamendo** | Indie CC con MP3 completo | `JAMENDO_CLIENT_ID` (gratis) |
-| **yt-dlp** | Fuente **extra apagada**. Va contra los ToS de las plataformas | `YTDLP_ENABLED=1` |
+</details>
 
-Cada resultado muestra de qué fuente sale, su licencia, y si se puede bajar entero
-o es sólo preview. Nunca te muestra "descargable" algo que no lo sea.
-
-## Verificación de identidad (importante)
-
-Internet Archive guarda **un item por pista**, pero el item se titula con el nombre
-del concierto y el match de la búsqueda cae contra la descripción (el setlist), no
-contra la pista. Buscar "Bohemian Rhapsody" devuelve un concierto de Phish donde esa
-canción aparece en el setlist.
-
-Por eso el resolve **lee los tags reales del audio** (`backend/app/identify.py`, sólo
-los primeros 256 KB con un `Range` implícito) y compara contra la consulta. Cada
-descarga queda con un veredicto:
-
-| Estado | Qué significa |
-|---|---|
-| `match` | el título del archivo es el que buscabas (≥80% de palabras) |
-| `partial` | se parece pero no es (≥40%) |
-| `mismatch` | **no es lo que buscabas** — la UI avisa y el archivo se guarda con su título real |
-| `unknown` | el archivo no trae tags; no se puede verificar |
-
-- `GET /api/verify?q=...&source=archive&source_id=...` — qué hay adentro de un item, sin bajarlo
-- `GET /api/setlist?source_ids=id1,id2&q=...` — resuelve varios items y devuelve el setlist con títulos reales
-- `POST /api/resolve?query=...` — ahora recibe la consulta para poder verificar
-- `POST /api/download?query=...` — devuelve `match` y `real_title`
-
-Los resultados de un mismo concierto se agrupan en una fila que se expande con su
-setlist, y cada pista se puede bajar por separado.
-
-## Colecciones de Internet Archive (importante)
-
-`collection:(etree)` sonaba obvia pero tiene **solo 4 items de audio**. El catálogo
-real está en:
-
-| Colección | Items de audio | Qué hay |
-|---|---|---|
-| `opensource_audio` | 2.960.378 | MP3s subidos, covers, ripeos |
-| `audio_music` | 509.979 | audio en general |
-| `78rpm` | 309.420 | discos de 78rpm (dominio público) |
-| `etree` | 4 | conciertos en vivo |
-
-Además, archive exige **AND entre palabras**: `"linkin park numb"` da 0 resultados
-aunque "Meteora" de Linkin Park esté subida. Por eso `search()` prueba variantes de
-menor a mayor especificidad y termina con un OR sobre las palabras más largas
-(`_loose()`), y después reordena por relevancia real con `_rank()`.
-
-**Al agregar una fuente, sondear contra la API real antes de escribir el adaptador:**
-si no hay resultados, el problema suele ser la query, no la fuente.
-
-## Filtro anti-basura (importante)
-
-Internet Archive (y Wikimedia) tienen audio en general, no solo música: buscando
-`Numb Linkin Park` salían *"HUBS report"*, *"Chaos in Portland"*, *"Toe sucking
-burglar"* y *"VOA Global English"*. Dos filtros en `sources.py` lo evitan:
-
-- **`looks_like_music()`** — descarta items cuyo título/artista tiene palabras de
-  podcast, noticia, sermón, curso, audiobook (`NOT_MUSIC`).
-- **`relevance()`** — puntúa 0..1 exigiendo que el item contenga la **mayoría** de
-  las palabras *distintivas* de la consulta (las que no están en `FILLER`). Un item
-  que solo matchea una palabra común ("park") queda penalizado, y si hubo que
-  recurrir al query relajado (`min_relevance=0.01`) se descarta lo que no coincide
-  en nada.
-
-Verificado: de 40 resultados con 3 podcasts/noticias al frente, a 41 resultados
-todos musicales. Al añadir fuentes, aplicar ambos filtros.
-
-## yt-dlp (fuente opcional, ver la nota legal)
-
-Se activa con `YTDLP_ENABLED=1`. Buscá y descargá de YouTube, que es la única vía
-para el catálogo comercial (iTunes sólo da preview de 30 s).
+<details>
+<summary><b>Enabling the YouTube source</b></summary>
 
 ```bash
-# PowerShell, en la terminal
-$env:YTDLP_ENABLED=1; .venv\Scripts\python.exe -m uvicorn backend.app.main:app --port 8000
+# PowerShell
+$env:YTDLP_ENABLED=1
+.venv\Scripts\python.exe -m uvicorn backend.app.main:app --port 8000
 ```
 
-- **Aviso legal**: descargar de YouTube viola sus ToS y es ilegal en la mayoría de
-  las jurisdicciones. Sirve para uso personal; no lo publiques ni lo distributes.
-- Flujo: `POST /api/download` arranca la descarga en background y devuelve
-  `job_id`; la UI hace polling a `GET /api/download/progress/{job_id}` para la
-  barra de progreso. Con `?wait=true` devuelve el resultado al terminar.
-- `backend/app/ytdlp_source.py` tiene su propio pipeline (formatos + postprocess
-  ffmpeg + progreso); no reutiliza `downloader.download_track`.
+`run.bat` in the repo root already sets this for you on Windows.
 
-### Trampa de yt-dlp (importante)
+Read the [Legal](#legal) section before you do.
 
-Con el postprocessor `FFmpegExtractAudio`, **`info['filepath']` viene `None`**:
-yt-dlp lo limpia después del postprocess. Y `ydl.prepare_filename(info)` tampoco
-sirve, porque devuelve el nombre con la extensión del stream **original**
-(webm/opus), no la del postprocess (mp3). El archivo final es
-`folder/<stem>.<ext>`, donde `stem` es el que ya construiste para el `outtmpl`, así
-que hay que buscarlo con un glob sobre ese `stem` (con `glob.escape`, porque los
-títulos traen `[` `]`).
+</details>
 
-## Modo "matched": iTunes cataloga, yt-dlp descarga (default)
+## Configuration
 
-`GET /api/search?q=...` usa este modo por defecto. La idea: **iTunes tiene el
-catálogo más completo y la metadata más limpia** (título canónico, artista, álbum,
-año, portada, duración), pero de ahí solo sale un preview de 30 s. **yt-dlp sí
-baja el audio entero**, pero devuelve rips y covers sin distinguir. Se unen:
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SPITIFO_LIBRARY` | `./library` | Where downloads are written |
+| `JAMENDO_CLIENT_ID` | — | Enables the Jamendo source (free key) |
+| `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
-1. Se busca en iTunes → fichas limpias con portada.
-2. Se hace **una** búsqueda en YouTube y se empareja cada pista con su video
-   (`backend/app/matcher.py`).
-3. Las que tienen match confiable se pueden bajar enteras; las demás se muestran
-   con su preview y se dice que no hay versión entera.
-
-**Por qué el matching no es ingenuo:** varias pistas distintas comparten título
-("Bohemian Rhapsody" de Queen, de Panic! At the Disco y de Pentatonix). Con
-"el video cuyo título más se parece" las tres acababan en el video de Queen. Las
-reglas, ajustadas midiendo contra la API real:
-
-| Señal | Peso | Por qué |
-|---|---|---|
-| canal de YouTube contiene el nombre del artista | +0.3 | señal más fuerte y barata |
-| título coincide Y duración dentro de 12 s | +0.2 | desambigua covers y versions live |
-| duración con más de 90 s de diferencia | rechazo | live vs studio, remix |
-| sin canal **y** sin (título+duración) | **no matchea** | mejor decir "sin" que bajar la canción equivocada |
-
-Un video no se reutiliza para dos pistas distintas. Verificado: para
-`bohemian rhapsody` acierta Queen→Queen Official, Panic!→otro, Pentatonix→otro;
-para `pink floyd` dice "sin versión" en 5 de 6 en vez de inventar.
-
-Los tags del archivo y el nombre salen de **iTunes**, no del video: queda
-`Metallica - Enter Sandman.mp3` con `TIT2=Enter Sandman`, `TALB=Metallica (Deluxe
-Box Set)`, `TDRC=1991`, no el título del video.
-
-Otros modos: `?mode=sources` (mezcla de todas las fuentes, el comportamiento
-anterior) y `?source=ytdlp` (solo YouTube).
+Downloads land in `library/<artist>/<artist> - <title>.mp3` with ID3 tags written by
+mutagen: canonical title, artist, album and year taken from the metadata source, not
+from the YouTube video title.
 
 ## API
 
-```bash
-curl "http://127.0.0.1:8000/api/search?q=blues&limit=20"
-curl "http://127.0.0.1:8000/api/health"          # qué fuentes están activas
-curl "http://127.0.0.1:8000/api/library"         # lo ya descargado
+| Method | Route | Description |
+| --- | --- | --- |
+| `GET` | `/api/health` | Which sources are active right now |
+| `GET` | `/api/search` | Search every active source (`mode`, `source`, `limit`) |
+| `POST` | `/api/resolve` | Turn a catalogue entry into a playable URL |
+| `GET` | `/api/verify` | Inspect what is inside an item without downloading it |
+| `GET` | `/api/setlist` | Expand an Archive concert into its real setlist |
+| `POST` | `/api/download` | Start a download; returns a `job_id` |
+| `GET` | `/api/download/progress/{job_id}` | Progress, speed, ETA and identity verdict |
+| `GET` | `/api/library` | Everything already downloaded, with durations |
+| `GET` | `/api/audio?path=` | Stream a file from the library |
+
+Interactive docs are served at `/docs` while the API is running.
+
+<details>
+<summary><b>Search modes</b></summary>
+
+| Request | Result |
+| --- | --- |
+| `mode=matched` (default) | iTunes metadata + yt-dlp audio |
+| `mode=ytdlp` alone | Does **not** filter — returns every source |
+| `mode=ytdlp&source=ytdlp` | YouTube only |
+| `mode=matched&source=X` | **Degrades matched mode** and loses the pairing |
+
+That last row is a real trap in the API: combining a source filter with matched mode
+silently falls back to a plain search. The UI derives the source from the mode
+automatically so you cannot hit it by clicking.
+
+</details>
+
+## Project structure
+
 ```
-
-- `GET /api/search` — busca en todas las fuentes activas en paralelo
-- `POST /api/resolve` — completa la `audio_url` de archive / yt-dlp
-- `POST /api/download` — descarga a `library/<artista>/` con tags
-- `GET /api/library` — lista la biblioteca
-- `GET /api/audio?path=` — sirve un archivo para preview
-
-## Cómo funciona una descarga
-
-1. La UI busca → cada fuente devuelve `Track` normalizado (`backend/app/models.py`).
-2. Si la fuente necesita un paso extra (archive busca el archivo real en su
-   metadata; yt-dlp resuelve la URL de audio), el botón primero llama `/api/resolve`.
-3. `/api/download` hace streaming del archivo a disco (`downloader.py`), convierte
-   a mp3/m4a con **ffmpeg** si hace falta, y escribe tags **ID3** con **mutagen**.
-4. El archivo queda en `library/<artista>/<artista> - <titulo>.mp3`.
-
-## Requisitos
-
-- Python 3.11+ · Node 18+ (sólo para compilar la UI)
-- **ffmpeg** en el PATH (conversión a mp3). Sin ffmpeg los .ogg/.opus/.wav se
-  guardan sin convertir y el resto funciona igual.
-
-## Variables de entorno
-
-| Var | Default | Para qué |
-|---|---|---|
-| `SPITIFO_LIBRARY` | `./library` | Carpeta destino de las descargas |
-| `JAMENDO_CLIENT_ID` | — | Activa Jamendo |
-| `YTDLP_ENABLED` | `0` | Activa la fuente yt-dlp |
+backend/app/
+  main.py          FastAPI app, routes, background download tasks
+  sources.py       Source adapters, anti-noise filters, relevance ranking
+  ytdlp_source.py  YouTube via yt-dlp: formats, ffmpeg postprocess, progress, locks
+  matcher.py       Pairs metadata entries with the right video
+  identify.py      Reads real tags and scores them against your query
+  downloader.py    Streaming, ffmpeg conversion, ID3 writing, library scan
+  models.py        Track type and filename sanitisation
+  config.py        Shared constants
+frontend/src/
+  main.jsx         The whole interface: search, cards, player, theme, downloads
+  style.css        Design tokens, both themes, layout and motion
+docs/              Screenshots used in this README
+tests/             137 tests, offline by default
+```
 
 ## Tests
 
 ```bash
-.venv/Scripts/python.exe smoke_test.py      # search -> resolve -> download real
-.venv/Scripts/python.exe test_convert.py    # ruta de conversión ffmpeg
+.venv/Scripts/python.exe -m pytest -m "not integration" -q   # offline, ~2 s
+.venv/Scripts/python.exe -m pytest -q                         # everything, needs network
 ```
+
+**137 tests: 136 pass, 1 xfail.** The xfail is a deliberately strict marker on
+`looks_like_music()`, which does not yet reject the Spanish word *curso*; the day
+someone fixes it, the test fails and forces the marker to be removed.
+
+One integration test is **intermittent**: `test_search_resolve_download_verifica_tags`
+depends on an Internet Archive node that intermittently answers `403 Forbidden`, so a
+given run reports it either as a failure or as a skip. It is external flakiness, not a
+regression — the same suite passes fully when the node answers.
+
+What is actually covered, beyond the usual:
+
+- **The matcher runs fully offline** against a fake YouTube source, including the
+  Bohemian Rhapsody regression where three same-titled tracks must resolve to three
+  different videos.
+- **Concurrent downloads of the same track** are tested by faking `yt_dlp` and making
+  the second download fail with `OSError(32)` exactly as Windows would. The test asserts
+  the two never touch the file at the same time — and it was verified to fail when the
+  lock is removed.
+- **Integration tests** hit the real APIs with explicit timeouts and skip with a stated
+  reason when an external service fails. An assertion is never rewritten to make a test
+  pass.
+
+> [!IMPORTANT]
+> `testpaths = tests` in `pytest.ini` is load-bearing. Without it pytest collects from
+> the repository root and the whole suite fails during collection.
+
+## Legal
+
+> [!WARNING]
+> **The yt-dlp source downloads from YouTube.** That violates YouTube's Terms of
+> Service and is unlawful in most jurisdictions, including Argentina and the European
+> Union. It ships here disabled (`YTDLP_ENABLED=0`).
+
+Everything else in Spitifo is built on sources that are meant to be used this way:
+Internet Archive, Wikimedia Commons, iTunes previews and Jamendo. Those work without
+the flag.
+
+The tool is published for personal study and experimentation. If you intend to
+redistribute it, host it as a service, or use it commercially, **check what applies in
+your jurisdiction first** — that is your call to make, not this repository's.
+
+## License
+
+MIT.
+
+The music itself is not part of this repository. What you download is subject to the
+licence of whichever source it came from; the provenance link on every result tells you
+which one that was.

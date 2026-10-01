@@ -7,3 +7,9 @@ library/
 server.log
 probe_*.py
 .env
+
+# Indice local de CodeGraph (generado)
+.codegraph/
+
+# Registro de skills que genera `gentle-ai skill-registry refresh`
+.atl/
