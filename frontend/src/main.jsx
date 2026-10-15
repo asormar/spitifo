@@ -87,6 +87,17 @@ const FORMATS = [
 /* Aviso bajo los controles cuando se elige "original". El title de FORMATS no
    se ve en tactil, asi que la misma informacion sale como linea visible. En
    "Solo YouTube" la primera frase seria mentira: todo acaba en mp3. */
+/* Un enlace de YouTube solo tiene sentido en "Solo YouTube" (iTunes no sabe
+   que hacer con una URL). Misma regla de hosts que parse_youtube_url del
+   backend; el ID lo valida el. */
+const YT_URL = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/\S+$/i;
+const isYouTubeUrl = (text) => YT_URL.test(text.trim());
+
+const PLACEHOLDER = {
+  ytdlp: "Busca el título o pega la URL",
+  default: "Busca una canción, un artista, un género",
+};
+
 const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube se guarda en mp3.";
 const ORIGINAL_HINT_YT = "Desde YouTube siempre se guarda en mp3.";
 
@@ -1119,16 +1130,19 @@ function StatusChip({ tone, children }) {
    placeholder con la nota musical. */
 function Artwork({ t }) {
   const [broken, setBroken] = useState(false);
+  /* Las miniaturas de YouTube son 16:9: recortarlas a cuadrado se comia
+     media imagen (y el texto que suelen llevar). */
+  const video = t.source === "ytdlp";
   if (!t.artwork_url || broken) {
     return (
-      <div className="card__art card__art--ph" aria-hidden="true">
+      <div className={cx("card__art card__art--ph", video && "card__art--video")} aria-hidden="true">
         <Waveform size={26} />
       </div>
     );
   }
   return (
     <img
-      className="card__art"
+      className={cx("card__art", video && "card__art--video")}
       src={t.artwork_url}
       alt=""
       loading="lazy"
@@ -2060,7 +2074,12 @@ function App() {
       e?.preventDefault();
       /* Una busqueda manual no debe heredar un foco pendiente de un ejemplo. */
       focusPending.current = false;
-      runSearch(q, mode);
+      /* Pegar un enlace en otro modo lleva a "Solo YouTube": es el unico que
+         lo entiende. runSearch fija la firma, asi que el efecto de cambio de
+         modo no repite la peticion. */
+      const m = isYouTubeUrl(q) ? "ytdlp" : mode;
+      if (m !== mode) setMode(m);
+      runSearch(q, m);
       /* En movil se baja el teclado para ver los resultados. */
       if (window.matchMedia("(pointer: coarse)").matches) inputRef.current?.blur();
     },
@@ -2459,7 +2478,7 @@ function App() {
               spellCheck={false}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Busca una canción, un artista, un género"
+              placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
               aria-label="Qué quieres escuchar"
             />
             <button type="submit" className="search__go">

@@ -268,10 +268,12 @@ async def resolve(payload: TrackPayload, query: str | None = None):
             t.audio_url = await loop.run_in_executor(None, _run)
             t.license = "ToS de la plataforma (uso personal)"
             from .identify import similarity, verdict
-            state, label = verdict(query or t.title, t.title)
+            from .ytdlp_source import identity_query
+            q_id = identity_query(query, t.title)
+            state, label = verdict(q_id, t.title)
             t.extra.update({"real_title": t.title, "match": state,
                             "match_label": label, "match_score": round(
-                                similarity(query or t.title, t.title), 2)})
+                                similarity(q_id, t.title), 2)})
         else:
             t = await src.resolve(t, query=query)
     except LookupError as e:

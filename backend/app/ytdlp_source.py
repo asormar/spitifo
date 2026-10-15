@@ -16,6 +16,7 @@ import asyncio
 import glob
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -61,6 +62,51 @@ JOBS_TTL_S = 3600.0
 # camino de espera de este lock solo publica `status`, nunca `_finish`.
 _LOCKS_POR_RUTA: dict[str, asyncio.Lock] = {}
 _LOCKS_LOCK = threading.Lock()
+
+
+# ------------------------------------------------------------ URLs de YouTube
+# En "Solo YouTube" el usuario puede pegar el enlace en vez del titulo. Solo se
+# aceptan hosts de YouTube: yt-dlp entiende cientos de sitios, pero el resto de
+# la app (miniaturas, webpage_url, licencia) asume YouTube.
+_YT_HOST = r"(?:https?://)?(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/"
+_YT_VIDEO = re.compile(
+    _YT_HOST + r"(?:watch\?(?:.*&)?v=|shorts/|embed/|live/|v/)?([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])")
+_YT_LIST = re.compile(_YT_HOST + r"playlist\?(?:.*&)?list=([A-Za-z0-9_-]+)")
+
+
+def parse_youtube_url(q: str) -> str | None:
+    """URL canonica si `q` es un enlace de YouTube; None si es texto.
+
+    Un video con `&list=` se queda en el video: es lo que se estaba viendo al
+    copiar el enlace. Solo una URL de playlist pura devuelve la playlist.
+    """
+    q = q.strip()
+    if " " in q:
+        return None
+    m = _YT_VIDEO.match(q)
+    if m:
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    m = _YT_LIST.match(q)
+    if m:
+        return f"https://www.youtube.com/playlist?list={m.group(1)}"
+    return None
+
+
+def thumbnail_url(video_id: str) -> str:
+    """hqdefault existe para todo video. Es 4:3 con franjas negras; la tarjeta
+    lo recorta a 16:9, que es justo la imagen sin franjas."""
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
+def identity_query(query: str | None, fallback: str) -> str:
+    """Lo que se compara con el titulo real para el veredicto de identidad.
+
+    Si se pego un enlace, se pidio ESE video: comparar la URL con su titulo
+    daria siempre "no coincide". En ese caso manda el titulo del propio video.
+    """
+    if not query or parse_youtube_url(query):
+        return fallback
+    return query
 
 
 def _lock_de_ruta(destino: str) -> asyncio.Lock:
@@ -148,15 +194,17 @@ class YtDlpSource(Source):
         if not self.available():
             return []
         import yt_dlp
+        url = parse_youtube_url(q)
         opts = {
             "quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
+            "noplaylist": True, "playlistend": limit,
         }
         loop = asyncio.get_running_loop()
 
         def _run():
             with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+                return ydl.extract_info(url or f"ytsearch{limit}:{q}", download=False)
 
         try:
             data = await loop.run_in_executor(None, _run)
@@ -164,13 +212,18 @@ class YtDlpSource(Source):
             log.warning("ytdlp search fallo: %s", e)
             raise RuntimeError(f"yt-dlp: {e}")
 
+        data = data or {}
+        # Un video suelto viene sin "entries": es el propio resultado.
+        entries = data.get("entries") if "entries" in data else [data]
         out = []
-        for e in (data or {}).get("entries", []) or []:
-            if not e:
+        for e in entries or []:
+            if not e or not e.get("id"):
                 continue
             title = e.get("title") or ""
             uploader = e.get("uploader") or e.get("channel") or ""
-            if not looks_like_music(title, uploader):
+            # Con un enlace pegado no se filtra "lo que no parece musica": el
+            # usuario eligio ese video a proposito.
+            if not url and not looks_like_music(title, uploader):
                 continue
             out.append(Track(
                 source=self.name,
@@ -178,11 +231,10 @@ class YtDlpSource(Source):
                 title=title,
                 artist=uploader,
                 duration_s=e.get("duration"),
-                artwork_url=None,
+                artwork_url=thumbnail_url(e["id"]),
                 extra={
-                    "webpage_url": e.get("webpage_url")
-                    or f"https://www.youtube.com/watch?v={e['id']}",
-                    "relevance": round(relevance(q, title, uploader), 2),
+                    "webpage_url": f"https://www.youtube.com/watch?v={e['id']}",
+                    "relevance": 1.0 if url else round(relevance(q, title, uploader), 2),
                 },
                 license="ToS de YouTube (uso personal, riesgo legal)",
             ))
@@ -228,7 +280,7 @@ class YtDlpSource(Source):
         real_title = info.get("title")
         if real_title:
             from .identify import verdict
-            state, label = verdict(query or track.title, real_title)
+            state, label = verdict(identity_query(query, real_title), real_title)
             track.extra["real_title"] = real_title
             track.extra["real_artist"] = info.get("uploader")
             track.extra["match"] = state
@@ -382,7 +434,7 @@ class YtDlpSource(Source):
         # publicaba en ningun lado del camino con job_id: la UI recibia
         # status=done sin `match` y no podia avisar nada. `query` es lo que el
         # usuario escribio; el titulo real del video es la otra mitad.
-        estado, etiqueta = verdict(query or track.title, info_title)
+        estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
         _finish(job_id, status="done", progress=100.0, path=str(path),
                 filename=path.name, size_mb=round(size / 1_048_576, 2),
                 format=path.suffix.lstrip(".").upper(),

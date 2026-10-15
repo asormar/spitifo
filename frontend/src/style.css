@@ -1815,6 +1815,10 @@ body.has-mini .progstack {
   background: var(--track);
 }
 
+.card__art--video {
+  aspect-ratio: 16 / 9;
+}
+
 /* Sin portada: baldosa suave con la nota centrada. */
 .card__art--ph {
   display: grid;
