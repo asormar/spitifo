@@ -8,6 +8,8 @@ arriba ni de que sus items tengan el formato que toca hoy.
 """
 from __future__ import annotations
 
+import asyncio
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,7 +17,6 @@ from mutagen import File as MFile
 from mutagen.id3 import TALB, TDRC, TIT2, TPE1
 
 from backend.app.downloader import (
-    NEEDS_FFMPEG,
     _ffmpeg_ok,
     _ffmpeg_convert,
     _write_tags,
@@ -28,13 +29,6 @@ from conftest import ffprobe_duracion
 
 def test_ffmpeg_esta_disponible():
     assert _ffmpeg_ok() is True
-
-
-@pytest.mark.parametrize("ext", [".wav", ".ogg", ".opus", ".flac"])
-def test_needs_ffmpeg_cubre_los_formatos_que_no_son_mp3(ext):
-    """Estos 4 son los que la app sabe convertir; un mp3 entra directo."""
-    assert ext in NEEDS_FFMPEG
-    assert ".mp3" not in NEEDS_FFMPEG
 
 
 # ------------------------------------------------------------- _ffmpeg_convert
@@ -63,6 +57,56 @@ def test_ffmpeg_convert_respeta_el_nombre_final(wav_sintetico, tmp_path):
     _ffmpeg_convert(wav_sintetico, salida)
     assert salida.exists()
     assert [p.name for p in tmp_path.iterdir()] == ["Metallica - Enter Sandman.mp3"]
+
+
+def test_ffmpeg_convert_a_m4a_usa_aac(wav_sintetico, tmp_path):
+    """Pedir m4a tiene que dar AAC. Antes salia un .m4a con audio MP3 dentro
+    porque el codec estaba fijo en libmp3lame."""
+    salida = tmp_path / "tono.m4a"
+    _ffmpeg_convert(wav_sintetico, salida)
+    codec = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
+         str(salida)],
+        check=True, capture_output=True, text=True).stdout.strip()
+    assert codec == "aac"
+
+
+def test_ffmpeg_convert_rechaza_formato_desconocido(wav_sintetico, tmp_path):
+    with pytest.raises(ValueError):
+        _ffmpeg_convert(wav_sintetico, tmp_path / "tono.flac")
+
+
+# ------------------------------------------------------------- download_track
+def _descarga_local(monkeypatch, biblioteca, origen):
+    """download_track sin red: el "servidor" es copiar `origen` al tmp."""
+    import backend.app.downloader as dl
+
+    async def falso(url, dest, progress=None):
+        dest.write_bytes(origen.read_bytes())
+        return dest
+
+    monkeypatch.setattr(dl, "_download_to", falso)
+    monkeypatch.setattr(dl, "LIBRARY", biblioteca)
+    return dl
+
+
+@pytest.mark.parametrize("fmt,ext_final", [
+    ("original", ".wav"),  # tal cual: antes se convertia a mp3
+    ("mp3", ".mp3"),
+    ("m4a", ".m4a"),
+])
+def test_download_track_respeta_el_formato(fmt, ext_final, wav_sintetico,
+                                           monkeypatch, biblioteca):
+    dl = _descarga_local(monkeypatch, biblioteca, wav_sintetico)
+    t = Track(source="archive", source_id="1", title="Tono", artist="Prueba",
+              audio_url="https://example.org/tono.wav")
+    res = asyncio.run(dl.download_track(t, fmt))
+    final = Path(res["path"])
+    assert final.suffix == ext_final
+    assert final.exists()
+    if fmt == "original":
+        assert final.read_bytes() == wav_sintetico.read_bytes()
 
 
 # --------------------------------------------------------------- _write_tags

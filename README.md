@@ -171,8 +171,10 @@ horizontal overflow and 44 px minimum touch targets.
 ## Getting started
 
 **Requirements:** Python ≥ 3.11, Node.js ≥ 18, and **ffmpeg** on your `PATH` for format
-conversion. Without ffmpeg everything still works, but `.ogg` / `.opus` / `.wav` files
-are stored unconverted.
+conversion. Without ffmpeg everything still works, but choosing mp3 or m4a for a file
+published in another format (`.flac`, `.ogg`, `.opus`, `.wav`) stores it unconverted.
+The `original` format never converts: free-licence files are kept exactly as published,
+while YouTube downloads always end up as mp3.
 
 ```bash
 git clone https://github.com/asormar/spitifo.git

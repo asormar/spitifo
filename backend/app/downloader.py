@@ -19,8 +19,12 @@ log = logging.getLogger("spitifo.download")
 LIBRARY = Path(os.getenv("SPITIFO_LIBRARY", Path(__file__).resolve().parents[2] / "library"))
 LIBRARY.mkdir(parents=True, exist_ok=True)
 
-# ffmpeg convierte cuando el destino no lo soporta nativo
-NEEDS_FFMPEG = {".wav", ".opus", ".ogg", ".flac"}
+# Codec que corresponde a cada formato pedido. Antes se usaba libmp3lame para
+# todo, asi que pedir m4a daba un .m4a con audio MP3 dentro.
+ENCODERS = {
+    ".mp3": ["-codec:a", "libmp3lame", "-q:a", "2"],
+    ".m4a": ["-codec:a", "aac", "-b:a", "256k"],
+}
 
 
 def _ffmpeg_ok() -> bool:
@@ -90,20 +94,38 @@ def _write_tags(path: Path, t: Track) -> None:
             if t.album:
                 f["\xa9alb"] = t.album
             f.save()
+        elif ext in (".ogg", ".opus"):
+            # Vorbis comments: mismo esquema de claves que FLAC.
+            f = MFile(path)
+            if f is not None:
+                if f.tags is None:
+                    f.add_tags()
+                for k, v in (("title", t.title), ("artist", t.artist),
+                             ("album", t.album), ("date", t.year)):
+                    if v:
+                        f[k] = v
+                f.save()
     except Exception as e:  # tags son un extra, no deben tumbar la descarga
         log.warning("tags fallaron en %s: %s", os.path.basename(str(path)), e)
 
 
 def _ffmpeg_convert(src: Path, out_path: Path) -> Path:
-    """Convierte a MP3 de calidad ~V2. out_path define el nombre final."""
-    cmd = ["ffmpeg", "-y", "-i", str(src), "-vn",
-           "-codec:a", "libmp3lame", "-q:a", "2", str(out_path)]
+    """Convierte al formato de out_path (MP3 ~V2 o AAC 256k en M4A).
+
+    out_path define el nombre final y, por su extension, el codec."""
+    enc = ENCODERS.get(out_path.suffix.lower())
+    if enc is None:
+        raise ValueError(f"formato de salida no soportado: {out_path.suffix}")
+    cmd = ["ffmpeg", "-y", "-i", str(src), "-vn", *enc, str(out_path)]
     subprocess.run(cmd, check=True, capture_output=True)
     return out_path
 
 
 async def download_track(t: Track, fmt: str = "original") -> dict:
     """Descarga la pista a la biblioteca. fmt: original|mp3|m4a.
+
+    "original" guarda el archivo tal cual lo publica la fuente (FLAC, OGG,
+    WAV...), sin recodificar. mp3/m4a convierten solo si el origen no lo es ya.
 
     Devuelve dict con ruta, bytes, formato.
     """
@@ -134,13 +156,9 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     try:
         await _download_to(t.audio_url, tmp)
 
-        target_ext = src_ext
-        if fmt in ("mp3", "m4a"):
-            target_ext = f".{fmt}"
-        elif src_ext in NEEDS_FFMPEG and _ffmpeg_ok():
-            target_ext = ".mp3" if src_ext != ".wav" or _ffmpeg_ok() else src_ext
-        elif src_ext in NEEDS_FFMPEG and not _ffmpeg_ok():
-            log.warning("ffmpeg ausente: se guarda %s sin convertir", src_ext)
+        # "original" no toca el archivo. Antes un FLAC u OGG se pasaba a MP3
+        # igual que con fmt=mp3 en cuanto habia ffmpeg: la opcion no hacia nada.
+        target_ext = f".{fmt}" if fmt in ("mp3", "m4a") else src_ext
 
         needs_conv = target_ext != src_ext
         if needs_conv and not _ffmpeg_ok():

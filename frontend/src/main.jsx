@@ -76,10 +76,10 @@ const FORMATS = [
     value: "original",
     label: "original",
     // "original" solo significa algo en las fuentes libres: el archivo se
-    // queda como lo publica la fuente (downloader.py; solo los formatos que
-    // necesitan ffmpeg, como wav, pasan a mp3). YouTube no tiene modo "sin
-    // convertir": preferredcodec cae a mp3 para todo lo que no sea mp3/m4a
-    // (ytdlp_source.py). El titulo tiene que decir las dos cosas.
+    // queda exactamente como lo publica la fuente, FLAC u OGG incluidos
+    // (downloader.py). YouTube no tiene modo "sin convertir": preferredcodec
+    // cae a mp3 para todo lo que no sea mp3/m4a (ytdlp_source.py). El titulo
+    // tiene que decir las dos cosas.
     title: "Sin convertir: el archivo tal cual lo publica la fuente. Lo de YouTube se guarda en mp3",
   },
 ];
