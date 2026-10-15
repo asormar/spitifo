@@ -60,9 +60,9 @@ const SOURCE_LABEL = {
    selector (y el aviso legal antes que ella) ya no esta en la UI: se
    eliminaron por decision del usuario, no por descuido. */
 const MODES = [
-  { id: "matched", label: "Recomendado" },
+  { id: "matched", label: "Música" },
   { id: "sources", label: "Todas las fuentes" },
-  { id: "ytdlp", label: "Solo YouTube" },
+  { id: "ytdlp", label: "YouTube" },
 ];
 
 const MODE_IDS = MODES.map((m) => m.id);
@@ -86,8 +86,8 @@ const FORMATS = [
 
 /* Aviso bajo los controles cuando se elige "original". El title de FORMATS no
    se ve en tactil, asi que la misma informacion sale como linea visible. En
-   "Solo YouTube" la primera frase seria mentira: todo acaba en mp3. */
-/* Un enlace de YouTube solo tiene sentido en "Solo YouTube" (iTunes no sabe
+   "YouTube" la primera frase seria mentira: todo acaba en mp3. */
+/* Un enlace de YouTube solo tiene sentido en "YouTube" (iTunes no sabe
    que hacer con una URL). Misma regla de hosts que parse_youtube_url del
    backend; el ID lo valida el. */
 const YT_URL = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com|youtu\.be)\/\S+$/i;
@@ -125,7 +125,7 @@ function errMsg(d, fallback) {
 }
 
 /* El aviso de identidad, en un solo lugar. Antes vivia inline en el camino sin
-   job_id, asi que el camino CON job_id (modo Recomendado, que es el default)
+   job_id, asi que el camino CON job_id (modo Música, que es el default)
    salia con `return` antes de llegar y nunca avisaba: te bajabas la cancion
    equivocada con un cartel verde.
 
@@ -224,7 +224,7 @@ function fmtSize(mb) {
 
 /* El estado que domina la fila: se baja entero / solo preview / no coincide.
 
-   OJO con el campo `downloadable` en modo Recomendado: el backend lo deja en
+   OJO con el campo `downloadable` en modo Música: el backend lo deja en
    False aunque el archivo exista, porque la descarga sale de webpage_url. Por
    eso NO se lee ese campo solo: se mira tambien webpage_url y needs_resolve. */
 function trackState(t) {
@@ -1151,7 +1151,7 @@ function Artwork({ t }) {
   );
 }
 
-/* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Recomendado no
+/* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Música no
    son la misma cosa: iTunes pone los datos y la portada, YouTube pone el
    audio que se descarga. Sin esto, "iTunes | 3:07" se lee como si el archivo
    entero fuera de iTunes, y es falso. */
@@ -2074,7 +2074,7 @@ function App() {
       e?.preventDefault();
       /* Una busqueda manual no debe heredar un foco pendiente de un ejemplo. */
       focusPending.current = false;
-      /* Pegar un enlace en otro modo lleva a "Solo YouTube": es el unico que
+      /* Pegar un enlace en otro modo lleva a "YouTube": es el unico que
          lo entiende. runSearch fija la firma, asi que el efecto de cambio de
          modo no repite la peticion. */
       const m = isYouTubeUrl(q) ? "ytdlp" : mode;
@@ -2334,7 +2334,7 @@ function App() {
 
   /* Arranque: si la URL trae consulta, se recupera sola. Usa runSearch para
      que la firma quede seteada y el resync no dispare un segundo fetch.
-     Los links viejos con ?src=ytdlp equivalen al modo Solo YouTube; cualquier
+     Los links viejos con ?src=ytdlp equivalen al modo YouTube; cualquier
      otra fuente ya no se puede filtrar porque los chips se fueron. */
   const booted = useRef(false);
   useEffect(() => {
@@ -2369,13 +2369,13 @@ function App() {
     return m;
   }, [health]);
 
-  /* Con yt-dlp apagado el modo "Solo YouTube" no devuelve nada. No se
+  /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
      pero se marca para que el 0 de resultados no parezca un fallo. */
   const ytOn = healthByName.ytdlp?.active;
   const ytDead = health !== null && !ytOn;
 
-  /* Con yt-dlp apagado, el modo Recomendado es el que se abre por defecto y
+  /* Con yt-dlp apagado, el modo Música es el que se abre por defecto y
      devuelve "30 resultados, 0 descargables" sin decir por que: iTunes solo
      tiene previews de 30 s y el audio completo sale de YouTube. El aviso
      existia para el modo que se elige a mano (.mode--dead), no para el que

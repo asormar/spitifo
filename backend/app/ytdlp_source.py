@@ -65,7 +65,7 @@ _LOCKS_LOCK = threading.Lock()
 
 
 # ------------------------------------------------------------ URLs de YouTube
-# En "Solo YouTube" el usuario puede pegar el enlace en vez del titulo. Solo se
+# En "YouTube" el usuario puede pegar el enlace en vez del titulo. Solo se
 # aceptan hosts de YouTube: yt-dlp entiende cientos de sitios, pero el resto de
 # la app (miniaturas, webpage_url, licencia) asume YouTube.
 _YT_HOST = r"(?:https?://)?(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/"

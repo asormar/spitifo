@@ -13,7 +13,7 @@ Free-licence catalogues + YouTube as a last resort · Identity verification on e
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-ff0000?logo=youtube&logoColor=white)
 ![mutagen](https://img.shields.io/badge/mutagen-43B02A?logo=python&logoColor=white)
 
-<img src="docs/app-home.png" alt="Spitifo home screen: dark interface with search bar, mode selector (Recommended / All sources / YouTube only) and format selector" width="820">
+<img src="docs/app-home.png" alt="Spitifo home screen: dark interface with search bar, mode selector (Music / All sources / YouTube) and format selector" width="820">
 
 *Local-first. No accounts, no cloud, no tracking.*
 

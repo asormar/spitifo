@@ -1851,7 +1851,7 @@ body.has-mini .progstack {
 }
 
 /* Procedencia y datos. "ficha" y "archivo" son dos hechos distintos (en modo
-   Recomendado la ficha es de iTunes y el audio de YouTube): van en un renglon
+   Música la ficha es de iTunes y el audio de YouTube): van en un renglon
    propio, separados de la duracion y el peso. */
 .card__prov,
 .card__facts {
