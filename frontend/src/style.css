@@ -543,7 +543,7 @@ body.has-mini .app {
   letter-spacing: -0.035em;
   text-wrap: balance;
   overflow-wrap: anywhere;
-  animation: enter-up 600ms var(--ease) 60ms backwards;
+  animation: enter-up 400ms var(--ease) 60ms backwards;
 }
 
 .finder {
@@ -557,7 +557,7 @@ body.has-mini .app {
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   text-align: left;
-  animation: enter-up 600ms var(--ease) 160ms backwards;
+  animation: enter-up 400ms var(--ease) 160ms backwards;
 }
 
 .search {
@@ -655,6 +655,27 @@ body.has-mini .app {
   gap: 12px 16px;
   margin-top: 12px;
   padding: 0 4px;
+}
+
+/* Aviso bajo los controles: solo con "original" (lo pinta el componente). Texto
+   secundario, con una entrada corta para que no aparezca de golpe. */
+.finder__hint {
+  margin: 10px 4px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: hint-in 180ms var(--ease) backwards;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .fmts {
@@ -1554,7 +1575,23 @@ body.has-mini .progstack {
   display: flex;
   flex: 1;
   flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mini__txt > span {
+  max-width: 100%;
+}
+
+.mini__txt:disabled {
+  cursor: default;
 }
 
 .mini__title {
@@ -1573,6 +1610,36 @@ body.has-mini .progstack {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mini__art {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+}
+
+/* Silencio siempre visible; el deslizador solo donde hay raton y sitio. */
+.mini__vol {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.mini__vol .vol {
+  display: none;
+}
+
+.mini .pl__mute {
+  width: 36px;
+  height: 36px;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 640px) {
+  .mini__vol .vol {
+    display: block;
+  }
 }
 
 .mini__btn {
@@ -1644,9 +1711,20 @@ body.has-mini .progstack {
     height: 32px;
   }
 
-  .mini__btn {
+  .mini__btn,
+  .mini .pl__mute {
     width: 40px;
     height: 40px;
+  }
+}
+
+/* En un movil estrecho el silencio y la mira le robaban al titulo el sitio
+   justo para leerse ("Creep…"). El volumen ya lo llevan los botones del
+   telefono, y a la cancion se llega tocando el titulo. */
+@media (max-width: 480px) {
+  .mini__vol,
+  .mini__btn--reveal {
+    display: none;
   }
 }
 
@@ -1831,6 +1909,14 @@ body.has-mini .progstack {
 }
 
 /* Fila inferior: el estado a la izquierda, la accion a la derecha. */
+/* Destinos de foco programatico (tras pulsar un ejemplo): no son interactivos,
+   asi que no necesitan aro. */
+.results__head:focus,
+.none:focus,
+.msg:focus {
+  outline: none;
+}
+
 .card__foot {
   display: flex;
   align-items: center;
@@ -1903,7 +1989,27 @@ body.has-mini .progstack {
   transform: none;
 }
 
-/* No es un boton: es el icono de "sin descarga completa" con su tooltip. */
+/* Motivo por el que no hay descarga: texto visible (no depende de tooltip).
+   Va en su propia linea bajo el chip y el icono: compartiendo fila con ellos,
+   la tarjeta estrecha lo dejaba en "De esta f…", que no explica nada. */
+.card__foot {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.nodl {
+  order: 1;
+  flex: 1 0 100%;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.card__foot .st {
+  flex: none;
+}
+
+/* No es un boton: es el icono de "sin descarga completa" (decorativo). */
 .dl--off {
   background: var(--line);
   color: var(--icon-dim);
@@ -2107,8 +2213,14 @@ body.has-mini .progstack {
   opacity: 1;
 }
 
+/* overflow:hidden es lo que permite colapsar a 0fr, pero recorta el aro de
+   foco de los botones pegados al borde (la descarga de cada pista). El padding
+   deja sitio al aro dentro del recorte y el margen negativo lo compensa para
+   que el contenido no se mueva. */
 .fold__in {
   min-height: 0;
+  margin: -4px;
+  padding: 4px;
   overflow: hidden;
 }
 
@@ -2219,13 +2331,13 @@ body.has-mini .progstack {
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   text-align: center;
-  animation: enter-up 600ms var(--ease) 240ms backwards;
+  animation: enter-up 400ms var(--ease) 240ms backwards;
 }
 
 .intro__mark {
   margin-bottom: 14px;
   color: var(--accent-fg);
-  animation: pop-spring 600ms var(--ease-spring) 480ms backwards;
+  animation: pop-spring 400ms var(--ease-spring) 480ms backwards;
 }
 
 .intro__h {

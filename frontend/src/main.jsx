@@ -75,12 +75,20 @@ const FORMATS = [
   {
     value: "original",
     label: "original",
-    // El backend no tiene modo "sin convertir": preferredcodec cae a mp3
-    // para todo fmt que no sea mp3/m4a (ytdlp_source.py). Decir lo contrario
-    // seria prometer algo que no pasa.
-    title: "Se guarda en MP3, igual que la primera opcion",
+    // "original" solo significa algo en las fuentes libres: el archivo se
+    // queda como lo publica la fuente (downloader.py; solo los formatos que
+    // necesitan ffmpeg, como wav, pasan a mp3). YouTube no tiene modo "sin
+    // convertir": preferredcodec cae a mp3 para todo lo que no sea mp3/m4a
+    // (ytdlp_source.py). El titulo tiene que decir las dos cosas.
+    title: "Sin convertir: el archivo tal cual lo publica la fuente. Lo de YouTube se guarda en mp3",
   },
 ];
+
+/* Aviso bajo los controles cuando se elige "original". El title de FORMATS no
+   se ve en tactil, asi que la misma informacion sale como linea visible. En
+   "Solo YouTube" la primera frase seria mentira: todo acaba en mp3. */
+const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube se guarda en mp3.";
+const ORIGINAL_HINT_YT = "Desde YouTube siempre se guarda en mp3.";
 
 const EXAMPLES = [
   "Nick Cave Into My Arms",
@@ -226,10 +234,11 @@ const STATE_UI = {
   none: { label: "No coincide", tone: "bad" },
 };
 
-/* El "30 s" ya no cabe en el chip: vive en el tooltip del icono sin descarga. */
+/* El "30 s" ya no cabe en el chip: sale como linea de texto junto al icono sin
+   descarga (y como title, por si se recorta). */
 const NODL_TITLE = {
-  preview: "De esta fuente solo sale un preview de 30 s",
-  none: "No encontramos una versión completa de este tema",
+  preview: "Solo hay 30 s de esta fuente",
+  none: "No hay versión completa",
 };
 
 const cx = (...parts) => parts.filter(Boolean).join(" ");
@@ -390,13 +399,39 @@ function setCurrent(a) {
   watchers.forEach((w) => w());
 }
 
+/* Volumen y silencio comparten una sola fuente (`shared`) que escriben el
+   Player activo y el mini-reproductor. Estas funciones la actualizan, aplican
+   el cambio al <audio> que suena y avisan a los watchers para que ambos
+   controles se repinten: ninguno guarda su propia copia del valor. */
+function pushVolume() {
+  if (current) {
+    current.volume = shared.volume;
+    current.muted = shared.muted;
+  }
+  watchers.forEach((w) => w());
+}
+
+function setSharedVolume(v) {
+  shared.volume = v;
+  shared.muted = v === 0;
+  pushVolume();
+}
+
+function toggleSharedMute() {
+  const next = !(shared.muted || shared.volume === 0);
+  /* Reactivar desde 0 devolveria el silencio con el icono de sonido. */
+  if (!next && shared.volume === 0) shared.volume = 0.8;
+  shared.muted = next;
+  pushVolume();
+}
+
 /* Datos de cada <audio> para quien no es su Player: el mini-reproductor solo
    recibe el elemento (`current`) y de ahi tiene que sacar el titulo, el
    subtitulo y la caja del Player para saber si se ve en pantalla. WeakMap para
    que un Player desmontado no retenga nada. */
 const audioMeta = new WeakMap();
 
-function Player({ src, label, title, meta, duration, variant = "row", index = 0 }) {
+function Player({ src, label, title, meta, duration, artwork, variant = "row", index = 0 }) {
   const audioRef = useRef(null);
   const railRef = useRef(null);
   const rootRef = useRef(null);
@@ -407,8 +442,6 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
   const [realDur, setRealDur] = useState(0);
   /* Posicion (0..1) mientras se arrastra la barra. null = no se arrastra. */
   const [drag, setDrag] = useState(null);
-  const [vol, setVol] = useState(shared.volume);
-  const [muted, setMuted] = useState(shared.muted);
   const [, repaint] = useReducer((n) => n + 1, 0);
 
   useEffect(() => {
@@ -434,11 +467,16 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
       title,
       meta,
       duration,
+      artwork,
       variant,
       el: rootRef.current,
     });
-  }, [label, title, meta, duration, variant]);
+  }, [label, title, meta, duration, artwork, variant]);
 
+  /* Se leen de `shared` en cada pintado: los watchers fuerzan el repintado
+     cuando el volumen cambia desde el mini-reproductor. */
+  const vol = shared.volume;
+  const muted = shared.muted;
   const dur = realDur || duration || 0;
   const pct = drag !== null ? drag : dur ? clamp(cur / dur, 0, 1) : 0;
   const shownTime = drag !== null ? drag * dur : cur;
@@ -507,27 +545,18 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
   };
 
   const onVolume = (e) => {
-    const v = Number(e.target.value) / 100;
-    shared.volume = v;
-    shared.muted = v === 0;
-    setVol(v);
-    setMuted(v === 0);
+    setSharedVolume(Number(e.target.value) / 100);
+    /* Por si el cambio llega antes de que este <audio> sea `current`. */
     const a = audioRef.current;
-    a.volume = v;
-    a.muted = v === 0;
+    a.volume = shared.volume;
+    a.muted = shared.muted;
   };
 
   const toggleMute = () => {
-    const next = !(muted || vol === 0);
-    if (!next && vol === 0) {
-      shared.volume = 0.8;
-      setVol(0.8);
-    }
-    shared.muted = next;
-    setMuted(next);
+    toggleSharedMute();
     const a = audioRef.current;
-    a.muted = next;
     a.volume = shared.volume;
+    a.muted = shared.muted;
   };
 
   const icon = failed ? "play" : buffering ? "load" : playing ? "pause" : "play";
@@ -556,8 +585,6 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
         e.currentTarget.volume = shared.volume;
         e.currentTarget.muted = shared.muted;
         setCurrent(e.currentTarget);
-        setVol(shared.volume);
-        setMuted(shared.muted);
         setPlaying(true);
       }}
       onPlaying={() => setBuffering(false)}
@@ -730,6 +757,8 @@ function MiniPlayer({ libOpen, onReveal }) {
      fotograma en aparecer que parpadear con la fila aun a la vista. */
   const [srcSeen, setSrcSeen] = useState(true);
   const [drag, setDrag] = useState(null);
+  /* Portada que ya fallo al cargar: no se vuelve a pintar (icono roto). */
+  const [badArt, setBadArt] = useState(null);
   const railRef = useRef(null);
   const lastInfo = useRef(null);
 
@@ -825,7 +854,13 @@ function MiniPlayer({ libOpen, onReveal }) {
     const ms = navigator.mediaSession;
     try {
       if (typeof MediaMetadata !== "undefined") {
-        ms.metadata = new MediaMetadata({ title: info.title || "", artist: info.meta || "" });
+        ms.metadata = new MediaMetadata({
+          title: info.title || "",
+          artist: info.meta || "",
+          /* Solo las filas de resultados traen portada; las de la biblioteca
+             no, y ahi se omite en vez de mandar una lista vacia. */
+          ...(info.artwork ? { artwork: [{ src: info.artwork, sizes: "300x300" }] } : {}),
+        });
       }
     } catch {
       /* los metadatos son opcionales */
@@ -862,6 +897,10 @@ function MiniPlayer({ libOpen, onReveal }) {
   const total = dur ? clock(Math.round(dur)) : "--:--";
   const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
   const label = info?.label || "la canción";
+  /* Leidos de `shared` en cada pintado: los watchers repintan al cambiar. */
+  const quiet = shared.muted || shared.volume === 0;
+  const volPct = Math.round((quiet ? 0 : shared.volume) * 100);
+  const art = info?.artwork && badArt !== info.artwork ? info.artwork : null;
 
   const toggle = () => {
     if (!audio) return;
@@ -947,17 +986,66 @@ function MiniPlayer({ libOpen, onReveal }) {
             <CircleNotch size={16} weight="bold" className="spin" />
           </span>
         </button>
-        <div className="mini__txt">
+        {art && (
+          <img
+            className="mini__art"
+            src={art}
+            alt=""
+            loading="lazy"
+            onError={() => setBadArt(art)}
+          />
+        )}
+        {/* Tocar el titulo lleva a la cancion, como en cualquier app de musica.
+            En movil es el UNICO camino (el boton de la mira se oculta para que
+            el titulo quepa); fuera del orden de tabulacion porque con teclado
+            ya esta ese boton. */}
+        <button
+          type="button"
+          className="mini__txt"
+          tabIndex={-1}
+          onClick={() => onReveal(srcEl)}
+          disabled={!srcEl}
+          aria-label={`Ir a la canción: ${info?.title ?? ""}`}
+        >
           <span className="mini__title" title={info?.title}>
             {info?.title}
           </span>
           <span className="mini__meta" title={info?.meta}>
             {info?.meta}
           </span>
+        </button>
+        {/* Silencio siempre; el deslizador solo con raton y pantalla ancha (CSS).
+            En tactil manda el volumen del telefono. */}
+        <div className="mini__vol">
+          <button
+            type="button"
+            className="pl__mute"
+            onClick={toggleSharedMute}
+            aria-label={quiet ? "Activar el sonido" : "Silenciar"}
+          >
+            {quiet ? (
+              <SpeakerSlash size={17} />
+            ) : shared.volume < 0.45 ? (
+              <SpeakerLow size={17} />
+            ) : (
+              <SpeakerHigh size={17} />
+            )}
+          </button>
+          <input
+            type="range"
+            className="vol"
+            min={0}
+            max={100}
+            step={1}
+            value={volPct}
+            aria-label="Volumen"
+            style={{ "--v": `${volPct}%` }}
+            onChange={(e) => setSharedVolume(Number(e.target.value) / 100)}
+          />
         </div>
         <button
           type="button"
-          className="mini__btn"
+          className="mini__btn mini__btn--reveal"
           onClick={() => onReveal(srcEl)}
           disabled={!srcEl}
           aria-label="Ir a la canción"
@@ -1508,6 +1596,7 @@ const Track = React.memo(function Track({
             title={t.title || "sin título"}
             meta={`${t.artist || "artista desconocido"} · preview de 30 s`}
             duration={30}
+            artwork={t.artwork_url}
           />
         )}
         {v && (
@@ -1565,14 +1654,17 @@ const Track = React.memo(function Track({
               )}
             </button>
           ) : (
-            <span
-              className="dl dl--off"
-              role="img"
-              title={NODL_TITLE[st]}
-              aria-label={NODL_TITLE[st]}
-            >
-              <Prohibit size={19} />
-            </span>
+            <>
+              {/* Texto visible (tactil y teclado no tienen tooltip). Ya lo lee
+                  el lector de pantalla, asi que el icono se oculta para no
+                  anunciarlo dos veces. */}
+              <span className="nodl" title={NODL_TITLE[st]}>
+                {NODL_TITLE[st]}
+              </span>
+              <span className="dl dl--off" aria-hidden="true">
+                <Prohibit size={19} />
+              </span>
+            </>
           )}
         </div>
       </div>
@@ -1819,6 +1911,11 @@ function App() {
   /* Aviso (error o exito) visible en cada momento: se usa para traerlo a
      pantalla si una descarga lejana lo deja fuera de vista. */
   const msgRef = useRef(null);
+  /* Foco tras pulsar un ejemplo: el boton se desmonta al buscar y el foco caia
+     al <body>. `focusPending` lo marca runExample; `resultsRef` es la cabecera
+     de resultados (o el bloque de "sin resultados"). */
+  const focusPending = useRef(false);
+  const resultsRef = useRef(null);
 
   const onVerified = useCallback((k, d) => setVerified((s) => ({ ...s, [k]: d })), []);
 
@@ -1961,6 +2058,8 @@ function App() {
   const doSearch = useCallback(
     (e) => {
       e?.preventDefault();
+      /* Una busqueda manual no debe heredar un foco pendiente de un ejemplo. */
+      focusPending.current = false;
       runSearch(q, mode);
       /* En movil se baja el teclado para ver los resultados. */
       if (window.matchMedia("(pointer: coarse)").matches) inputRef.current?.blur();
@@ -1971,10 +2070,20 @@ function App() {
   const runExample = useCallback(
     (text) => {
       setQ(text);
+      focusPending.current = true;
       runSearch(text, mode);
     },
     [mode, runSearch]
   );
+
+  /* Se espera a que la busqueda termine: antes no hay nada donde poner el
+     foco. Va a la cabecera de resultados (o al aviso de error / sin
+     resultados), nunca al input, que abriria el teclado en movil. */
+  useEffect(() => {
+    if (!focusPending.current || loading || !searched) return;
+    focusPending.current = false;
+    (resultsRef.current || msgRef.current)?.focus();
+  }, [loading, searched, results, err]);
 
   /* Cambiar de modo tiene que volver a consultar la API, no solo repintar el
      control. La firma evita el loop: si la peticion que corresponde al modo
@@ -2362,11 +2471,16 @@ function App() {
             <ModePicker value={mode} onChange={setMode} ytDead={ytDead} />
             <FmtPicker value={fmt} onChange={setFmt} />
           </section>
+          {fmt === "original" && (
+            <p className="finder__hint" key={mode === "ytdlp" ? "yt" : "any"}>
+              {mode === "ytdlp" ? ORIGINAL_HINT_YT : ORIGINAL_HINT}
+            </p>
+          )}
         </div>
       </section>
 
       {err && (
-        <div className="msg msg--err" role="alert" ref={msgRef}>
+        <div className="msg msg--err" role="alert" ref={msgRef} tabIndex={-1}>
           <WarningCircle size={17} weight="fill" />
           <span>{err}</span>
         </div>
@@ -2468,7 +2582,11 @@ function App() {
 
       {results.length > 0 && (
         <>
-          <div className={cx("results__head", loading && "is-stale")}>
+          <div
+            ref={resultsRef}
+            tabIndex={-1}
+            className={cx("results__head", loading && "is-stale")}
+          >
             <span className="results__count">
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
               <b>{fullCount} descargables</b>
@@ -2557,7 +2675,7 @@ function App() {
       )}
 
       {!loading && !results.length && searched && !err && (
-        <div className="none">
+        <div className="none" ref={resultsRef} tabIndex={-1}>
           <h3 className="none__h">No encontré nada para "{query}"</h3>
           <p className="none__p">
             Prueba con menos palabras, con el nombre del artista solo, o cambia a Todas
