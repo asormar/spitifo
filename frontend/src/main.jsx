@@ -1212,7 +1212,7 @@ async function pollJob(jobId, setJobFor, key, title) {
 }
 
 /* Verificacion: lee los tags reales del audio y compara con lo buscado. */
-function VerifyPanel({ t, query, onVerified }) {
+function VerifyPanel({ t, query }) {
   const [state, setState] = useState("idle");
   const [data, setData] = useState(null);
 
@@ -1228,12 +1228,11 @@ function VerifyPanel({ t, query, onVerified }) {
       if (!r.ok) throw new Error(errMsg(d, "no se pudo verificar"));
       setData(d);
       setState("done");
-      onVerified?.(t.source + t.source_id, d);
     } catch (e) {
       setState("error");
       setData({ error: fetchErr(e, e.message) });
     }
-  }, [t.source, t.source_id, query, onVerified]);
+  }, [t.source, t.source_id, query]);
 
   if (state === "idle") {
     return (
@@ -1262,40 +1261,66 @@ function VerifyPanel({ t, query, onVerified }) {
 
   const m = data.extra || {};
   const tone = m.match === "match" ? "ok" : m.match === "partial" ? "warn" : m.match === "mismatch" ? "bad" : "mute";
+  const norm = (x) => (x || "").trim().toLowerCase();
+  /* El titulo del archivo solo se repite si NO es el de la tarjeta: cuando
+     coincide, volver a escribirlo era ruido (salia tres veces en la misma
+     tarjeta). Cuando no coincide es justo lo que hay que ver. */
+  const otherTitle = m.real_title && norm(m.real_title) !== norm(t.title) ? m.real_title : null;
+  const otherArtist = m.real_artist && norm(m.real_artist) !== norm(t.artist) ? m.real_artist : null;
+  const specs = [m.format, fmtSize(m.size_mb), m.duration_s ? fmtTime(m.duration_s) : null].filter(Boolean);
   return (
-    <div className={`vfbox vfbox--${tone}`}>
+    <section className="vfbox" aria-label="Verificación del archivo">
       <div className="vfbox__head">
-        <strong className="vfbox__title">{m.real_title || "sin título"}</strong>
         <StatusChip tone={tone} key={m.match || "unknown"}>
-          {m.match_label || "?"}
+          {m.match_label || "Sin veredicto"}
         </StatusChip>
+        {m.match_score != null && (
+          <span className="vfbox__score">{Math.round(m.match_score * 100)}% de coincidencia</span>
+        )}
       </div>
-      <div className="vfbox__meta">
-        {m.real_artist && (
+      <dl className="vfbox__facts">
+        {(otherTitle || !m.real_title) && (
           <>
-            artista real <b>{m.real_artist}</b>,{" "}
+            <dt>En el archivo</dt>
+            <dd className="vfbox__strong">{m.real_title || "sin título"}</dd>
           </>
         )}
-        {m.format && <>{m.format} </>}
-        {fmtSize(m.size_mb) && <>{fmtSize(m.size_mb)} </>}
-        {m.duration_s ? <>{fmtTime(m.duration_s)} </> : null}
-        {m.match_score != null && <>coincide {Math.round(m.match_score * 100)}%</>}
-      </div>
-      {m.filename && (
-        <div className="vfbox__file">
-          archivo <code>{m.filename}</code>
-        </div>
-      )}
-      <div className="vfbox__src">
-        {m.uploader && <>subido por {m.uploader}. </>}
-        {m.title_source === "item-title" && <>el archivo no trae etiquetas, el título viene del item. </>}
-        {m.item_url && (
-          <ExtLink className="ext" url={m.item_url}>
-            ver en Internet Archive <ArrowUpRight size={12} />
-          </ExtLink>
+        {otherArtist && (
+          <>
+            <dt>Artista</dt>
+            <dd>{otherArtist}</dd>
+          </>
         )}
-      </div>
-    </div>
+        {m.filename && (
+          <>
+            <dt>Archivo</dt>
+            <dd>
+              <code>{m.filename}</code>
+            </dd>
+          </>
+        )}
+        {specs.length > 0 && (
+          <>
+            <dt>Audio</dt>
+            <dd>{specs.join(" · ")}</dd>
+          </>
+        )}
+        {m.uploader && (
+          <>
+            <dt>Subido por</dt>
+            <dd>{m.uploader}</dd>
+          </>
+        )}
+      </dl>
+      {m.title_source === "item-title" && (
+        <p className="vfbox__note">El archivo no trae etiquetas: el título viene de la ficha del item.</p>
+      )}
+      {m.item_url && (
+        <ExtLink className="ext vfbox__link" url={m.item_url}>
+          ver en Internet Archive <ArrowUpRight size={12} />
+        </ExtLink>
+      )}
+    </section>
   );
 }
 
@@ -1537,13 +1562,10 @@ const Track = React.memo(function Track({
   onDownload,
   busy,
   downloaded,
-  verified,
-  onVerified,
   index,
 }) {
   const st = trackState(t);
   const ui = STATE_UI[st];
-  const v = verified;
   const dur = t.duration_s ? fmtTime(t.duration_s) : null;
   const size = fmtSize(t.extra?.size_mb);
   const web = t.extra?.webpage_url;
@@ -1599,26 +1621,7 @@ const Track = React.memo(function Track({
             artwork={t.artwork_url}
           />
         )}
-        {v && (
-          <div
-            className={`realinfo realinfo--${
-              v.extra?.match === "match"
-                ? "ok"
-                : v.extra?.match === "partial"
-                ? "warn"
-                : v.extra?.match === "mismatch"
-                ? "bad"
-                : "mute"
-            }`}
-          >
-            <span className="realinfo__k">en el archivo</span>
-            <b>{v.extra?.real_title || "?"}</b>
-            {v.extra?.real_artist && v.extra.real_artist !== t.artist && (
-              <span className="meta meta--mute">{v.extra.real_artist}</span>
-            )}
-          </div>
-        )}
-        {t.source === "archive" && <VerifyPanel t={t} query={query} onVerified={onVerified} />}
+        {t.source === "archive" && <VerifyPanel t={t} query={query} />}
         <div className="card__foot">
           <StatusChip tone={ui.tone} key={st}>
             {ui.label}
@@ -1876,7 +1879,6 @@ function App() {
      claves en curso: cada fila enciende y apaga su spinner sin tocar el de
      las demas. */
   const [busyIds, setBusyIds] = useState(() => new Set());
-  const [verified, setVerified] = useState({});
   /* Claves de lo que ya se bajo en esta sesion: la tarjeta lo marca con un
      check (sigue siendo pulsable para volver a descargar). */
   const [downloadedIds, setDownloadedIds] = useState(() => new Set());
@@ -1917,7 +1919,6 @@ function App() {
   const focusPending = useRef(false);
   const resultsRef = useRef(null);
 
-  const onVerified = useCallback((k, d) => setVerified((s) => ({ ...s, [k]: d })), []);
 
   useEffect(() => {
     fetch(`${API}/health`)
@@ -2031,7 +2032,6 @@ function App() {
     setLoading(true);
     setErr(null);
     setDone(null);
-    setVerified({});
     setSearched(true);
     setFilter("all");
     const params = buildSearchParams(t, m);
@@ -2621,8 +2621,6 @@ function App() {
                   busy={busyIds.has(rowKey(t))}
                   downloaded={downloadedIds.has(rowKey(t))}
                   onDownload={onDownload}
-                  verified={verified[t.source + t.source_id]}
-                  onVerified={onVerified}
                   index={i}
                 />
               )

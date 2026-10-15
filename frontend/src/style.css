@@ -778,32 +778,24 @@ body.has-mini .app {
    ------------------------------------------------------------------------- */
 
 .st--ok,
-.vfbox--ok,
-.realinfo--ok,
 .msg--ok {
   --tone-bg: var(--ok-bg);
   --tone-fg: var(--ok-fg);
 }
 
 .st--warn,
-.vfbox--warn,
-.realinfo--warn,
 .msg--warn {
   --tone-bg: var(--warn-bg);
   --tone-fg: var(--warn-fg);
 }
 
 .st--bad,
-.vfbox--bad,
-.realinfo--bad,
 .msg--err {
   --tone-bg: var(--bad-bg);
   --tone-fg: var(--bad-fg);
 }
 
-.st--mute,
-.vfbox--mute,
-.realinfo--mute {
+.st--mute {
   --tone-bg: var(--track);
   --tone-fg: var(--muted);
 }
@@ -2026,32 +2018,6 @@ body.has-mini .progstack {
   border-radius: var(--r-sm);
 }
 
-/* --- Identidad real (verificacion previa) --------------------------------- */
-
-.realinfo,
-.vfbox {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--tone-bg) 40%, var(--surface));
-  border: 1px solid var(--tone-bg);
-  animation: reveal var(--t-enter) var(--ease) both;
-}
-
-.realinfo {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.realinfo__k {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 /* --- Verificacion (Internet Archive) -------------------------------------- */
 
 .vf {
@@ -2096,32 +2062,76 @@ body.has-mini .progstack {
   color: var(--bad-fg);
 }
 
+/* Resultado de la verificacion. Antes era un bloque verde macizo (y otro
+   encima repitiendo el titulo): rompia el cristal de la tarjeta y gritaba mas
+   que la portada. Ahora es una superficie neutra como el reproductor; el tono
+   lo lleva SOLO la etiqueta, que ya trae icono y texto. */
+.vfbox {
+  margin-top: 12px;
+  padding: 12px 14px 12px;
+  border-radius: var(--r-inner);
+  background: color-mix(in srgb, var(--track) 55%, transparent);
+  border: 1px solid var(--line);
+  animation: reveal var(--t-enter) var(--ease) both;
+}
+
 .vfbox__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 6px 10px;
 }
 
-.vfbox__title {
-  font-size: 14px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.vfbox__meta,
-.vfbox__file,
-.vfbox__src {
-  margin-top: 3px;
+.vfbox__score {
   color: var(--muted);
   font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clave a la izquierda, valor a la derecha: se escanea como una ficha. */
+.vfbox__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.vfbox__facts:empty {
+  display: none;
+}
+
+.vfbox__facts dt {
+  color: var(--faint);
+}
+
+.vfbox__facts dd {
+  margin: 0;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
-.vfbox__file code {
-  color: var(--ink);
+.vfbox__facts code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.vfbox__strong {
+  font-weight: 700;
+}
+
+.vfbox__note {
+  margin: 10px 0 0;
+  color: var(--muted);
   font-size: 12px;
+  line-height: 1.4;
+}
+
+.vfbox__link {
+  display: inline-flex;
+  margin-top: 10px;
+  font-size: 12.5px;
 }
 
 /* ---------------------------------------------------------------------------
