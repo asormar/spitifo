@@ -17,6 +17,7 @@ import {
   Check,
   CheckCircle,
   CircleNotch,
+  Crosshair,
   DownloadSimple,
   Headphones,
   ListBullets,
@@ -323,23 +324,6 @@ function useTheme() {
   return [theme, choose];
 }
 
-/* Monta/desmonta con margen para una animacion de salida. `show` manda; el
-   componente sigue montado `ms` despues de que pase a false, y mientras tanto
-   el llamador pone data-state="closed" para que el CSS lo retire. Sin esto un
-   `{open && <X/>}` desaparece de golpe y no hay nada que animar. */
-function usePresence(show, ms) {
-  const [mounted, setMounted] = useState(show);
-  useEffect(() => {
-    if (show) {
-      setMounted(true);
-      return undefined;
-    }
-    const id = setTimeout(() => setMounted(false), ms);
-    return () => clearTimeout(id);
-  }, [show, ms]);
-  return show || mounted;
-}
-
 /* La pastilla blanca de un segmentado se DESLIZA hasta la opcion activa en
    vez de saltar. Mide el boton activo y publica --ix / --iw en el contenedor;
    el CSS hace el resto con transform. `data-ready` se pone justo despues de
@@ -406,9 +390,16 @@ function setCurrent(a) {
   watchers.forEach((w) => w());
 }
 
+/* Datos de cada <audio> para quien no es su Player: el mini-reproductor solo
+   recibe el elemento (`current`) y de ahi tiene que sacar el titulo, el
+   subtitulo y la caja del Player para saber si se ve en pantalla. WeakMap para
+   que un Player desmontado no retenga nada. */
+const audioMeta = new WeakMap();
+
 function Player({ src, label, title, meta, duration, variant = "row", index = 0 }) {
   const audioRef = useRef(null);
   const railRef = useRef(null);
+  const rootRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -429,10 +420,24 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
     return () => {
       players.delete(a);
       watchers.delete(repaint);
+      audioMeta.delete(a);
       if (current === a) setCurrent(null);
       a.pause();
     };
   }, []);
+
+  /* Aparte del efecto de montaje: titulo y meta pueden cambiar sin que el
+     elemento se remonte, y el registro tiene que seguirlos. */
+  useEffect(() => {
+    audioMeta.set(audioRef.current, {
+      label,
+      title,
+      meta,
+      duration,
+      variant,
+      el: rootRef.current,
+    });
+  }, [label, title, meta, duration, variant]);
 
   const dur = realDur || duration || 0;
   const pct = drag !== null ? drag : dur ? clamp(cur / dur, 0, 1) : 0;
@@ -622,7 +627,10 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
 
   if (small) {
     return (
-      <div className={cx("pv", active && "is-active", playing && "is-playing")}>
+      <div
+        ref={rootRef}
+        className={cx("pv", active && "is-active", playing && "is-playing")}
+      >
         {audio}
         {button}
         {rail}
@@ -634,6 +642,7 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
   const quiet = muted || vol === 0;
   return (
     <div
+      ref={rootRef}
       className={cx("pl", active && "is-active", playing && "is-playing", failed && "is-failed")}
       style={{ "--i": index }}
     >
@@ -693,6 +702,306 @@ function Player({ src, label, title, meta, duration, variant = "row", index = 0 
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   MINI-REPRODUCTOR
+
+   La biblioteca ya no se desmonta al cerrarse (la musica sigue), pero entonces
+   la cancion que suena queda sin controles: su fila esta oculta, o fuera de
+   pantalla a mitad de scroll. Esta pastilla fija los devuelve. No tiene
+   <audio> propio: se cuelga del elemento `current` y lo gobierna directamente,
+   asi no hay una segunda fuente de verdad que pueda desincronizarse.
+
+   Solo se ve cuando hace falta: hay una cancion empezada Y su Player no esta a
+   la vista (cajon cerrado o fuera del viewport). Con la fila delante, los
+   controles duplicados sobrarian. Si el usuario la cierra, se queda cerrada
+   hasta el siguiente `play`.
+   ------------------------------------------------------------------------- */
+
+const MINI_IDLE = { playing: false, buffering: false, time: 0, dur: 0 };
+
+function MiniPlayer({ libOpen, onReveal }) {
+  const [, repaint] = useReducer((n) => n + 1, 0);
+  const [st, setSt] = useState(MINI_IDLE);
+  const [dismissed, setDismissed] = useState(false);
+  /* true hasta que el IntersectionObserver diga lo contrario: mejor tardar un
+     fotograma en aparecer que parpadear con la fila aun a la vista. */
+  const [srcSeen, setSrcSeen] = useState(true);
+  const [drag, setDrag] = useState(null);
+  const railRef = useRef(null);
+  const lastInfo = useRef(null);
+
+  useEffect(() => {
+    watchers.add(repaint);
+    return () => watchers.delete(repaint);
+  }, []);
+
+  const audio = current;
+  const meta = audio ? audioMeta.get(audio) : null;
+  /* Al desmontarse el Player se pierde su registro; se recuerda el ultimo para
+     que el texto no se vacie mientras la pastilla se desvanece. */
+  if (meta) lastInfo.current = meta;
+  const info = meta || lastInfo.current;
+  const srcEl = meta?.el ?? null;
+
+  /* Espejo del estado del <audio> con sus eventos nativos. Layout effect: al
+     cambiar de cancion el estado viejo no llega a pintarse. */
+  useLayoutEffect(() => {
+    setDismissed(false);
+    setDrag(null);
+    if (!audio) {
+      setSt(MINI_IDLE);
+      return undefined;
+    }
+    const sync = (buffering) =>
+      setSt((p) => {
+        const n = {
+          playing: !audio.paused,
+          buffering: buffering ?? p.buffering,
+          time: audio.currentTime || 0,
+          dur: Number.isFinite(audio.duration) ? audio.duration : 0,
+        };
+        return n.playing === p.playing &&
+          n.buffering === p.buffering &&
+          n.time === p.time &&
+          n.dur === p.dur
+          ? p
+          : n;
+      });
+    const handlers = {
+      play: () => {
+        setDismissed(false);
+        sync(audio.readyState < 3);
+      },
+      playing: () => sync(false),
+      pause: () => sync(false),
+      ended: () => sync(false),
+      waiting: () => sync(true),
+      emptied: () => sync(false),
+      timeupdate: () => sync(),
+      durationchange: () => sync(),
+      loadedmetadata: () => sync(),
+    };
+    Object.entries(handlers).forEach(([n, h]) => audio.addEventListener(n, h));
+    sync(!audio.paused && audio.readyState < 3);
+    return () => {
+      Object.entries(handlers).forEach(([n, h]) => audio.removeEventListener(n, h));
+    };
+  }, [audio]);
+
+  /* Se observa la caja del Player de origen, no el audio. */
+  useLayoutEffect(() => {
+    if (!srcEl || typeof IntersectionObserver === "undefined") {
+      setSrcSeen(false);
+      return undefined;
+    }
+    setSrcSeen(true);
+    const io = new IntersectionObserver(([e]) => setSrcSeen(e.isIntersecting), {
+      threshold: 0,
+    });
+    io.observe(srcEl);
+    return () => io.disconnect();
+  }, [srcEl]);
+
+  /* Con el cajon cerrado el IO tambien lo detecta (el recorte deja la fila en
+     0), pero solo cuando termina de cerrarse. Esto lo adelanta al clic. */
+  const inClosedDrawer = !libOpen && !!srcEl?.closest(".drawer");
+  const started = st.playing || st.time > 0;
+  const show = !!audio && started && !dismissed && (!srcSeen || inClosedDrawer);
+
+  /* Reserva sitio en la pagina y aparta los avisos de descarga (CSS). */
+  useEffect(() => {
+    document.body.classList.toggle("has-mini", show);
+    return () => document.body.classList.remove("has-mini");
+  }, [show]);
+
+  /* Teclas multimedia, auriculares y pantalla de bloqueo. Progresivo: sin la
+     API no pasa nada. Los try/catch son porque cada navegador soporta un
+     subconjunto de acciones y las que no conoce lanzan en vez de ignorarse. */
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !audio || !info) return undefined;
+    const ms = navigator.mediaSession;
+    try {
+      if (typeof MediaMetadata !== "undefined") {
+        ms.metadata = new MediaMetadata({ title: info.title || "", artist: info.meta || "" });
+      }
+    } catch {
+      /* los metadatos son opcionales */
+    }
+    const actions = {
+      play: () => audio.play().catch(() => {}),
+      pause: () => audio.pause(),
+      seekto: (d) => {
+        if (typeof d?.seekTime === "number") audio.currentTime = d.seekTime;
+      },
+    };
+    Object.entries(actions).forEach(([n, h]) => {
+      try {
+        ms.setActionHandler(n, h);
+      } catch {
+        /* accion no soportada */
+      }
+    });
+    return () => {
+      Object.keys(actions).forEach((n) => {
+        try {
+          ms.setActionHandler(n, null);
+        } catch {
+          /* idem */
+        }
+      });
+      ms.metadata = null;
+    };
+  }, [audio, info]);
+
+  const dur = st.dur || info?.duration || 0;
+  const pct = drag !== null ? drag : dur ? clamp(st.time / dur, 0, 1) : 0;
+  const shownTime = drag !== null ? drag * dur : st.time;
+  const total = dur ? clock(Math.round(dur)) : "--:--";
+  const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
+  const label = info?.label || "la canción";
+
+  const toggle = () => {
+    if (!audio) return;
+    if (audio.paused) {
+      audio.volume = shared.volume;
+      audio.muted = shared.muted;
+      setSt((p) => ({ ...p, buffering: true }));
+      /* Igual que en Player: AbortError no es un fallo del audio. */
+      audio.play().catch(() => setSt((p) => ({ ...p, buffering: false })));
+    } else {
+      audio.pause();
+    }
+  };
+
+  const seekTo = (t) => {
+    const v = clamp(t, 0, dur || 0);
+    if (audio && dur) audio.currentTime = v;
+    setSt((p) => ({ ...p, time: v }));
+  };
+
+  const pctAt = (e) => {
+    const r = railRef.current.getBoundingClientRect();
+    return clamp((e.clientX - r.left) / r.width, 0, 1);
+  };
+  const onPointerDown = (e) => {
+    if (!dur) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag(pctAt(e));
+  };
+  const onPointerMove = (e) => {
+    if (drag !== null) setDrag(pctAt(e));
+  };
+  const onPointerUp = (e) => {
+    if (drag === null) return;
+    seekTo(pctAt(e) * dur);
+    setDrag(null);
+  };
+  const onKeyDown = (e) => {
+    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
+    if (step !== undefined) {
+      e.preventDefault();
+      seekTo((audio?.currentTime ?? st.time) + step);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seekTo(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seekTo(dur - 1);
+    } else if (e.key === " " || e.key === "Enter") {
+      e.preventDefault();
+      toggle();
+    }
+  };
+
+  const close = () => {
+    audio?.pause();
+    setDismissed(true);
+  };
+
+  return (
+    <section
+      className={cx("mini", st.playing && "is-playing")}
+      aria-label="Reproductor"
+      data-state={show ? "open" : "closed"}
+      aria-hidden={show ? undefined : true}
+      inert={show ? undefined : ""}
+    >
+      <div className="mini__row">
+        <button
+          type="button"
+          className="pbtn"
+          data-icon={icon}
+          onClick={toggle}
+          aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${label}`}
+        >
+          <span className="pbtn__ico pbtn__ico--play">
+            <Play size={16} weight="fill" />
+          </span>
+          <span className="pbtn__ico pbtn__ico--pause">
+            <Pause size={16} weight="fill" />
+          </span>
+          <span className="pbtn__ico pbtn__ico--load">
+            <CircleNotch size={16} weight="bold" className="spin" />
+          </span>
+        </button>
+        <div className="mini__txt">
+          <span className="mini__title" title={info?.title}>
+            {info?.title}
+          </span>
+          <span className="mini__meta" title={info?.meta}>
+            {info?.meta}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="mini__btn"
+          onClick={() => onReveal(srcEl)}
+          disabled={!srcEl}
+          aria-label="Ir a la canción"
+          title="Ir a la canción"
+        >
+          <Crosshair size={18} />
+        </button>
+        <button
+          type="button"
+          className="mini__btn"
+          onClick={close}
+          aria-label="Cerrar reproductor"
+          title="Cerrar reproductor"
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <div className="mini__bar">
+        <div
+          ref={railRef}
+          className={cx("scrub", drag !== null && "is-drag")}
+          role="slider"
+          tabIndex={0}
+          aria-label={`Progreso de ${label}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(pct * 100)}
+          aria-valuetext={`${clock(shownTime)} de ${total}`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => setDrag(null)}
+          onKeyDown={onKeyDown}
+        >
+          <span className="scrub__rail">
+            <span className="scrub__fill" style={{ transform: `scaleX(${pct})` }} />
+          </span>
+          <span className="scrub__knob" style={{ left: `${pct * 100}%` }} />
+        </div>
+        <span className="mini__time">
+          {clock(shownTime)} / {total}
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -1196,6 +1505,8 @@ const Track = React.memo(function Track({
             variant="compact"
             src={t.preview_url}
             label={`el preview de ${t.title || "este resultado"}`}
+            title={t.title || "sin título"}
+            meta={`${t.artist || "artista desconocido"} · preview de 30 s`}
             duration={30}
           />
         )}
@@ -1461,6 +1772,8 @@ function App() {
   const [fmt, setFmt] = useState("mp3");
   const [filter, setFilter] = useState("all");
   const [libOpen, setLibOpen] = useState(false);
+  const drawerRef = useRef(null);
+  const libBtnRef = useRef(null);
   /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
      sin esto el boton arrancaria atenuado y el contador no apareceria hasta
      abrir el panel, que es justo cuando ya no hace falta. */
@@ -1589,6 +1902,9 @@ function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape" && libOpen) {
+        /* El foco se mueve ANTES de cerrar: el cajon cerrado es `inert` y, con
+           el foco dentro, se perderia en el <body>. */
+        if (drawerRef.current?.contains(document.activeElement)) libBtnRef.current?.focus();
         setLibOpen(false);
         return;
       }
@@ -1801,14 +2117,55 @@ function App() {
     setLibOpen((n) => !n);
   }, []);
 
-  /* El panel sigue montado tras cerrarse para poder animar la salida (400 ms
-     de drawer-out + margen). `libSettled` dice que el cajon ya termino de
-     abrirse: hasta entonces recorta su contenido, despues lo libera. */
-  const libMounted = usePresence(libOpen, 440);
+  /* El cajon se monta la primera vez que se abre y ya no se desmonta: sus
+     Player siguen vivos al cerrarlo y la musica no se corta. Abrir/cerrar es
+     solo `data-state` + una transicion CSS (interrumpible, a diferencia de un
+     keyframe).
+     - libEver: ya se abrio alguna vez (monta el cajon).
+     - libShow: el estado visual. Va un fotograma por detras de libOpen al abrir
+       para que el cajon se pinte primero cerrado y la transicion tenga desde
+       donde arrancar; al cerrar va a la par.
+     - libSettled: la apertura termino. Hasta entonces recorta su contenido,
+       despues lo libera para que la sombra del panel no quede cortada. */
+  const [libEver, setLibEver] = useState(false);
+  const [libShow, setLibShow] = useState(false);
   const [libSettled, setLibSettled] = useState(false);
-  useEffect(() => {
-    if (!libOpen) setLibSettled(false);
-  }, [libOpen]);
+  /* Layout effect y no requestAnimationFrame: con la pestana en segundo plano
+     rAF no se dispara y el cajon se quedaba cerrado para siempre. */
+  useLayoutEffect(() => {
+    if (!libOpen) {
+      setLibShow(false);
+      setLibSettled(false);
+      return;
+    }
+    if (!libEver) {
+      setLibEver(true);
+      return;
+    }
+    /* Leer una medida fuerza el calculo de estilo del estado cerrado antes de
+       pasar a abierto; sin esto el navegador fusiona los dos y no anima. */
+    void drawerRef.current?.offsetHeight;
+    setLibShow(true);
+  }, [libOpen, libEver]);
+
+  /* Saltar a una cancion desde el mini-reproductor. Si vive en la biblioteca
+     cerrada hay que abrirla y esperar a que el cajon termine de crecer, o el
+     scroll apunta a una posicion que aun no existe. */
+  const revealSong = useCallback(
+    (el) => {
+      if (!el) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const go = () =>
+        el.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      if (el.closest(".drawer") && !libOpen) {
+        setLibOpen(true);
+        setTimeout(go, 320);
+      } else {
+        go();
+      }
+    },
+    [libOpen]
+  );
 
   /* El contador del boton tiene que ser real desde el primer render, asi que
      /api/library se pide al montar y no solo al abrir el panel. Es una lista
@@ -1941,6 +2298,7 @@ function App() {
           </span>
         </button>
         <button
+          ref={libBtnRef}
           className={[
             "libbtn",
             libOpen ? "is-on" : "",
@@ -2050,13 +2408,20 @@ function App() {
         </div>
       )}
 
-      {libMounted && (
+      {libEver && (
         <div
+          ref={drawerRef}
           className="drawer"
-          data-state={libOpen ? "open" : "closed"}
-          data-settled={libSettled && libOpen ? "" : undefined}
-          onAnimationEnd={(e) => {
-            if (e.target === e.currentTarget && e.animationName === "drawer-in") {
+          data-state={libShow ? "open" : "closed"}
+          data-settled={libSettled && libShow ? "" : undefined}
+          aria-hidden={libShow ? undefined : true}
+          inert={libShow ? undefined : ""}
+          onTransitionEnd={(e) => {
+            if (
+              e.target === e.currentTarget &&
+              e.propertyName === "grid-template-rows" &&
+              libShow
+            ) {
               setLibSettled(true);
             }
           }}
@@ -2200,6 +2565,7 @@ function App() {
           </p>
         </div>
       )}
+      <MiniPlayer libOpen={libOpen} onReveal={revealSong} />
     </main>
   );
 }

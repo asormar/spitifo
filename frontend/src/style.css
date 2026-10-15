@@ -302,6 +302,11 @@ button {
   padding: 24px var(--gutter) 128px;
 }
 
+/* Con el mini-reproductor visible, el final de la lista no puede quedar debajo. */
+body.has-mini .app {
+  padding-bottom: calc(128px + var(--mini-h));
+}
+
 /* ---------------------------------------------------------------------------
    3. NAV
    ------------------------------------------------------------------------- */
@@ -850,6 +855,14 @@ button {
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
+  transition: transform 220ms var(--ease);
+}
+
+/* El mini-reproductor ocupa el centro inferior y los toasts van abajo a la
+   derecha: en pantallas anchas se pisan. Se suben por encima. Transform y no
+   `bottom`, para no animar layout. */
+body.has-mini .progstack {
+  transform: translateY(calc(-1 * (var(--mini-h) + 10px)));
 }
 
 .progstack .prog {
@@ -970,19 +983,33 @@ button {
 
 /* Cajon: la biblioteca no "aparece" encima, ABRE hueco. Lo brusco de antes no
    era el fundido sino que los resultados de debajo saltaban de golpe. La altura
-   se anima con grid-template-rows 0fr <-> 1fr; el panel entra con un fundido
-   y un deslizamiento corto. Mientras se mueve, el contenido se recorta
-   (overflow hidden); al asentarse (data-settled, lo pone el JSX al terminar la
-   animacion) se libera para que la sombra del panel no quede cortada. */
+   se anima con grid-template-rows 0fr <-> 1fr.
+   Es una TRANSICION y no un keyframe a proposito: el cajon ya no se desmonta al
+   cerrarse (para que la musica siga), asi que su estado es solo data-state, y
+   una transicion se puede interrumpir a medias (abrir y cerrar rapido) sin
+   salto. Cerrado: sin eventos y `visibility:hidden` al terminar de cerrarse,
+   para que ni el foco ni el lector de pantalla lleguen a el (el JSX ademas lo
+   marca `inert`).
+   Mientras se mueve, el contenido se recorta (overflow hidden); al asentarse
+   (data-settled, lo pone el JSX al terminar la transicion) se libera para que
+   la sombra del panel no quede cortada. */
 .drawer {
   display: grid;
-  grid-template-rows: 1fr;
-  animation: drawer-in 600ms var(--ease-drawer) backwards;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 280ms var(--ease), opacity 160ms var(--ease),
+    visibility 0s linear 280ms;
 }
 
-.drawer[data-state="closed"] {
-  animation: drawer-out 400ms var(--ease-drawer) forwards;
-  pointer-events: none;
+.drawer[data-state="open"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: grid-template-rows 280ms var(--ease), opacity 240ms var(--ease),
+    visibility 0s;
 }
 
 .drawer__in {
@@ -1005,18 +1032,18 @@ button {
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  animation: panel-in 520ms var(--ease) 90ms backwards;
-  transition: box-shadow 360ms var(--ease);
+  transform: translateY(-12px) scale(0.985);
+  transition: box-shadow 360ms var(--ease), transform 280ms var(--ease);
+}
+
+.drawer[data-state="open"] .panel {
+  transform: none;
 }
 
 /* Sin sombra mientras el cajon recorta: aparece suave al asentarse en vez de
    "saltar" cuando se libera el recorte. */
 .drawer:not([data-settled]) .panel {
   box-shadow: 0 0 0 rgba(var(--shadow-rgb), 0);
-}
-
-.drawer[data-state="closed"] .panel {
-  animation: panel-out 280ms var(--ease) forwards;
 }
 
 .panel__head {
@@ -1166,13 +1193,15 @@ button {
 }
 
 .pl.is-active .pbtn,
-.pv.is-active .pbtn {
+.pv.is-active .pbtn,
+.mini .pbtn {
   border-color: var(--accent-fill);
   color: var(--accent-fg);
 }
 
 .pl.is-playing .pbtn,
-.pv.is-playing .pbtn {
+.pv.is-playing .pbtn,
+.mini.is-playing .pbtn {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -1181,7 +1210,8 @@ button {
 
 /* Onda que sale del boton mientras suena. */
 .pl.is-playing .pbtn::after,
-.pv.is-playing .pbtn::after {
+.pv.is-playing .pbtn::after,
+.mini.is-playing .pbtn::after {
   content: "";
   position: absolute;
   inset: -1px;
@@ -1342,6 +1372,7 @@ button {
 
 .pl.is-active .scrub__knob,
 .pv.is-active .scrub__knob,
+.mini .scrub__knob,
 .scrub:focus-visible .scrub__knob {
   opacity: 1;
   transform: scale(1);
@@ -1469,6 +1500,154 @@ button {
 .pv .pbtn {
   width: 34px;
   height: 34px;
+}
+
+/* --- Mini-reproductor: pastilla de cristal fija abajo al centro. Misma receta
+   que .top (fondo --nav-bg, borde --glass-edge, desenfoque). Sin transform para
+   centrarla (left/right + margin auto): asi la entrada puede usar transform.
+   Siempre montada; data-state decide si se ve. Entra en 220 ms y sale en 160. */
+
+:root {
+  /* Alto de la pastilla (con borde). Lo usan el hueco de la pagina y la subida
+     de los toasts de descarga. */
+  --mini-h: 92px;
+}
+
+.mini {
+  position: fixed;
+  z-index: 45;
+  left: 16px;
+  right: 16px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--nav-bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-nav);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(16px);
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease),
+    visibility 0s linear 160ms;
+}
+
+.mini[data-state="open"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition: opacity 220ms var(--ease), transform 220ms var(--ease), visibility 0s;
+}
+
+.mini__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mini__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mini__title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini__meta {
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini__btn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), color 200ms var(--ease),
+    background-color 200ms var(--ease);
+}
+
+.mini__btn:active {
+  transform: scale(0.97);
+}
+
+.mini__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mini__btn:disabled:active {
+  transform: none;
+}
+
+.mini .pbtn:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) {
+  .mini__btn:not(:disabled):hover {
+    background: var(--surface-hover);
+    color: var(--ink);
+  }
+}
+
+.mini__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.mini .scrub {
+  height: 24px;
+}
+
+.mini__time {
+  flex: none;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Dedo: la zona de toque de la barra y de los botones sube a 32+ px. */
+@media (pointer: coarse) {
+  :root {
+    --mini-h: 100px;
+  }
+
+  .mini .scrub {
+    height: 32px;
+  }
+
+  .mini__btn {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 .pv .pbtn__ico--play {
@@ -2527,46 +2706,6 @@ button {
   }
 }
 
-@keyframes drawer-in {
-  from {
-    grid-template-rows: 0fr;
-  }
-  to {
-    grid-template-rows: 1fr;
-  }
-}
-
-@keyframes drawer-out {
-  from {
-    grid-template-rows: 1fr;
-  }
-  to {
-    grid-template-rows: 0fr;
-  }
-}
-
-@keyframes panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(-18px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes panel-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-12px) scale(0.985);
-  }
-}
-
 @keyframes toast-out {
   to {
     opacity: 0;
@@ -2731,6 +2870,12 @@ button {
 
   .eq i {
     transform: scaleY(0.6);
+  }
+
+  /* Cajon y mini-reproductor: solo fundido, sin desplazamiento. */
+  .mini,
+  .panel {
+    transform: none !important;
   }
 }
 
