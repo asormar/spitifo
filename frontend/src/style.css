@@ -226,6 +226,7 @@ html {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 16px;
@@ -236,6 +237,8 @@ body {
 
 button {
   font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 ::selection {
@@ -257,18 +260,16 @@ button {
   z-index: -1;
   aspect-ratio: 1;
   border-radius: 50%;
-  filter: blur(60px);
   pointer-events: none;
-  /* Deriva ambiental: transform puro sobre una capa ya rasterizada. */
-  will-change: transform;
-  animation: drift 30s ease-in-out infinite alternate;
 }
 
 .blob--coral {
   left: -120px;
   top: 120px;
   width: clamp(240px, 33vw, 420px);
-  background: var(--blob-coral);
+  /* Mancha suave con degradado radial en vez de filter:blur(60px): un blur
+     enorme bajo elementos con backdrop-filter se repinta caro. */
+  background: radial-gradient(closest-side, var(--blob-coral) 35%, transparent 100%);
   opacity: var(--blob-coral-o);
 }
 
@@ -276,10 +277,22 @@ button {
   right: -100px;
   top: 340px;
   width: clamp(260px, 36vw, 460px);
-  background: var(--blob-sky);
+  background: radial-gradient(closest-side, var(--blob-sky) 35%, transparent 100%);
   opacity: var(--blob-sky-o);
-  animation-duration: 38s;
-  animation-direction: alternate-reverse;
+}
+
+/* Deriva ambiental: transform puro. Solo si el usuario no pidio menos
+   movimiento. */
+@media (prefers-reduced-motion: no-preference) {
+  .blob {
+    will-change: transform;
+    animation: drift 30s ease-in-out infinite alternate;
+  }
+
+  .blob--sky {
+    animation-duration: 38s;
+    animation-direction: alternate-reverse;
+  }
 }
 
 .app {
@@ -339,7 +352,7 @@ button {
 /* Cambio de tema: cortina vertical. La foto vieja queda fija debajo y la nueva
    se descubre de arriba a abajo con una mascara de 300 % de alto: opaca el
    primer tercio, degradado el segundo, transparente el ultimo. Al deslizar la
-   mascara el borde sube por toda la pantalla, sin arista. 1400 ms con
+   mascara el borde sube por toda la pantalla, sin arista. 550 ms con
    ease-in-out simetrica: arranca y frena despacio. Sirve igual de claro a oscuro
    que al reves, porque siempre es la foto "nueva" la que se descubre. */
 ::view-transition-old(root),
@@ -355,7 +368,7 @@ button {
   mask-size: 100% 300%;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  animation: theme-curtain 1400ms cubic-bezier(0.45, 0, 0.55, 1) both;
+  animation: theme-curtain 550ms cubic-bezier(0.45, 0, 0.55, 1) both;
 }
 
 @keyframes theme-curtain {
@@ -391,7 +404,7 @@ button {
   background: var(--line-strong);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease),
-    background-color 420ms var(--ease-drawer);
+    background-color 250ms var(--ease-drawer);
 }
 
 .themesw::after {
@@ -420,8 +433,8 @@ button {
   background: var(--ink);
   color: var(--on-ink);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-  transition: transform 420ms var(--ease-drawer), background-color 420ms var(--ease-drawer),
-    color 420ms var(--ease-drawer);
+  transition: transform 250ms var(--ease-drawer), background-color 250ms var(--ease-drawer),
+    color 250ms var(--ease-drawer);
 }
 
 .themesw[aria-checked="true"] .themesw__knob {
@@ -436,7 +449,7 @@ button {
   place-items: center;
   opacity: 0;
   transform: rotate(-90deg) scale(0.4);
-  transition: opacity 260ms var(--ease), transform 420ms var(--ease);
+  transition: opacity 250ms var(--ease), transform 250ms var(--ease);
 }
 
 .themesw[aria-checked="false"] .themesw__ico--moon,
@@ -489,7 +502,7 @@ button {
 }
 
 .count--bump {
-  animation: pop-spring 360ms var(--ease-spring) both;
+  animation: bump-spring 360ms var(--ease-spring) both;
 }
 
 /* La etiqueta no se parte en dos lineas: el boton mantiene su ancho cuando el
@@ -585,6 +598,19 @@ button {
 
 .search input::placeholder {
   color: var(--faint);
+}
+
+/* type="search": sin el aspecto nativo ni la "x" de Chrome/Safari, que no
+   encaja con el campo. */
+.search input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  display: none;
 }
 
 .search__go {
@@ -770,6 +796,8 @@ button {
   font-size: 15px;
   font-weight: 600;
   overflow-wrap: anywhere;
+  /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
+  scroll-margin-block: 84px 120px;
   animation: reveal var(--t-enter) var(--ease) both;
 }
 
@@ -1034,6 +1062,10 @@ button {
 .panel__empty {
   margin: 14px 12px;
   color: var(--muted);
+}
+
+.panel__empty .vf {
+  margin-top: 8px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1489,6 +1521,16 @@ button {
   font-weight: 700;
 }
 
+/* Nueva busqueda en curso con resultados viejos a la vista: se atenuan (y la
+   cabecera con ellos, que sigue diciendo la consulta anterior) en vez de
+   dejar los esqueletos debajo. */
+.results__head.is-stale,
+.rows.is-stale {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 160ms var(--ease);
+}
+
 /* auto-fill: 4 columnas en escritorio ancho y baja sola a 3 / 2 / 1. */
 .rows {
   display: grid;
@@ -1761,6 +1803,12 @@ button {
 
 .vf--static:active {
   transform: none;
+}
+
+/* Error con salida: mismo tono que .vf--static pero pulsable. */
+.vf--retry {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
 }
 
 .vfbox__head {
@@ -2094,7 +2142,7 @@ button {
 
 /* Esqueleto con la forma real de una tarjeta, nunca un spinner generico. La
    rejilla de carga no lleva cabecera encima, asi que pone su propio aire. */
-.rows[aria-busy="true"] {
+.rows[aria-busy="true"]:not(.is-stale) {
   margin-top: 44px;
 }
 
@@ -2260,9 +2308,42 @@ button {
     min-height: 44px;
   }
 
+  .scrub {
+    height: 32px;
+  }
+
+  .pv .pbtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Enlaces externos: mas area de toque sin mover el diseno (el margen
+     negativo compensa el padding). */
+  .ext {
+    padding: 10px 6px;
+    margin: -10px -6px;
+  }
+
   .dl--sm {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* Pantallas muy estrechas: el boton de biblioteca queda en icono + contador
+   (lleva aria-label) para que la barra no se desborde a 360 px. */
+@media (max-width: 420px) {
+  .libbtn__lbl {
+    display: none;
+  }
+
+  .libbtn {
+    gap: 6px;
+    padding: 0 12px;
+  }
+
+  .top {
+    padding-left: 16px;
   }
 }
 
@@ -2414,7 +2495,20 @@ button {
 @keyframes swap-in {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Como pop-spring pero desde mas cerca: el contador se vuelve a montar con
+   cada descarga y arrancar casi invisible parpadeaba. */
+@keyframes bump-spring {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
   }
   to {
     opacity: 1;
@@ -2626,7 +2720,30 @@ button {
     animation: none !important;
   }
 
+  /* Avisos de exito/fallo: su unica animacion de salida llevaba un delay de
+     5 s que aqui se colapsaba a 0 y los ocultaba al instante. React los
+     desmonta igualmente. */
+  .msg--ok,
+  .prog.is-done,
+  .prog.is-failed {
+    animation: none !important;
+  }
+
   .eq i {
     transform: scaleY(0.6);
   }
+}
+
+/* Solo para lectores de pantalla. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

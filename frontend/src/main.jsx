@@ -856,10 +856,10 @@ function VerifyPanel({ t, query, onVerified }) {
   }
   if (state === "error") {
     return (
-      <span className="vf vf--static">
+      <button type="button" className="vf vf--retry" onClick={verify}>
         <WarningCircle size={14} />
-        no pude verificar: {data?.error}
-      </span>
+        no pude verificar: {data?.error}. Reintentar
+      </button>
     );
   }
 
@@ -902,13 +902,17 @@ function VerifyPanel({ t, query, onVerified }) {
   );
 }
 
-function ShowGroup({ t, query, onDownload, busyIds }) {
+const ShowGroup = React.memo(function ShowGroup({ t, query, onDownload, busyIds, downloadedIds }) {
   const [open, setOpen] = useState(false);
   const [tracks, setTracks] = useState(null);
   const [loading, setLoading] = useState(false);
+  /* Error aparte de `tracks`: antes un fallo dejaba tracks = [] y al reabrir
+     ya no se reintentaba nunca. */
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const ids = (t.extra?.item_ids || [t.source_id]).join(",");
       const r = await fetch(
@@ -918,7 +922,8 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
       if (!r.ok) throw new Error(errMsg(d, "no se pudo leer el setlist"));
       setTracks(d.tracks);
     } catch (e) {
-      setTracks([]);
+      setTracks(null);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -977,6 +982,14 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
             <div className="fold__in">
               <ul className="setlist">
                 {loading && <li className="tr tr--dim">leyendo las etiquetas de cada pista</li>}
+                {!loading && error && (
+                  <li className="tr tr--dim">
+                    no pude leer las pistas
+                    <button type="button" className="vf vf--retry" onClick={load}>
+                      Reintentar
+                    </button>
+                  </li>
+                )}
                 {!loading && tracks && tracks.length === 0 && (
                   <li className="tr tr--dim">no pude leer las pistas</li>
                 )}
@@ -1013,12 +1026,24 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
                         className="dl dl--sm"
                         disabled={busyIds.has(rowKey(s))}
                         onClick={() => onDownload(s)}
-                        title="Descargar a la biblioteca"
-                        aria-label={`Descargar ${s.real_title || s.filename}`}
+                        title={
+                          downloadedIds.has(rowKey(s))
+                            ? "Descargado: pulsa para volver a descargarlo"
+                            : "Descargar a la biblioteca"
+                        }
+                        aria-label={
+                          downloadedIds.has(rowKey(s))
+                            ? `Descargado: ${s.real_title || s.filename}`
+                            : `Descargar ${s.real_title || s.filename}`
+                        }
                       >
                         {busyIds.has(rowKey(s)) ? (
                           <span className="swap" key="busy">
                             <CircleNotch size={16} className="spin" />
+                          </span>
+                        ) : downloadedIds.has(rowKey(s)) ? (
+                          <span className="swap" key="done">
+                            <Check size={16} weight="bold" />
                           </span>
                         ) : (
                           <span className="swap" key="idle">
@@ -1036,17 +1061,18 @@ function ShowGroup({ t, query, onDownload, busyIds }) {
       </div>
     </li>
   );
-}
+});
 
 /* Un toast por descarga en curso. Con dos a la vez se apilan en columna: el
    primero se apila pegado al borde inferior. Cada uno se retira solo a los 5 s
    de terminar, con su propio temporizador. */
 function ProgressStack({ jobs }) {
   const lista = Object.values(jobs || {});
-  if (!lista.length) return null;
   const varios = lista.length > 1;
+  /* Siempre montado: una region viva que aparece junto con su contenido no se
+     anuncia de forma fiable. Vacia no pinta nada. */
   return (
-    <div className={`progstack ${varios ? "is-multi" : ""}`}>
+    <div className={`progstack ${varios ? "is-multi" : ""}`} aria-live="polite">
       {lista.map((j, i) => (
         <ProgressBar key={j.key || j.title + i} job={j} />
       ))}
@@ -1067,8 +1093,6 @@ function ProgressBar({ job }) {
     <div
       className={`prog ${done ? "is-done" : ""} ${failed || halted ? "is-failed" : ""}`}
       style={{ "--dismiss": `${JOB_DISMISS_MS}ms` }}
-      role="status"
-      aria-live="polite"
     >
       <div className="prog__top">
         <span className="prog__ico">
@@ -1081,7 +1105,8 @@ function ProgressBar({ job }) {
           )}
         </span>
         <span className="prog__title">{job.title}</span>
-        <span className="prog__state">
+        {/* El porcentaje cambia cada ~700 ms: solo se anuncian los estados finales. */}
+        <span className="prog__state" aria-hidden={done || failed || halted ? undefined : true}>
           {failed
             ? "Falló la descarga"
             : done
@@ -1109,10 +1134,19 @@ function ProgressBar({ job }) {
   );
 }
 
-function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
+const Track = React.memo(function Track({
+  t,
+  query,
+  onDownload,
+  busy,
+  downloaded,
+  verified,
+  onVerified,
+  index,
+}) {
   const st = trackState(t);
   const ui = STATE_UI[st];
-  const v = verified?.[t.source + t.source_id];
+  const v = verified;
   const dur = t.duration_s ? fmtTime(t.duration_s) : null;
   const size = fmtSize(t.extra?.size_mb);
   const web = t.extra?.webpage_url;
@@ -1194,12 +1228,24 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
               className="dl"
               disabled={busy}
               onClick={() => onDownload(t)}
-              title="Descargar a la biblioteca"
-              aria-label={`Descargar ${t.title || "este resultado"}`}
+              title={
+                downloaded
+                  ? "Descargado: pulsa para volver a descargarlo"
+                  : "Descargar a la biblioteca"
+              }
+              aria-label={
+                downloaded
+                  ? `Descargado: ${t.title || "este resultado"}`
+                  : `Descargar ${t.title || "este resultado"}`
+              }
             >
               {busy ? (
                 <span className="swap" key="busy">
                   <CircleNotch size={19} className="spin" />
+                </span>
+              ) : downloaded ? (
+                <span className="swap" key="done">
+                  <Check size={19} weight="bold" />
                 </span>
               ) : (
                 <span className="swap" key="idle">
@@ -1221,7 +1267,7 @@ function Track({ t, query, onDownload, busy, verified, onVerified, index }) {
       </div>
     </li>
   );
-}
+});
 
 /* Esqueleto con la forma real de una tarjeta, nunca un spinner generico. */
 function SkeletonRow({ i }) {
@@ -1426,11 +1472,16 @@ function App() {
      las demas. */
   const [busyIds, setBusyIds] = useState(() => new Set());
   const [verified, setVerified] = useState({});
+  /* Claves de lo que ya se bajo en esta sesion: la tarjeta lo marca con un
+     check (sigue siendo pulsable para volver a descargar). */
+  const [downloadedIds, setDownloadedIds] = useState(() => new Set());
   /* Un solo `job` tambien se pisaba entre descargas simultaneas. Ahora es un
      mapa clave -> job, y ProgressBar dibuja uno por descarga en curso. */
   const [jobs, setJobs] = useState({});
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
+  /* true = /api/library fallo y todavia no hay lista que mostrar. */
+  const [libErr, setLibErr] = useState(false);
   /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
      hasta cerrar la vuelta en curso (la orbita empieza y acaba en reposo), asi
      que se detiene sin saltar. El timeout es la red de seguridad para
@@ -1451,6 +1502,12 @@ function App() {
   const inputRef = useRef();
   const lastSig = useRef("");
   const searchSeq = useRef(0);
+  const searchAbort = useRef(null);
+  /* Aviso (error o exito) visible en cada momento: se usa para traerlo a
+     pantalla si una descarga lejana lo deja fuera de vista. */
+  const msgRef = useRef(null);
+
+  const onVerified = useCallback((k, d) => setVerified((s) => ({ ...s, [k]: d })), []);
 
   useEffect(() => {
     fetch(`${API}/health`)
@@ -1514,6 +1571,37 @@ function App() {
     return () => clearTimeout(id);
   }, [done]);
 
+  /* Un fallo/exito de descarga desde una tarjeta lejana pintaba el aviso bajo
+     el hero, fuera de vista. Solo se hace scroll si de verdad esta fuera. */
+  useEffect(() => {
+    if (!err && !done) return;
+    const el = msgRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    /* 72 px: la barra sticky tapa la parte de arriba. */
+    if (r.top >= 72 && r.bottom <= window.innerHeight) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }, [err, done]);
+
+  /* Atajos: Escape cierra la biblioteca; "/" lleva el foco al buscador salvo
+     que ya se este escribiendo en algo. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape" && libOpen) {
+        setLibOpen(false);
+        return;
+      }
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const a = document.activeElement;
+      if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+      e.preventDefault();
+      inputRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [libOpen]);
+
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
      automatico comparten exactamente el mismo camino, y no importa que el
@@ -1534,15 +1622,19 @@ function App() {
     setSearched(true);
     setFilter("all");
     const params = buildSearchParams(t, m);
+    /* La busqueda anterior, si sigue en vuelo, se cancela. */
+    searchAbort.current?.abort();
+    const ac = new AbortController();
+    searchAbort.current = ac;
     try {
-      const r = await fetch(`${API}/search?${params.toString()}`);
+      const r = await fetch(`${API}/search?${params.toString()}`, { signal: ac.signal });
       const d = await r.json();
       if (!r.ok) throw new Error(errMsg(d, "error de búsqueda"));
       if (seq !== searchSeq.current) return;
       setResults(d.results || []);
       setQuery(t);
     } catch (e) {
-      if (seq !== searchSeq.current) return;
+      if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);
       setResults([]);
     } finally {
@@ -1554,6 +1646,8 @@ function App() {
     (e) => {
       e?.preventDefault();
       runSearch(q, mode);
+      /* En movil se baja el teclado para ver los resultados. */
+      if (window.matchMedia("(pointer: coarse)").matches) inputRef.current?.blur();
     },
     [q, mode, runSearch]
   );
@@ -1584,6 +1678,7 @@ function App() {
          sin pisar a la otra. `err`/`done` siguen siendo globales a proposito:
          son el ultimo mensaje de la pantalla, no uno por fila. */
       const key = rowKey(t);
+      const markDownloaded = () => setDownloadedIds((cur) => new Set(cur).add(key));
       setBusyIds((cur) => new Set(cur).add(key));
       setErr(null);
       setDone(null);
@@ -1656,6 +1751,7 @@ function App() {
               setDone(
                 mismatchNotice(d, d.match || vmatch, d.real_title || vtitle, query)
               );
+              markDownloaded();
               loadLib();
             }
           }
@@ -1663,6 +1759,7 @@ function App() {
         }
 
         setDone(mismatchNotice(j, j.match || vmatch, j.real_title || vtitle, query));
+        markDownloaded();
         loadLib();
       } catch (e) {
         setErr(fetchErr(e, e.message));
@@ -1685,10 +1782,15 @@ function App() {
   const loadLib = useCallback(async () => {
     try {
       const r = await fetch(`${API}/library`);
-      if (!r.ok) return; // un 500 no puede pisar el contador
+      if (!r.ok) {
+        setLibErr(true); // un 500 no puede pisar el contador
+        return;
+      }
       const d = await r.json();
       setLib(d.files || []);
+      setLibErr(false);
     } catch (e) {
+      setLibErr(true);
       /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
@@ -1797,8 +1899,17 @@ function App() {
   const matchedDead =
     ytDead && mode === "matched" && results.length > 0 && fullCount === 0;
 
+  /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco. */
+  const srMsg = loading
+    ? "Buscando…"
+    : searched && !err
+    ? results.length
+      ? `${results.length} ${results.length === 1 ? "resultado" : "resultados"} para «${query}»`
+      : "Sin resultados"
+    : "";
+
   return (
-    <div className="app">
+    <main className="app">
       <div className="blob blob--coral" aria-hidden="true" />
       <div className="blob blob--sky" aria-hidden="true" />
       <header className="top">
@@ -1855,12 +1966,17 @@ function App() {
         </div>
       </header>
 
+      <p className="sr-only" role="status" aria-live="polite">
+        {srMsg}
+      </p>
+
       <section className="hero">
         <h1 className="hero__title">Descarga música libremente</h1>
 
         <div className="finder">
           <form
             onSubmit={doSearch}
+            role="search"
             className={cx("search", scanning && "is-scanning")}
             onAnimationIteration={(e) => {
               if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
@@ -1869,12 +1985,17 @@ function App() {
             <MagnifyingGlass size={22} className="search__icon" />
             <input
               ref={inputRef}
+              type="search"
+              name="q"
+              enterKeyHint="search"
+              autoComplete="off"
+              spellCheck={false}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Busca una canción, un artista, un género"
               aria-label="Qué quieres escuchar"
             />
-            <button type="submit" className="search__go" disabled={loading}>
+            <button type="submit" className="search__go">
               {loading ? "Buscando" : "Buscar"}
             </button>
           </form>
@@ -1887,7 +2008,7 @@ function App() {
       </section>
 
       {err && (
-        <div className="msg msg--err" role="alert">
+        <div className="msg msg--err" role="alert" ref={msgRef}>
           <WarningCircle size={17} weight="fill" />
           <span>{err}</span>
         </div>
@@ -1909,6 +2030,7 @@ function App() {
           className={`msg ${done.warning ? "msg--warn" : "msg--ok"}`}
           style={{ "--dismiss": `${JOB_DISMISS_MS}ms` }}
           role="status"
+          ref={msgRef}
         >
           {done.warning ? (
             <WarningCircle size={17} weight="fill" />
@@ -1950,8 +2072,17 @@ function App() {
                 {health?.library && <span className="panel__path">{health.library}</span>}
               </div>
               <div className="panel__body">
-                {libCount === 0 && (
+                {libReady && libCount === 0 && (
                   <p className="panel__empty">Todavía no has descargado nada.</p>
+                )}
+                {!libReady && libErr && (
+                  <p className="panel__empty" role="alert">
+                    No se pudo cargar la biblioteca.
+                    <br />
+                    <button type="button" className="vf" onClick={loadLib}>
+                      Reintentar
+                    </button>
+                  </p>
                 )}
                 {libFiles.map((f, n) => (
                   <Player
@@ -1972,7 +2103,7 @@ function App() {
 
       {results.length > 0 && (
         <>
-          <div className="results__head">
+          <div className={cx("results__head", loading && "is-stale")}>
             <span className="results__count">
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
               <b>{fullCount} descargables</b>
@@ -1984,7 +2115,11 @@ function App() {
               full={fullCount}
             />
           </div>
-          <ul className="rows">
+          <ul
+            className={cx("rows", loading && "is-stale")}
+            aria-busy={loading || undefined}
+            inert={loading ? "" : undefined}
+          >
             {shown.map((t, i) =>
               t.extra?.is_group && t.extra?.track_count > 1 ? (
                 <ShowGroup
@@ -1993,6 +2128,7 @@ function App() {
                   query={query}
                   onDownload={onDownload}
                   busyIds={busyIds}
+                  downloadedIds={downloadedIds}
                 />
               ) : (
                 <Track
@@ -2000,9 +2136,10 @@ function App() {
                   t={t}
                   query={query}
                   busy={busyIds.has(rowKey(t))}
+                  downloaded={downloadedIds.has(rowKey(t))}
                   onDownload={onDownload}
-                  verified={verified}
-                  onVerified={(k, d) => setVerified((s) => ({ ...s, [k]: d }))}
+                  verified={verified[t.source + t.source_id]}
+                  onVerified={onVerified}
                   index={i}
                 />
               )
@@ -2020,7 +2157,7 @@ function App() {
         </>
       )}
 
-      {loading && (
+      {loading && !results.length && (
         <ul className="rows" aria-label="Buscando" aria-busy="true">
           {[0, 1, 2, 3].map((i) => (
             <SkeletonRow key={i} i={i} />
@@ -2063,7 +2200,7 @@ function App() {
           </p>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 
