@@ -81,10 +81,72 @@ def test_download_de_fuente_despagada_da_403(cliente, monkeypatch):
     assert "desactivada" in r.json()["detail"]
 
 
+# ---- validacion manual del body (antes pydantic, ahora a mano en main.py) ----
+def test_download_body_sin_source_da_422(cliente):
+    """Un body sin `source` es 422 con `detail`, no un 500."""
+    r = cliente.post("/api/download", json={"track": {"source": "x"}})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_download_body_sin_track_da_422(cliente):
+    r = cliente.post("/api/download", json={"source": "archive"})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_download_body_que_no_es_json_da_422(cliente):
+    """Un cuerpo que no es JSON no revienta el server: 422 con `detail`."""
+    r = cliente.post("/api/download", content=b"esto no es json",
+                     headers={"content-type": "application/json"})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_download_source_que_no_es_string_da_422(cliente):
+    r = cliente.post("/api/download", json={"source": 123, "track": {}})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_download_track_que_no_es_dict_da_422(cliente):
+    r = cliente.post("/api/download", json={"source": "archive", "track": "x"})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
 def test_search_fuente_desconocida_da_400(cliente):
     r = cliente.get("/api/search", params={"q": "numb", "source": "napster"})
     assert r.status_code == 400
     assert "fuente desconocida" in r.json()["detail"]
+
+
+def test_search_q_vacia_da_422(cliente):
+    """`q` vacia viola min_length=1: 422 con `detail`, sin pegarle a la red."""
+    r = cliente.get("/api/search", params={"q": ""})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_search_q_demasiado_larga_da_422(cliente):
+    """`q` de mas de 200 caracteres viola max_length=200."""
+    r = cliente.get("/api/search", params={"q": "a" * 201})
+    assert r.status_code == 422
+    assert "detail" in r.json()
+
+
+def test_search_limit_fuera_de_rango_da_422(cliente):
+    """`limit` tiene que estar entre 1 y 50: 0 y 51 son 422."""
+    for malo in (0, 51, -1):
+        r = cliente.get("/api/search", params={"q": "numb", "limit": malo})
+        assert r.status_code == 422, malo
+        assert "detail" in r.json()
+
+
+def test_search_limit_no_entero_da_422(cliente):
+    r = cliente.get("/api/search", params={"q": "numb", "limit": "abc"})
+    assert r.status_code == 422
+    assert "detail" in r.json()
 
 
 # ------------------------------------------------------------- /api/progress

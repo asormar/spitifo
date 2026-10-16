@@ -1,17 +1,27 @@
-"""Spitifo API — buscar y descargar musica (fuentes libres + yt-dlp opcional)."""
+"""Spitifo API — buscar y descargar musica (fuentes libres + yt-dlp opcional).
+
+Starlette puro, sin FastAPI ni pydantic: el backend tiene que poder correr
+embebido en Android (Chaquopy) y pydantic-core no tiene build para esa
+plataforma (ver docs/adr/0001-android-embedded-python.md). Las rutas, los
+parametros y las respuestas son los mismos que devolvia la version FastAPI.
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from starlette.applications import Starlette
+from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
 from .downloader import LIBRARY, download_track, library_scan
 from .models import Track
@@ -21,7 +31,12 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("spitifo")
 
-FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+# El frontend compilado vive en su ubicacion habitual dentro del repo.
+# SPITIFO_FRONTEND_DIST permite apuntar a otro dist: hace falta cuando el
+# backend corre embebido y los estaticos NO estan en el arbol del repo.
+FRONTEND_DIST = Path(os.getenv(
+    "SPITIFO_FRONTEND_DIST",
+    Path(__file__).resolve().parents[2] / "frontend" / "dist"))
 
 # tasks asyncio en vuelo (descargas ytdlp en background), para que Python
 # no las recolecte a mitad de camino
@@ -29,7 +44,7 @@ BG_TASKS: set = set()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
     log.info("biblioteca: %s", LIBRARY)
     log.info("fuentes activas: %s",
@@ -39,18 +54,130 @@ async def lifespan(app: FastAPI):
         await s.aclose()
 
 
-app = FastAPI(title="Spitifo", version="0.1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
-                   allow_headers=["*"])
+# --------------------------------------------------------------- validacion
+# Reemplazo directo de lo que hacian fastapi.Query y los modelos pydantic:
+# mismos limites, mismos defaults y mismo cuerpo de error ({"detail": [...]})
+# que el frontend ya conoce.
 
 
-class DownloadReq(BaseModel):
+def _invalid(loc: list, msg: str) -> HTTPException:
+    """422 con el detalle en el mismo formato que devolvia FastAPI/pydantic."""
+    return HTTPException(422, [{"type": "value_error", "loc": loc, "msg": msg}])
+
+
+def _query_str(request: Request, name: str, *, required: bool = False,
+               default=None, min_length: int | None = None,
+               max_length: int | None = None):
+    v = request.query_params.get(name)
+    if v is None:
+        if required:
+            raise _invalid(["query", name], "Field required")
+        return default
+    if min_length is not None and len(v) < min_length:
+        raise _invalid(["query", name],
+                       f"String should have at least {min_length} characters")
+    if max_length is not None and len(v) > max_length:
+        raise _invalid(["query", name],
+                       f"String should have at most {max_length} characters")
+    return v
+
+
+def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> int:
+    v = request.query_params.get(name)
+    if v is None:
+        return default
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_bool(request: Request, name: str, default: bool) -> bool:
+    v = request.query_params.get(name)
+    if v is None:
+        return default
+    s = v.strip().lower()
+    if s in ("1", "true", "t", "yes", "y", "on"):
+        return True
+    if s in ("0", "false", "f", "no", "n", "off"):
+        return False
+    raise _invalid(["query", name], "Input should be a valid boolean")
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except Exception:
+        raise _invalid(["body"], "JSON decode error")
+    if not isinstance(body, dict):
+        raise _invalid(["body"], "Input should be a valid dictionary")
+    return body
+
+
+@dataclass
+class DownloadReq:
     source: str
     track: dict
     fmt: str = "original"  # original | mp3 | m4a
 
+    @classmethod
+    def from_body(cls, body: dict) -> "DownloadReq":
+        """Valida el cuerpo de /api/download (antes lo hacia pydantic)."""
+        src = body.get("source")
+        if not isinstance(src, str):
+            raise _invalid(["body", "source"],
+                           "Field required" if "source" not in body
+                           else "Input should be a valid string")
+        track = body.get("track")
+        if not isinstance(track, dict):
+            raise _invalid(["body", "track"],
+                           "Field required" if "track" not in body
+                           else "Input should be a valid dictionary")
+        fmt = body.get("fmt", "original")
+        if not isinstance(fmt, str):
+            raise _invalid(["body", "fmt"], "Input should be a valid string")
+        return cls(source=src, track=track, fmt=fmt)
 
-class TrackPayload(BaseModel):
+
+# TrackPayload: nombre de campo -> (tipo, obligatorio). El orden es el mismo
+# del modelo pydantic original.
+_TRACK_FIELDS = {
+    "source": (str, True), "source_id": (str, True), "title": (str, True),
+    "artist": (str, True), "album": (str, False), "duration_s": (int, False),
+    "artwork_url": (str, False), "audio_url": (str, False),
+    "preview_url": (str, False), "license": (str, False), "year": (str, False),
+    "extra": (dict, False), "real_title": (str, False),
+    "real_artist": (str, False), "match": (str, False),
+    "match_label": (str, False), "item_url": (str, False),
+    "filename": (str, False), "format": (str, False), "size_mb": (float, False),
+}
+
+
+def _coerce(name: str, typ: type, v, loc: list):
+    """Convierte/valida un valor como lo hacia pydantic (modo laxo)."""
+    if typ is str:
+        ok = isinstance(v, str)
+    elif typ is int:
+        ok = (isinstance(v, int) and not isinstance(v, bool)) or (
+            isinstance(v, float) and v.is_integer())
+        if ok:
+            v = int(v)
+    elif typ is float:
+        ok = isinstance(v, (int, float)) and not isinstance(v, bool)
+        if ok:
+            v = float(v)
+    else:
+        ok = isinstance(v, dict)
+    if not ok:
+        raise _invalid(loc + [name], f"Input should be a valid {typ.__name__}")
+    return v
+
+
+@dataclass
+class TrackPayload:
     source: str
     source_id: str
     title: str
@@ -62,7 +189,7 @@ class TrackPayload(BaseModel):
     preview_url: str | None = None
     license: str | None = None
     year: str | None = None
-    extra: dict = {}
+    extra: dict = field(default_factory=dict)
     # campos que devuelve /api/setlist en la raiz (ver to_track)
     real_title: str | None = None
     real_artist: str | None = None
@@ -74,11 +201,30 @@ class TrackPayload(BaseModel):
     size_mb: float | None = None
 
     @classmethod
+    def from_dict(cls, data: dict, loc: list) -> "TrackPayload":
+        """Valida un dict crudo del body (antes: TrackPayload(**data))."""
+        out: dict = {}
+        for name, (typ, required) in _TRACK_FIELDS.items():
+            if name not in data:
+                if required:
+                    raise _invalid(loc + [name], "Field required")
+                out[name] = {} if name == "extra" else None
+                continue
+            v = data[name]
+            if v is None and not required:
+                out[name] = {} if name == "extra" else None
+                continue
+            out[name] = _coerce(name, typ, v, loc)
+        return cls(**out)
+
+    @classmethod
     def from_track(cls, t: Track) -> "TrackPayload":
-        return cls(**t.to_dict())
+        d = t.to_dict()
+        d.pop("downloadable", None)  # derivado, no es campo del payload
+        return cls(**d)
 
     def to_track(self) -> Track:
-        d = self.model_dump()
+        d = asdict(self)
         # /api/setlist devuelve la identidad verificada en la RAIZ (real_title,
         # real_artist, match); downloader.py la lee de extra. Normalizar aca.
         extra = dict(d.get("extra") or {})
@@ -89,15 +235,15 @@ class TrackPayload(BaseModel):
         d["extra"] = extra
         # quitar campos que no son del dataclass Track
         for k in ("real_title", "real_artist", "match", "match_label",
-                  "item_url", "filename", "format", "size_mb", "downloadable"):
+                  "item_url", "filename", "format", "size_mb"):
             d.pop(k, None)
         return Track(**d)
 
 
-@app.get("/api/health")
-async def health():
+# -------------------------------------------------------------------- rutas
+async def health(request: Request):
     _register_ytdlp()  # mostrar yt-dlp en health si esta habilitada
-    return {
+    return JSONResponse({
         "ok": True,
         "sources": [
             {"name": s.name, "active": s.available(),
@@ -105,21 +251,18 @@ async def health():
             for s in ALL_SOURCES
         ],
         "library": str(LIBRARY),
-    }
+    })
 
 
-@app.get("/api/search")
-async def search(
-    q: str = Query(..., min_length=1, max_length=200),
-    limit: int = Query(20, ge=1, le=50),
-    source: str | None = Query(None, description="filtra por una fuente"),
-    mode: str = Query("matched",
-                      description="matched = iTunes+yt-dlp; sources = mezcla; "
-                                  "ytdlp = solo YouTube"),
-):
+async def search(request: Request):
+    q = _query_str(request, "q", required=True, min_length=1, max_length=200)
+    limit = _query_int(request, "limit", 20, 1, 50)
+    source = _query_str(request, "source", default=None)
+    mode = _query_str(request, "mode", default="matched")
+
     # ---- modo "matched": iTunes es el catalogo, yt-dlp la descarga ----
     if mode == "matched" and not source:
-        return await _search_matched(q, limit)
+        return JSONResponse(await _search_matched(q, limit))
 
     sources = [source] if source else None
     if source and source not in BY_NAME:
@@ -136,10 +279,10 @@ async def search(
     tracks = _group_shows(tracks)
     tracks.sort(key=lambda t: 0 if t.downloadable or t.extra.get("needs_resolve") else 1)
 
-    return {
+    return JSONResponse({
         "query": q, "mode": mode, "count": len(tracks),
         "results": [t.to_dict() for t in tracks],
-    }
+    })
 
 
 async def _search_matched(q: str, limit: int) -> dict:
@@ -149,9 +292,9 @@ async def _search_matched(q: str, limit: int) -> dict:
     video que corresponde, se puede bajar entero. Si no hay match confiable, se
     muestra igual con su preview de 30s y se dice que no hay version entera.
     """
-    import yt_dlp
+    import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
     from .matcher import enrich_with_ytdlp
-    from .sources import ITunesSource, _register_ytdlp
+    from .sources import ITunesSource
     _register_ytdlp()
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
@@ -235,13 +378,14 @@ def _group_shows(tracks: list[Track]) -> list[Track]:
     return out
 
 
-@app.post("/api/resolve")
-async def resolve(payload: TrackPayload, query: str | None = None):
+async def resolve(request: Request):
     """Completa audio_url y VERIFICA la identidad real del archivo.
 
     query: lo que el usuario escribio. Se usa para leer los tags del audio y
     decir si lo que vas a bajar es realmente lo que buscabas.
     """
+    query = _query_str(request, "query", default=None)
+    payload = TrackPayload.from_dict(await _json_body(request), ["body"])
     src = BY_NAME.get(payload.source)
     if not src:
         raise HTTPException(400, f"fuente desconocida: {payload.source}")
@@ -281,18 +425,18 @@ async def resolve(payload: TrackPayload, query: str | None = None):
     except Exception as e:
         log.exception("resolve fallo en %s", payload.source)
         raise HTTPException(502, f"no se pudo resolver: {e}")
-    return t.to_dict()
+    return JSONResponse(t.to_dict())
 
 
-@app.get("/api/verify")
-async def verify(q: str = Query(..., min_length=1, max_length=200),
-                 source: str = Query("archive"),
-                 source_id: str = Query(...)):
+async def verify(request: Request):
     """Dice que hay adentro de un resultado SIN bajarlo.
 
     Devuelve el titulo real leido de los tags, de donde viene (item/file/URL)
     y si coincide con lo que buscabas.
     """
+    q = _query_str(request, "q", required=True, min_length=1, max_length=200)
+    source = _query_str(request, "source", default="archive")
+    source_id = _query_str(request, "source_id", required=True)
     src = BY_NAME.get(source)
     if not src:
         raise HTTPException(400, f"fuente desconocida: {source}")
@@ -303,31 +447,34 @@ async def verify(q: str = Query(..., min_length=1, max_length=200),
         raise HTTPException(404, str(e))
     except Exception as e:
         raise HTTPException(502, f"no se pudo verificar: {e}")
-    return t.to_dict()
+    return JSONResponse(t.to_dict())
 
 
-@app.get("/api/download/progress/{job_id}")
-async def progress(job_id: str):
+async def progress(request: Request):
     """Progreso de una descarga yt-dlp en curso (la UI hace polling)."""
+    job_id = request.path_params["job_id"]
     from .ytdlp_source import get_job
     job = get_job(job_id)
     if job is None:
-        return {"status": "unknown", "job_id": job_id}
-    return {"job_id": job_id, **job}
+        return JSONResponse({"status": "unknown", "job_id": job_id})
+    return JSONResponse({"job_id": job_id, **job})
 
 
-@app.post("/api/download")
-async def download(payload: DownloadReq, query: str | None = None,
-                   wait: bool = Query(False, description="yt-dlp: esperar y devolver resultado, o devolver job_id ya")):
-    src = BY_NAME.get(payload.source)
+async def download(request: Request):
+    query = _query_str(request, "query", default=None)
+    wait = _query_bool(request, "wait", False)
+    req = DownloadReq.from_body(await _json_body(request))
+
+    src = BY_NAME.get(req.source)
     if not src:
-        raise HTTPException(400, f"fuente desconocida: {payload.source}")
+        raise HTTPException(400, f"fuente desconocida: {req.source}")
     if not src.available():
-        raise HTTPException(403, f"la fuente {payload.source} esta desactivada")
+        raise HTTPException(403, f"la fuente {req.source} esta desactivada")
 
-    t = payload.track  # TrackPayload -> dict
+    t = req.track  # dict crudo del body
     t.pop("downloadable", None)
-    track = TrackPayload(**t).to_track() if "source" in t else None
+    track = (TrackPayload.from_dict(t, ["body", "track"]).to_track()
+             if "source" in t else None)
     if track is None:
         raise HTTPException(400, "payload de track invalido")
 
@@ -335,12 +482,12 @@ async def download(payload: DownloadReq, query: str | None = None,
     # job_id al toque (la UI hace polling a /api/download/progress/{id}).
     # Tambien entra aca lo que viene del modo "matched" (source=itunes con
     # webpage_url de YouTube): la ficha es de iTunes pero el audio es de yt-dlp.
-    if payload.source == "ytdlp" or (
-        payload.source == "itunes" and track.extra.get("webpage_url")
+    if req.source == "ytdlp" or (
+        req.source == "itunes" and track.extra.get("webpage_url")
     ):
         from .ytdlp_source import new_job
         job_id = new_job(track.title)  # el job lo crea main, no hay race
-        if payload.source == "itunes":
+        if req.source == "itunes":
             # ficha canonica de iTunes: el nombre y los tags van de ahi, no
             # del titulo del video de YouTube
             track.extra["from_itunes"] = True
@@ -357,19 +504,19 @@ async def download(payload: DownloadReq, query: str | None = None,
 
         if wait:
             try:
-                result = await ysrc.download(track, payload.fmt, job_id=job_id,
+                result = await ysrc.download(track, req.fmt, job_id=job_id,
                                              query=query)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except Exception as e:
                 log.exception("ytdlp descarga fallo")
                 raise HTTPException(502, f"yt-dlp: {e}")
-            return {"ok": True, "source": "ytdlp", "job_id": job_id,
-                    **ident, **result}
+            return JSONResponse({"ok": True, "source": "ytdlp",
+                                 "job_id": job_id, **ident, **result})
 
         async def _bg():
             try:
-                await ysrc.download(track, payload.fmt, job_id=job_id,
+                await ysrc.download(track, req.fmt, job_id=job_id,
                                     query=query)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
@@ -377,7 +524,8 @@ async def download(payload: DownloadReq, query: str | None = None,
         task = asyncio.create_task(_bg())
         BG_TASKS.add(task)
         task.add_done_callback(BG_TASKS.discard)
-        return {"ok": True, "source": "ytdlp", "job_id": job_id, **ident}
+        return JSONResponse({"ok": True, "source": "ytdlp", "job_id": job_id,
+                             **ident})
 
     # si la fuente necesita resolucion, hacerlo aqui (con la query para
     # poder leer los tags y decir si es lo que el usuario buscaba)
@@ -394,7 +542,7 @@ async def download(payload: DownloadReq, query: str | None = None,
         raise HTTPException(422, "esta pista no es descargable (solo preview)")
 
     try:
-        result = await download_track(track, payload.fmt)
+        result = await download_track(track, req.fmt)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:
@@ -402,31 +550,31 @@ async def download(payload: DownloadReq, query: str | None = None,
         raise HTTPException(502, f"error descargando: {e}")
 
     # propagar la identidad verificada para que la UI pueda avisar
-    return {
+    return JSONResponse({
         "ok": True,
-        "source": payload.source,
+        "source": req.source,
         "match": track.extra.get("match"),
         "match_label": track.extra.get("match_label"),
         "real_title": track.extra.get("real_title"),
         "real_artist": track.extra.get("real_artist"),
         "item_url": track.extra.get("item_url"),
         **result,
-    }
+    })
 
 
-@app.get("/api/setlist")
-async def setlist(source_ids: str = Query(..., description="ids separados por coma"),
-                  q: str = Query("", description="consulta original")):
+async def setlist(request: Request):
     """Resuelve varios items y dice que cancion hay REALMENTE en cada uno.
 
     Es lo que necesita la vista de concierto: los items de etree traen el
     nombre del show como titulo, asi que hay que leer los tags de cada pista
     para saber cuales son.
     """
+    source_ids = _query_str(request, "source_ids", required=True)
+    q = _query_str(request, "q", default="")
     src = BY_NAME.get("archive")
     ids = [i.strip() for i in source_ids.split(",") if i.strip()][:60]
     if not ids:
-        return {"tracks": []}
+        return JSONResponse({"tracks": []})
 
     async def one(i: str) -> dict | None:
         t = Track(source="archive", source_id=i, title=q, artist="")
@@ -454,13 +602,13 @@ async def setlist(source_ids: str = Query(..., description="ids separados por co
     # las que coinciden con la consulta primero
     order = {"match": 0, "partial": 1, "unknown": 2, "mismatch": 3}
     tracks.sort(key=lambda t: order.get(t.get("match") or "unknown", 2))
-    return {"tracks": tracks}
+    return JSONResponse({"tracks": tracks})
 
 
-@app.get("/api/library")
-async def library():
+async def library(request: Request):
     files = await asyncio.to_thread(library_scan)
-    return {"library": str(LIBRARY), "count": len(files), "files": files}
+    return JSONResponse({"library": str(LIBRARY), "count": len(files),
+                         "files": files})
 
 
 # Solo formatos de audio: el endpoint sirve para preview, no para leer
@@ -468,9 +616,9 @@ async def library():
 AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"}
 
 
-@app.get("/api/audio")
-async def audio(path: str):
+async def audio(request: Request):
     """Sirve un archivo de la biblioteca para preview en el navegador."""
+    path = _query_str(request, "path", required=True)
     p = Path(path).resolve()
     # is_relative_to y NO startswith de string: un startswith deja pasar
     # cualquier carpeta hermana que empiece con el nombre de la biblioteca
@@ -483,6 +631,32 @@ async def audio(path: str):
     return FileResponse(p)
 
 
+async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    """Mismo cuerpo de error que FastAPI: {"detail": ...} en todos los casos."""
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
+                        headers=getattr(exc, "headers", None))
+
+
+# ---------------------------------------------------------------- aplicacion
+routes = [
+    Route("/api/health", health),
+    Route("/api/search", search),
+    Route("/api/resolve", resolve, methods=["POST"]),
+    Route("/api/verify", verify),
+    Route("/api/download/progress/{job_id}", progress),
+    Route("/api/download", download, methods=["POST"]),
+    Route("/api/setlist", setlist),
+    Route("/api/library", library),
+    Route("/api/audio", audio),
+]
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+                        name="frontend"))
+
+app = Starlette(
+    routes=routes, lifespan=lifespan,
+    middleware=[Middleware(CORSMiddleware, allow_origins=["*"],
+                           allow_methods=["*"], allow_headers=["*"])],
+    exception_handlers={HTTPException: _http_exception},
+)

@@ -141,11 +141,11 @@ def fake_ytdlp():
 # ------------------------------------------------------------------- cliente
 @pytest.fixture(scope="session")
 def cliente():
-    """TestClient de Fastapi en proceso: no hace falta levantar el server.
+    """TestClient de Starlette en proceso: no hace falta levantar el server.
 
     Sale del contexto para disparar el lifespan (registra yt-dlp) y cerrarlo.
     """
-    from fastapi.testclient import TestClient
+    from starlette.testclient import TestClient
 
     from backend.app.main import app
 

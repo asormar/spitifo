@@ -1,4 +1,4 @@
-fastapi==0.141.1
+starlette==1.7.0
 uvicorn[standard]
 httpx
 mutagen
