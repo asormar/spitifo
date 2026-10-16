@@ -17,8 +17,9 @@ each app**, and the React UI talks to it over `localhost`, exactly as it does to
 | PC (Windows first) | Tauri | PyInstaller build, run as a sidecar process |
 | Android | WebView / Capacitor | Embedded Python via Chaquopy |
 
-One codebase to maintain. The risky part is Android, which is why session 1 is a
-feasibility spike.
+One codebase to maintain. The risky part was Android, which is why session 1 was
+a feasibility spike. It passed: see
+[ADR 0001](adr/0001-android-embedded-python.md).
 
 ### Rejected alternatives
 
@@ -30,7 +31,9 @@ feasibility spike.
 
 ## Sessions
 
-### 1. Android feasibility spike (go / no-go)
+### 1. Android feasibility spike (go / no-go) — done: go with Chaquopy
+
+Result and measurements in [ADR 0001](adr/0001-android-embedded-python.md).
 
 - **Goal:** a throwaway APK that searches and downloads a song with yt-dlp and
   ffmpeg running inside the app, on a real phone.
@@ -70,6 +73,12 @@ Questions to answer:
   times a year).
 - Health endpoint so the shell knows when the backend is ready.
 - Apply whatever session 2 decides about the library.
+- From session 1:
+  - Port `main.py` from FastAPI to Starlette: pydantic-core has no Android build.
+  - Keep the package importable without the HTTP layer.
+  - Retry yt-dlp downloads automatically on transient errors such as HTTP 403.
+  - Keep YouTube audio unconverted when the format is `original`.
+  - Serve correct MIME types without a system MIME database.
 
 ### 4. Desktop app (Windows first)
 
@@ -81,6 +90,9 @@ Questions to answer:
 - UI in a WebView / Capacitor, backend from session 1.
 - Foreground service so downloads continue with the app closed, permission to
   save into the Music folder, signed APK.
+- From session 1: start the foreground service per download (without it the
+  network is cut when the screen turns off), ship ffmpeg from the
+  `youtubedl-android` artifact, and trim its payload to the libraries it loads.
 - Share target: Spitifo appears in YouTube's "Share" menu and receives the link.
 
 ### 6. `Storage` port and `Local` adapter
@@ -118,9 +130,9 @@ because it decides how the library is stored, which session 3 needs.
 
 ## Risks
 
-- **Session 1 fails.** That is why it goes first.
 - **YouTube breaks yt-dlp.** Without in-app updates, every break needs a release.
-- **APK size.** Python + yt-dlp + ffmpeg may exceed 50 MB.
+- **APK size.** Confirmed: 56 MiB with ffmpeg in the spike. Accepted, since the
+  APK is not on Google Play; trimming ffmpeg should reduce it.
 
 ## Branching
 
