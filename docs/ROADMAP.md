@@ -155,6 +155,10 @@ because it decides how the library is stored, which session 3 needs.
 ## Risks
 
 - **YouTube breaks yt-dlp.** Without in-app updates, every break needs a release.
+- **YouTube's bot check.** On 2026-10-16 YouTube answered "Sign in to confirm
+  you're not a bot" to every download from the development PC, hours after the
+  same downloads worked. yt-dlp's answer is passing the user's browser cookies
+  (`--cookies-from-browser`); the apps may need a way to supply them.
 - **APK size.** Confirmed: 56 MiB with ffmpeg in the spike. Accepted, since the
   APK is not on Google Play; trimming ffmpeg should reduce it.
 
