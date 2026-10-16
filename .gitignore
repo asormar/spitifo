@@ -17,6 +17,7 @@ probe_*.py
 # Desktop app build outputs
 desktop/node_modules/
 desktop/ffmpeg/
+desktop/.cache/
 desktop/sidecar/build/
 desktop/sidecar/dist/
 desktop/src-tauri/target/
