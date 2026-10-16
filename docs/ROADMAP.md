@@ -43,9 +43,13 @@ Result and measurements in [ADR 0001](adr/0001-android-embedded-python.md).
   search and matching logic to Kotlin or TypeScript.
 - **Deliverable:** a written decision: Chaquopy, plan B, or drop native Android.
 
-### 2. Deep exploration: connectors and storage (research only, no code)
+### 2. Deep exploration: connectors and storage (research only, no code) — done
 
-Questions to answer:
+Result in [ADR 0002](adr/0002-user-owned-storage.md): Google Drive preferred,
+OneDrive as fallback, Dropbox rejected for now; the library index lives in the
+user's storage; the `Storage` port is defined there.
+
+Questions it answered:
 
 - **Providers:** Google Drive, OneDrive, Dropbox, Cloudflare R2 / Backblaze B2,
   WebDAV / Nextcloud. Free quota, API limits and app-registration requirements
@@ -79,6 +83,11 @@ Questions to answer:
   - Retry yt-dlp downloads automatically on transient errors such as HTTP 403.
   - Keep YouTube audio unconverted when the format is `original`.
   - Serve correct MIME types without a system MIME database.
+- From session 2:
+  - Require a random per-launch secret on every backend request: any app on the
+    phone can reach `127.0.0.1`.
+  - Add `-movflags +faststart` to the M4A encoder so playback starts without
+    fetching the end of the file.
 
 ### 4. Desktop app (Windows first)
 
@@ -99,11 +108,16 @@ Questions to answer:
 
 - Refactor so all file access goes through the port, with no visible change.
 - Contract tests against the port that every future connector must pass.
+- Keys relative to the library root replace absolute paths in `/api/library` and
+  `/api/audio`; `/api/audio` answers range requests itself.
 
 ### 7. First connector and the "Connect service" screen
 
-- The provider chosen in session 2 (likely OneDrive or Dropbox).
-- Connect, upload, stream from the cloud, disconnect.
+- Starts with a benchmark of Google Drive and OneDrive: time to first audio,
+  stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
+  ADR 0002; otherwise OneDrive.
+- Connect, upload, the `index.json` library index, stream through the backend,
+  prefetch and offline cache, disconnect.
 
 ### 8. Remaining connectors
 
@@ -116,12 +130,22 @@ Questions to answer:
 - Not on Google Play: its policy does not allow YouTube downloaders.
 - yt-dlp update strategy.
 
+### 10. Companion player app
+
+- A separate app that plays the library from the user's storage.
+- Reuses the OAuth registration of the downloader (both `drive.file` and the
+  OneDrive app folder grant access per registered app), the `index.json` format
+  and the playback rules in ADR 0002: local first, prefetch the next track,
+  stream from the first bytes, range requests for seeking.
+- Goal: playback starts in under a second and never stalls.
+
 ## Dependencies
 
 ```
 1 Feasibility ──┬── 3 Embeddable backend ──┬── 4 Desktop
                 │                          └── 5 Android
-2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ── 8 Others
+2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ──┬── 8 Others
+                                                                    └── 10 Companion app
                                                              9 Release (last)
 ```
 
@@ -143,7 +167,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-onedrive`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-onedrive`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:

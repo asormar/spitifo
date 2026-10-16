@@ -1,0 +1,240 @@
+# ADR 0002: User-owned storage, connectors and the `Storage` port
+
+- **Status:** Accepted (first provider confirmed by a benchmark at the start of
+  roadmap session 7)
+- **Date:** 2026-10-16
+- **Context:** roadmap session 2 (research only), branch
+  `docs/storage-exploration`. Builds on
+  [ADR 0001](0001-android-embedded-python.md).
+
+## Context
+
+Spitifo runs its backend inside each app on `127.0.0.1` and has no central
+server. Music stays on the device by default; a user may connect their own cloud
+storage. The app is open source and distributed through GitHub Releases, so
+OAuth client IDs ship inside the binary.
+
+A **companion player app** is planned that reads the same storage to play the
+music. Playback has to feel instant: no multi-second wait after pressing play,
+and no stalls.
+
+## Decisions
+
+### 1. Providers
+
+| Provider | Free | Auth | Visible folder | Verdict |
+| --- | --- | --- | --- | --- |
+| Google Drive | 15 GB, shared with the Google account | Public client + PKCE, `drive.file` scope | Yes: a normal `Spitifo` folder created by the app | **Preferred first connector** |
+| OneDrive (personal) | 5 GB | Public client + PKCE, `Files.ReadWrite.AppFolder` | Yes: `Apps/Spitifo` | **Fallback first connector** |
+| Dropbox | 2 GB | Public client + PKCE, App Folder | Yes: `Apps/Spitifo` | **Rejected for now** |
+| Cloudflare R2, Backblaze B2 | 10 GB | Access keys pasted by the user | No | Later, power users only |
+| WebDAV / Nextcloud | Depends on the server | URL + app password | Yes | Later, power users only |
+
+- **Google Drive.** `drive.file` is a non-sensitive scope: Google states that app
+  verification "is not mandatory" for it. Only the lighter brand verification is
+  needed to show the app name and logo on the consent screen
+  ([source](https://support.google.com/cloud/answer/13463073)). The consent
+  screen must be set to "In production": in "Testing", refresh tokens expire
+  after 7 days ([source](https://developers.google.com/identity/protocols/oauth2)).
+  Google's hidden `appDataFolder` is not used, because users must see their
+  files.
+- **OneDrive.** No user cap and no mandatory review for personal accounts.
+  Refresh tokens last 90 days and rotate on every use
+  ([source](https://learn.microsoft.com/en-us/entra/identity-platform/refresh-tokens)).
+- **Dropbox.** Development mode allows 500 users, and after 50 the app must pass
+  a production review. Its developer guide says it will not approve apps that let
+  users "download content from other services without having the proper legal
+  rights" ([source](https://docs.dropboxapi.com/dropbox-api/docs/developer-resources/developer-guide)).
+
+### 2. Choosing the first connector by measurement
+
+Session 7 starts with a short benchmark against real Google Drive and OneDrive
+accounts, on the Pixel and on Windows:
+
+| Metric | Target |
+| --- | --- |
+| Time from pressing play to first audio, uncached track | p50 < 1 s |
+| Stalls during a full track on 4G | none |
+| Seek to the middle of an uncached track | p50 < 1 s |
+| Android sign-in that survives an app restart without user interaction | works |
+
+Google Drive is chosen if it meets every target. The Android sign-in is its
+known risk: Google requires its Identity Services SDK on Android, and its
+documented long-lived (offline) access assumes a server that receives the
+authorization code ([source](https://developer.android.com/identity/authorization)).
+Short-lived access tokens that renew silently while the app is open may be
+enough; the benchmark settles it. Otherwise OneDrive is first.
+
+### 3. OAuth
+
+- Authorization code with PKCE in the system browser everywhere. Never a WebView,
+  never the implicit flow (RFC 8252).
+- **The Python backend owns the flow:** it generates PKCE and `state`, exchanges
+  the code, refreshes and stores tokens. The shell only opens the browser and, on
+  Android, passes the redirect to Python in-process.
+- **Windows:** loopback redirect to `127.0.0.1`, received by the backend itself.
+  Google's desktop client accepts any loopback port; Microsoft registers
+  `http://localhost` and ignores the port.
+- **Android:** Custom Tab plus an App Link or a reverse-DNS custom scheme for
+  OneDrive. Google uses its Identity Services SDK.
+- **Token storage:** Windows Credential Manager or DPAPI; on Android, an AES-GCM
+  key in the Android Keystore with the ciphertext in DataStore.
+  `EncryptedSharedPreferences` is deprecated.
+- **The companion app uses the same OAuth registration** (same Google Cloud
+  project, same Entra app). Both `drive.file` and the OneDrive app folder grant
+  access per registered app, so a separate registration would not see the
+  library.
+- **The Android release signing key is permanent.** Google's Android client is
+  bound to its SHA-1, and App Links to its SHA-256; a new key breaks sign-in for
+  every user.
+
+### 4. The library index lives in the user's storage
+
+- The canonical index is a file inside the Spitifo folder (`index.json`: key,
+  remote id, revision, title, artist, album, duration, size, format). The
+  downloader writes it; the companion app and other devices read it, so nobody
+  lists thousands of files to start.
+- Writes are conditional on the file's revision (`If-Match` on Graph and Drive).
+  On a conflict the writer re-reads, merges and retries.
+- Each device keeps a local copy (SQLite) as a cache, refreshed when the index
+  revision changes. Provider change feeds (Drive `changes`, Graph `delta`) can
+  later detect files added outside Spitifo.
+
+### 5. Playback speed
+
+Playback must start almost instantly and never stall. These rules apply to every
+provider:
+
+1. **Local first.** A track already on the device, downloaded or cached, plays
+   from disk.
+2. **Prefetch.** While a track plays, the next one in the queue is fetched to the
+   cache. Skipping ahead is then instant.
+3. **Stream from the first bytes.** An uncached track starts playing as soon as
+   the first range arrives; it is not downloaded completely first.
+4. **Fast-start files.** An M4A file must have its index (`moov`) before the
+   audio, or the player has to fetch the end of the file before it can play.
+   Checked on 2026-10-16: files from the yt-dlp path already have `moov` first,
+   but `downloader._ffmpeg_convert` writes it at the end (offset 3.8 MB in a
+   3.9 MB test file). It needs `-movflags +faststart`. MP3 needs nothing.
+5. **Range support end to end.** Seeking issues an HTTP range request.
+
+How bytes reach the player:
+
+- **Downloader app (WebView):** the local backend proxies `/api/audio`, adding
+  the auth header and forwarding `Range`. An `<audio>` element cannot send an
+  `Authorization` header, and Drive has no anonymous media URL.
+- **Companion app:** if it is native, its player can send the auth header
+  itself, or use OneDrive's pre-authenticated `downloadUrl`. OneDrive's URL
+  expires after a short time, so it must be re-minted before seeking.
+- A service worker adding the header was rejected: it cannot add the header to
+  media requests reliably, and it moves the proxy somewhere more fragile.
+
+### 6. Upload
+
+- Tracks are still produced locally: download, convert, tag. Tagging and ffmpeg
+  need a real file.
+- The finished file is uploaded afterwards: as a single request below the
+  provider's threshold (Drive 5 MB), and as a resumable session above it (Drive
+  chunks of 256 KB multiples, Graph 320 KiB multiples). The session id is
+  persisted, so a killed app resumes instead of starting over.
+- The upload runs inside the same foreground service as the downloads on
+  Android (ADR 0001).
+
+### 7. Offline cache
+
+- Streamed tracks go to an app-private cache directory: `cacheDir` on Android,
+  `%LOCALAPPDATA%\Spitifo\cache` on Windows.
+- Whole files only, keyed by remote id plus revision, with LRU eviction under a
+  size budget. Tracks the user downloaded are never evicted.
+
+### 8. Failure modes in the UI
+
+| Failure | Signal | UI |
+| --- | --- | --- |
+| Token expired or revoked | `401`, `invalid_grant` | "Reconnect <provider>" |
+| Quota full | Graph `507`, Drive `storageQuotaExceeded` | "Your <provider> is full"; keep the track local |
+| No network | connection error | Play from local and cache; queue uploads |
+| Rate limited | `429` / `403 rateLimitExceeded` with `Retry-After` | Retry silently with backoff |
+| Index conflict | `412` | Re-read, merge, retry silently |
+
+### 9. The `Storage` port
+
+All access to finished files goes through one port. Local disk is the reference
+adapter and keeps today's folder layout.
+
+```python
+@dataclass(frozen=True)
+class StoredFile:
+    key: str             # relative to the library root, e.g. "Artist/Artist - Title.mp3"
+    size: int
+    mtime: float
+    etag: str | None = None   # provider revision; None for local disk
+
+
+class Storage(Protocol):
+    def list(self) -> Iterable[StoredFile]: ...
+    def stat(self, key: str) -> StoredFile: ...
+    def open_range(self, key: str, start: int = 0,
+                   end: int | None = None) -> Iterator[bytes]: ...
+    def put_file(self, key: str, src: Path) -> StoredFile: ...
+    def delete(self, key: str) -> None: ...
+```
+
+- **Keys replace absolute paths.** Today `/api/library` returns host paths and
+  `/api/audio?path=` takes them back (`main.py:463`, `main.py:474`,
+  `frontend/src/main.jsx:2588`). They mean nothing on another device, and they
+  reveal the host's folder layout.
+- Key validation replaces the `is_relative_to` check in `/api/audio`: no key may
+  address anything outside the library root.
+- Downloading, tagging (`_write_tags`) and conversion (`_ffmpeg_convert`) stay
+  on local temporary files. The port only covers where the finished file lives.
+- Resumable uploads are internal to each cloud adapter's `put_file`.
+- No method returns a direct URL yet. One is added if the companion app needs
+  it.
+
+Call sites that change in session 6: `downloader.download_track` and
+`library_scan`, `ytdlp_source` (writes to a temporary folder and calls
+`put_file`), `/api/library`, `/api/audio` (parses `Range`, answers `206`) and
+the frontend's audio URL.
+
+## Security note for session 3
+
+On Android, any app on the phone can connect to `127.0.0.1:8000`. Android's
+guidance is not to use localhost ports for sensitive IPC. Once the backend holds
+cloud tokens, every request must carry a random secret generated at launch: the
+shell gives it to the WebView, and the backend rejects requests without it. The
+same applies on Windows.
+
+## Consequences
+
+- Session 3 adds the per-launch secret to the backend.
+- Session 3 adds `-movflags +faststart` to the M4A encoder in
+  `downloader._ffmpeg_convert`.
+- Session 6 introduces the port and the local adapter, keyed by relative path.
+- Session 7 starts with the provider benchmark, then implements the chosen
+  provider: connect, upload, the index file, streaming through the backend, and
+  disconnect.
+- The companion app is a new item in the roadmap. It reuses the OAuth
+  registration, the index file format and the playback rules above.
+
+## Sources
+
+The three research reports behind this ADR cite official documentation for
+every claim. The key sources:
+
+- RFC 8252, OAuth 2.0 for Native Apps: https://datatracker.ietf.org/doc/html/rfc8252
+- Google unverified apps: https://support.google.com/cloud/answer/13464323
+- Google verification not required: https://support.google.com/cloud/answer/13463073
+- Google OAuth 2.0 and refresh tokens: https://developers.google.com/identity/protocols/oauth2
+- Google, OAuth for desktop apps: https://developers.google.com/identity/protocols/oauth2/native-app
+- Google Drive uploads: https://developers.google.com/drive/api/guides/manage-uploads
+- Google Drive downloads (range): https://developers.google.com/drive/api/guides/manage-downloads
+- Android authorization: https://developer.android.com/identity/authorization
+- Android data security (localhost IPC): https://developer.android.com/topic/security/data
+- AndroidX Security deprecation: https://developer.android.com/jetpack/androidx/releases/security
+- Microsoft app folder: https://learn.microsoft.com/en-us/onedrive/developer/rest-api/concepts/special-folders-appfolder
+- Microsoft reply URLs: https://learn.microsoft.com/en-us/entra/identity-platform/reply-url
+- Microsoft refresh tokens: https://learn.microsoft.com/en-us/entra/identity-platform/refresh-tokens
+- Graph upload sessions: https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession
+- Graph download URL: https://learn.microsoft.com/en-us/graph/api/driveitem-get-content
+- Dropbox developer guide: https://docs.dropboxapi.com/dropbox-api/docs/developer-resources/developer-guide
