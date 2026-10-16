@@ -102,13 +102,15 @@ Tauri 2 shell in `desktop/`, built with `desktop/build.ps1`. It starts the
 PyInstaller backend (one-folder build, so no unpacking on every launch) with a
 per-launch secret, waits for `SPITIFO_READY` and points the window at the
 backend. A Windows job object kills the backend if the shell dies. The NSIS
-installer (per-user, 87 MiB) works on a PC without Python or ffmpeg; the
+installer (per-user, 67 MiB) works on a PC without Python or ffmpeg; the
 library goes to `Music\Spitifo`.
 
 - Tauri shell that starts and stops the backend sidecar.
 - A `.exe` installer that works on a PC without Python.
-- Left for later: a smaller ffmpeg build (see Risks) and code signing, which
-  belongs with the release work in session 9.
+- ffmpeg is BtbN's LGPL shared build: ffmpeg and ffprobe load the same DLLs,
+  which took the installer from 87 to 67 MiB.
+- Left for later: code signing, which belongs with the release work in
+  session 9.
 
 ### 5. Android app
 
@@ -178,9 +180,10 @@ because it decides how the library is stored, which session 3 needs.
   (`--cookies-from-browser`); the apps may need a way to supply them.
 - **APK size.** Confirmed: 56 MiB with ffmpeg in the spike. Accepted, since the
   APK is not on Google Play; trimming ffmpeg should reduce it.
-- **Installer size.** The Windows installer is 87 MiB, and 244 MB of the
-  installed 285 MB are a full static ffmpeg and ffprobe. An audio-only ffmpeg
-  build should cut most of that.
+- **Installer size.** The Windows installer is 67 MiB, and 150 MB of the
+  installed 192 MB are ffmpeg's shared libraries, mostly video codecs Spitifo
+  never uses. An audio-only ffmpeg build would cut most of that, at the cost of
+  compiling and maintaining it.
 - **Unsigned binaries.** SmartScreen warns on an unsigned installer until it
   builds reputation.
 
