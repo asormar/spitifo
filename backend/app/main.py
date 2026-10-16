@@ -23,8 +23,16 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from .runtime import configure_runtime
+
+# ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
+# MIME de audio que Android no trae, para que esten listos cuando algo llame a
+# shutil.which o sirva un archivo.
+configure_runtime()
+
 from .downloader import LIBRARY, download_track, library_scan
 from .models import Track
+from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 
 logging.basicConfig(level=logging.INFO,
@@ -654,9 +662,22 @@ if FRONTEND_DIST.is_dir():
     routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
-app = Starlette(
-    routes=routes, lifespan=lifespan,
-    middleware=[Middleware(CORSMiddleware, allow_origins=["*"],
-                           allow_methods=["*"], allow_headers=["*"])],
-    exception_handlers={HTTPException: _http_exception},
-)
+
+def create_app(token: str | None = None) -> Starlette:
+    """Arma la app. `token` es el secreto por lanzamiento (SPITIFO_TOKEN).
+
+    Con `token=None` no hay middleware de auth: es exactamente el
+    comportamiento de siempre (`uvicorn backend.app.main:app`, Vite dev con
+    proxy, `run.bat`). Con token, toda request tiene que traerlo.
+    """
+    middleware = [Middleware(CORSMiddleware, allow_origins=["*"],
+                             allow_methods=["*"], allow_headers=["*"])]
+    if token:
+        middleware.append(Middleware(TokenAuthMiddleware, token=token))
+    return Starlette(
+        routes=routes, lifespan=lifespan, middleware=middleware,
+        exception_handlers={HTTPException: _http_exception},
+    )
+
+
+app = create_app(os.getenv("SPITIFO_TOKEN"))

@@ -7,7 +7,7 @@
 Free-licence catalogues + YouTube as a last resort · Identity verification on every file
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Starlette](https://img.shields.io/badge/Starlette-1.7-009688)
 ![React](https://img.shields.io/badge/React-18-20232A?logo=react&logoColor=61DAFB)
 ![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-ff0000?logo=youtube&logoColor=white)
@@ -30,6 +30,7 @@ Free-licence catalogues + YouTube as a last resort · Identity verification on e
 - [Results in the browser](#results-in-the-browser)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
+- [Embedding the backend](#embedding-the-backend)
 - [API](#api)
 - [Project structure](#project-structure)
 - [Tests](#tests)
@@ -227,12 +228,65 @@ Read the [Legal](#legal) section before you do.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SPITIFO_LIBRARY` | `./library` | Where downloads are written |
+| `SPITIFO_FRONTEND_DIST` | `./frontend/dist` | Built frontend to serve (point it elsewhere when embedded) |
+| `SPITIFO_HOST` | `127.0.0.1` | Interface the backend binds (entry point only) |
+| `SPITIFO_PORT` | `0` | Port to bind; `0` picks a free one (entry point only) |
+| `SPITIFO_TOKEN` | — | Per-launch secret; unset means no auth |
+| `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
 | `JAMENDO_CLIENT_ID` | — | Enables the Jamendo source (free key) |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
 Downloads land in `library/<artist>/<artist> - <title>.mp3` with ID3 tags written by
 mutagen: canonical title, artist, album and year taken from the metadata source, not
 from the YouTube video title.
+
+## Embedding the backend
+
+`python -m backend.app` starts the same app as `uvicorn`, but tells the caller which port
+it ended up on and when it is ready — which is what a native shell needs (Tauri on
+Windows, Chaquopy plus a WebView on Android):
+
+```bash
+.venv/Scripts/python.exe -m backend.app --port 0
+SPITIFO_READY port=51234
+```
+
+`--port 0` (the default) lets the OS pick a free port. Once the server is listening, one
+line goes to **stdout** and is flushed:
+
+```
+SPITIFO_READY port=51234
+```
+
+Parse the port from it, then talk to `http://<host>:<port>`. Everything uvicorn logs stays
+on **stderr**, so that line is the only thing on stdout. `--host` and `--port` fall back
+to `SPITIFO_HOST` and `SPITIFO_PORT`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SPITIFO_HOST` | `127.0.0.1` | Interface to bind |
+| `SPITIFO_PORT` | `0` | Port; `0` picks a free one |
+| `SPITIFO_TOKEN` | — | Per-launch secret; unset means no auth |
+| `SPITIFO_LIBRARY` | `./library` | Where downloads are written |
+| `SPITIFO_FRONTEND_DIST` | `./frontend/dist` | Built frontend to serve |
+| `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
+| `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
+
+`SPITIFO_TOKEN` is the per-launch secret. On Android any app on the phone can reach
+`127.0.0.1`, and the backend is meant to hold the user's cloud tokens, so the shell
+generates a random secret and passes it in. With it set, a request must send
+`X-Spitifo-Token: <secret>` or it is refused with `401`. The WebView bootstraps once by
+loading `/?token=<secret>`: the backend answers `303` with the token param removed, sets
+an `HttpOnly`, `SameSite=Strict` cookie, and afterwards cookies keep the `<audio>`
+element working with no header at all. With `SPITIFO_TOKEN` unset there is no auth:
+today's behaviour.
+
+`SPITIFO_FFMPEG_DIR` exists because Android has no `ffmpeg` on `PATH` — the app ships one
+and points here. The backend prepends it to `PATH` at startup, so the unchanged
+downloader and yt-dlp find `ffmpeg` and `ffprobe`. The audio MIME types (`.mp3`, `.m4a`,
+`.ogg`, `.opus`, `.flac`, `.wav`) are registered explicitly for the same reason: Android
+ships no MIME database, and without them `.ogg` was served as
+`application/octet-stream`.
 
 ## API
 
@@ -247,8 +301,6 @@ from the YouTube video title.
 | `GET` | `/api/download/progress/{job_id}` | Progress, speed, ETA and identity verdict |
 | `GET` | `/api/library` | Everything already downloaded, with durations |
 | `GET` | `/api/audio?path=` | Stream a file from the library |
-
-Interactive docs are served at `/docs` while the API is running.
 
 <details>
 <summary><b>Search modes</b></summary>
@@ -270,7 +322,10 @@ automatically so you cannot hit it by clicking.
 
 ```
 backend/app/
-  main.py          FastAPI app, routes, background download tasks
+  main.py          Starlette app, routes, request validation, background downloads
+  __main__.py      Embeddable entry point: free port, SPITIFO_READY line
+  security.py      Per-launch secret (SPITIFO_TOKEN) middleware
+  runtime.py       Startup setup: ffmpeg directory, audio MIME types
   sources.py       Source adapters, anti-noise filters, relevance ranking
   ytdlp_source.py  YouTube via yt-dlp: formats, ffmpeg postprocess, progress, locks
   matcher.py       Pairs metadata entries with the right video
@@ -281,8 +336,8 @@ backend/app/
 frontend/src/
   main.jsx         The whole interface: search, cards, player, theme, downloads
   style.css        Design tokens, both themes, layout and motion
-docs/              Screenshots used in this README
-tests/             137 tests, offline by default
+docs/              Roadmap, ADRs and the screenshots used in this README
+tests/             179 tests, offline by default
 ```
 
 ## Tests
@@ -292,7 +347,7 @@ tests/             137 tests, offline by default
 .venv/Scripts/python.exe -m pytest -q                         # everything, needs network
 ```
 
-**137 tests: 136 pass, 1 xfail.** The xfail is a deliberately strict marker on
+**179 tests, 8 of which need the network. Offline: 170 pass, 1 xfail.** The xfail is a deliberately strict marker on
 `looks_like_music()`, which does not yet reject the Spanish word *curso*; the day
 someone fixes it, the test fails and forces the marker to be removed.
 
