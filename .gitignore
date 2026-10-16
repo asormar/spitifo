@@ -13,3 +13,11 @@ probe_*.py
 
 # Registro de skills que genera `gentle-ai skill-registry refresh`
 .atl/
+
+# Desktop app build outputs
+desktop/node_modules/
+desktop/ffmpeg/
+desktop/sidecar/build/
+desktop/sidecar/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
