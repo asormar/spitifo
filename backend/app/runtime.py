@@ -11,12 +11,23 @@ backend sí (Tauri en Windows, Chaquopy/WebView en Android):
    `mimetypes.guess_type(".ogg")` devolvía `None` y `FileResponse` servía el
    archivo como `application/octet-stream`: el `<audio>` no lo reconocía.
 
+3. **yt-dlp reemplazable.** YouTube rompe yt-dlp varias veces al año y en Android
+   no hay `pip`. `SPITIFO_YTDLP_DIR` apunta a una carpeta (con `yt_dlp/` adentro)
+   o al zip oficial de yt-dlp; va al frente de `sys.path` y gana sobre el que
+   viene empaquetado. Acá solo está el gancho de carga; quien baja las versiones
+   nuevas es otra sesión.
+
 Nada de acá importa starlette ni uvicorn: es un módulo neutral.
 """
 from __future__ import annotations
 
+import importlib
+import logging
 import mimetypes
 import os
+import sys
+
+log = logging.getLogger("spitifo.runtime")
 
 # Tipos que el navegador/WebView tiene que reconocer para poder reproducir sin
 # descargar. `.opus` va como audio/ogg: es un flujo Ogg y es lo que espera el
@@ -52,6 +63,42 @@ def setup_ffmpeg_dir() -> bool:
     return prepend_to_path(os.getenv("SPITIFO_FFMPEG_DIR", ""))
 
 
+def setup_ytdlp_dir() -> bool:
+    """Pone `SPITIFO_YTDLP_DIR` al frente de `sys.path`, una sola vez.
+
+    Sirve una carpeta que contenga `yt_dlp/` o el archivo zip oficial (Python
+    importa zips desde `sys.path`). Devuelve False si la variable no está, si la
+    ruta no existe o si ya estaba al frente. Tiene que correr ANTES del primer
+    `import yt_dlp`: con el módulo ya cargado, el reemplazo no tendría efecto.
+    """
+    ruta = os.getenv("SPITIFO_YTDLP_DIR", "")
+    if not ruta:
+        return False
+    if not os.path.exists(ruta):
+        log.warning("SPITIFO_YTDLP_DIR no existe: %s", ruta)
+        return False
+    if sys.path and sys.path[0] == ruta:
+        return False
+    if "yt_dlp" in sys.modules:
+        log.warning("yt_dlp ya estaba importado: SPITIFO_YTDLP_DIR no lo reemplaza")
+    sys.path.insert(0, ruta)
+    importlib.invalidate_caches()
+    return True
+
+
+def ytdlp_version() -> str | None:
+    """Version de yt-dlp que se esta usando de verdad, o None si no se importa.
+
+    No se cachea: tras el primer import es un lookup en sys.modules, y asi el
+    valor siempre refleja el modulo que esta cargado.
+    """
+    try:
+        from yt_dlp import version
+        return str(version.__version__)
+    except Exception:
+        return None
+
+
 def register_audio_mime_types() -> None:
     """Registra los MIME de audio en la base global de `mimetypes`."""
     for ext, mime in AUDIO_MIME_TYPES.items():
@@ -62,3 +109,4 @@ def configure_runtime() -> None:
     """Todo lo que hay que dejar listo antes de servir la primera request."""
     register_audio_mime_types()
     setup_ffmpeg_dir()
+    setup_ytdlp_dir()

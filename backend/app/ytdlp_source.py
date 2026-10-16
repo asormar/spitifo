@@ -8,7 +8,9 @@ Notas reales de la implementacion:
 - la busqueda usa `extract_flat` (no baja metadata de cada video, es rapido)
 - la descarga corre en un thread porque yt-dlp es sincrono y bloquearia FastAPI
 - el progreso se reporta por una cola; la UI lo consume por polling
-- el postprocessor de ffmpeg deja mp3 con tags
+- el postprocessor de ffmpeg deja mp3/m4a con tags; con "original" extrae el
+  audio sin recodificar (opus -> .opus, aac -> .m4a)
+- los errores transitorios (HTTP 403/429/5xx, cortes de conexion) se reintentan
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from .config import AUDIO_EXTS
 from .models import Track, safe_name
 from .sources import Source, looks_like_music, relevance
 
@@ -165,6 +168,97 @@ def new_job(title: str) -> str:
                         "speed": None, "eta": None, "title": title,
                         "finished_at": None}
     return job_id
+
+
+# ----------------------------------------------------- reintentos de descarga
+# YouTube a veces contesta HTTP 403 al primer intento y el segundo anda (visto en
+# un telefono real): las URLs de los formatos caducan o se rechazan al azar. Por
+# eso un reintento rehace TODO (extract + download) para traer URLs nuevas.
+# Esperas entre intentos; intentos totales = len(RETRY_DELAYS_S) + 1 = 3. Es un
+# atributo del modulo para que los tests lo pisen con (0, 0) y no duerman.
+RETRY_DELAYS_S: tuple[float, ...] = (1.0, 3.0)
+
+# Errores que NUNCA se reintentan: otro intento da exactamente lo mismo. Se
+# miran PRIMERO, porque un mensaje permanente puede traer tambien un "403".
+_PERMANENT_MARKERS = (
+    "video unavailable", "this video is unavailable", "private video",
+    "video is private", "sign in", "members-only", "has been removed",
+    "requested format is not available", "unsupported url", "is not a valid url",
+    # DNS: sin red o sin nombre no se arregla esperando 1 s
+    "no address associated with hostname", "getaddrinfo failed",
+    "name or service not known", "temporary failure in name resolution",
+    "nodename nor servname",
+)
+_TRANSIENT_RE = re.compile(
+    r"http error (?:403|429|5\d\d)"
+    r"|too many requests"
+    r"|connection (?:reset|aborted)"
+    r"|remote end closed"
+    r"|incompleteread"
+    r"|timed out|timeout"
+    r"|winerror 10054")
+
+
+def is_transient_error(error: BaseException | str) -> bool:
+    """True si vale la pena reintentar: HTTP 403/429/5xx, corte o timeout.
+
+    Funcion pura (solo mira el mensaje) para poder testearla sin yt-dlp. Un
+    error permanente (video no disponible, privado, formato inexistente, DNS)
+    devuelve False aunque el mensaje mencione tambien un 403.
+    """
+    msg = str(error).lower()
+    if any(m in msg for m in _PERMANENT_MARKERS):
+        return False
+    if isinstance(error, (ConnectionResetError, ConnectionAbortedError, TimeoutError)):
+        return True
+    return bool(_TRANSIENT_RE.search(msg))
+
+
+# ------------------------------------------------------ formato de la descarga
+def postprocessor_opts(fmt: str) -> list[dict]:
+    """Postprocessors de yt-dlp para el `fmt` pedido.
+
+    mp3 y m4a recodifican. "original" usa preferredcodec "best": yt-dlp extrae
+    la pista de audio a su contenedor natural SIN recodificar (opus -> .opus,
+    aac -> .m4a, vorbis -> .ogg). Cualquier otro valor cae a mp3 como siempre.
+    """
+    if fmt == "original":
+        codec = "best"
+    elif fmt in ("mp3", "m4a"):
+        codec = fmt
+    else:
+        codec = "mp3"
+    return [{"key": "FFmpegExtractAudio", "preferredcodec": codec,
+             "preferredquality": "2"}]
+
+
+def pick_output(found: list[Path], fmt: str) -> Path | None:
+    """Elige el archivo final entre los `<stem>.*` que quedaron en la carpeta.
+
+    Es el fallback para cuando yt-dlp no devuelve `filepath`. Tiene que
+    respetar el `fmt` pedido: con un orden fijo, un .mp3 viejo en la carpeta
+    ganaba siempre y pedir m4a reportaba el nombre/tamano del .mp3. Con
+    "original" no hay una extension esperada (depende del codec de origen):
+    gana cualquier extension de audio, y entre varias, la mas reciente (el
+    archivo que se acaba de escribir). Lo que no es audio (.webm intermedio,
+    .part) va al final.
+    """
+    if fmt in ("mp3", "m4a"):
+        want = "." + fmt
+        other = ".m4a" if want == ".mp3" else ".mp3"
+        rank = {want: 0, other: 1}
+    else:
+        rank = dict.fromkeys(AUDIO_EXTS, 0)
+
+    def clave(p: Path):
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (rank.get(p.suffix.lower(), 9), -mtime)
+
+    ordenados = sorted(found, key=clave)
+    return ordenados[0] if ordenados else None
 
 
 class YtDlpSource(Source):
@@ -319,7 +413,7 @@ class YtDlpSource(Source):
         stem = safe_name(f"{track.artist} - {track.title}", 100)
         outtmpl = str(folder / f"{stem}.%(ext)s")
 
-        state = {"total": None, "downloaded": 0}
+        state = {"total": None, "downloaded": 0, "ultimo_intento": False}
 
         def hook(d):
             estado = d["status"]
@@ -335,20 +429,18 @@ class YtDlpSource(Source):
                     JOBS[job_id]["eta"] = d.get("eta")
                 elif estado == "finished":
                     JOBS[job_id]["status"] = "processing"
-            if estado == "error":
+            if estado == "error" and state["ultimo_intento"]:
                 # FUERA del with de arriba: _finish toma el lock y Lock no es
                 # reentrante, asi que llamarlo adentro cuelga el hook.
+                # Solo en el ULTIMO intento: antes de eso el job sigue
+                # "downloading" y el reintento puede salvarlo.
                 _finish(job_id, status="error")
 
         opts = {
             "quiet": True, "no_warnings": True, "noprogress": True,
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": fmt if fmt in ("mp3", "m4a") else "mp3",
-                "preferredquality": "2",
-            }],
+            "postprocessors": postprocessor_opts(fmt),
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
@@ -367,22 +459,13 @@ class YtDlpSource(Source):
                 # cualquier sanitize extra que haya hecho yt-dlp.
                 fp = info.get("filepath")
                 if not fp or not Path(fp).exists():
-                    # El fallback tiene que respetar el `fmt` pedido: con el
-                    # orden fijo (mp3 primero) un .mp3 ya presente en la carpeta
-                    # ganaba siempre, y pedir m4a producia el .m4a pero
-                    # reportaba nombre/formato/tamano del .mp3 viejo.
-                    # "original" no es un codec: cae a mp3 igual que
-                    # preferredcodec de arriba, asi que tampoco se busca otro.
-                    want = "." + (fmt if fmt in ("mp3", "m4a") else "mp3")
-                    other = ".m4a" if want == ".mp3" else ".mp3"
-                    # preferir el archivo final sobre intermediarios
-                    found = sorted(
-                        folder.glob(glob.escape(stem) + ".*"),
-                        key=lambda p: {want: 0, other: 1}.get(
-                            p.suffix.lower(), 9))
-                    for cand in found:
+                    # Ver `pick_output`: respeta el `fmt` pedido y, con
+                    # "original", acepta la extension natural del audio
+                    # (.opus, .m4a, .ogg...).
+                    cand = pick_output(
+                        list(folder.glob(glob.escape(stem) + ".*")), fmt)
+                    if cand is not None:
                         fp = str(cand)
-                        break
                 return info, fp
 
         # Una descarga por ruta de salida (ver `_lock_de_ruta`). Si otro job ya
@@ -399,12 +482,32 @@ class YtDlpSource(Source):
             with _JOBS_LOCK:
                 JOBS[job_id]["status"] = "downloading"
 
-            try:
-                info, fp = await loop.run_in_executor(None, _run)
-            except Exception as e:
-                _finish(job_id, status="error", error=str(e))
-                log.warning("ytdlp download fallo: %s", e)
-                raise RuntimeError(f"yt-dlp: {e}")
+            # Reintentos: ante un error transitorio se rehace TODO (extract +
+            # download) para traer URLs de formato nuevas. El job sigue
+            # "downloading" entre intentos y recien pasa a error tras el ultimo.
+            delays = tuple(RETRY_DELAYS_S)
+            intentos = len(delays) + 1
+            for intento in range(1, intentos + 1):
+                state["ultimo_intento"] = intento == intentos
+                try:
+                    info, fp = await loop.run_in_executor(None, _run)
+                    break
+                except Exception as e:
+                    if intento < intentos and is_transient_error(e):
+                        espera = delays[intento - 1]
+                        log.warning(
+                            "ytdlp download: error transitorio (intento %d/%d), "
+                            "reintento en %.1fs: %s", intento, intentos, espera, e)
+                        state["total"] = None
+                        with _JOBS_LOCK:
+                            JOBS[job_id].update(
+                                status="downloading", progress=0.0, speed=None,
+                                eta=None, downloaded_bytes=0)
+                        await asyncio.sleep(espera)
+                        continue
+                    _finish(job_id, status="error", error=str(e))
+                    log.warning("ytdlp download fallo: %s", e)
+                    raise RuntimeError(f"yt-dlp: {e}")
 
             path = Path(fp)
             if not path.exists():

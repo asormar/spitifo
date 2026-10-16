@@ -72,6 +72,52 @@ def test_ffmpeg_convert_a_m4a_usa_aac(wav_sintetico, tmp_path):
     assert codec == "aac"
 
 
+def _cajas_mp4(path: Path) -> list[str]:
+    """Tipos de las cajas (atoms) de PRIMER nivel de un MP4/M4A, en orden.
+
+    Cada caja es `size` (4 bytes, big endian) + `type` (4 bytes ASCII). size==1
+    significa que el tamano real va en 8 bytes extra; size==0, que llega al
+    final del archivo.
+    """
+    datos = path.read_bytes()
+    tipos, pos = [], 0
+    while pos + 8 <= len(datos):
+        size = int.from_bytes(datos[pos:pos + 4], "big")
+        tipos.append(datos[pos + 4:pos + 8].decode("latin-1"))
+        if size == 1:
+            size = int.from_bytes(datos[pos + 8:pos + 16], "big")
+        elif size == 0:
+            size = len(datos) - pos
+        if size < 8:
+            break
+        pos += size
+    return tipos
+
+
+def test_ffmpeg_convert_a_m4a_pone_moov_antes_que_mdat(wav_sintetico, tmp_path):
+    """`+faststart`: el indice (moov) va ANTES del audio (mdat).
+
+    Sin eso ffmpeg lo escribe al final y el reproductor tiene que pedir el final
+    del archivo antes de poder empezar a sonar (docs/adr/0002, Playback speed).
+    """
+    salida = tmp_path / "tono.m4a"
+    _ffmpeg_convert(wav_sintetico, salida)
+    cajas = _cajas_mp4(salida)
+    assert "moov" in cajas and "mdat" in cajas, cajas
+    assert cajas.index("moov") < cajas.index("mdat"), cajas
+
+
+def test_sin_faststart_moov_queda_al_final(wav_sintetico, tmp_path):
+    """Control: el test de arriba distingue de verdad. Con el ffmpeg por defecto
+    (sin `-movflags`) el moov queda despues del mdat."""
+    salida = tmp_path / "sin.m4a"
+    subprocess.run(["ffmpeg", "-y", "-i", str(wav_sintetico), "-vn",
+                    "-codec:a", "aac", "-b:a", "256k", str(salida)],
+                   check=True, capture_output=True)
+    cajas = _cajas_mp4(salida)
+    assert cajas.index("moov") > cajas.index("mdat"), cajas
+
+
 def test_ffmpeg_convert_rechaza_formato_desconocido(wav_sintetico, tmp_path):
     with pytest.raises(ValueError):
         _ffmpeg_convert(wav_sintetico, tmp_path / "tono.flac")

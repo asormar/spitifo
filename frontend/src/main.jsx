@@ -75,18 +75,16 @@ const FORMATS = [
   {
     value: "original",
     label: "original",
-    // "original" solo significa algo en las fuentes libres: el archivo se
-    // queda exactamente como lo publica la fuente, FLAC u OGG incluidos
-    // (downloader.py). YouTube no tiene modo "sin convertir": preferredcodec
-    // cae a mp3 para todo lo que no sea mp3/m4a (ytdlp_source.py). El titulo
-    // tiene que decir las dos cosas.
-    title: "Sin convertir: el archivo tal cual lo publica la fuente. Lo de YouTube se guarda en mp3",
+    // "original" no recodifica en ninguna fuente: las libres dejan el archivo
+    // como lo publica la fuente (FLAC, OGG...; downloader.py) y YouTube deja
+    // el audio en su contenedor natural, normalmente .opus o .m4a
+    // (ytdlp_source.py, preferredcodec "best").
+    title: "Sin convertir: el audio tal cual lo publica la fuente (en YouTube, normalmente Opus o AAC)",
   },
 ];
 
 /* Aviso bajo los controles cuando se elige "original". El title de FORMATS no
-   se ve en tactil, asi que la misma informacion sale como linea visible. En
-   "YouTube" la primera frase seria mentira: todo acaba en mp3. */
+   se ve en tactil, asi que la misma informacion sale como linea visible. */
 /* Un enlace de YouTube solo tiene sentido en "YouTube" (iTunes no sabe
    que hacer con una URL). Misma regla de hosts que parse_youtube_url del
    backend; el ID lo valida el. */
@@ -98,8 +96,8 @@ const PLACEHOLDER = {
   default: "Busca una canción, un artista, un género",
 };
 
-const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube se guarda en mp3.";
-const ORIGINAL_HINT_YT = "Desde YouTube siempre se guarda en mp3.";
+const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube conserva su audio, sin recomprimir (normalmente Opus o AAC).";
+const ORIGINAL_HINT_YT = "Original: el audio tal como viene de YouTube, sin recomprimir (normalmente Opus o AAC).";
 
 const EXAMPLES = [
   "Nick Cave Into My Arms",

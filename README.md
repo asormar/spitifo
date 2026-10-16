@@ -175,7 +175,8 @@ horizontal overflow and 44 px minimum touch targets.
 conversion. Without ffmpeg everything still works, but choosing mp3 or m4a for a file
 published in another format (`.flac`, `.ogg`, `.opus`, `.wav`) stores it unconverted.
 The `original` format never converts: free-licence files are kept exactly as published,
-while YouTube downloads always end up as mp3.
+while YouTube downloads keep their audio stream without re-encoding (usually `.opus` or
+`.m4a`).
 
 ```bash
 git clone https://github.com/asormar/spitifo.git
@@ -233,6 +234,7 @@ Read the [Legal](#legal) section before you do.
 | `SPITIFO_PORT` | `0` | Port to bind; `0` picks a free one (entry point only) |
 | `SPITIFO_TOKEN` | — | Per-launch secret; unset means no auth |
 | `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
+| `SPITIFO_YTDLP_DIR` | — | Directory with a newer `yt_dlp/` (or the official yt-dlp zip), put first on `sys.path` so it wins over the bundled one |
 | `JAMENDO_CLIENT_ID` | — | Enables the Jamendo source (free key) |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
@@ -270,6 +272,7 @@ to `SPITIFO_HOST` and `SPITIFO_PORT`.
 | `SPITIFO_LIBRARY` | `./library` | Where downloads are written |
 | `SPITIFO_FRONTEND_DIST` | `./frontend/dist` | Built frontend to serve |
 | `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
+| `SPITIFO_YTDLP_DIR` | — | Directory with a newer `yt_dlp/` (or the official yt-dlp zip), put first on `sys.path` so it wins over the bundled one |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
 `SPITIFO_TOKEN` is the per-launch secret. On Android any app on the phone can reach
@@ -288,11 +291,18 @@ downloader and yt-dlp find `ffmpeg` and `ffprobe`. The audio MIME types (`.mp3`,
 ships no MIME database, and without them `.ogg` was served as
 `application/octet-stream`.
 
+`SPITIFO_YTDLP_DIR` lets a newer yt-dlp replace the bundled one without a new app release
+(YouTube breaks yt-dlp several times a year). It can point to a directory that contains
+`yt_dlp/` or to the official zip-importable `yt-dlp` file; the backend puts it first on
+`sys.path` at startup, before anything imports the engine. The version actually in use is
+reported by `GET /api/health` as `ytdlp_version` (`null` if yt-dlp cannot be imported).
+Only the loading hook exists so far; downloading new versions comes later.
+
 ## API
 
 | Method | Route | Description |
 | --- | --- | --- |
-| `GET` | `/api/health` | Which sources are active right now |
+| `GET` | `/api/health` | Which sources are active right now, and the yt-dlp version in use |
 | `GET` | `/api/search` | Search every active source (`mode`, `source`, `limit`) |
 | `POST` | `/api/resolve` | Turn a catalogue entry into a playable URL |
 | `GET` | `/api/verify` | Inspect what is inside an item without downloading it |

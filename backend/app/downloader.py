@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from .config import USER_AGENT
+from .config import AUDIO_EXTS, USER_AGENT
 from .models import Track, safe_name
 
 log = logging.getLogger("spitifo.download")
@@ -21,9 +21,13 @@ LIBRARY.mkdir(parents=True, exist_ok=True)
 
 # Codec que corresponde a cada formato pedido. Antes se usaba libmp3lame para
 # todo, asi que pedir m4a daba un .m4a con audio MP3 dentro.
+#
+# `+faststart` mueve el atom `moov` (el indice) al principio del M4A. Sin eso
+# ffmpeg lo escribe al FINAL y el reproductor tiene que pedir el final del
+# archivo antes de poder empezar a sonar (docs/adr/0002, "Playback speed").
 ENCODERS = {
     ".mp3": ["-codec:a", "libmp3lame", "-q:a", "2"],
-    ".m4a": ["-codec:a", "aac", "-b:a", "256k"],
+    ".m4a": ["-codec:a", "aac", "-b:a", "256k", "-movflags", "+faststart"],
 }
 
 
@@ -103,7 +107,7 @@ def _write_tags(path: Path, t: Track) -> None:
                 for k, v in (("title", t.title), ("artist", t.artist),
                              ("album", t.album), ("date", t.year)):
                     if v:
-                        f[k] = v
+                        f[k] = str(v)
                 f.save()
     except Exception as e:  # tags son un extra, no deben tumbar la descarga
         log.warning("tags fallaron en %s: %s", os.path.basename(str(path)), e)
@@ -191,7 +195,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
 
 def library_scan() -> list[dict]:
     """Lista la biblioteca local ya descargada, con la duracion real."""
-    exts = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"}
+    exts = set(AUDIO_EXTS)
     out = []
     for p in LIBRARY.rglob("*"):
         if p.is_file() and p.suffix.lower() in exts:

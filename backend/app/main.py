@@ -23,7 +23,8 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from .runtime import configure_runtime
+from .config import AUDIO_EXTS
+from .runtime import configure_runtime, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
 # MIME de audio que Android no trae, para que esten listos cuando algo llame a
@@ -259,6 +260,9 @@ async def health(request: Request):
             for s in ALL_SOURCES
         ],
         "library": str(LIBRARY),
+        # None si yt-dlp no se puede importar. El primer import es lento: va a
+        # un thread para no frenar el event loop.
+        "ytdlp_version": await asyncio.to_thread(ytdlp_version),
     })
 
 
@@ -619,9 +623,9 @@ async def library(request: Request):
                          "files": files})
 
 
-# Solo formatos de audio: el endpoint sirve para preview, no para leer
-# cualquier archivo que haya quedado en un subdirectorio de la biblioteca.
-AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav"}
+# Solo formatos de audio (config.AUDIO_EXTS): el endpoint sirve para preview, no
+# para leer cualquier archivo que haya quedado en un subdirectorio de la
+# biblioteca.
 
 
 async def audio(request: Request):
