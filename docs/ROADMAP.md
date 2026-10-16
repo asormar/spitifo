@@ -69,7 +69,14 @@ Questions it answered:
 - **The `Storage` port:** the interface every connector implements.
 - **Deliverable:** an ADR with the interface, the first provider and the risks.
 
-### 3. Make the backend embeddable
+### 3. Make the backend embeddable — done
+
+Backend on Starlette, `python -m backend.app` with a free port and a
+`SPITIFO_READY` line, per-launch secret, injectable ffmpeg and yt-dlp locations,
+retries on transient YouTube errors, `original` without re-encoding and M4A
+faststart. The updater that downloads new yt-dlp versions moved to session 9;
+only the loading hook (`SPITIFO_YTDLP_DIR`) is done.
+
 
 - Per-platform library path, free port instead of a hardcoded 8000, injectable
   ffmpeg path.
@@ -128,7 +135,8 @@ Questions it answered:
 - GitHub Actions builds the `.exe` and `.apk` on each tag and publishes them to
   GitHub Releases.
 - Not on Google Play: its policy does not allow YouTube downloaders.
-- yt-dlp update strategy.
+- yt-dlp update strategy: download a newer yt-dlp into `SPITIFO_YTDLP_DIR` and
+  verify its checksum before loading it (the loading hook exists since session 3).
 
 ### 10. Companion player app
 
