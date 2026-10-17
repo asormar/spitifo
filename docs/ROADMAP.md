@@ -161,6 +161,12 @@ Planned scope:
 
 ### 7. First connector and the "Connect service" screen
 
+In progress on `feat/cloud-connector`. Done so far: the provider-neutral pieces
+in `backend/app/cloud/` (OAuth with PKCE and a loopback receiver, DPAPI token
+store, offline audio cache, `index.json` with conditional writes) and the PC
+benchmark (`python -m backend.app.cloud.bench`). Waiting on the OAuth
+registrations described in [oauth-setup.md](oauth-setup.md) to run it.
+
 - Starts with a benchmark of Google Drive and OneDrive: time to first audio,
   stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
   ADR 0002; otherwise OneDrive.
