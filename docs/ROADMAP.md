@@ -112,7 +112,25 @@ library goes to `Music\Spitifo`.
 - Left for later: code signing, which belongs with the release work in
   session 9.
 
-### 5. Android app
+### 5. Android app — done
+
+Native WebView shell in `android/` (Kotlin, no Capacitor), built with
+`android/build.ps1`. The process starts the unmodified backend with Chaquopy
+on a free port with a per-launch secret. A `dataSync` foreground service runs
+only while downloads are in flight. The library goes to `Music/Spitifo` and is
+added to MediaStore after each batch. YouTube's "Share" menu opens the
+search. The signed release APK is 56.9 MB. Findings in the
+[ADR 0001 update](adr/0001-android-embedded-python.md#update-2026-10-17-session-5).
+
+- Trimming ffmpeg was dropped: the executables load 70.9 of its 74.5 MB.
+- Left for later:
+  - A failed search (e.g. no network) shows "nothing found" instead of an
+    error.
+  - uvicorn's access log writes the per-launch secret to logcat on the
+    bootstrap request.
+  - The download notification shows no progress.
+
+Planned scope:
 
 - UI in a WebView / Capacitor, backend from session 1.
 - Foreground service so downloads continue with the app closed, permission to
@@ -178,8 +196,9 @@ because it decides how the library is stored, which session 3 needs.
   you're not a bot" to every download from the development PC, hours after the
   same downloads worked. yt-dlp's answer is passing the user's browser cookies
   (`--cookies-from-browser`); the apps may need a way to supply them.
-- **APK size.** Confirmed: 56 MiB with ffmpeg in the spike. Accepted, since the
-  APK is not on Google Play; trimming ffmpeg should reduce it.
+- **APK size.** 56.9 MB for the release APK. Accepted, since the APK is not on
+  Google Play. Trimming the ffmpeg payload saves only 3.6 MB; an audio-only
+  ffmpeg build is what would shrink it.
 - **Installer size.** The Windows installer is 67 MiB, and 150 MB of the
   installed 192 MB are ffmpeg's shared libraries, mostly video codecs Spitifo
   never uses. An audio-only ffmpeg build would cut most of that, at the cost of

@@ -100,8 +100,9 @@ wake lock keeps both the network and the CPU running.
 | Without ffmpeg | 27.8 MiB | ~44 MB |
 | With ffmpeg | 56.4 MiB | ~96 MB of app data, ~78 MB of it the extracted ffmpeg libraries |
 
-The ffmpeg payload ships every library in the artifact. Only the ones the two
-executables actually load are needed.
+The ffmpeg payload ships every library in the artifact. Session 5 measured
+which ones the two executables actually load (see the update below): almost
+all of them.
 
 ## Consequences
 
@@ -122,6 +123,35 @@ executables actually load are needed.
     queue is empty. On targetSdk 35+, `dataSync` services are capped at 6 hours
     a day.
   - Request `POST_NOTIFICATIONS` so the progress notification is visible.
-  - Trim the ffmpeg payload to the libraries the executables load.
+  - ~~Trim the ffmpeg payload to the libraries the executables load.~~ Dropped:
+    it saves 3.6 MB (see the update below).
 - **Risk accepted:** the APK is above 50 MB. It is distributed outside Google
   Play, so this only affects download size.
+
+## Update (2026-10-17, session 5)
+
+Findings from building the real app in `android/`, on the same Pixel 9 Pro.
+
+- **ffmpeg trimming is not worth it.** Following `DT_NEEDED` from `ffmpeg` and
+  `ffprobe` through the payload, the libraries they load add up to 70.9 of its
+  74.5 MB (78 libraries, most of them video codecs pulled in by `libavcodec`).
+  Trimming would save 3.6 MB. The real saving is an audio-only ffmpeg build,
+  planned with the release work in session 9.
+- **The library lives in the public `Music/Spitifo` folder** (minSdk 30, so
+  direct file paths go through FUSE and need no storage permission for the
+  app's own files). That folder only accepts audio files, so yt-dlp's `.part`
+  and `.webm` temporaries cannot be written there, and `os.replace` fails
+  between app storage and `/storage`. The backend now assembles downloads in
+  `SPITIFO_TEMP_DIR` (the app's cache) and moves only the finished file in.
+- **Files written through FUSE are not indexed by MediaStore.** The folders
+  appeared, the audio files did not, so other music players could not see
+  them. The app snapshots the library when the first download starts and runs
+  `MediaScannerConnection.scanFile` on what changed when the last one ends.
+  It diffs path and mtime instead of filtering by date, because yt-dlp sets a
+  file's mtime from the server's `Last-Modified` header.
+- **Foreground service per download works.** The backend reports when the
+  first download starts and the last one ends (`backend/app/activity.py`); the
+  service runs only in between and stops 3 s after the queue empties. An mp3
+  and an m4a downloaded with the screen off and both reached the library.
+- **After a reinstall** the files belong to the previous install;
+  `READ_MEDIA_AUDIO` keeps them listed in the library.
