@@ -37,6 +37,27 @@ if str(RAIZ) not in sys.path:
 LIBRARY_TEMPORAL = Path(tempfile.mkdtemp(prefix="spitifo-tests-"))
 os.environ["SPITIFO_LIBRARY"] = str(LIBRARY_TEMPORAL)
 
+# --- 2b) datos del usuario tambien temporales ----------------------------------
+# `get_storage()` lee `storage.json` de la carpeta de datos y, si dice "google",
+# arma Drive con los tokens guardados ahi. Sin esto, una persona con Drive
+# conectado en esta maquina hace que los tests de descarga suban archivos
+# falsos a SU cuenta (paso el 2026-10-17). Tambien la cache de audio, y fuera
+# las variables que eligen proveedor o traen client IDs reales.
+DATOS_TEMPORALES = Path(tempfile.mkdtemp(prefix="spitifo-tests-data-"))
+os.environ["SPITIFO_DATA_DIR"] = str(DATOS_TEMPORALES)
+os.environ["SPITIFO_CACHE_DIR"] = str(DATOS_TEMPORALES / "cache")
+for _var in ("SPITIFO_STORAGE", "SPITIFO_GOOGLE_CLIENT_ID",
+             "SPITIFO_GOOGLE_CLIENT_SECRET", "SPITIFO_MS_CLIENT_ID"):
+    os.environ.pop(_var, None)
+
+
+@pytest.fixture(autouse=True)
+def _sin_client_ids_reales(monkeypatch, tmp_path):
+    """El `oauth_clients.json` empaquetado (gitignoreado) puede tener los IDs
+    reales de la persona: ningun test lo lee."""
+    from backend.app.cloud import oauth
+    monkeypatch.setattr(oauth, "BUNDLED_CONFIG", tmp_path / "no-bundled.json")
+
 # --- tiempo maximo para cualquier test que hable con una API externa ----------
 TIMEOUT_RED = 30.0
 
