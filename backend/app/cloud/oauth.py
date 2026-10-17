@@ -122,14 +122,16 @@ def _setting(env_name: str, provider_key: str, field: str) -> str:
     el release. Si no esta en ninguno de los dos, el error nombra AMBAS fuentes
     para no dejar adivinando cual falta.
     """
-    value = os.getenv(env_name)
+    # Se recortan los espacios: un ID pegado con un espacio al final da
+    # `invalid_client` en Google sin ninguna otra pista.
+    value = (os.getenv(env_name) or "").strip()
     if value:
         return value
     section = client_config().get(provider_key)
     if isinstance(section, dict):
-        found = section.get(field)
+        found = str(section.get(field) or "").strip()
         if found:
-            return str(found)
+            return found
     raise OAuthNotConfigured(
         f"falta {env_name} o {provider_key}.{field} en {CLIENT_CONFIG_FILE}")
 

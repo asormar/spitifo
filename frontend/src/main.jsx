@@ -1891,8 +1891,14 @@ function connectErrorText(error) {
   return "No se pudo conectar con Google Drive. Vuelve a intentarlo.";
 }
 
+/* Por debajo de 1 GB va en MB: una biblioteca recien empezada en "0 GB"
+   parece vacia aunque ya tenga temas. */
 function fmtGB(bytes) {
   const gb = bytes / 1024 ** 3;
+  if (gb < 1) {
+    const mb = bytes / 1024 ** 2;
+    return `${mb.toLocaleString("es-ES", { maximumFractionDigits: mb < 10 ? 1 : 0 })} MB`;
+  }
   return `${gb.toLocaleString("es-ES", { maximumFractionDigits: gb < 100 ? 1 : 0 })} GB`;
 }
 

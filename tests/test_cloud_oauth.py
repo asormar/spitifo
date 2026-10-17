@@ -321,3 +321,11 @@ def test_loopback_con_localhost_para_microsoft(monkeypatch):
         port = urlparse(uri).port
         _get(f"http://127.0.0.1:{port}/callback?state=st&code=MS")
         assert recv.wait("st", timeout=5.0) == "MS"
+
+
+def test_los_valores_se_recortan(monkeypatch):
+    monkeypatch.setenv("SPITIFO_GOOGLE_CLIENT_ID", "  gid.apps.googleusercontent.com\t")
+    monkeypatch.setenv("SPITIFO_GOOGLE_CLIENT_SECRET", "gsecret ")
+    p = oauth.google_provider()
+    assert p.client_id == "gid.apps.googleusercontent.com"
+    assert p.client_secret == "gsecret"
