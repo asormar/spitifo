@@ -34,3 +34,9 @@ android/*.keystore
 
 # Provider benchmark output (python -m backend.app.cloud.bench --json)
 bench-*.json
+
+# Secretos del cliente OAuth. Google marca como publico el secret de un cliente
+# de escritorio (con PKCE), pero igual se mantiene fuera del repositorio: el
+# build de release escribe este archivo desde los secretos de CI. El formato y
+# los valores de ejemplo estan en oauth_clients.example.json.
+backend/app/cloud/oauth_clients.json

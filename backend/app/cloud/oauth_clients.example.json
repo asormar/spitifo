@@ -1,0 +1,9 @@
+{
+  "google": {
+    "client_id": "YOUR-ID.apps.googleusercontent.com",
+    "client_secret": "YOUR-SECRET"
+  },
+  "microsoft": {
+    "client_id": "YOUR-ENTRA-APP-ID"
+  }
+}

@@ -38,7 +38,7 @@ from .downloader import download_track, library_scan
 from .models import Track
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
-from .storage import InvalidKey, get_storage
+from .storage import InvalidKey, get_storage, reset_storage
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -636,6 +636,141 @@ async def library(request: Request):
                          "files": files})
 
 
+# --------------------------------------------------------- almacenamiento activo
+# La pantalla de conexion elige donde vive la biblioteca (este dispositivo o una
+# nube) sin tocar variables de entorno. OneDrive todavia no se lista.
+_CONNECT_PROVIDERS = ("google",)
+_STORAGE_CHOICES = ("local", "google")
+
+_connect_flow = None
+
+
+def _new_connect_flow():
+    """Arma el flujo del proceso: al conectar, deja ese proveedor como activo."""
+    from .cloud.connect import ConnectFlow
+    from .cloud.settings import set_active_storage
+    from .cloud.tokens import TokenStore, default_protector, default_token_dir
+
+    store = TokenStore(default_token_dir(), default_protector())
+
+    def _on_connected(provider: str) -> None:
+        set_active_storage(provider)
+        reset_storage()
+
+    return ConnectFlow(store, on_connected=_on_connected)
+
+
+def _get_connect_flow():
+    """Flujo unico del proceso, creado la primera vez que hace falta."""
+    global _connect_flow
+    if _connect_flow is None:
+        _connect_flow = _new_connect_flow()
+    return _connect_flow
+
+
+def _provider_from_body(body: dict, choices: tuple[str, ...]) -> str:
+    """Valida `provider` del cuerpo, con el mismo 422 que el resto de la API."""
+    provider = body.get("provider")
+    if provider not in choices:
+        esperado = " or ".join(repr(c) for c in choices)
+        raise _invalid(["body", "provider"], f"Input should be {esperado}")
+    return provider
+
+
+def _storage_payload(flow) -> dict:
+    """Cuerpo de `GET /api/storage`. Bloquea: `describe` y tokens son I/O."""
+    from .cloud.connect import is_connected, provider_for
+    from .cloud.oauth import OAuthNotConfigured
+    from .cloud.settings import active_storage
+
+    try:
+        provider_for("google")
+        configured = True
+    except (OAuthNotConfigured, ValueError):
+        configured = False
+    # `SPITIFO_STORAGE` pisa el ajuste en get_storage: la UI tiene que mostrar
+    # lo que de verdad se esta usando, no lo que dice storage.json.
+    override = os.getenv("SPITIFO_STORAGE", "").strip()
+    return {
+        "active": override or active_storage(),
+        "override": bool(override),
+        "library": get_storage().describe(),
+        "providers": [{
+            "id": "google",
+            "name": "Google Drive",
+            "configured": configured,
+            "connected": is_connected(flow.store, "google"),
+        }],
+        "connect": flow.status(),
+    }
+
+
+async def storage_info(request: Request):
+    """Estado del almacenamiento: activo, biblioteca, proveedores y flujo."""
+    flow = _get_connect_flow()
+    return JSONResponse(await asyncio.to_thread(_storage_payload, flow))
+
+
+async def storage_connect(request: Request):
+    """Arranca el sign-in. Devuelve la URL para que la UI abra el navegador."""
+    from .cloud.oauth import OAuthNotConfigured
+    body = await _json_body(request)
+    provider = _provider_from_body(body, _CONNECT_PROVIDERS)
+    flow = _get_connect_flow()
+    try:
+        url = await asyncio.to_thread(flow.start, provider)
+    except OAuthNotConfigured as exc:
+        return JSONResponse({"detail": str(exc), "code": "not_configured"},
+                            status_code=409)
+    return JSONResponse({"auth_url": url, "connect": flow.status()},
+                        status_code=202)
+
+
+async def storage_connect_cancel(request: Request):
+    """Cancela el sign-in en curso y devuelve el estado nuevo."""
+    flow = _get_connect_flow()
+    await asyncio.to_thread(flow.cancel)
+    return JSONResponse(flow.status())
+
+
+async def storage_use(request: Request):
+    """Cambia el almacenamiento activo SIN volver a firmar el sign-in.
+
+    `google` exige tokens guardados: cambiar el ajuste no conecta la cuenta.
+    """
+    from .cloud.connect import is_connected
+    from .cloud.settings import set_active_storage
+    body = await _json_body(request)
+    provider = _provider_from_body(body, _STORAGE_CHOICES)
+    flow = _get_connect_flow()
+    if provider == "google" and not await asyncio.to_thread(
+            is_connected, flow.store, "google"):
+        return JSONResponse({"detail": "Google Drive is not connected",
+                             "code": "not_connected"}, status_code=409)
+    await asyncio.to_thread(set_active_storage, provider)
+    reset_storage()
+    return JSONResponse(await asyncio.to_thread(_storage_payload, flow))
+
+
+async def storage_disconnect(request: Request):
+    """Borra los tokens; si ese proveedor estaba activo, vuelve a local."""
+    from .cloud.connect import disconnect
+    from .cloud.settings import active_storage, set_active_storage
+    body = await _json_body(request)
+    provider = _provider_from_body(body, _CONNECT_PROVIDERS)
+    flow = _get_connect_flow()
+
+    def _do() -> None:
+        disconnect(flow.store, provider)
+        if active_storage() == provider:
+            # Sin tokens, dejar `google` activo solo daria errores al leer.
+            set_active_storage("local")
+            reset_storage()
+
+    await asyncio.to_thread(_do)
+    return JSONResponse(await asyncio.to_thread(_storage_payload, flow))
+
+
 # Un solo rango, en la forma `bytes=a-b`, `bytes=a-` o `bytes=-n`. Los demas
 # casos (varios rangos, sintaxis rota) se IGNORAN y se manda el archivo entero,
 # como recomienda la RFC 7233 para un header que no se puede satisfacer.
@@ -774,6 +909,12 @@ routes = [
     Route("/api/download", download, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
+    Route("/api/storage", storage_info),
+    Route("/api/storage/connect", storage_connect, methods=["POST"]),
+    Route("/api/storage/connect/cancel", storage_connect_cancel,
+          methods=["POST"]),
+    Route("/api/storage/use", storage_use, methods=["POST"]),
+    Route("/api/storage/disconnect", storage_disconnect, methods=["POST"]),
     Route("/api/audio", audio),
 ]
 # Sirve el frontend compilado si existe (produccion single-port)

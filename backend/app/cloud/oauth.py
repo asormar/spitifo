@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import queue
 import secrets
@@ -19,6 +20,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -46,8 +48,16 @@ class InvalidGrant(OAuthError):
     """El token quedo revocado: la UI ofrece "Reconnect <provider>"."""
 
 
+class SignInTimeout(OAuthError):
+    """No volvio el redirect a tiempo: el navegador quedo abierto de mas."""
+
+
+class SignInCancelled(OAuthError):
+    """El usuario apreto "Cancelar" en la pantalla de consentimiento."""
+
+
 class OAuthNotConfigured(RuntimeError):
-    """Falta el client id/secret en el entorno."""
+    """Falta el client id/secret en el entorno y en el archivo de config."""
 
 
 @dataclass(frozen=True)
@@ -67,12 +77,61 @@ class Provider:
     redirect_host: str = "127.0.0.1"
 
 
-def _env(name: str) -> str:
-    """Lee una variable de entorno o falla nombrando la que falta."""
-    value = os.getenv(name)
-    if not value:
-        raise OAuthNotConfigured(f"falta la variable de entorno {name}")
-    return value
+#: Nombre del archivo con los clientes OAuth. En el build de release se escribe
+#: junto a la app (secretos de CI); en desarrollo puede vivir en el directorio
+#: de datos del usuario.
+CLIENT_CONFIG_FILE = "oauth_clients.json"
+#: Ruta del archivo empaquetado. Es un modulo y no una constante inline para que
+#: los tests puedan apuntarlo a un temporal y no leer uno real.
+BUNDLED_CONFIG = Path(__file__).parent / CLIENT_CONFIG_FILE
+
+
+def client_config() -> dict:
+    """Clientes OAuth del archivo: primero el empaquetado, despues el usuario.
+
+    Google marca como publico el secret de un cliente de escritorio, pero el
+    release build igual lo escribe desde los secretos de CI en vez de dejarlo
+    en el repositorio (ver `.gitignore`). Cualquier problema (falta, no se
+    puede leer, JSON invalido) se trata como "no hay archivo": el llamador
+    decide si eso es un error.
+    """
+    candidates = [BUNDLED_CONFIG]
+    try:
+        # Import perezoso: tokens importa oauth, asi que aca no se puede subir
+        # el import al encabezado sin cerrar un ciclo.
+        from .tokens import default_data_dir
+        candidates.append(default_data_dir() / CLIENT_CONFIG_FILE)
+    except Exception:
+        pass
+    for path in candidates:
+        path = Path(path)
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text("utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+    return {}
+
+
+def _setting(env_name: str, provider_key: str, field: str) -> str:
+    """Credencial del proveedor: variable de entorno o archivo de config.
+
+    El entorno gana (es comodo en desarrollo); el archivo es lo que empaqueta
+    el release. Si no esta en ninguno de los dos, el error nombra AMBAS fuentes
+    para no dejar adivinando cual falta.
+    """
+    value = os.getenv(env_name)
+    if value:
+        return value
+    section = client_config().get(provider_key)
+    if isinstance(section, dict):
+        found = section.get(field)
+        if found:
+            return str(found)
+    raise OAuthNotConfigured(
+        f"falta {env_name} o {provider_key}.{field} en {CLIENT_CONFIG_FILE}")
 
 
 def google_provider() -> Provider:
@@ -81,8 +140,9 @@ def google_provider() -> Provider:
         name="google",
         authorize_url=GOOGLE_AUTHORIZE_URL,
         token_url=GOOGLE_TOKEN_URL,
-        client_id=_env("SPITIFO_GOOGLE_CLIENT_ID"),
-        client_secret=_env("SPITIFO_GOOGLE_CLIENT_SECRET"),
+        client_id=_setting("SPITIFO_GOOGLE_CLIENT_ID", "google", "client_id"),
+        client_secret=_setting("SPITIFO_GOOGLE_CLIENT_SECRET", "google",
+                               "client_secret"),
         scopes=(GOOGLE_SCOPE,),
         # `access_type=offline` pide refresh token; `prompt=consent` fuerza a
         # que Google lo entregue tambien en reconexiones.
@@ -96,7 +156,7 @@ def microsoft_provider() -> Provider:
         name="microsoft",
         authorize_url=MS_AUTHORIZE_URL,
         token_url=MS_TOKEN_URL,
-        client_id=_env("SPITIFO_MS_CLIENT_ID"),
+        client_id=_setting("SPITIFO_MS_CLIENT_ID", "microsoft", "client_id"),
         client_secret=None,
         scopes=MS_SCOPES,
         redirect_host="localhost",
@@ -338,13 +398,20 @@ class LoopbackReceiver:
         return self.redirect_uri
 
     def wait(self, expected_state: str, timeout: float) -> str:
-        """Espera el redirect y devuelve el `code`. Falla si el state no coincide."""
+        """Espera el redirect y devuelve el `code`. Falla si el state no coincide.
+
+        Los fallos conocidos usan subclases (`SignInTimeout`,
+        `SignInCancelled`) para que la UI pueda mostrar un mensaje humano sin
+        inspeccionar texto.
+        """
         try:
             error, state, code = self._results.get(timeout=timeout)
         except queue.Empty:
-            raise OAuthError("se agoto el tiempo esperando el redirect") from None
+            raise SignInTimeout("se agoto el tiempo esperando el redirect") from None
         if error:
             # P.ej. el usuario apreto "Cancelar": error=access_denied.
+            if error == "access_denied":
+                raise SignInCancelled(f"el proveedor respondio error={error}")
             raise OAuthError(f"el proveedor respondio error={error}")
         if state != expected_state:
             raise OAuthError("el `state` no coincide: posible CSRF")
@@ -355,6 +422,15 @@ class LoopbackReceiver:
     def _deliver(self, error: str | None, state: str | None,
                  code: str | None) -> None:
         self._results.put((error, state, code))
+
+    def cancel(self) -> None:
+        """Despierta un `wait` en curso y cierra el server (lo usa la UI).
+
+        Sin esto, el thread del flujo seguiria bloqueado hasta el timeout
+        aunque el usuario ya haya cancelado: quedaria vivo de gusto.
+        """
+        self._results.put((None, None, None))
+        self.close()
 
     def close(self) -> None:
         if self._server is not None:

@@ -472,7 +472,11 @@ class DriveStorage:
                     "application/json")
                 self._own_index_id = str(created["id"])
             self._own = own
-            self._index = (self._index or LibraryIndex()).merge(own)
+            # El indice recien escrito es el mas fresco para SUS claves: en un
+            # empate de `updated_at` (el reloj de Windows tiene resolucion
+            # gruesa) el merge comun le daria la razon al valor viejo que ya
+            # estaba en memoria.
+            self._index = own.merge(self._index or LibraryIndex())
             self._index_at = self._clock()
 
     def _entry(self, key: str) -> IndexEntry | None:

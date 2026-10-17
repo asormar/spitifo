@@ -11,10 +11,13 @@ layout de carpetas de siempre (`<artista>/<artista> - <titulo>.<ext>`).
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Protocol
+
+log = logging.getLogger(__name__)
 
 #: Largo maximo de una clave. Un nombre razonable nunca llega; esto solo acota
 #: el trabajo de validacion y evita claves absurdas de la API.
@@ -109,11 +112,38 @@ def _library_root() -> Path:
 _storage: Storage | None = None
 
 
-def get_storage() -> Storage:
-    """Adapter activo: Drive si `SPITIFO_STORAGE=google`, si no el disco local.
+def _build_google() -> Storage:
+    """Arma el adapter de Drive o cae a local si falta la configuracion.
 
-    El import del conector es perezoso: `storage` tiene que poder importarse
-    aunque el paquete de nube no este disponible.
+    La eleccion puede venir de `storage.json` (la pantalla de conexion), sin
+    variables de entorno de por medio: si el cliente OAuth no esta configurado,
+    la app tiene que arrancar igual y quedarse con la biblioteca local.
+    """
+    from ..cloud.drive import drive_storage_from_env
+    from ..cloud.oauth import OAuthNotConfigured
+    try:
+        return drive_storage_from_env()
+    except OAuthNotConfigured as exc:
+        log.warning("Drive no esta configurado (%s): la biblioteca queda local",
+                    exc)
+        from .local import LocalStorage
+        return LocalStorage(_library_root())
+
+
+def _setting_backend() -> str:
+    """Proveedor elegido desde la UI (`storage.json`), `local` por defecto."""
+    from ..cloud.settings import active_storage
+    return active_storage()
+
+
+def get_storage() -> Storage:
+    """Adapter activo.
+
+    `SPITIFO_STORAGE` manda cuando esta seteada (comportamiento de siempre,
+    incluido el error por valor desconocido). Si no, decide el ajuste de la UI:
+    `google` arma Drive y, si falta la configuracion OAuth, avisa y usa el
+    disco. El import del conector es perezoso: `storage` tiene que poder
+    importarse aunque el paquete de nube no este disponible.
     """
     global _storage
     if _storage is None:
@@ -121,12 +151,14 @@ def get_storage() -> Storage:
         if backend == "google":
             from ..cloud.drive import drive_storage_from_env
             _storage = drive_storage_from_env()
-        elif not backend:
-            from .local import LocalStorage
-            _storage = LocalStorage(_library_root())
-        else:
+        elif backend:
             raise ValueError(
                 f"SPITIFO_STORAGE desconocido: {backend!r} (usar 'google')")
+        elif _setting_backend() == "google":
+            _storage = _build_google()
+        else:
+            from .local import LocalStorage
+            _storage = LocalStorage(_library_root())
     return _storage
 
 
@@ -134,3 +166,13 @@ def set_storage(s: Storage | None) -> None:
     """Instala un adapter (tests) o vuelve al de siempre con `None`."""
     global _storage
     _storage = s
+
+
+def reset_storage() -> None:
+    """Olvida el adapter activo: el proximo `get_storage` lo arma de nuevo.
+
+    Es el alias legible de `set_storage(None)` que usa la API despues de
+    cambiar el almacenamiento activo.
+    """
+    set_storage(None)
+

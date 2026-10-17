@@ -5,6 +5,7 @@ con un `httpx` real contra `127.0.0.1`, que es local.
 """
 from __future__ import annotations
 
+import json
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -15,6 +16,23 @@ from backend.app.cloud import oauth
 
 def _client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.fixture(autouse=True)
+def config_aislada(monkeypatch, tmp_path):
+    """Ningun test lee el `oauth_clients.json` real (ni empaquetado ni del usuario).
+
+    El empaquetado se apunta a un temporal y el directorio de datos tambien, asi
+    el fallback a archivo solo ve lo que cada test escriba.
+    """
+    monkeypatch.setattr(oauth, "BUNDLED_CONFIG",
+                        tmp_path / "bundled-oauth_clients.json")
+    monkeypatch.setenv("SPITIFO_DATA_DIR", str(tmp_path))
+
+
+def _write_config(tmp_path, sections: dict) -> None:
+    (tmp_path / oauth.CLIENT_CONFIG_FILE).write_text(
+        json.dumps(sections), encoding="utf-8")
 
 
 @pytest.fixture
@@ -66,6 +84,60 @@ def test_falta_de_env_nombra_la_variable(monkeypatch):
     with pytest.raises(oauth.OAuthNotConfigured) as exc:
         oauth.google_provider()
     assert "SPITIFO_GOOGLE_CLIENT_ID" in str(exc.value)
+
+
+# ------------------------------------------------------------ archivo de config
+def test_client_config_vacio_sin_archivos():
+    assert oauth.client_config() == {}
+
+
+def test_config_desde_el_archivo(monkeypatch, tmp_path):
+    _write_config(tmp_path, {"google": {"client_id": "file-id",
+                                        "client_secret": "file-secret"}})
+    monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_SECRET", raising=False)
+    p = oauth.google_provider()
+    assert p.client_id == "file-id"
+    assert p.client_secret == "file-secret"
+
+
+def test_env_gana_al_archivo(monkeypatch, tmp_path):
+    _write_config(tmp_path, {"google": {"client_id": "file-id",
+                                        "client_secret": "file-secret"}})
+    monkeypatch.setenv("SPITIFO_GOOGLE_CLIENT_ID", "env-id")
+    monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_SECRET", raising=False)
+    p = oauth.google_provider()
+    assert p.client_id == "env-id"
+    # El campo que no esta en el entorno sale del archivo.
+    assert p.client_secret == "file-secret"
+
+
+def test_archivo_empaquetado_gana_al_del_usuario(tmp_path):
+    bundled = tmp_path / "bundled-oauth_clients.json"
+    bundled.write_text(json.dumps(
+        {"google": {"client_id": "bundled", "client_secret": "s"}}),
+        encoding="utf-8")
+    _write_config(tmp_path, {"google": {"client_id": "usuario",
+                                        "client_secret": "s"}})
+    assert oauth.client_config()["google"]["client_id"] == "bundled"
+
+
+def test_error_nombra_env_y_archivo(monkeypatch):
+    monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_SECRET", raising=False)
+    with pytest.raises(oauth.OAuthNotConfigured) as exc:
+        oauth.google_provider()
+    mensaje = str(exc.value)
+    assert "SPITIFO_GOOGLE_CLIENT_ID" in mensaje
+    assert oauth.CLIENT_CONFIG_FILE in mensaje
+
+
+def test_microsoft_lee_solo_el_client_id(monkeypatch, tmp_path):
+    _write_config(tmp_path, {"microsoft": {"client_id": "ms-file"}})
+    monkeypatch.delenv("SPITIFO_MS_CLIENT_ID", raising=False)
+    p = oauth.microsoft_provider()
+    assert p.client_id == "ms-file"
+    assert p.client_secret is None
 
 
 def test_authorize_url_trae_todos_los_parametros(google):
