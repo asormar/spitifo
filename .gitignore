@@ -22,3 +22,12 @@ desktop/sidecar/build/
 desktop/sidecar/dist/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+
+# Android app build outputs and machine-specific files
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/keystore.properties
+android/*.jks
+android/*.keystore
