@@ -1,7 +1,7 @@
 # ADR 0002: User-owned storage, connectors and the `Storage` port
 
-- **Status:** Accepted (first provider confirmed by a benchmark at the start of
-  roadmap session 7)
+- **Status:** Accepted (first provider, Google Drive, confirmed by the
+  benchmark in roadmap session 7)
 - **Date:** 2026-10-16
 - **Context:** roadmap session 2 (research only), branch
   `docs/storage-exploration`. Builds on
@@ -225,6 +225,44 @@ reference adapter. Differences from the sketch above:
   absolute paths.
 - Contract tests in `tests/test_storage_contract.py` run against every adapter
   listed in `ADAPTERS`.
+
+### Update (2026-10-17, session 7): Google Drive is the first connector
+
+The benchmark ran against a real Google Drive account with an 8.9 MB, 187 s
+M4A file. Every run opened a new TLS connection, as an uncached play would.
+"First audio" is the time until the first 64 KiB of a ranged read arrive.
+
+| Where | First audio p50 / p95 | Seek to middle p50 / p95 | Full download | Largest gap |
+| --- | --- | --- | --- | --- |
+| PC, home connection (10 runs) | 772 / 872 ms | 759 / 1199 ms | 1.2 s, 58 Mbit/s | — |
+| Pixel 9 Pro, Wi-Fi (5 runs) | 817 / 1006 ms | 880 / 1395 ms | 3.9 s, 19 Mbit/s | 327 ms |
+| Pixel 9 Pro, 5G NSA (5 runs) | 920 / 972 ms | 861 / 1150 ms | 1.4 s, 49 Mbit/s | 12 ms |
+| Pixel 9 Pro, 4G LTE (5 runs) | 875 / 928 ms | 895 / 943 ms | 1.5 s, 47 Mbit/s | 25 ms |
+
+Every ranged response was a `206` with the requested `Content-Range`.
+
+**Android sign-in works without a server.** The Identity Services
+`AuthorizationClient`, asked for `drive.file`, shows the consent screen once.
+After `am force-stop` and a relaunch it returns a new access token in 87–131 ms
+with no UI. Kotlin hands only the access token to Python, and Python uses it
+against Drive directly. No refresh token reaches the app, and none is needed:
+the app asks `authorize()` again whenever the token expires. The probe that
+measured this is `android/app/src/debug/kotlin/dev/spitifo/DriveProbeActivity.kt`
+plus `backend/app/cloud/probe.py`, in debug builds only.
+
+Every target is met, so Google Drive is the first connector and OneDrive was
+not benchmarked. Consequences:
+
+- The margin on first audio is thin: 0.8–0.9 s against a 1 s target, and most
+  of it is DNS, TCP and TLS setup. The backend keeps one long-lived HTTP client
+  per provider so plays after the first reuse the connection, and prefetching
+  (section 5) keeps most plays off the network.
+- `play-services-auth` depends on AndroidX, so `android.useAndroidX` is now
+  `true`. The release app will use AndroidX once the connector ships.
+- Google's desktop client requires its `client_secret` in the token exchange
+  even with PKCE. It ships inside the binary and is not confidential.
+- Registration steps and the commands to repeat the benchmark are in
+  [docs/oauth-setup.md](../oauth-setup.md).
 
 ## Security note for session 3
 

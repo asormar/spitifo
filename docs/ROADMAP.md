@@ -164,8 +164,12 @@ Planned scope:
 In progress on `feat/cloud-connector`. Done so far: the provider-neutral pieces
 in `backend/app/cloud/` (OAuth with PKCE and a loopback receiver, DPAPI token
 store, offline audio cache, `index.json` with conditional writes) and the PC
-benchmark (`python -m backend.app.cloud.bench`). Waiting on the OAuth
-registrations described in [oauth-setup.md](oauth-setup.md) to run it.
+benchmark (`python -m backend.app.cloud.bench`). **Google Drive won**: it met
+every target on the PC and on the Pixel over Wi-Fi, 5G and 4G, and the Android
+sign-in survives a restart without UI. Numbers in the
+[ADR 0002 update](adr/0002-user-owned-storage.md#update-2026-10-17-session-7-google-drive-is-the-first-connector).
+Next: the Drive adapter, streaming through `/api/audio`, prefetch, and the
+"Connect service" screen.
 
 - Starts with a benchmark of Google Drive and OneDrive: time to first audio,
   stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
