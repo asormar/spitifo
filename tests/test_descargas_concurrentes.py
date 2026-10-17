@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import types
+from pathlib import Path
 
 import pytest
 
@@ -70,8 +71,10 @@ class YtDlpDoble:
         tipo = type(self)
         with tipo._turno:
             tipo.intentos += 1
-        # el outtmpl trae %(ext)s; el postprocessor deja mp3
-        destino = self.opts["outtmpl"].replace("%(ext)s", "mp3")
+        # el outtmpl trae %(ext)s; el postprocessor deja mp3. Es RELATIVO: el
+        # destino real lo fija paths.home (la subcarpeta de trabajo del job).
+        destino = Path(self.opts["paths"]["home"]) / (
+            self.opts["outtmpl"].replace("%(ext)s", "mp3"))
         if not tipo._ocupado.acquire(blocking=False):
             with tipo._turno:
                 tipo.fallos_lock += 1
@@ -134,10 +137,12 @@ def _jobs(n: int = 2) -> list[str]:
 
 
 # ----------------------------------------------------------------------- tests
-def test_dos_descargas_de_la_misma_pista_no_se_pisan(yt_dlp_doble):
+def test_dos_descargas_de_la_misma_pista_no_se_pisan(yt_dlp_doble, tmp_path,
+                                                     storage_temporal):
     """Las dos terminan bien y nunca coexisten en el mismo archivo."""
     from backend.app.ytdlp_source import YtDlpSource
 
+    storage_temporal(tmp_path / "lib")
     src = YtDlpSource()
     job_a, job_b = _jobs(2)
 
@@ -157,14 +162,15 @@ def test_dos_descargas_de_la_misma_pista_no_se_pisan(yt_dlp_doble):
     assert yt_dlp_doble.maximo_concurrentes == 1, (
         "dos descargas tuvieron el archivo abierto a la vez")
 
-    # las dos terminaron en el mismo archivo final, que es lo que se busca: el
+    # las dos terminaron en la misma clave final, que es lo que se busca: el
     # nombre en la biblioteca es el canonico, no "Yesterday (2).mp3"
-    rutas = {r["path"] for r in res}
-    assert len(rutas) == 1
-    assert rutas.pop().endswith("The Beatles - Yesterday.mp3")
+    claves = {r["key"] for r in res}
+    assert len(claves) == 1
+    assert claves.pop().endswith("The Beatles - Yesterday.mp3")
 
 
-def test_el_segundo_job_se_publica_como_pending(yt_dlp_doble):
+def test_el_segundo_job_se_publica_como_pending(yt_dlp_doble, tmp_path,
+                                                storage_temporal):
     """Mientras espera al lock, el job dice `pending` y no `downloading`.
 
     La UI muestra "En cola" para `pending`: si el job se publicara como
@@ -172,6 +178,7 @@ def test_el_segundo_job_se_publica_como_pending(yt_dlp_doble):
     """
     from backend.app.ytdlp_source import YtDlpSource, get_job
 
+    storage_temporal(tmp_path / "lib")
     src = YtDlpSource()
     job_a, job_b = _jobs(2)
 

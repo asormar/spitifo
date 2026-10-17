@@ -49,7 +49,7 @@ def _get(url, params=None, timeout=TIMEOUT_RED):
 # =============================================================================
 @pytest.mark.integration
 @pytest.mark.timeout(420)
-def test_search_resolve_download_verifica_tags(cliente):
+def test_search_resolve_download_verifica_tags(cliente, biblioteca):
     """Ciclo completo contra archive.org, con el audio verificado en disco.
 
     Reemplaza al smoke_test.py: mismo recorrido (search -> resolve -> download),
@@ -94,8 +94,7 @@ def test_search_resolve_download_verifica_tags(cliente):
     j = rd.json()
 
     # --- aca ya no hay red: si esto falla, el bug es NUESTRO ---
-    from pathlib import Path
-    p = Path(j["path"])
+    p = biblioteca / j["key"]
     assert p.exists(), f"la API dijo ok pero el archivo no esta: {p}"
     assert p.stat().st_size > 0, "el archivo esta vacio"
     # el tmp es `.{hex8}.{ext}`; el final es "artista - titulo.mp3". Si el
@@ -179,7 +178,7 @@ def test_fuente_inactiva_se_salta_en_search(cliente, monkeypatch):
 # =============================================================================
 @pytest.mark.integration
 @pytest.mark.timeout(420)
-def test_convierte_un_wav_de_wikimedia_a_mp3(cliente):
+def test_convierte_un_wav_de_wikimedia_a_mp3(cliente, biblioteca):
     """Fuerza la rama de conversion: WAV -> MP3 con nombre correcto.
 
     Lo que se verifica (y el script viejo solo imprimia): el archivo existe,
@@ -209,8 +208,7 @@ def test_convierte_un_wav_de_wikimedia_a_mp3(cliente):
     assert rd.status_code == 200, rd.text[:300]
     j = rd.json()
 
-    from pathlib import Path
-    p = Path(j["path"])
+    p = biblioteca / j["key"]
     assert p.exists(), f"la API dijo ok pero el archivo no esta: {p}"
     assert p.stat().st_size > 0
     assert p.suffix == ".mp3", f"pedimos mp3 y salio {p.suffix}"
@@ -230,7 +228,7 @@ def test_convierte_un_wav_de_wikimedia_a_mp3(cliente):
 
 @pytest.mark.integration
 @pytest.mark.timeout(420)
-def test_convierte_un_item_de_archive_a_mp3(cliente):
+def test_convierte_un_item_de_archive_a_mp3(cliente, biblioteca):
     """El otro camino de conversion: un item de archive que no es mp3."""
     r = cliente.get("/api/search", params={"q": "jazz", "limit": 10,
                                            "source": "archive", "mode": "sources"})
@@ -249,8 +247,7 @@ def test_convierte_un_item_de_archive_a_mp3(cliente):
     assert rd.status_code == 200, rd.text[:300]
     j = rd.json()
 
-    from pathlib import Path
-    p = Path(j["path"])
+    p = biblioteca / j["key"]
     assert p.exists() and p.stat().st_size > 0
     assert p.suffix == ".mp3"
     assert MFile(p) is not None, "mutagen no reconoce el mp3 de archive"
@@ -264,7 +261,7 @@ def test_convierte_un_item_de_archive_a_mp3(cliente):
 # =============================================================================
 @pytest.mark.integration
 @pytest.mark.timeout(600)
-def test_ytdlp_devuelve_job_id_y_hasta_done(cliente, monkeypatch):
+def test_ytdlp_devuelve_job_id_y_hasta_done(cliente, monkeypatch, biblioteca):
     """El flujo async: POST /download devuelve job_id y el polling llega a done.
 
     Si YTDLP_ENABLED != 1 se saltea: es una decision de la maquina, no un fallo.
@@ -317,8 +314,7 @@ def test_ytdlp_devuelve_job_id_y_hasta_done(cliente, monkeypatch):
     assert d["status"] == "done"
     assert d["progress"] == 100.0
 
-    from pathlib import Path
-    p = Path(d["path"])
+    p = biblioteca / d["key"]
     assert p.exists(), f"el job dijo done pero el archivo no esta: {p}"
     assert p.stat().st_size > 0
     mf = MFile(p)

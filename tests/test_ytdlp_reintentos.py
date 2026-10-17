@@ -118,10 +118,15 @@ class YtDlpFalso:
         paso = tipo.guion.pop(0) if tipo.guion else None
         if paso is not None:
             raise paso
-        destino = self.opts["outtmpl"].replace("%(ext)s", tipo.ext_salida)
+        # outtmpl RELATIVO: el destino real lo fija paths.home (la subcarpeta de
+        # trabajo del job), igual que hace yt-dlp de verdad.
+        opts = self.opts
+        rel = opts["outtmpl"].replace("%(ext)s", tipo.ext_salida)
+        destino = Path((opts.get("paths") or {})["home"]) / rel
+        destino.parent.mkdir(parents=True, exist_ok=True)
         with open(destino, "wb") as f:
             f.write(b"\x00" * 512)
-        return {"filepath": destino if tipo.devolver_filepath else None,
+        return {"filepath": str(destino) if tipo.devolver_filepath else None,
                 "title": "Cancion de prueba", "uploader": "Artista",
                 "duration": 10}
 
@@ -155,7 +160,9 @@ def _bajar(titulo: str, fmt: str = "mp3") -> tuple[dict, str]:
 
 
 # ------------------------------------------------------------------ reintentos
-def test_un_403_y_despues_exito_termina_done_con_2_intentos(yt_dlp_falso):
+def test_un_403_y_despues_exito_termina_done_con_2_intentos(yt_dlp_falso, tmp_path,
+                                                            storage_temporal):
+    st = storage_temporal(tmp_path / "lib")
     yt_dlp_falso.guion = [
         DownloadError("ERROR: unable to download video data: HTTP Error 403: Forbidden"),
     ]
@@ -168,7 +175,8 @@ def test_un_403_y_despues_exito_termina_done_con_2_intentos(yt_dlp_falso):
     # entre intentos el job sigue "downloading": nunca paso por "error"
     assert yt_dlp_falso.estados_al_empezar == ["downloading", "downloading"]
     assert res["format"] == "MP3"
-    assert Path(res["path"]).exists()
+    assert st.stat(res["key"]).size > 0
+    assert job["key"] == res["key"]
 
 
 def test_reintenta_hasta_3_veces_y_recien_despues_es_error(yt_dlp_falso):
@@ -241,13 +249,17 @@ def test_download_pasa_el_codec_correcto_a_yt_dlp(yt_dlp_falso, fmt, codec):
 
 
 @pytest.mark.parametrize("ext", ["opus", "m4a", "ogg"])
-def test_original_encuentra_el_archivo_con_su_extension_natural(yt_dlp_falso, ext):
+def test_original_encuentra_el_archivo_con_su_extension_natural(yt_dlp_falso, ext,
+                                                                tmp_path,
+                                                                storage_temporal):
     """yt-dlp no devuelve `filepath` tras el postprocess: el glob lo encuentra."""
+    st = storage_temporal(tmp_path / "lib")
     yt_dlp_falso.ext_salida = ext
     yt_dlp_falso.devolver_filepath = False
     res, job_id = _bajar(f"Original {ext}", "original")
     assert res["format"] == ext.upper()
-    assert Path(res["path"]).suffix == "." + ext
+    assert Path(res["key"]).suffix == "." + ext
+    assert st.stat(res["key"]).size > 0
     assert ys.get_job(job_id)["status"] == "done"
 
 
@@ -283,14 +295,16 @@ def test_toda_extension_que_puede_producir_yt_dlp_esta_en_AUDIO_EXTS():
     assert producidas <= set(AUDIO_EXTS)
 
 
-def test_library_scan_lista_opus_y_ogg(tmp_path, monkeypatch):
+def test_library_scan_lista_opus_y_ogg(tmp_path, storage_temporal):
     import backend.app.downloader as dl
 
+    storage_temporal(tmp_path)
     (tmp_path / "Artista").mkdir()
     for nombre in ("a.opus", "b.ogg", "c.m4a", "d.webm"):
         (tmp_path / "Artista" / nombre).write_bytes(b"\x00" * 64)
-    monkeypatch.setattr(dl, "LIBRARY", tmp_path)
-    assert sorted(f["filename"] for f in dl.library_scan()) == ["a.opus", "b.ogg", "c.m4a"]
+    archivos = dl.library_scan()
+    assert sorted(f["filename"] for f in archivos) == ["a.opus", "b.ogg", "c.m4a"]
+    assert all(f["key"].startswith("Artista/") for f in archivos)
 
 
 # ------------------------------------------------------------ SPITIFO_YTDLP_DIR

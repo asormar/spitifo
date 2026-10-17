@@ -6,7 +6,8 @@ Lo importante de este archivo son tres cosas:
    se invoque pytest.
 2. Que `SPITIFO_LIBRARY` apunte a una carpeta TEMPORAL **antes** de importar
    `backend.app.downloader` (que lee la variable al importarse). Si no, los tests
-   de integración ensucian la biblioteca real de la persona.
+   de integración ensucian la biblioteca real de la persona. La biblioteca se
+   sirve por el puerto `Storage`: `get_storage()` la arma con esa variable.
 3. Fixtures de apoyo que no necesitan red: un WAV/MP3 sintético con ffmpeg,
    blobs ID3 armados con mutagen, y una fuente YouTube falsa.
 
@@ -157,3 +158,23 @@ def cliente():
 def biblioteca() -> Path:
     """Carpeta donde los tests de integración dejan las descargas."""
     return LIBRARY_TEMPORAL
+
+
+@pytest.fixture
+def storage_temporal():
+    """Factory: `storage_temporal(root)` instala un `LocalStorage` y lo restaura.
+
+    Devuelve el adapter instalado. Al terminar el test vuelve al de siempre
+    (`set_storage(None)`), asi que un test no le deja la biblioteca cambiada al
+    siguiente.
+    """
+    from backend.app.storage import set_storage
+    from backend.app.storage.local import LocalStorage
+
+    def _instalar(root: Path):
+        s = LocalStorage(root)
+        set_storage(s)
+        return s
+
+    yield _instalar
+    set_storage(None)

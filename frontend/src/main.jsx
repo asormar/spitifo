@@ -168,7 +168,7 @@ function safeUrl(u) {
   if (typeof u !== "string") return null;
   const s = u.trim();
   if (!s) return null;
-  /* Relativa de un solo slash: la genera la app (ej. /api/audio?path=...).
+  /* Relativa de un solo slash: la genera la app (ej. /api/audio?key=...).
      Un `//host` NO: es protocol-relativa, y `new URL` la resolveria contra
      el origin dandonos un http:// VALIDO que nunca fue una URL absoluta del
      servidor. Por eso se rechazan las dos barras. */
@@ -2185,7 +2185,7 @@ function App() {
               const d = {
                 ...j,
                 ...finished,
-                filename: finished.filename || finished.path,
+                filename: finished.filename || finished.key,
                 size_mb: finished.size_mb,
                 match: finished.match || j.match,
                 real_title: finished.real_title || j.real_title,
@@ -2582,8 +2582,8 @@ function App() {
                 )}
                 {libFiles.map((f, n) => (
                   <Player
-                    key={f.path}
-                    src={`${API}/audio?path=${encodeURIComponent(f.path)}`}
+                    key={f.key}
+                    src={`${API}/audio?key=${encodeURIComponent(f.key)}`}
                     label={f.filename}
                     title={f.filename}
                     meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}

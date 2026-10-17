@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 import os
+import re
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -19,7 +21,7 @@ from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -32,10 +34,11 @@ from .runtime import configure_runtime, ytdlp_version
 # shutil.which o sirva un archivo.
 configure_runtime()
 
-from .downloader import LIBRARY, download_track, library_scan
+from .downloader import download_track, library_scan
 from .models import Track
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
+from .storage import InvalidKey, get_storage
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -56,7 +59,7 @@ BG_TASKS: set = set()
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
-    log.info("biblioteca: %s", LIBRARY)
+    log.info("biblioteca: %s", get_storage().describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
     yield
@@ -260,7 +263,7 @@ async def health(request: Request):
              "needs_key": s.needs_key}
             for s in ALL_SOURCES
         ],
-        "library": str(LIBRARY),
+        "library": get_storage().describe(),
         # None si yt-dlp no se puede importar. El primer import es lento: va a
         # un thread para no frenar el event loop.
         "ytdlp_version": await asyncio.to_thread(ytdlp_version),
@@ -629,28 +632,88 @@ async def setlist(request: Request):
 
 async def library(request: Request):
     files = await asyncio.to_thread(library_scan)
-    return JSONResponse({"library": str(LIBRARY), "count": len(files),
+    return JSONResponse({"library": get_storage().describe(), "count": len(files),
                          "files": files})
 
 
-# Solo formatos de audio (config.AUDIO_EXTS): el endpoint sirve para preview, no
-# para leer cualquier archivo que haya quedado en un subdirectorio de la
-# biblioteca.
+# Un solo rango, en la forma `bytes=a-b`, `bytes=a-` o `bytes=-n`. Los demas
+# casos (varios rangos, sintaxis rota) se IGNORAN y se manda el archivo entero,
+# como recomienda la RFC 7233 para un header que no se puede satisfacer.
+_RANGO = re.compile(r"^bytes=(\d*)-(\d*)$")
+_UNIT = "bytes"
+
+
+def _parse_range(valor: str | None, size: int) -> tuple[int, int] | None | str:
+    """Devuelve `(start, end)` inclusivo, None (ignorar) o "insatisfacible".
+
+    Los limites se recortan al archivo: `end` mas alla del final se limita al
+    ultimo byte y un sufijo mas grande que el archivo empieza en 0.
+    """
+    if not valor:
+        return None
+    m = _RANGO.match(valor.strip().lower())
+    if not m:
+        return None
+    ini, fin = m.group(1), m.group(2)
+    if not ini and not fin:
+        return None
+    if size == 0:
+        return "insatisfacible"
+    if not ini:  # sufijo: los ultimos `fin` bytes
+        n = int(fin)
+        if n == 0:
+            return "insatisfacible"
+        return (max(0, size - n), size - 1)
+    start = int(ini)
+    if start >= size:
+        return "insatisfacible"
+    if not fin:
+        return (start, size - 1)
+    end = int(fin)
+    if end < start:
+        return None
+    return (start, min(end, size - 1))
 
 
 async def audio(request: Request):
-    """Sirve un archivo de la biblioteca para preview en el navegador."""
-    path = _query_str(request, "path", required=True)
-    p = Path(path).resolve()
-    # is_relative_to y NO startswith de string: un startswith deja pasar
-    # cualquier carpeta hermana que empiece con el nombre de la biblioteca
-    # (library_backup, library-temp, library2...). is_relative_to compara
-    # por componentes, asi que solo entra lo que esta de verdad adentro.
-    if not p.is_relative_to(LIBRARY.resolve()):
+    """Sirve un archivo de la biblioteca, con soporte de `Range` (206).
+
+    La clave es relativa a la raiz de la biblioteca: el puerto `Storage` dice si
+    existe y de donde salen los bytes, asi que la API no maneja rutas del host.
+    """
+    key = _query_str(request, "key", required=True)
+    if Path(key).suffix.lower() not in AUDIO_EXTS:
         raise HTTPException(404, "no encontrado")
-    if p.suffix.lower() not in AUDIO_EXTS or not p.is_file():
+    storage = get_storage()
+    try:
+        # A un thread: en un adapter remoto stat es una llamada de red, y en
+        # el local un acceso a disco que no debe frenar el event loop.
+        size = (await asyncio.to_thread(storage.stat, key)).size
+    except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
-    return FileResponse(p)
+
+    # El MIME sale de la extension; runtime.register_audio_mime_types ya
+    # registro los tipos de audio que Android no trae.
+    ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
+    rango = _parse_range(request.headers.get("range"), size)
+    if rango == "insatisfacible":
+        return Response(status_code=416, headers={
+            "Content-Range": f"bytes */{size}", "Accept-Ranges": _UNIT})
+
+    if isinstance(rango, tuple):
+        start, end = rango
+        headers = {
+            "Accept-Ranges": _UNIT,
+            "Content-Range": f"bytes {start}-{end}/{size}",
+            "Content-Length": str(end - start + 1),
+        }
+        return StreamingResponse(storage.open_range(key, start, end),
+                                 status_code=206, media_type=ctype,
+                                 headers=headers)
+
+    return StreamingResponse(
+        storage.open_range(key), media_type=ctype,
+        headers={"Accept-Ranges": _UNIT, "Content-Length": str(size)})
 
 
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:

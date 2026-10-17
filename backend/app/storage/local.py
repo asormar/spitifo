@@ -1,0 +1,143 @@
+"""Adapter de la biblioteca en el disco local. Es el de referencia.
+
+Conserva el layout de carpetas de siempre: `<artista>/<artista> - <titulo>.<ext>`
+relativo a `root`, que es exactamente lo que venia haciendo el downloader.
+"""
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+from typing import Iterable, Iterator
+
+from ..config import AUDIO_EXTS
+from . import InvalidKey, StoredFile, validate_key
+
+#: Tamano de cada lectura de `open_range`. 64 KiB es lo que usa el downloader
+#: para bajar y lo que acostumbra el streaming.
+CHUNK = 64 * 1024
+
+
+def _duration(p: Path) -> float | None:
+    """Duracion real en segundos, leida con mutagen. None si no se puede."""
+    try:
+        from mutagen import File as MFile
+        f = MFile(p)
+        if f is not None and f.info is not None:
+            return round(float(f.info.length), 1)
+    except Exception:
+        pass
+    return None
+
+
+class LocalStorage:
+    """`Storage` sobre una carpeta del disco (la biblioteca publica en Android)."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------- internos
+    def _path(self, key: str) -> Path:
+        """Valida la clave y devuelve la ruta local.
+
+        Ademas de `validate_key` (que ya prohibe `..` y rutas absolutas) se
+        resuelve la ruta y se exige que siga adentro de la raiz: un symlink
+        dentro de la biblioteca podria apuntar afuera.
+        """
+        validate_key(key)
+        p = self.root / key
+        if not p.resolve().is_relative_to(self.root.resolve()):
+            raise InvalidKey(f"la clave sale de la biblioteca: {key}")
+        return p
+
+    def _stored(self, p: Path, key: str, *, duration: bool = False) -> StoredFile:
+        # La duracion obliga a parsear el archivo con mutagen: solo la pide
+        # `list()`, que es lo que muestra la UI. `stat()` corre en cada request
+        # de `/api/audio` (cada seek) y tiene que ser un stat y nada mas.
+        st = p.stat()
+        return StoredFile(key=key, size=st.st_size, mtime=st.st_mtime,
+                          duration=_duration(p) if duration else None)
+
+    # --------------------------------------------------------------- puerto
+    def list(self) -> Iterable[StoredFile]:
+        """Audio de la biblioteca, saltando ocultos y symlinks que escapan."""
+        exts = {e.lower() for e in AUDIO_EXTS}
+        root = self.root.resolve()
+        for p in sorted(self.root.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(self.root)
+            # nada bajo un dot-dir ni un dot-file (.part, .tmp, .oculto...)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if p.suffix.lower() not in exts:
+                continue
+            if not p.resolve().is_relative_to(root):
+                continue
+            key = rel.as_posix()
+            # Un nombre que la clave no admite (en Linux/Android un archivo
+            # puede llevar `?` o `:`) no se lista: se veria en la biblioteca y
+            # despues daria 404 al reproducirlo.
+            try:
+                validate_key(key)
+            except InvalidKey:
+                continue
+            yield self._stored(p, key, duration=True)
+
+    def stat(self, key: str) -> StoredFile:
+        p = self._path(key)
+        if not p.is_file():
+            raise FileNotFoundError(key)
+        return self._stored(p, key)
+
+    def open_range(self, key: str, start: int = 0,
+                   end: int | None = None) -> Iterator[bytes]:
+        """Bytes de `key` en `[start, end]`. `end=None` = hasta el final.
+
+        `end` es INCLUSIVO (igual que un range HTTP) y se recorta al tamano del
+        archivo. Un rango vacio (start fuera del archivo o end < start) no
+        devuelve nada. El archivo se cierra al agotar el iterador o al cerrarlo.
+        """
+        p = self._path(key)
+        if not p.is_file():
+            raise FileNotFoundError(key)
+        size = p.stat().st_size
+        start = max(0, start)
+        if end is not None and end >= size:
+            end = size - 1
+        if end is None:
+            n = size - start
+        else:
+            n = end - start + 1
+        return self._read(p, start, max(0, n))
+
+    def _read(self, p: Path, start: int, n: int) -> Iterator[bytes]:
+        if n <= 0:
+            return
+        with open(p, "rb") as f:
+            f.seek(start)
+            restante = n
+            while restante > 0:
+                chunk = f.read(min(CHUNK, restante))
+                if not chunk:
+                    break
+                restante -= len(chunk)
+                yield chunk
+
+    def put_file(self, key: str, src: Path) -> StoredFile:
+        """Mueve `src` a `key`, creando carpetas y sobreescribiendo lo que hubiera."""
+        p = self._path(key)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # shutil.move y no os.replace: sobreescribe el destino y ademas cruza
+        # filesystems (EXDEV) si el temporal esta en otra particion.
+        shutil.move(str(src), str(p))
+        return self._stored(p, key)
+
+    def delete(self, key: str) -> None:
+        p = self._path(key)
+        if not p.is_file():
+            raise FileNotFoundError(key)
+        p.unlink()
+
+    def describe(self) -> str:
+        return str(self.root)

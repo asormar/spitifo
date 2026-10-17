@@ -6,31 +6,30 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
 import httpx
 
-from .config import AUDIO_EXTS, USER_AGENT
+from .config import USER_AGENT
 from .models import Track, safe_name
+from .storage import get_storage
 
 log = logging.getLogger("spitifo.download")
 
-LIBRARY = Path(os.getenv("SPITIFO_LIBRARY", Path(__file__).resolve().parents[2] / "library"))
-LIBRARY.mkdir(parents=True, exist_ok=True)
-
-# Carpeta OPCIONAL para los archivos temporales de descarga. En Android la
+# Carpeta base para los archivos temporales de descarga. En Android la
 # biblioteca vive en la carpeta publica Music/Spitifo (FUSE), que rechaza los
 # temporales de yt-dlp (.part/.webm): su MIME no es audio. Ademas os.replace
 # falla con EXDEV cuando el temporal esta en /data y el destino en /storage.
-# Con SPITIFO_TEMP_DIR los temporales viven en la particion privada y el
-# archivo final se publica con shutil.move, que si cruza filesystems. Sin la
-# variable, todo sigue exactamente como antes (temp file dentro del artista).
-# Ver docs/adr/0001-android-embedded-python.md.
-_temporal = os.getenv("SPITIFO_TEMP_DIR", "")
-TEMP_DIR: Path | None = Path(_temporal) if _temporal else None
-if TEMP_DIR is not None:
-    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+# Con SPITIFO_TEMP_DIR los temporales viven en la particion privada; sin la
+# variable van al directorio temporal del sistema. Cada descarga arma su PROPIA
+# subcarpeta ahi adentro (tempfile.mkdtemp) y la borra entera al terminar: el
+# .part de una descarga nunca se cruza con el de otra.
+# Ver docs/adr/0001-android-embedded-python.md y docs/adr/0002-user-owned-storage.md.
+TEMP_DIR = Path(os.getenv("SPITIFO_TEMP_DIR")
+                or (Path(tempfile.gettempdir()) / "spitifo"))
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Codec que corresponde a cada formato pedido. Antes se usaba libmp3lame para
 # todo, asi que pedir m4a daba un .m4a con audio MP3 dentro.
@@ -144,7 +143,9 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     "original" guarda el archivo tal cual lo publica la fuente (FLAC, OGG,
     WAV...), sin recodificar. mp3/m4a convierten solo si el origen no lo es ya.
 
-    Devuelve dict con ruta, bytes, formato.
+    Todo el trabajo (bajada, conversion y tags) pasa en una subcarpeta propia de
+    TEMP_DIR y recien el archivo terminado entra a la biblioteca por el puerto
+    `Storage`. Devuelve la clave relativa (no una ruta), bytes y formato.
     """
     if not t.audio_url:
         raise ValueError("la pista no tiene audio_url (no es descargable)")
@@ -160,20 +161,19 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
         base_title = t.title
         base_artist = t.artist
 
-    folder = LIBRARY / safe_name(base_artist or "desconocido", 60)
-    folder.mkdir(parents=True, exist_ok=True)
+    folder = safe_name(base_artist or "desconocido", 60)
 
     src_ext = Path(t.audio_url.split("?")[0]).suffix.lower() or ".mp3"
     if len(src_ext) > 5 or not src_ext.startswith("."):
         src_ext = ".mp3"
     stem = safe_name(f"{base_artist} - {base_title}", 100)
-    # Donde se arma el archivo antes de publicarlo en la biblioteca. Sin
-    # SPITIFO_TEMP_DIR es la propia carpeta del artista (comportamiento de
-    # siempre); con la variable, la carpeta temporal de la app.
-    work = TEMP_DIR if TEMP_DIR is not None else folder
+
+    # Subcarpeta fresca y exclusiva de esta descarga: asi el .part de un job no
+    # se cruza con el de otro (aunque sean la misma pista) y no quedan restos
+    # dentro de la carpeta publica de la biblioteca.
+    work = Path(tempfile.mkdtemp(dir=TEMP_DIR))
     tmp = work / f".{uuid.uuid4().hex[:8]}{src_ext}"
     tmp_conv: Path | None = None
-    final: Path
 
     try:
         await _download_to(t.audio_url, tmp)
@@ -188,74 +188,41 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
             target_ext = src_ext
             needs_conv = False
 
-        final = folder / f"{stem}{target_ext}"
-
-        if TEMP_DIR is not None:
-            # Todo el trabajo (descarga, conversion y tags) pasa en TEMP_DIR:
-            # la carpeta publica solo recibe el archivo ya terminado, con un
-            # move que atraviesa filesystems.
-            if needs_conv:
-                tmp_conv = work / f".{uuid.uuid4().hex[:8]}{target_ext}"
-                await asyncio.to_thread(_ffmpeg_convert, tmp, tmp_conv)
-                terminado = tmp_conv
-            else:
-                terminado = tmp
-            _write_tags(terminado, t)
-            await asyncio.to_thread(shutil.move, terminado, final)
+        if needs_conv:
+            tmp_conv = work / f".{uuid.uuid4().hex[:8]}{target_ext}"
+            await asyncio.to_thread(_ffmpeg_convert, tmp, tmp_conv)
+            terminado = tmp_conv
         else:
-            # Sin TEMP_DIR: mismo flujo de siempre, pero con shutil.move en vez
-            # de os.replace (sobreescribe el final igual y ademas cruza
-            # filesystems si hiciera falta).
-            if needs_conv:
-                await asyncio.to_thread(_ffmpeg_convert, tmp, final)
-            else:
-                await asyncio.to_thread(shutil.move, tmp, final)
-            _write_tags(final, t)
+            terminado = tmp
+        _write_tags(terminado, t)
 
-        size = final.stat().st_size
+        filename = f"{stem}{target_ext}"
+        key = f"{folder}/{filename}"
+        stored = await asyncio.to_thread(get_storage().put_file, key, terminado)
+        size = stored.size
         return {
-            "path": str(final), "filename": final.name,
-            "folder": str(folder), "bytes": size,
-            "size_mb": round(size / 1_048_576, 2),
-            "format": final.suffix.lstrip(".").upper(),
+            "key": key, "filename": filename, "folder": folder,
+            "bytes": size, "size_mb": round(size / 1_048_576, 2),
+            "format": target_ext.lstrip(".").upper(),
         }
     finally:
-        # Los temporales que hayan quedado (error, o el src de una conversion)
-        # se limpian siempre; `tmp` puede haber sido movido ya al final.
-        for p in (tmp, tmp_conv):
-            if p is not None and p.exists():
-                try:
-                    p.unlink()
-                except OSError:
-                    pass
+        # Toda la subcarpeta de trabajo se limpia: temporales, el src de una
+        # conversion y, si algo fallo, la descarga a medias.
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def library_scan() -> list[dict]:
-    """Lista la biblioteca local ya descargada, con la duracion real."""
-    exts = set(AUDIO_EXTS)
+    """Lista la biblioteca terminada a traves del puerto, con la duracion real."""
     out = []
-    for p in LIBRARY.rglob("*"):
-        if p.is_file() and p.suffix.lower() in exts:
-            st = p.stat()
-            out.append({
-                "filename": p.name,
-                "path": str(p),
-                "folder": p.parent.name,
-                "bytes": st.st_size,
-                "size_mb": round(st.st_size / 1_048_576, 2),
-                "duration_s": _duration(p),
-                "modified": st.st_mtime,
-            })
+    for f in get_storage().list():
+        partes = f.key.split("/")
+        out.append({
+            "key": f.key,
+            "filename": partes[-1],
+            "folder": partes[-2] if len(partes) > 1 else "",
+            "bytes": f.size,
+            "size_mb": round(f.size / 1_048_576, 2),
+            "duration_s": f.duration,
+            "modified": f.mtime,
+        })
     return sorted(out, key=lambda x: -x["modified"])
-
-
-def _duration(p: Path) -> float | None:
-    """Duracion real en segundos, leida con mutagen. None si no se puede."""
-    try:
-        from mutagen import File as MFile
-        f = MFile(p)
-        if f is not None and f.info is not None:
-            return round(float(f.info.length), 1)
-    except Exception:
-        pass
-    return None

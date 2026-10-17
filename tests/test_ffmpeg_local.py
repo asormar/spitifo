@@ -124,7 +124,7 @@ def test_ffmpeg_convert_rechaza_formato_desconocido(wav_sintetico, tmp_path):
 
 
 # ------------------------------------------------------------- download_track
-def _descarga_local(monkeypatch, biblioteca, origen):
+def _descarga_local(monkeypatch, origen):
     """download_track sin red: el "servidor" es copiar `origen` al tmp."""
     import backend.app.downloader as dl
 
@@ -133,7 +133,6 @@ def _descarga_local(monkeypatch, biblioteca, origen):
         return dest
 
     monkeypatch.setattr(dl, "_download_to", falso)
-    monkeypatch.setattr(dl, "LIBRARY", biblioteca)
     return dl
 
 
@@ -143,12 +142,14 @@ def _descarga_local(monkeypatch, biblioteca, origen):
     ("m4a", ".m4a"),
 ])
 def test_download_track_respeta_el_formato(fmt, ext_final, wav_sintetico,
-                                           monkeypatch, biblioteca):
-    dl = _descarga_local(monkeypatch, biblioteca, wav_sintetico)
+                                           monkeypatch, biblioteca,
+                                           storage_temporal):
+    storage_temporal(biblioteca)
+    dl = _descarga_local(monkeypatch, wav_sintetico)
     t = Track(source="archive", source_id="1", title="Tono", artist="Prueba",
               audio_url="https://example.org/tono.wav")
     res = asyncio.run(dl.download_track(t, fmt))
-    final = Path(res["path"])
+    final = biblioteca / res["key"]
     assert final.suffix == ext_final
     assert final.exists()
     if fmt == "original":
@@ -202,17 +203,17 @@ def test_safe_name_recorta_lo_largo():
 
 
 # --------------------------------------------------------------- library_scan
-def test_library_scan_mide_duracion_con_mutagen(mp3_desde_wav, monkeypatch, biblioteca):
+def test_library_scan_mide_duracion_con_mutagen(mp3_desde_wav, biblioteca,
+                                                storage_temporal):
     """`/api/library` muestra duracion real leida con mutagen, no un invento."""
-    import backend.app.downloader as dl
-
+    storage_temporal(biblioteca)
     destino = biblioteca / "Linkin Park"
     destino.mkdir(parents=True, exist_ok=True)
     copia = destino / "Numb.mp3"
     copia.write_bytes(mp3_desde_wav.read_bytes())
-    monkeypatch.setattr(dl, "LIBRARY", biblioteca)
 
-    archivos = dl.library_scan()
+    archivos = library_scan()
     entry = next(f for f in archivos if f["filename"] == "Numb.mp3")
     assert entry["duration_s"] == pytest.approx(3.0, abs=0.2)
     assert entry["bytes"] > 0
+    assert entry["key"] == "Linkin Park/Numb.mp3"

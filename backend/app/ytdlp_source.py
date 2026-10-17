@@ -19,6 +19,8 @@ import glob
 import logging
 import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 import uuid
@@ -112,17 +114,22 @@ def identity_query(query: str | None, fallback: str) -> str:
     return query
 
 
-def _lock_de_ruta(destino: str) -> asyncio.Lock:
-    """Lock de una ruta de salida. Se crea una vez y se reusa.
+def _lock_de_ruta(clave: str) -> asyncio.Lock:
+    """Lock de una clave de salida (la biblioteca, sin extension). Se crea una
+    vez y se reusa.
+
+    Es la identidad del archivo final: dos descargas que resuelven a la MISMA
+    pista comparten esta clave y se serializan aunque cada una trabaje en su
+    propia subcarpeta temporal.
 
     El dict crece sin limite a proposito: son un par de entradas por pista
     distinta descargada en toda la sesion, y un lock liberated no molesta.
     """
     with _LOCKS_LOCK:
-        lock = _LOCKS_POR_RUTA.get(destino)
+        lock = _LOCKS_POR_RUTA.get(clave)
         if lock is None:
             lock = asyncio.Lock()
-            _LOCKS_POR_RUTA[destino] = lock
+            _LOCKS_POR_RUTA[clave] = lock
         return lock
 
 
@@ -399,8 +406,9 @@ class YtDlpSource(Source):
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
-        from .downloader import LIBRARY, TEMP_DIR, _write_tags
+        from .downloader import TEMP_DIR, _write_tags
         from .identify import verdict
+        from .storage import get_storage
         url = track.extra.get("webpage_url")
         if not url:
             raise ValueError("ytdlp: falta webpage_url")
@@ -408,20 +416,20 @@ class YtDlpSource(Source):
         if job_id is None:
             job_id = new_job(track.title)
 
-        folder = LIBRARY / safe_name(track.artist or "varios", 60)
-        folder.mkdir(parents=True, exist_ok=True)
+        folder = safe_name(track.artist or "varios", 60)
         stem = safe_name(f"{track.artist} - {track.title}", 100)
-        if TEMP_DIR is not None:
-            # yt-dlp IGNORA `paths` cuando el outtmpl es absoluto, asi que con
-            # TEMP_DIR el outtmpl va RELATIVO y el destino final lo fija
-            # `paths.home`; `paths.temp` manda los temporales (.part/.webm) a la
-            # particion privada. El archivo terminado sigue cayendo en `folder`,
-            # asi que el glob/pick_output de mas abajo no cambia.
-            outtmpl = f"{stem}.%(ext)s"
-            paths: dict | None = {"home": str(folder), "temp": str(TEMP_DIR)}
-        else:
-            outtmpl = str(folder / f"{stem}.%(ext)s")
-            paths = None
+        # Clave de salida SIN extension: es a la vez la identidad del archivo
+        # final en la biblioteca y la clave del lock de una descarga por salida.
+        key_base = f"{folder}/{stem}"
+
+        # yt-dlp IGNORA `paths` cuando el outtmpl es absoluto, asi que el outtmpl
+        # va RELATIVO y `paths.home`/`paths.temp` apuntan a la MISMA subcarpeta
+        # fresca de TEMP_DIR: asi los .part y los intermedios .webm nunca caen en
+        # la carpeta publica de la biblioteca. El archivo terminado entra con
+        # `put_file`, no con yt-dlp.
+        work = Path(tempfile.mkdtemp(dir=TEMP_DIR))
+        outtmpl = f"{stem}.%(ext)s"
+        paths = {"home": str(work), "temp": str(work)}
 
         state = {"total": None, "downloaded": 0, "ultimo_intento": False}
 
@@ -450,13 +458,12 @@ class YtDlpSource(Source):
             "quiet": True, "no_warnings": True, "noprogress": True,
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
+            "paths": paths,
             "postprocessors": postprocessor_opts(fmt),
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
         }
-        if paths is not None:
-            opts["paths"] = paths
         loop = asyncio.get_running_loop()
 
         def _run():
@@ -467,7 +474,7 @@ class YtDlpSource(Source):
                 # aqui: devuelve el nombre con la extension del stream ORIGINAL
                 # (webm/opus), no la del postprocess (mp3), asi que no matchea.
                 # El outtmpl ya se construyo con `stem`, asi que el archivo
-                # final es folder/<stem>.<ext>. Se busca por glob para tolerar
+                # final es work/<stem>.<ext>. Se busca por glob para tolerar
                 # cualquier sanitize extra que haya hecho yt-dlp.
                 fp = info.get("filepath")
                 if not fp or not Path(fp).exists():
@@ -475,92 +482,103 @@ class YtDlpSource(Source):
                     # "original", acepta la extension natural del audio
                     # (.opus, .m4a, .ogg...).
                     cand = pick_output(
-                        list(folder.glob(glob.escape(stem) + ".*")), fmt)
+                        list(work.glob(glob.escape(stem) + ".*")), fmt)
                     if cand is not None:
                         fp = str(cand)
                 return info, fp
 
-        # Una descarga por ruta de salida (ver `_lock_de_ruta`). Si otro job ya
-        # esta bajando ESTE archivo, este espera en vez de chocar: se publica
+        # Una descarga por clave de salida (ver `_lock_de_ruta`). Si otro job ya
+        # esta bajando ESTA pista, este espera en vez de chocar: se publica
         # "pending" para que la UI no diga "Descargando, 0%" mientras espera.
-        lock = _lock_de_ruta(str(folder / stem))
+        lock = _lock_de_ruta(key_base)
         if lock.locked():
             with _JOBS_LOCK:
                 JOBS[job_id]["status"] = "pending"
 
-        # El lock cubre tambien `_write_tags`: si se soltara antes, el otro job
-        # podria empezar a reescribir el mp3 mientras mutagen lo tiene abierto.
-        async with lock:
-            with _JOBS_LOCK:
-                JOBS[job_id]["status"] = "downloading"
+        try:
+            # El lock cubre tambien `_write_tags` y `put_file`: si se soltara
+            # antes, el otro job podria empezar a reescribir el archivo mientras
+            # mutagen lo tiene abierto.
+            async with lock:
+                with _JOBS_LOCK:
+                    JOBS[job_id]["status"] = "downloading"
 
-            # Reintentos: ante un error transitorio se rehace TODO (extract +
-            # download) para traer URLs de formato nuevas. El job sigue
-            # "downloading" entre intentos y recien pasa a error tras el ultimo.
-            delays = tuple(RETRY_DELAYS_S)
-            intentos = len(delays) + 1
-            for intento in range(1, intentos + 1):
-                state["ultimo_intento"] = intento == intentos
-                try:
-                    info, fp = await loop.run_in_executor(None, _run)
-                    break
-                except Exception as e:
-                    if intento < intentos and is_transient_error(e):
-                        espera = delays[intento - 1]
-                        log.warning(
-                            "ytdlp download: error transitorio (intento %d/%d), "
-                            "reintento en %.1fs: %s", intento, intentos, espera, e)
-                        state["total"] = None
-                        with _JOBS_LOCK:
-                            JOBS[job_id].update(
-                                status="downloading", progress=0.0, speed=None,
-                                eta=None, downloaded_bytes=0)
-                        await asyncio.sleep(espera)
-                        continue
-                    _finish(job_id, status="error", error=str(e))
-                    log.warning("ytdlp download fallo: %s", e)
-                    raise RuntimeError(f"yt-dlp: {e}")
+                # Reintentos: ante un error transitorio se rehace TODO (extract +
+                # download) para traer URLs de formato nuevas. El job sigue
+                # "downloading" entre intentos y recien pasa a error tras el ultimo.
+                delays = tuple(RETRY_DELAYS_S)
+                intentos = len(delays) + 1
+                for intento in range(1, intentos + 1):
+                    state["ultimo_intento"] = intento == intentos
+                    try:
+                        info, fp = await loop.run_in_executor(None, _run)
+                        break
+                    except Exception as e:
+                        if intento < intentos and is_transient_error(e):
+                            espera = delays[intento - 1]
+                            log.warning(
+                                "ytdlp download: error transitorio (intento %d/%d), "
+                                "reintento en %.1fs: %s", intento, intentos, espera, e)
+                            state["total"] = None
+                            with _JOBS_LOCK:
+                                JOBS[job_id].update(
+                                    status="downloading", progress=0.0, speed=None,
+                                    eta=None, downloaded_bytes=0)
+                            await asyncio.sleep(espera)
+                            continue
+                        _finish(job_id, status="error", error=str(e))
+                        log.warning("ytdlp download fallo: %s", e)
+                        raise RuntimeError(f"yt-dlp: {e}")
 
-            path = Path(fp)
-            if not path.exists():
-                _finish(job_id, status="error")
-                raise RuntimeError("yt-dlp: el archivo no quedó en disco")
+                path = Path(fp)
+                if not path.exists():
+                    _finish(job_id, status="error")
+                    raise RuntimeError("yt-dlp: el archivo no quedó en disco")
 
-            # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
-            # "matched" la ficha canonica es la de iTunes (title/artist/album), que
-            # es mas limpia que el titulo del video ("Numb (Official Music Video)
-            # [4K UPGRADE] - Linkin Park"). Se usa la del video solo como fallback.
-            info_title = info.get("title") or ""
-            use_itunes = bool(track.extra.get("from_itunes"))
-            tag_track = Track(
-                source=self.name, source_id=track.source_id,
-                title=(track.title if use_itunes and track.title else info_title),
-                artist=(track.artist if use_itunes and track.artist
-                        else (info.get("uploader") or track.artist)),
-                album=track.album,
-                year=track.year,
-                duration_s=int(info.get("duration") or 0) or track.duration_s,
-            )
-            _write_tags(path, tag_track)
-            size = path.stat().st_size
+                # tags con mutagen (el postprocessor de ffmpeg no los pone). En modo
+                # "matched" la ficha canonica es la de iTunes (title/artist/album), que
+                # es mas limpia que el titulo del video ("Numb (Official Music Video)
+                # [4K UPGRADE] - Linkin Park"). Se usa la del video solo como fallback.
+                info_title = info.get("title") or ""
+                use_itunes = bool(track.extra.get("from_itunes"))
+                tag_track = Track(
+                    source=self.name, source_id=track.source_id,
+                    title=(track.title if use_itunes and track.title else info_title),
+                    artist=(track.artist if use_itunes and track.artist
+                            else (info.get("uploader") or track.artist)),
+                    album=track.album,
+                    year=track.year,
+                    duration_s=int(info.get("duration") or 0) or track.duration_s,
+                )
+                _write_tags(path, tag_track)
+                key = f"{key_base}{path.suffix}"
+                # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
+                # su manera, y la UI tiene que mostrar lo que quedo guardado.
+                filename = key.rsplit("/", 1)[-1]
+                stored = await asyncio.to_thread(get_storage().put_file, key, path)
+                size = stored.size
 
-        # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
-        # calcula aca y no antes de la descarga porque hasta ahora no se
-        # publicaba en ningun lado del camino con job_id: la UI recibia
-        # status=done sin `match` y no podia avisar nada. `query` es lo que el
-        # usuario escribio; el titulo real del video es la otra mitad.
-        estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
-        _finish(job_id, status="done", progress=100.0, path=str(path),
-                filename=path.name, size_mb=round(size / 1_048_576, 2),
-                format=path.suffix.lstrip(".").upper(),
-                match=estado, match_label=etiqueta, real_title=info_title or None)
-        return {
-            "path": str(path), "filename": path.name, "folder": str(folder),
-            "bytes": size, "size_mb": round(size / 1_048_576, 2),
-            "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
-            "match": estado, "match_label": etiqueta,
-            "real_title": info_title or None,
-        }
+            # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
+            # calcula aca y no antes de la descarga porque hasta ahora no se
+            # publicaba en ningun lado del camino con job_id: la UI recibia
+            # status=done sin `match` y no podia avisar nada. `query` es lo que el
+            # usuario escribio; el titulo real del video es la otra mitad.
+            estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
+            _finish(job_id, status="done", progress=100.0, key=key,
+                    filename=filename, size_mb=round(size / 1_048_576, 2),
+                    format=path.suffix.lstrip(".").upper(),
+                    match=estado, match_label=etiqueta, real_title=info_title or None)
+            return {
+                "key": key, "filename": filename, "folder": folder,
+                "bytes": size, "size_mb": round(size / 1_048_576, 2),
+                "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
+                "match": estado, "match_label": etiqueta,
+                "real_title": info_title or None,
+            }
+        finally:
+            # La subcarpeta de trabajo se borra entera pase lo que pase: el
+            # archivo terminado ya salio por `put_file` y no quedan temporales.
+            shutil.rmtree(work, ignore_errors=True)
 
 
 def get_job(job_id: str) -> dict | None:

@@ -1,10 +1,10 @@
-"""SPITIFO_TEMP_DIR: staging fuera de la biblioteca publica.
+"""Temporales de descarga: cada job trabaja en su PROPIA subcarpeta.
 
-En Android la biblioteca vive en Music/Spitifo (FUSE), que rechaza los
-temporales de yt-dlp (.part/.webm, MIME no-audio) y donde os.replace falla con
-EXDEV al cruzar de /data a /storage. Con SPITIFO_TEMP_DIR la descarga, la
-conversion y los tags pasan en una carpeta privada, y recien el archivo
-terminado se mueve a la biblioteca con shutil.move.
+Antes todo el staging dependia de una rama opcional `TEMP_DIR is None`. Ahora no
+hay rama: `TEMP_DIR` = `SPITIFO_TEMP_DIR` o `<tmp del sistema>/spitifo`, cada
+descarga arma su trabajo (bajada, conversion y tags) en una subcarpeta fresca
+(`tempfile.mkdtemp`) y la borra entera en el `finally`. La biblioteca solo recibe
+el archivo terminado, a traves del puerto `Storage`.
 
 Todo OFFLINE:
 - `download_track` se prueba con `_download_to` monkeypatcheado.
@@ -41,76 +41,59 @@ def _track(audio_url: str, title: str = "Tono") -> Track:
                  audio_url=audio_url)
 
 
-def test_con_temp_dir_publica_el_final_y_vacia_el_temp(tmp_path, monkeypatch):
-    """fmt=original (.ogg): el final queda en LIBRARY/<artista>/ y TEMP vacio."""
+def test_publica_el_final_y_vacia_el_temp(tmp_path, monkeypatch, storage_temporal):
+    """fmt=original (.ogg): el final queda en la biblioteca y el temp queda vacio."""
     contenido = b"OggS" + b"\x00" * 128
     dl = _descarga_falsa(monkeypatch, contenido)
     lib = tmp_path / "lib"
     temp = tmp_path / "temp"
     temp.mkdir()
-    monkeypatch.setattr(dl, "LIBRARY", lib)
     monkeypatch.setattr(dl, "TEMP_DIR", temp)
+    storage_temporal(lib)
 
     res = asyncio.run(dl.download_track(_track("https://example.org/tono.ogg"),
                                         "original"))
 
-    final = Path(res["path"])
-    assert final == lib / "Prueba" / "Prueba - Tono.ogg"
+    assert res["key"] == "Prueba/Prueba - Tono.ogg"
+    assert res["folder"] == "Prueba"
+    assert res["filename"] == "Prueba - Tono.ogg"
+    final = lib / res["key"]
     assert final.exists()
     assert final.read_bytes() == contenido
-    # el staging quedo limpio y no hay temporales ocultos en la carpeta publica
+    # la subcarpeta de trabajo se borro entera y en la biblioteca solo quedo el final
     assert list(temp.iterdir()) == []
     assert [p.name for p in (lib / "Prueba").iterdir()] == [final.name]
 
 
-def test_sin_temp_dir_usa_la_carpeta_del_artista(tmp_path, monkeypatch):
-    """TEMP_DIR=None: comportamiento de siempre (temporal dentro del artista)."""
-    contenido = b"OggS" + b"\x00" * 128
-    dl = _descarga_falsa(monkeypatch, contenido)
-    lib = tmp_path / "lib"
-    monkeypatch.setattr(dl, "LIBRARY", lib)
-    monkeypatch.setattr(dl, "TEMP_DIR", None)
-
-    res = asyncio.run(dl.download_track(_track("https://example.org/tono.ogg"),
-                                        "original"))
-
-    final = Path(res["path"])
-    assert final == lib / "Prueba" / "Prueba - Tono.ogg"
-    assert final.exists()
-    assert final.read_bytes() == contenido
-    # no queda ni el temporal ni nada mas
-    assert [p.name for p in (lib / "Prueba").iterdir()] == [final.name]
-
-
-def test_con_temp_dir_convierte_en_el_temp_y_despues_mueve(tmp_path, monkeypatch,
-                                                           wav_sintetico):
-    """Con conversion: el .wav y el .mp3 se arman en TEMP y recien ahi se mueven."""
+def test_convierte_en_el_temp_y_despues_publica(tmp_path, monkeypatch,
+                                                wav_sintetico, storage_temporal):
+    """Con conversion: el .wav y el .mp3 se arman en el temp y recien ahi se publican."""
     dl = _descarga_falsa(monkeypatch, wav_sintetico.read_bytes())
     lib = tmp_path / "lib"
     temp = tmp_path / "temp"
     temp.mkdir()
-    monkeypatch.setattr(dl, "LIBRARY", lib)
     monkeypatch.setattr(dl, "TEMP_DIR", temp)
+    storage_temporal(lib)
 
     res = asyncio.run(dl.download_track(_track("https://example.org/tono.wav"),
                                         "mp3"))
 
-    final = Path(res["path"])
-    assert final == lib / "Prueba" / "Prueba - Tono.mp3"
+    assert res["key"] == "Prueba/Prueba - Tono.mp3"
+    final = lib / res["key"]
     assert final.exists() and final.stat().st_size > 0
     assert list(temp.iterdir()) == []
     assert [p.name for p in (lib / "Prueba").iterdir()] == [final.name]
 
 
-def test_con_temp_dir_sobreescribe_el_final(tmp_path, monkeypatch):
-    """shutil.move sobreescribe el final existente (semantica de os.replace)."""
+def test_sobreescribe_el_final(tmp_path, monkeypatch, storage_temporal):
+    """Publicar de nuevo la misma clave sobreescribe el final (no duplica)."""
     import backend.app.downloader as dl
 
     lib = tmp_path / "lib"
     temp = tmp_path / "temp"
     temp.mkdir()
-    monkeypatch.setattr(dl, "LIBRARY", lib)
     monkeypatch.setattr(dl, "TEMP_DIR", temp)
+    storage_temporal(lib)
     payload = bytearray(b"OggS" + b"\x00" * 8)
 
     async def falso(url, dest, progress=None):
@@ -124,8 +107,8 @@ def test_con_temp_dir_sobreescribe_el_final(tmp_path, monkeypatch):
     segunda = asyncio.run(dl.download_track(
         _track("https://example.org/tono.ogg"), "original"))
 
-    assert primera["path"] == segunda["path"]
-    final = Path(segunda["path"])
+    assert primera["key"] == segunda["key"]
+    final = lib / segunda["key"]
     assert final.read_bytes() == b"OggS" + b"\x01" * 8
     assert [p.name for p in (lib / "Prueba").iterdir()] == [final.name]
 
@@ -134,8 +117,8 @@ def test_con_temp_dir_sobreescribe_el_final(tmp_path, monkeypatch):
 class YtDlpOptsFalso:
     """Doble de `yt_dlp.YoutubeDL` que registra opts y crea <home>/<stem>.mp3.
 
-    Con TEMP_DIR el outtmpl es RELATIVO, asi que el destino se calcula
-    combinando `paths.home` (que es lo que hace yt-dlp de verdad).
+    El outtmpl es RELATIVO y el destino lo fija `paths.home` (que ahora es la
+    subcarpeta de trabajo del job, no la biblioteca).
     """
 
     opts_vistos: list[dict] = []
@@ -184,38 +167,29 @@ def _bajar(titulo: str) -> dict:
     return asyncio.run(YtDlpSource().download(track, "mp3", job_id=job_id))
 
 
-def test_sin_temp_dir_outtmpl_absoluto_y_sin_paths(yt_dlp_opts, tmp_path,
-                                                   monkeypatch):
-    import backend.app.downloader as dl
-
-    lib = tmp_path / "lib"
-    monkeypatch.setattr(dl, "LIBRARY", lib)
-    monkeypatch.setattr(dl, "TEMP_DIR", None)
-
-    res = _bajar("SinTemp")
-
-    opts = yt_dlp_opts.opts_vistos[0]
-    assert "paths" not in opts
-    assert Path(opts["outtmpl"]).is_absolute()
-    assert Path(res["path"]).parent == lib / "Artista"
-
-
-def test_con_temp_dir_usa_paths_y_outtmpl_relativo(yt_dlp_opts, tmp_path,
-                                                   monkeypatch):
+def test_outtmpl_relativo_y_paths_a_la_subcarpeta_de_trabajo(yt_dlp_opts, tmp_path,
+                                                             monkeypatch,
+                                                             storage_temporal):
     import backend.app.downloader as dl
 
     lib = tmp_path / "lib"
     temp = tmp_path / "temp"
     temp.mkdir()
-    monkeypatch.setattr(dl, "LIBRARY", lib)
     monkeypatch.setattr(dl, "TEMP_DIR", temp)
+    storage_temporal(lib)
 
     res = _bajar("ConTemp")
 
     opts = yt_dlp_opts.opts_vistos[0]
-    assert opts["paths"] == {"home": str(lib / "Artista"), "temp": str(temp)}
     # relativo a proposito: yt-dlp ignora `paths` con un outtmpl absoluto
     assert not Path(opts["outtmpl"]).is_absolute()
     assert "%(ext)s" in opts["outtmpl"]
-    # el archivo final sigue cayendo en la carpeta del artista
-    assert Path(res["path"]).parent == lib / "Artista"
+    # home y temp apuntan a la MISMA subcarpeta fresca dentro del temp
+    assert opts["paths"]["home"] == opts["paths"]["temp"]
+    job_dir = Path(opts["paths"]["home"])
+    assert job_dir.parent == temp
+    # el archivo terminado quedo en la biblioteca, no en la subcarpeta
+    assert res["key"] == "Artista/Artista - ConTemp.mp3"
+    assert res["folder"] == "Artista"
+    assert (lib / res["key"]).exists()
+    assert not job_dir.exists(), "la subcarpeta de trabajo se borra al terminar"
