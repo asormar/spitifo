@@ -23,6 +23,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from . import activity
 from .config import AUDIO_EXTS
 from .runtime import configure_runtime, ytdlp_version
 
@@ -516,8 +517,9 @@ async def download(request: Request):
 
         if wait:
             try:
-                result = await ysrc.download(track, req.fmt, job_id=job_id,
-                                             query=query)
+                with activity.busy():
+                    result = await ysrc.download(track, req.fmt, job_id=job_id,
+                                                 query=query)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except Exception as e:
@@ -532,7 +534,14 @@ async def download(request: Request):
                                     query=query)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
+            finally:
+                activity.end()
 
+        # begin() ANTES de crear la tarea: asi no hay ventana en la que el job
+        # ya exista y el contador siga en 0 (el shell podria apagar el servicio
+        # entre el return y el arranque de la tarea). El end() va en el finally
+        # de _bg, pase lo que pase.
+        activity.begin()
         task = asyncio.create_task(_bg())
         BG_TASKS.add(task)
         task.add_done_callback(BG_TASKS.discard)
@@ -541,25 +550,26 @@ async def download(request: Request):
 
     # si la fuente necesita resolucion, hacerlo aqui (con la query para
     # poder leer los tags y decir si es lo que el usuario buscaba)
-    if not track.audio_url and track.extra.get("needs_resolve"):
+    with activity.busy():
+        if not track.audio_url and track.extra.get("needs_resolve"):
+            try:
+                track = await src.resolve(track, query=query)
+            except LookupError as e:
+                raise HTTPException(404, str(e))
+            except Exception as e:
+                log.exception("resolve previo a descarga fallo")
+                raise HTTPException(502, f"no se pudo resolver: {e}")
+
+        if not track.audio_url:
+            raise HTTPException(422, "esta pista no es descargable (solo preview)")
+
         try:
-            track = await src.resolve(track, query=query)
-        except LookupError as e:
-            raise HTTPException(404, str(e))
+            result = await download_track(track, req.fmt)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
         except Exception as e:
-            log.exception("resolve previo a descarga fallo")
-            raise HTTPException(502, f"no se pudo resolver: {e}")
-
-    if not track.audio_url:
-        raise HTTPException(422, "esta pista no es descargable (solo preview)")
-
-    try:
-        result = await download_track(track, req.fmt)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-    except Exception as e:
-        log.exception("descarga fallo")
-        raise HTTPException(502, f"error descargando: {e}")
+            log.exception("descarga fallo")
+            raise HTTPException(502, f"error descargando: {e}")
 
     # propagar la identidad verificada para que la UI pueda avisar
     return JSONResponse({

@@ -399,7 +399,7 @@ class YtDlpSource(Source):
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
-        from .downloader import LIBRARY, _write_tags
+        from .downloader import LIBRARY, TEMP_DIR, _write_tags
         from .identify import verdict
         url = track.extra.get("webpage_url")
         if not url:
@@ -411,7 +411,17 @@ class YtDlpSource(Source):
         folder = LIBRARY / safe_name(track.artist or "varios", 60)
         folder.mkdir(parents=True, exist_ok=True)
         stem = safe_name(f"{track.artist} - {track.title}", 100)
-        outtmpl = str(folder / f"{stem}.%(ext)s")
+        if TEMP_DIR is not None:
+            # yt-dlp IGNORA `paths` cuando el outtmpl es absoluto, asi que con
+            # TEMP_DIR el outtmpl va RELATIVO y el destino final lo fija
+            # `paths.home`; `paths.temp` manda los temporales (.part/.webm) a la
+            # particion privada. El archivo terminado sigue cayendo en `folder`,
+            # asi que el glob/pick_output de mas abajo no cambia.
+            outtmpl = f"{stem}.%(ext)s"
+            paths: dict | None = {"home": str(folder), "temp": str(TEMP_DIR)}
+        else:
+            outtmpl = str(folder / f"{stem}.%(ext)s")
+            paths = None
 
         state = {"total": None, "downloaded": 0, "ultimo_intento": False}
 
@@ -445,6 +455,8 @@ class YtDlpSource(Source):
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
         }
+        if paths is not None:
+            opts["paths"] = paths
         loop = asyncio.get_running_loop()
 
         def _run():

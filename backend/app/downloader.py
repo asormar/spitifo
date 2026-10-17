@@ -19,6 +19,19 @@ log = logging.getLogger("spitifo.download")
 LIBRARY = Path(os.getenv("SPITIFO_LIBRARY", Path(__file__).resolve().parents[2] / "library"))
 LIBRARY.mkdir(parents=True, exist_ok=True)
 
+# Carpeta OPCIONAL para los archivos temporales de descarga. En Android la
+# biblioteca vive en la carpeta publica Music/Spitifo (FUSE), que rechaza los
+# temporales de yt-dlp (.part/.webm): su MIME no es audio. Ademas os.replace
+# falla con EXDEV cuando el temporal esta en /data y el destino en /storage.
+# Con SPITIFO_TEMP_DIR los temporales viven en la particion privada y el
+# archivo final se publica con shutil.move, que si cruza filesystems. Sin la
+# variable, todo sigue exactamente como antes (temp file dentro del artista).
+# Ver docs/adr/0001-android-embedded-python.md.
+_temporal = os.getenv("SPITIFO_TEMP_DIR", "")
+TEMP_DIR: Path | None = Path(_temporal) if _temporal else None
+if TEMP_DIR is not None:
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
 # Codec que corresponde a cada formato pedido. Antes se usaba libmp3lame para
 # todo, asi que pedir m4a daba un .m4a con audio MP3 dentro.
 #
@@ -154,7 +167,12 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     if len(src_ext) > 5 or not src_ext.startswith("."):
         src_ext = ".mp3"
     stem = safe_name(f"{base_artist} - {base_title}", 100)
-    tmp = folder / f".{uuid.uuid4().hex[:8]}{src_ext}"
+    # Donde se arma el archivo antes de publicarlo en la biblioteca. Sin
+    # SPITIFO_TEMP_DIR es la propia carpeta del artista (comportamiento de
+    # siempre); con la variable, la carpeta temporal de la app.
+    work = TEMP_DIR if TEMP_DIR is not None else folder
+    tmp = work / f".{uuid.uuid4().hex[:8]}{src_ext}"
+    tmp_conv: Path | None = None
     final: Path
 
     try:
@@ -170,14 +188,30 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
             target_ext = src_ext
             needs_conv = False
 
-        if needs_conv:
-            final = folder / f"{stem}{target_ext}"
-            await asyncio.to_thread(_ffmpeg_convert, tmp, final)
-        else:
-            final = folder / f"{stem}{target_ext}"
-            await asyncio.to_thread(lambda: os.replace(tmp, final))
+        final = folder / f"{stem}{target_ext}"
 
-        _write_tags(final, t)
+        if TEMP_DIR is not None:
+            # Todo el trabajo (descarga, conversion y tags) pasa en TEMP_DIR:
+            # la carpeta publica solo recibe el archivo ya terminado, con un
+            # move que atraviesa filesystems.
+            if needs_conv:
+                tmp_conv = work / f".{uuid.uuid4().hex[:8]}{target_ext}"
+                await asyncio.to_thread(_ffmpeg_convert, tmp, tmp_conv)
+                terminado = tmp_conv
+            else:
+                terminado = tmp
+            _write_tags(terminado, t)
+            await asyncio.to_thread(shutil.move, terminado, final)
+        else:
+            # Sin TEMP_DIR: mismo flujo de siempre, pero con shutil.move en vez
+            # de os.replace (sobreescribe el final igual y ademas cruza
+            # filesystems si hiciera falta).
+            if needs_conv:
+                await asyncio.to_thread(_ffmpeg_convert, tmp, final)
+            else:
+                await asyncio.to_thread(shutil.move, tmp, final)
+            _write_tags(final, t)
+
         size = final.stat().st_size
         return {
             "path": str(final), "filename": final.name,
@@ -186,11 +220,14 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
             "format": final.suffix.lstrip(".").upper(),
         }
     finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+        # Los temporales que hayan quedado (error, o el src de una conversion)
+        # se limpian siempre; `tmp` puede haber sido movido ya al final.
+        for p in (tmp, tmp_conv):
+            if p is not None and p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
 
 
 def library_scan() -> list[dict]:
