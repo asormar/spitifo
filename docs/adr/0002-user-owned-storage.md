@@ -264,6 +264,16 @@ not benchmarked. Consequences:
 - Registration steps and the commands to repeat the benchmark are in
   [docs/oauth-setup.md](../oauth-setup.md).
 
+**Section 4 does not hold for Drive: there is no conditional write.** Drive API
+v3 has no ETags (the v2 to v3 reference lists `Files.etag` as "n/a"), so
+`index.json` cannot be written with `If-Match`. Instead each device writes only
+its own index file, `index-<device id>.json`, in the `Spitifo` folder. A file
+with a single writer cannot conflict. Readers merge every `index-*.json` per key:
+the newest `updated_at` wins, and tombstones keep a deleted track from coming
+back. This works on any provider; the conditional-write loop stays for providers
+that support it. The device id is random, generated once and kept in the app's
+data folder.
+
 ## Security note for session 3
 
 On Android, any app on the phone can connect to `127.0.0.1:8000`. Android's
@@ -296,6 +306,7 @@ every claim. The key sources:
 - Google, OAuth for desktop apps: https://developers.google.com/identity/protocols/oauth2/native-app
 - Google Drive uploads: https://developers.google.com/drive/api/guides/manage-uploads
 - Google Drive downloads (range): https://developers.google.com/drive/api/guides/manage-downloads
+- Drive v2 to v3 reference (no `etag` on files): https://developers.google.com/workspace/drive/api/guides/v2-to-v3-reference
 - Android authorization: https://developer.android.com/identity/authorization
 - Android data security (localhost IPC): https://developer.android.com/topic/security/data
 - AndroidX Security deprecation: https://developer.android.com/jetpack/androidx/releases/security
