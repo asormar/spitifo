@@ -140,7 +140,19 @@ Planned scope:
   `youtubedl-android` artifact, and trim its payload to the libraries it loads.
 - Share target: Spitifo appears in YouTube's "Share" menu and receives the link.
 
-### 6. `Storage` port and `Local` adapter
+### 6. `Storage` port and `Local` adapter — done
+
+`backend/app/storage/` holds the port and `LocalStorage`; downloads finish in a
+temporary folder and enter the library through `put_file`. The API speaks keys
+(`Artist/Artist - Title.mp3`) instead of host paths, and `/api/audio` answers
+`Range` with `206`, which the player uses to seek. Contract tests run against
+every adapter. Details in the
+[ADR 0002 update](adr/0002-user-owned-storage.md#update-2026-10-17-session-6).
+
+- Verified in the browser (playback and seeking) and with the Android build;
+  not yet on the phone, which was not connected.
+
+Planned scope:
 
 - Refactor so all file access goes through the port, with no visible change.
 - Contract tests against the port that every future connector must pass.

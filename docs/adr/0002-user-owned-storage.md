@@ -197,6 +197,35 @@ Call sites that change in session 6: `downloader.download_track` and
 `put_file`), `/api/library`, `/api/audio` (parses `Range`, answers `206`) and
 the frontend's audio URL.
 
+### Update (2026-10-17, session 6)
+
+The port is implemented in `backend/app/storage/` with `LocalStorage` as the
+reference adapter. Differences from the sketch above:
+
+- `StoredFile` has an optional `duration`, because the library shows each
+  track's length. `list()` fills it; `stat()` may leave it `None`, since
+  `/api/audio` calls `stat()` on every seek and the local adapter would parse
+  the file with mutagen each time. Cloud adapters will take it from
+  `index.json`.
+- `describe()` returns a human label for where the library is (the local path
+  today), which the UI shows. `/api/health` and `/api/library` send it as
+  `library`.
+- `open_range`'s `end` is inclusive, like HTTP ranges.
+- `validate_key` also rejects characters Windows does not allow in file names
+  (`:*?"<>|`), the same set `safe_name` already strips, so every key can be a
+  real file in the reference adapter. `list()` skips files whose names are not
+  valid keys (possible on Linux or Android) instead of listing them and
+  answering 404 later.
+- Every download now works in its own temporary folder (`SPITIFO_TEMP_DIR`, or
+  the system temp folder) and reaches the library only through `put_file`.
+  yt-dlp writes there with `paths.home` and `paths.temp`.
+- `/api/audio?key=` answers a single `Range` itself (`206`, `416` when
+  unsatisfiable) and ignores malformed or multi-range headers with a full
+  `200`. The old `path` parameter is gone, and responses carry `key` instead of
+  absolute paths.
+- Contract tests in `tests/test_storage_contract.py` run against every adapter
+  listed in `ADAPTERS`.
+
 ## Security note for session 3
 
 On Android, any app on the phone can connect to `127.0.0.1:8000`. Android's
