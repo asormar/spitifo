@@ -173,8 +173,12 @@ and streaming through `/api/audio` are done and were checked against a real
 Drive on the PC: download, upload to `Spitifo/<Artist>/`, play from Drive.
 Enabled with `SPITIFO_STORAGE=google` after
 `python -m backend.app.cloud.connect google`.
-Next: prefetch of the next track, the Android token bridge, and the "Connect
-service" screen.
+The "Connect service" dialog (two cards plus the Drive quota bar) signs in
+from the UI with no environment variables: OAuth clients come from
+`backend/app/cloud/oauth_clients.json` (gitignored) and the choice persists in
+`storage.json`. Checked against a real account on the PC.
+Next: the Android token bridge (Kotlin pushes the `AuthorizationClient` token
+into `StaticTokenSource`), prefetch of the next track, and merging the branch.
 
 - Starts with a benchmark of Google Drive and OneDrive: time to first audio,
   stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
