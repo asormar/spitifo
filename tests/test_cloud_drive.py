@@ -248,3 +248,21 @@ def test_reemplazar_despinea_la_revision_vieja(tmp_path):
     _put(storage, tmp_path, key, b"v2-mas-largo")
     remote_id = storage._entry(key).remote_id
     assert cache._index[cache._key(remote_id, vieja)]["pinned"] is False
+
+
+def test_quota_suma_lo_de_spitifo_y_se_cachea(tmp_path):
+    fake = FakeDrive()
+    fake.extra_usage = 1000
+    now = [1000.0]
+    storage = _storage(fake, tmp_path, clock=lambda: now[0])
+    _put(storage, tmp_path, "A/x.mp3", b"0123456789")
+    _put(storage, tmp_path, "A/notas.txt", b"no es audio")
+
+    q = storage.quota()
+    assert q["limit"] == 15 * 1024 ** 3
+    assert q["app"] == 10  # solo audio vivo del indice
+    assert q["usage"] >= 1010
+
+    fake.reset_calls()
+    storage.quota()
+    assert fake.calls == [], "dentro del TTL no vuelve a preguntar"

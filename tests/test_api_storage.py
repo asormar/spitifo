@@ -154,6 +154,11 @@ def test_conectar_deja_google_activo(api):
     assert conectados == ["google"]
     assert body["active"] == "google"
     assert body["library"] == "Google Drive: Spitifo"
+    assert body["quota"]["limit"] == 15 * 1024 ** 3
+    # La cuota se pide a Drive una vez y queda en memoria (QUOTA_TTL): la
+    # pantalla puede refrescarse mientras espera sin golpear la red.
+    fake.reset_calls()
+    assert c.get("/api/storage").json()["quota"] == body["quota"]
     assert fake.calls == []
 
 

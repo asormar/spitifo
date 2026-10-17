@@ -114,6 +114,9 @@ class FakeDrive:
         self.fail_429 = 0
         self.retry_after: str | None = None
         self.quota = False
+        #: Lo que `about.get` informa: tope y uso ajeno a Spitifo.
+        self.quota_limit = 15 * 1024 ** 3
+        self.extra_usage = 0
         #: Si esta, maneja TODAS las requests (p. ej. levantar ConnectError).
         self.fail_with = None
         #: Cuantas subidas usaron cada camino.
@@ -214,6 +217,12 @@ class FakeDrive:
     def _route(self, request: httpx.Request) -> httpx.Response:
         path, method = request.url.path, request.method
         params = request.url.params
+        if path == "/drive/v3/about" and method == "GET":
+            # 15 GB de cuenta gratis; `usage` cuenta todo lo de la cuenta.
+            used = self.extra_usage + sum(len(f.get("data", b""))
+                                          for f in self.files.values())
+            return httpx.Response(200, json={"storageQuota": {
+                "limit": str(self.quota_limit), "usage": str(used)}})
         if path == "/drive/v3/files" and method == "GET":
             return self._list(request)
         if path == "/drive/v3/files" and method == "POST":

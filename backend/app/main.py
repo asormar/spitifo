@@ -691,10 +691,19 @@ def _storage_payload(flow) -> dict:
     # `SPITIFO_STORAGE` pisa el ajuste en get_storage: la UI tiene que mostrar
     # lo que de verdad se esta usando, no lo que dice storage.json.
     override = os.getenv("SPITIFO_STORAGE", "").strip()
+    storage = get_storage()
+    quota = None
+    if hasattr(storage, "quota"):
+        try:
+            quota = storage.quota()
+        except Exception as exc:
+            # Sin cuota la pantalla sigue sirviendo: solo no dibuja la barra.
+            log.warning("no se pudo leer la cuota: %s: %s", type(exc).__name__, exc)
     return {
         "active": override or active_storage(),
         "override": bool(override),
-        "library": get_storage().describe(),
+        "library": storage.describe(),
+        "quota": quota,
         "providers": [{
             "id": "google",
             "name": "Google Drive",

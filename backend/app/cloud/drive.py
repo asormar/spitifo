@@ -59,6 +59,9 @@ CHUNK = 64 * 1024
 
 #: Cuanto vale el indice en memoria antes de releerlo de Drive.
 INDEX_TTL = 30.0
+#: Cuanto vale la cuota en memoria: la pantalla de conexion la pide al abrirse
+#: y mientras espera el sign-in, no hace falta preguntarle a Drive cada vez.
+QUOTA_TTL = 60.0
 #: Status que se reintentan solos, con backoff.
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 #: Razones de un 403 que tambien son "rate limited" (ADR 0002, seccion 8).
@@ -272,6 +275,8 @@ class DriveStorage:
         # True si el indice PROPIO existe pero no se pudo leer: escribirlo asi
         # lo pisaria con una copia casi vacia y se perderia la biblioteca.
         self._own_unreadable = False
+        self._quota_cache: dict | None = None
+        self._quota_cache_at = float("-inf")
 
     # --------------------------------------------------------- HTTP con reintentos
     def _auth(self) -> dict[str, str]:
@@ -687,6 +692,30 @@ class DriveStorage:
 
     def describe(self) -> str:
         return f"Google Drive: {self.folder_name}"
+
+    def quota(self) -> dict:
+        """Espacio de la cuenta: `{limit, usage, app}` en bytes.
+
+        `limit` es None en cuentas sin tope. `usage` es todo lo de la cuenta
+        (Drive, Gmail y Fotos comparten los 15 GB); `app` es lo que ocupa la
+        biblioteca de Spitifo, sumado desde el indice sin otra llamada.
+        `about.get` funciona con el scope `drive.file`.
+        """
+        with self._lock:
+            if self._quota_cache is not None and (
+                    self._clock() - self._quota_cache_at) < QUOTA_TTL:
+                return dict(self._quota_cache)
+        resp = self._request("GET", "https://www.googleapis.com/drive/v3/about",
+                             params={"fields": "storageQuota"})
+        sq = resp.json().get("storageQuota") or {}
+        limit = sq.get("limit")
+        app = sum(f.size for f in self.list())
+        quota = {"limit": int(limit) if limit else None,
+                 "usage": int(sq.get("usage") or 0), "app": app}
+        with self._lock:
+            self._quota_cache = quota
+            self._quota_cache_at = self._clock()
+        return dict(quota)
 
 
 def drive_storage_from_env() -> DriveStorage:
