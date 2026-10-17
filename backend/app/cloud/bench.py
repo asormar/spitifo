@@ -389,10 +389,11 @@ def measure_full(client: httpx.Client, url: str, *,
                  follow_redirects: bool = False) -> FullTiming:
     """Baja todo el archivo y mide tiempo, throughput y la pausa mas larga.
 
-    La pausa mas larga entre partes consecutivas es el proxy de un stall.
+    La pausa mas larga entre partes consecutivas es el proxy de un stall. La
+    espera hasta el primer byte no cuenta: eso ya lo mide `measure_range`.
     """
     t0 = time.perf_counter()
-    previous = t0
+    previous: float | None = None
     max_gap = 0.0
     nbytes = 0
     status = 0
@@ -404,9 +405,8 @@ def measure_full(client: httpx.Client, url: str, *,
                 if not piece:
                     continue
                 now = time.perf_counter()
-                gap = now - previous
-                if gap > max_gap:
-                    max_gap = gap
+                if previous is not None and now - previous > max_gap:
+                    max_gap = now - previous
                 previous = now
                 nbytes += len(piece)
         total = time.perf_counter() - t0

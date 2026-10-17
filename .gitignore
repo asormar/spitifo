@@ -31,3 +31,6 @@ android/local.properties
 android/keystore.properties
 android/*.jks
 android/*.keystore
+
+# Provider benchmark output (python -m backend.app.cloud.bench --json)
+bench-*.json
