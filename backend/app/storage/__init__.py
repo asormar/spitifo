@@ -110,11 +110,23 @@ _storage: Storage | None = None
 
 
 def get_storage() -> Storage:
-    """Adapter activo. Solo el adapter local conoce rutas del disco."""
+    """Adapter activo: Drive si `SPITIFO_STORAGE=google`, si no el disco local.
+
+    El import del conector es perezoso: `storage` tiene que poder importarse
+    aunque el paquete de nube no este disponible.
+    """
     global _storage
     if _storage is None:
-        from .local import LocalStorage
-        _storage = LocalStorage(_library_root())
+        backend = os.getenv("SPITIFO_STORAGE", "").strip()
+        if backend == "google":
+            from ..cloud.drive import drive_storage_from_env
+            _storage = drive_storage_from_env()
+        elif not backend:
+            from .local import LocalStorage
+            _storage = LocalStorage(_library_root())
+        else:
+            raise ValueError(
+                f"SPITIFO_STORAGE desconocido: {backend!r} (usar 'google')")
     return _storage
 
 

@@ -32,21 +32,8 @@ from urllib.parse import quote
 
 import httpx
 
-from .oauth import (
-    InvalidGrant,
-    LoopbackReceiver,
-    OAuthError,
-    OAuthNotConfigured,
-    Provider,
-    TokenSet,
-    authorize_url,
-    exchange_code,
-    google_provider,
-    microsoft_provider,
-    new_pkce,
-    new_state,
-    refresh,
-)
+from .connect import provider_for, sign_in
+from .oauth import OAuthError, OAuthNotConfigured, Provider, TokenSet, refresh
 from .tokens import TokenStore, default_protector, default_token_dir
 
 # ------------------------------------------------------------------- constantes
@@ -64,9 +51,6 @@ DRIVE_FIELDS_FILE = "files(id,name,size)"
 ONEDRIVE_SUBFOLDER = "bench"
 #: Graph exige multiplos de 320 KiB; 10x es comodo y pocas requests.
 ONEDRIVE_CHUNK = 10 * 327680
-
-#: Margen del flujo de consentimiento en el loopback.
-SIGN_IN_TIMEOUT = 300.0
 
 #: Objetivo del ADR: p50 por debajo de 1 s.
 TARGET_P50_MS = 1000.0
@@ -449,57 +433,6 @@ class Credentials:
         return {"Authorization": f"Bearer {self.tokens.access_token}"}
 
 
-def provider_for(which: str) -> Provider:
-    """Proveedor del subcomando de la CLI."""
-    if which == "google":
-        return google_provider()
-    if which == "onedrive":
-        return microsoft_provider()
-    raise ValueError(f"proveedor desconocido: {which!r}")
-
-
-def sign_in(provider: Provider, store: TokenStore, *,
-            browser: Callable[[str], object] = webbrowser.open,
-            out: Callable[[str], object] = print) -> TokenSet | None:
-    """Reusa los tokens del disco o corre el flujo del loopback y los guarda.
-
-    Devuelve None si los tokens guardados estaban revocados: en ese caso los
-    borra y pide volver a correr. Imprime si reuso el sign-in (la prueba de PC de
-    que sobrevive a un reinicio).
-    """
-    name = f"bench-{provider.name}"
-    tokens = store.load(name)
-    if tokens is not None:
-        out(f"Sign-in: reused from disk ({name})")
-        if tokens.expired():
-            with httpx.Client(timeout=30.0) as client:
-                try:
-                    tokens = refresh(client, provider, tokens)
-                except InvalidGrant:
-                    store.delete(name)
-                    out("Sign-in: the stored tokens were revoked; "
-                        "run the benchmark again to sign in.")
-                    return None
-            store.save(name, tokens)
-            out("Sign-in: access token refreshed")
-        return tokens
-
-    out(f"Sign-in: no tokens on disk, opening the browser ({name})")
-    with LoopbackReceiver(provider.redirect_host) as receiver:
-        redirect_uri = receiver.redirect_uri or receiver.start()
-        verifier, challenge = new_pkce()
-        state = new_state()
-        url = authorize_url(provider, redirect_uri, state, challenge)
-        out(url)
-        browser(url)
-        code = receiver.wait(state, timeout=SIGN_IN_TIMEOUT)
-    with httpx.Client(timeout=30.0) as client:
-        tokens = exchange_code(client, provider, code, verifier, redirect_uri)
-    store.save(name, tokens)
-    out(f"Sign-in: new tokens saved ({name})")
-    return tokens
-
-
 # --------------------------------------------------------------------- informe
 def build_summary(samples: dict[str, list[dict]]) -> dict[str, dict]:
     """Resumen en ms por metrica, listo para imprimir y serializar."""
@@ -628,7 +561,8 @@ def run_provider(which: str, file_path: Path | str, runs: int, chunk: int,
 
     provider = provider_for(which)
     store = TokenStore(default_token_dir(), default_protector())
-    tokens = sign_in(provider, store, browser=browser, out=out)
+    tokens = sign_in(provider, store, f"bench-{provider.name}",
+                     browser=browser, out=out)
     if tokens is None:
         raise SystemExit(2)
     creds = Credentials(provider, store, f"bench-{provider.name}", tokens)

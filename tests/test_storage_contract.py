@@ -11,23 +11,56 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import httpx
 import pytest
 
 from backend.app.storage import InvalidKey, StoredFile, validate_key
 from backend.app.storage.local import LocalStorage
 
 #: Adapters que tiene que cumplir el contrato. Agregar uno es una linea.
-ADAPTERS = {
-    "local": lambda root: LocalStorage(root),
-}
+ADAPTERS = ("local", "drive")
+
+
+class _FakeTokens:
+    """Origen de tokens de prueba: siempre el mismo, sin red."""
+
+    def access_token(self) -> str:
+        return "test-token"
+
+    def invalidate(self) -> None:
+        pass
+
+
+def _drive_storage(tmp_path: Path):
+    """`DriveStorage` sobre el Drive falso, con cache en `tmp_path`."""
+    from fake_drive import FakeDrive
+    from backend.app.cloud.cache import AudioCache
+    from backend.app.cloud.drive import DriveStorage
+
+    client = httpx.Client(transport=httpx.MockTransport(FakeDrive()))
+    cache = AudioCache(tmp_path / "cache", budget_bytes=256 * 1024 * 1024)
+    return DriveStorage(_FakeTokens(), client, "contract", cache=cache,
+                        sleep=lambda _s: None)
 
 
 @pytest.fixture(params=sorted(ADAPTERS))
-def storage(request, tmp_path):
-    """Un adapter por parametro, con su raiz en `tmp_path / "root"`."""
+def adapter(request, tmp_path):
+    """(nombre, adapter) por parametro. La raiz local vive en `tmp_path/root`."""
     root = tmp_path / "root"
     root.mkdir()
-    return ADAPTERS[request.param](root)
+    if request.param == "local":
+        return request.param, LocalStorage(root)
+    return request.param, _drive_storage(tmp_path)
+
+
+@pytest.fixture
+def storage(adapter):
+    return adapter[1]
+
+
+@pytest.fixture
+def adapter_name(adapter):
+    return adapter[0]
 
 
 def _origen(tmp_path: Path, data: bytes) -> Path:
@@ -68,7 +101,7 @@ def test_validate_key_devuelve_la_clave_tal_cual():
 
 
 # --------------------------------------------------------------- put/stat/list
-def test_put_luego_stat_y_list(storage, tmp_path):
+def test_put_luego_stat_y_list(storage, adapter_name, tmp_path):
     data = b"0123456789"
     key = _poner(storage, tmp_path, "Artista/Artista - Tema.mp3", data)
 
@@ -77,7 +110,10 @@ def test_put_luego_stat_y_list(storage, tmp_path):
     assert f.key == key
     assert f.size == len(data)
     assert f.mtime > 0
-    assert f.etag is None  # el disco no tiene revision de proveedor
+    if adapter_name == "local":
+        assert f.etag is None  # el disco no tiene revision de proveedor
+    else:
+        assert f.etag  # la nube trae la revision (version) del proveedor
 
     listado = list(storage.list())
     assert [x.key for x in listado] == [key]

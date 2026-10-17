@@ -16,10 +16,14 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
-from .oauth import TokenSet
+import httpx
+
+from .oauth import InvalidGrant, Provider, TokenSet, refresh
 
 
 class Protector(Protocol):
@@ -123,16 +127,25 @@ def default_protector() -> Protector:
     return PlainProtector()
 
 
-def default_token_dir() -> Path:
-    """Directorio de tokens del usuario, segun el SO."""
+def default_data_dir() -> Path:
+    """Directorio de datos del usuario, segun el SO.
+
+    Es la raiz de todo lo que la app guarda fuera de la biblioteca: los tokens
+    y el `device_id` del conector de nube.
+    """
     override = os.getenv("SPITIFO_DATA_DIR")
     if override:
-        return Path(override) / "tokens"
+        return Path(override)
     if sys.platform == "win32":
         local = os.getenv("LOCALAPPDATA")
         if local:
-            return Path(local) / "Spitifo" / "tokens"
-    return Path.home() / ".local" / "share" / "spitifo" / "tokens"
+            return Path(local) / "Spitifo"
+    return Path.home() / ".local" / "share" / "spitifo"
+
+
+def default_token_dir() -> Path:
+    """Directorio de tokens del usuario, segun el SO."""
+    return default_data_dir() / "tokens"
 
 
 #: El nombre del proveedor termina en un nombre de archivo: tiene que ser seguro.
@@ -190,3 +203,110 @@ class TokenStore:
             self._path(provider_name).unlink()
         except FileNotFoundError:
             pass
+
+
+# --------------------------------------------------------------- token sources
+class ReconnectRequired(RuntimeError):
+    """El token no sirve y no se puede renovar solo: la UI ofrece reconectar.
+
+    Es el caso `401`/`invalid_grant` de la ADR 0002, seccion 8. El adapter de
+    nube lo deja subir tal cual: la capa de UI lo traduce a
+    "Reconnect <proveedor>".
+    """
+
+
+class TokenSource(Protocol):
+    """De donde sale el access token para cada request a la nube."""
+
+    def access_token(self) -> str: ...
+
+    def invalidate(self) -> None:
+        """El ultimo token dio 401: el proximo `access_token()` pide uno nuevo."""
+        ...
+
+
+class StoredTokenSource:
+    """Access token desde el `TokenStore`, renovado cuando vence.
+
+    Cachea el token en memoria para no descifrar el archivo en cada request, que
+    es lo que se pide en cada byte-range de audio. Es thread-safe porque
+    Starlette corre las llamadas de storage en threads.
+    """
+
+    def __init__(self, provider: Provider, store: TokenStore, name: str,
+                 client: httpx.Client,
+                 clock: Callable[[], float] | None = None) -> None:
+        self.provider = provider
+        self.store = store
+        self.name = name
+        self.client = client
+        self._clock = clock or time.time
+        self._lock = threading.Lock()
+        self._tokens: TokenSet | None = None
+        self._force = False
+
+    def _load(self) -> TokenSet:
+        if self._tokens is None:
+            self._tokens = self.store.load(self.name)
+        if self._tokens is None:
+            raise ReconnectRequired(
+                f"{self.provider.name}: no hay tokens guardados")
+        return self._tokens
+
+    def access_token(self) -> str:
+        with self._lock:
+            tokens = self._load()
+            if self._force or tokens.expired(self._clock()):
+                tokens = self._refresh(tokens)
+            return tokens.access_token
+
+    def _refresh(self, tokens: TokenSet) -> TokenSet:
+        try:
+            new = refresh(self.client, self.provider, tokens, now=self._clock())
+        except InvalidGrant:
+            # Revocado: los tokens guardados ya no sirven para nada.
+            self.store.delete(self.name)
+            self._tokens = None
+            self._force = False
+            raise ReconnectRequired(
+                f"{self.provider.name}: el token quedo revocado") from None
+        self.store.save(self.name, new)
+        self._tokens = new
+        self._force = False
+        return new
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._force = True
+
+
+class StaticTokenSource:
+    """Token que empuja el shell desde afuera, sin refresh propio.
+
+    En Android, Kotlin le pasa a Python solo el access token que le da su
+    Identity Services SDK (ADR 0002, secciones 2, 3 y 7): no hay refresh token.
+    El bridge va a llamar `set()` cada vez que su `AuthorizationClient` le da
+    un token nuevo; si expira sin que llegue otro, hay que reconectar.
+    """
+
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+        self._clock = clock or time.time
+        self._lock = threading.Lock()
+        self._token: str | None = None
+        self._expires_at = 0.0
+
+    def set(self, token: str, expires_at: float) -> None:
+        with self._lock:
+            self._token = token
+            self._expires_at = float(expires_at)
+
+    def access_token(self) -> str:
+        with self._lock:
+            if not self._token or self._clock() >= self._expires_at:
+                raise ReconnectRequired("no hay un access token valido")
+            return self._token
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._token = None
+            self._expires_at = 0.0

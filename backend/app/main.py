@@ -707,12 +707,15 @@ async def audio(request: Request):
             "Content-Range": f"bytes {start}-{end}/{size}",
             "Content-Length": str(end - start + 1),
         }
-        return StreamingResponse(storage.open_range(key, start, end),
-                                 status_code=206, media_type=ctype,
+        # open_range a un thread: en un adapter remoto abre la descarga (y
+        # falla con 503/502 si hace falta) antes de mandar los headers.
+        body = await asyncio.to_thread(storage.open_range, key, start, end)
+        return StreamingResponse(body, status_code=206, media_type=ctype,
                                  headers=headers)
 
+    body = await asyncio.to_thread(storage.open_range, key)
     return StreamingResponse(
-        storage.open_range(key), media_type=ctype,
+        body, media_type=ctype,
         headers={"Accept-Ranges": _UNIT, "Content-Length": str(size)})
 
 
@@ -720,6 +723,45 @@ async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
     """Mismo cuerpo de error que FastAPI: {"detail": ...} en todos los casos."""
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
                         headers=getattr(exc, "headers", None))
+
+
+async def _reconnect_required(request: Request, exc: Exception) -> JSONResponse:
+    """El token de la nube no sirve: la UI ofrece reconectar (ADR 0002, sec. 8).
+
+    503 y no 401: un 401 en esta API significa "falta el secreto de lanzamiento"
+    y la UI lo trata como sesion perdida.
+    """
+    return JSONResponse({"detail": str(exc), "code": "reconnect_required"},
+                        status_code=503)
+
+
+async def _quota_exceeded(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse({"detail": str(exc), "code": "quota_exceeded"},
+                        status_code=507)
+
+
+async def _storage_unreachable(request: Request, exc: Exception) -> JSONResponse:
+    """La nube no contesto o contesto mal: no es un bug del backend."""
+    log.warning("storage remoto: %s: %s", type(exc).__name__, exc)
+    return JSONResponse({"detail": "cloud storage unreachable",
+                         "code": "storage_unreachable"}, status_code=502)
+
+
+def _exception_handlers() -> dict:
+    """Errores del conector de nube, traducidos a respuestas que la UI entiende.
+
+    Importa las clases recien aca: el conector solo existe si se usa.
+    """
+    import httpx
+
+    from .cloud.drive import QuotaExceeded
+    from .cloud.tokens import ReconnectRequired
+    return {
+        HTTPException: _http_exception,
+        ReconnectRequired: _reconnect_required,
+        QuotaExceeded: _quota_exceeded,
+        httpx.HTTPError: _storage_unreachable,
+    }
 
 
 # ---------------------------------------------------------------- aplicacion
@@ -753,7 +795,7 @@ def create_app(token: str | None = None) -> Starlette:
         middleware.append(Middleware(TokenAuthMiddleware, token=token))
     return Starlette(
         routes=routes, lifespan=lifespan, middleware=middleware,
-        exception_handlers={HTTPException: _http_exception},
+        exception_handlers=_exception_handlers(),
     )
 
 
