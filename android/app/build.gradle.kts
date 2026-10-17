@@ -91,6 +91,10 @@ dependencies {
         isTransitive = false
     }
     nativeSupportSource("io.github.junkfood02.youtubedl-android:library:0.18.1@aar")
+    // Session 7 spike, debug builds only: Google sign-in on Android goes
+    // through the Identity Services AuthorizationClient (ADR 0002, section 3).
+    // See src/debug/kotlin/dev/spitifo/DriveProbeActivity.kt.
+    debugImplementation("com.google.android.gms:play-services-auth:21.2.0")
 }
 
 // Not jniLibs: AGP only packages native libs whose name ends in .so, and the

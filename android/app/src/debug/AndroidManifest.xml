@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: merged into the main manifest. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Session 7 spike: Google sign-in + Drive from the phone.
+             Exported so adb can start it:
+             adb shell am start -n dev.spitifo/.DriveProbeActivity -->
+        <activity
+            android:name=".DriveProbeActivity"
+            android:exported="true" />
+    </application>
+
+</manifest>
