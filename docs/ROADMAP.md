@@ -168,8 +168,13 @@ benchmark (`python -m backend.app.cloud.bench`). **Google Drive won**: it met
 every target on the PC and on the Pixel over Wi-Fi, 5G and 4G, and the Android
 sign-in survives a restart without UI. Numbers in the
 [ADR 0002 update](adr/0002-user-owned-storage.md#update-2026-10-17-session-7-google-drive-is-the-first-connector).
-Next: the Drive adapter, streaming through `/api/audio`, prefetch, and the
-"Connect service" screen.
+The Drive adapter (`backend/app/cloud/drive.py`, one index file per device)
+and streaming through `/api/audio` are done and were checked against a real
+Drive on the PC: download, upload to `Spitifo/<Artist>/`, play from Drive.
+Enabled with `SPITIFO_STORAGE=google` after
+`python -m backend.app.cloud.connect google`.
+Next: prefetch of the next track, the Android token bridge, and the "Connect
+service" screen.
 
 - Starts with a benchmark of Google Drive and OneDrive: time to first audio,
   stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
