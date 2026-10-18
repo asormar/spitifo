@@ -2025,6 +2025,12 @@ function StorageDialog({ open, onClose, onChanged }) {
   const google = info?.providers?.find((p) => p.id === "google");
   const active = info?.active;
   const locked = Boolean(info?.override);
+  /* En Android el sign-in lo hace el shell nativo, no el navegador: el backend
+     lo dice (`connect_via`) y el puente lo inyecta MainActivity. Si el puente
+     no esta, se cae al camino de siempre (link) en vez de quedarse esperando. */
+  const viaAndroid =
+    info?.connect_via === "android" &&
+    typeof window.SpitifoAndroid?.connectDrive === "function";
 
   const pickLocal = async () => {
     if (active === "local" || locked) return;
@@ -2036,7 +2042,11 @@ function StorageDialog({ open, onClose, onChanged }) {
 
   const pickDrive = async () => {
     if (!google?.configured || locked || pending) return;
-    if (google.connected) {
+    /* En Android "conectado" es solo una marca persistida: el token vive en
+       memoria y puede faltar (caducado, revocado). Pasar siempre por el sign-in
+       nativo no cuesta nada si el permiso ya existe (silencioso, ~100 ms) y es
+       la unica salida de un 503 reconnect_required. */
+    if (google.connected && !viaAndroid) {
       if (active === "google") return;
       if (await post("use", { provider: "google" })) {
         await load();
@@ -2046,7 +2056,12 @@ function StorageDialog({ open, onClose, onChanged }) {
     }
     const d = await post("connect", { provider: "google" });
     if (d) {
-      setAuthUrl(d.auth_url);
+      /* Un token silencioso puede llegar antes del proximo load() y `pending`
+         no llegar a pintarse: se marca aca para que el paso a "connected"
+         recargue la biblioteca igual. */
+      wasPending.current = true;
+      if (viaAndroid) window.SpitifoAndroid.connectDrive();
+      else setAuthUrl(d.auth_url);
       await load();
     }
   };
@@ -2073,7 +2088,7 @@ function StorageDialog({ open, onClose, onChanged }) {
   else if (pending) driveSub = (
     <span className="store__state">
       <CircleNotch size={14} className="spin" aria-hidden="true" />
-      Esperando al navegador…
+      {viaAndroid ? "Esperando a Google…" : "Esperando al navegador…"}
     </span>
   );
   else if (google.connected) driveSub = (
@@ -2134,8 +2149,10 @@ function StorageDialog({ open, onClose, onChanged }) {
 
         {pending && (
           <p className="store__note">
-            Termina de iniciar sesión en el navegador.{" "}
-            {authUrl && (
+            {viaAndroid
+              ? "Esperando a Google…"
+              : "Termina de iniciar sesión en el navegador."}{" "}
+            {!viaAndroid && authUrl && (
               <a href={authUrl} target="_blank" rel="noreferrer">
                 Abrir de nuevo
               </a>
@@ -2205,6 +2222,8 @@ function App() {
   const [searched, setSearched] = useState(false);
   /* true = /api/library fallo y todavia no hay lista que mostrar. */
   const [libErr, setLibErr] = useState(false);
+  /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
+  const [libErrCode, setLibErrCode] = useState(null);
   /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
      hasta cerrar la vuelta en curso (la orbita empieza y acaba en reposo), asi
      que se detiene sin saltar. El timeout es la red de seguridad para
@@ -2531,14 +2550,20 @@ function App() {
     try {
       const r = await fetch(`${API}/library`);
       if (!r.ok) {
+        /* El 503 del token de la nube se distingue del resto: ahi lo que hay
+           que hacer es reconectar, no reintentar (ADR 0002, seccion 8). */
+        const d = await r.json().catch(() => ({}));
         setLibErr(true); // un 500 no puede pisar el contador
+        setLibErrCode(d.code || null);
         return;
       }
       const d = await r.json();
       setLib(d.files || []);
       setLibErr(false);
+      setLibErrCode(null);
     } catch (e) {
       setLibErr(true);
+      setLibErrCode(null);
       /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
@@ -2937,11 +2962,27 @@ function App() {
                 )}
                 {!libReady && libErr && (
                   <p className="panel__empty" role="alert">
-                    No se pudo cargar la biblioteca.
-                    <br />
-                    <button type="button" className="vf" onClick={loadLib}>
-                      Reintentar
-                    </button>
+                    {libErrCode === "reconnect_required" ? (
+                      <>
+                        Tu sesión de Google Drive ha caducado.
+                        <br />
+                        <button
+                          type="button"
+                          className="vf"
+                          onClick={() => setStorageOpen(true)}
+                        >
+                          Volver a conectar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        No se pudo cargar la biblioteca.
+                        <br />
+                        <button type="button" className="vf" onClick={loadLib}>
+                          Reintentar
+                        </button>
+                      </>
+                    )}
                   </p>
                 )}
                 {libFiles.map((f, n) => (
