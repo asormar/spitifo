@@ -23,6 +23,10 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
+      # ffmpeg is a runtime requirement; without it the conversion tests skip
+      # and test_ffmpeg_esta_disponible fails.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install dependencies
         run: pip install -r requirements.txt
       # Offline only: -m "not integration" skips the tests that hit the network.
