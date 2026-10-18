@@ -1,0 +1,238 @@
+name: release
+
+# Tag v<version> -> build the Windows installer and the Android APK, then open a
+# draft GitHub release. workflow_dispatch is a dry run: it builds and uploads
+# the artifacts but never touches a release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, X.Y.Z (dry run: artifacts only)"
+        required: true
+        type: string
+
+# Read-only for every job: only `release` is widened to contents: write.
+permissions:
+  contents: read
+
+jobs:
+  # Single source of truth for the version: the tag (v0.1.0 -> 0.1.0) or the
+  # dispatch input.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.derive.outputs.value }}
+    steps:
+      - id: derive
+        env:
+          # Through the environment on purpose: never splice user input into a
+          # shell script.
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            value="$INPUT_VERSION"
+          else
+            value="${GITHUB_REF_NAME#v}"
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+  test:
+    uses: ./.github/workflows/test.yml
+
+  windows:
+    needs: [version, test]
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      # The ffmpeg zip that desktop/build.ps1 downloads and checksums.
+      - uses: actions/cache@v4
+        with:
+          path: desktop/.cache
+          key: ffmpeg-n9.0-latest-win64-lgpl-shared-9.0-win64
+      - name: Set version
+        shell: pwsh
+        run: python scripts/set_version.py $env:VERSION
+      # oauth_clients.json is gitignored, so the release build writes it from
+      # the CI secrets. Never echoed: the values only reach the file.
+      - name: Write the Google OAuth client
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.SPITIFO_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.SPITIFO_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+            echo "::error::SPITIFO_GOOGLE_CLIENT_ID and SPITIFO_GOOGLE_CLIENT_SECRET must be set"
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          with open("backend/app/cloud/oauth_clients.json", "w", encoding="utf-8") as fh:
+              json.dump({"google": {
+                  "client_id": os.environ["GOOGLE_CLIENT_ID"],
+                  "client_secret": os.environ["GOOGLE_CLIENT_SECRET"],
+              }}, fh, indent=2)
+          PY
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+      - name: Resolve the interpreter
+        id: py
+        shell: pwsh
+        run: |
+          $exe = python -c "import sys; print(sys.executable)"
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+      # build.ps1 does the frontend, the PyInstaller sidecar, ffmpeg and Tauri.
+      - name: Build the installer
+        shell: pwsh
+        run: ./desktop/build.ps1 -Python "${{ steps.py.outputs.exe }}"
+      - name: Collect the installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe |
+            Select-Object -First 1
+          Copy-Item $exe.FullName "dist/Spitifo-$($env:VERSION)-windows-x64-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spitifo-${{ needs.version.outputs.value }}-windows-x64-setup.exe
+          path: dist/*.exe
+          if-no-files-found: error
+
+  android:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: gradle/actions/setup-gradle@v4
+      # Chaquopy builds its packages with a desktop CPython 3.12, passed in
+      # through the environment (see android/app/build.gradle.kts).
+      - name: Point Chaquopy at the runner's Python
+        run: |
+          echo "SPITIFO_BUILD_PYTHON=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+      - name: Set version
+        run: python scripts/set_version.py "$VERSION"
+      # The Android SDK is preinstalled; AGP finds it through sdk.dir.
+      - name: Point Gradle at the Android SDK
+        run: |
+          if [ -n "$ANDROID_HOME" ]; then
+            echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          fi
+      - name: Write the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] ||
+             [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::the Android signing secrets are not set"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/spitifo-release.jks
+          {
+            echo "storeFile=spitifo-release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/keystore.properties
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Build the release APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
+      # Drive sign-in on Android is registered against one certificate: a build
+      # signed with anything else cannot authenticate, so fail here.
+      - name: Verify the APK signature
+        run: |
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          apksigner="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          if [ ! -x "$apksigner" ]; then
+            apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          fi
+          "$apksigner" verify --print-certs "$apk"
+          sha1="$("$apksigner" verify --print-certs "$apk" |
+            sed -n 's/.*SHA-1 digest: *//p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          expected="F52E7E03406A4CAED6350968E1AFEFE6BE9F751F"
+          if [ "$sha1" != "$expected" ]; then
+            echo "::error::the APK is signed with $sha1, expected $expected"
+            exit 1
+          fi
+      - name: Collect the APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            "dist/Spitifo-$VERSION-android-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spitifo-${{ needs.version.outputs.value }}-android-arm64.apk
+          path: dist/*.apk
+          if-no-files-found: error
+      # The key and its passwords are decoded for this one build: wipe them
+      # even if a step failed. `always()` keeps the cleanup from being skipped.
+      - name: Delete the keystore files
+        if: always()
+        run: rm -f android/spitifo-release.jks android/keystore.properties
+
+  release:
+    needs: [version, windows, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS.txt
+        working-directory: dist
+        run: sha256sum *.exe *.apk > SHA256SUMS.txt
+      # Draft on purpose: the maintainer reviews it and publishes by hand.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          gh release create "$TAG" \
+            --title "Spitifo $VERSION" \
+            --generate-notes \
+            --draft \
+            dist/*.exe dist/*.apk dist/SHA256SUMS.txt

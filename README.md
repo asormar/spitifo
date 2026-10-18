@@ -354,7 +354,7 @@ backend/app/
 frontend/src/
   main.jsx         The whole interface: search, cards, player, theme, downloads
   style.css        Design tokens, both themes, layout and motion
-docs/              Roadmap, ADRs and the screenshots used in this README
+docs/              Roadmap, ADRs, the release guide (docs/release.md) and the screenshots used in this README
 tests/             179 tests, offline by default
 ```
 

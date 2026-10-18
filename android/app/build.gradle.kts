@@ -189,7 +189,7 @@ android {
         applicationId = "dev.spitifo"
         minSdk = 30          // Android 11: direct paths into the public Music folder work via FUSE
         targetSdk = 34
-        versionCode = 1
+        versionCode = 100
         versionName = "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
