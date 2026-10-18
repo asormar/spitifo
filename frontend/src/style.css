@@ -16,6 +16,7 @@
    11. VACIOS      pantalla inicial, sin resultados, skeletons
    8b. REPRODUCTOR  fila de biblioteca + preview de tarjeta
    12. HOVER / TACTIL / RESPONSIVE / MOVIMIENTO
+   14. RESOLUCIONES  boton dividido + menu de alturas de YouTube
    ========================================================================== */
 
 /* ---------------------------------------------------------------------------
@@ -3834,5 +3835,203 @@ html.vscroll-lock {
 
   .store__opt {
     min-height: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   14. BOTÓN DIVIDIDO Y MENÚ DE RESOLUCIONES (YouTube en vídeo)
+
+   Con "Solo vídeo" o "Audio y vídeo" el botón de descarga no baja: abre el
+   menú con las alturas reales del vídeo (GET /api/formats). El menú va en un
+   portal a <body> (ver VideoSplitDownload): dentro de la tarjeta lo recortaban
+   el overflow de la página y el cajón de la biblioteca.
+   ------------------------------------------------------------------------- */
+
+/* Mismo botón oscuro, pero con texto: ancho automático y chevrón a la derecha. */
+.dl--split {
+  width: auto;
+  gap: 6px;
+  padding: 0 10px 0 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dl__lbl {
+  white-space: nowrap;
+}
+
+.dl__caret {
+  flex: none;
+  transition: transform 160ms var(--ease);
+}
+
+.dl--split[aria-expanded="true"] .dl__caret {
+  transform: rotate(180deg);
+}
+
+/* Sin las medidas del botón todavía (primer fotograma): existe para poder
+   medirlo, pero no se ve ni se anuncia. */
+.rsvm:not(.is-placed) {
+  visibility: hidden;
+}
+
+.rsvm {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-panel);
+}
+
+.rsvm.is-placed {
+  animation: rsvm-in 160ms var(--ease);
+}
+
+/* El contenedor solo recibe foco al abrir: no es un control, no lleva aro. */
+.rsvm:focus,
+.rsvm:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-panel);
+}
+
+@keyframes rsvm-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* La lista de alturas scrollea sola si no cabe; "Mejor disponible" se queda
+   arriba, siempre a la vista. */
+.rsvm__list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Fila del menú. Mismo tinte de hover que las listas de la app. */
+.rsvm__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rsvm__h {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rsvm__meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rsvm__size {
+  min-width: 4.5ch;
+  text-align: right;
+}
+
+/* Solo cuando el backend lo marca: no es decoración. */
+.rsvm__hdr {
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent-badge);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.rsvm__sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--line);
+}
+
+.rsvm__msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.rsvm__msg--err {
+  color: var(--bad-fg);
+  align-items: flex-start;
+}
+
+.rsvm__err {
+  display: flex;
+  flex-direction: column;
+}
+
+.rsvm__item--retry {
+  justify-content: flex-start;
+  font-weight: 600;
+}
+
+.rsvm__item--retry svg {
+  color: var(--accent-fg);
+}
+
+@media (hover: hover) {
+  .rsvm__item:hover {
+    background: var(--row-hover);
+  }
+}
+
+.rsvm__item:focus-visible {
+  background: var(--row-hover);
+}
+
+@media (pointer: coarse) {
+  .rsvm__item {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rsvm.is-placed {
+    animation: none;
+  }
+
+  .dl__caret {
+    transition: none;
   }
 }

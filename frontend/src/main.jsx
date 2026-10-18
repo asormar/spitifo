@@ -8,13 +8,16 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  useId,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
+import { flushSync, createPortal } from "react-dom";
 import {
+  ArrowClockwise,
   ArrowUpRight,
   ArrowsIn,
   ArrowsOut,
+  CaretDown,
   CaretRight,
   Check,
   CheckCircle,
@@ -241,6 +244,44 @@ function fmtTime(s) {
 function fmtSize(mb) {
   if (mb == null) return null;
   return `${Number(mb).toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
+/* Tamano aproximado de una resolucion. El backend manda BYTES (o null, que es
+   "no se sabe", no "0"): null se pinta como raya, no como "0 MB". */
+function fmtApproxSize(bytes) {
+  if (bytes == null) return "—";
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return `~${(mb / 1024).toFixed(1)} GB`;
+  return `~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/* Resoluciones ya pedidas, por URL de video. Vive lo que vive la pestana: el
+   menu se puede cerrar y reabrir sin volver a preguntar. Los fallos NO se
+   guardan (el usuario tiene que poder reintentar). */
+const formatsCache = new Map();
+
+/* GET /api/formats con el mismo fetch pelado que el resto de la app (mismo
+   origen, /api). Devuelve { duration_s, resolutions } ordenado de mayor a menor
+   altura: el backend ya lo manda asi, pero ordenar aca cuesta nada y protege
+   contra un cambio de contrato. */
+async function fetchFormats(url, signal) {
+  const cached = formatsCache.get(url);
+  if (cached) return cached;
+  const r = await fetch(`${API}/formats?url=${encodeURIComponent(url)}`, { signal });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(errMsg(d, "no se pudieron leer las resoluciones"));
+    /* El muro de verificacion llega como 502 {detail, code}. Se propaga para
+       que el menu lo trate igual que la descarga (aviso de cookies.txt). */
+    err.code = d.code || null;
+    throw err;
+  }
+  const data = {
+    duration_s: d.duration_s ?? null,
+    resolutions: [...(d.resolutions || [])].sort((a, b) => b.height - a.height),
+  };
+  formatsCache.set(url, data);
+  return data;
 }
 
 /* Todos los bytes de la biblioteca (audio, video o su miniatura) se piden por
@@ -2110,10 +2151,365 @@ function ProgressBar({ job }) {
   );
 }
 
+/* Boton de descarga cuadrado con los tres estados de siempre (bajar, en curso,
+   ya bajado). Es el boton unico: en YouTube con video lo reemplaza el dividido
+   que abre el menu de resoluciones. */
+function DlButton({ busy, downloaded, title, ariaLabel, onClick }) {
+  return (
+    <button className="dl" disabled={busy} onClick={onClick} title={title} aria-label={ariaLabel}>
+      {busy ? (
+        <span className="swap" key="busy">
+          <CircleNotch size={19} className="spin" />
+        </span>
+      ) : downloaded ? (
+        <span className="swap" key="done">
+          <Check size={19} weight="bold" />
+        </span>
+      ) : (
+        <span className="swap" key="idle">
+          <DownloadSimple size={19} weight="bold" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+/* Descarga de un video de YouTube: boton dividido + menu de resoluciones.
+
+   Con "Solo audio" el boton baja directo (lo de siempre). Con video el boton NO
+   baja: abre un menu con las alturas que ofrece ese video (GET /api/formats).
+   El primer item baja sin `height` (lo mejor disponible) y cada uno de los
+   siguientes, una altura concreta.
+
+   El menu vive en un portal a <body>: dentro de la tarjeta lo recortarian el
+   `overflow-x: clip` de la pagina y el cajon de la biblioteca, y su z-index
+   quedaria por debajo del reproductor de video. */
+function VideoSplitDownload({
+  t,
+  busy,
+  downloaded,
+  onDownload,
+  onBotCheck,
+  menuOpen,
+  setMenuOpen,
+}) {
+  const key = rowKey(t);
+  const url = t.extra?.webpage_url;
+  const title = t.title || "este resultado";
+  const menuId = useId();
+  /* phase: loading | list | error. Nunca hay "cerrado" a medias: si no hay
+     menu, no hay estado que mostrar. */
+  const [phase, setPhase] = useState("loading");
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const abortRef = useRef(null);
+  const open = menuOpen;
+
+  const closeMenu = useCallback(
+    (focusButton) => {
+      /* Cerrar cancela la peticion en vuelo: un menu que ya no esta no tiene
+         por que seguir preguntando. */
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setMenuOpen(key, false);
+      if (focusButton) btnRef.current?.focus();
+    },
+    [key, setMenuOpen]
+  );
+
+  const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setPhase("loading");
+    setError(null);
+    try {
+      const d = await fetchFormats(url, ac.signal);
+      if (ac.signal.aborted) return;
+      setData(d);
+      setPhase("list");
+    } catch (e) {
+      if (e?.name === "AbortError" || ac.signal.aborted) return;
+      /* Mismo muro de bot que la descarga: mismo aviso de cookies.txt. El menu
+         cierra para no dejar al usuario mirando una lista que no va a llegar. */
+      if (e.code === "youtube_bot_check") {
+        closeMenu(false);
+        onBotCheck(e.message);
+        return;
+      }
+      setError(fetchErr(e, e.message));
+      setPhase("error");
+    }
+  }, [url, closeMenu, onBotCheck]);
+
+  /* Abrir: de la cache si ya se pregunto por este video; si no, se pregunta. */
+  useEffect(() => {
+    if (!open) return;
+    const cached = formatsCache.get(url);
+    if (cached) {
+      setData(cached);
+      setPhase("list");
+    } else {
+      load();
+    }
+  }, [open, url, load]);
+
+  /* Una busqueda nueva reemplaza los resultados y desmonta la tarjeta: la clave
+     del menu abierto se limpia para no quedar apuntando a algo que ya no
+     existe (y no reabrir el menu si la misma clave vuelve). */
+  useEffect(() => () => setMenuOpen(key, false), [key, setMenuOpen]);
+
+  /* Coloca el menu fixed bajo el boton. Ancho 280 en escritorio, alineado a la
+     derecha; en pantallas angostas ocupa el ancho de su propia tarjeta, que ya
+     respeta el gutter. Si abajo no cabe y arriba si, se abre hacia arriba. */
+  const place = useCallback(() => {
+    const btn = btnRef.current;
+    const menu = menuRef.current;
+    if (!btn || !menu) return;
+    const r = btn.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    /* El boton salio de pantalla (la lista scrolleo): no hay donde anclar. */
+    if (r.bottom < 0 || r.top > vh) {
+      closeMenu(false);
+      return;
+    }
+    let width;
+    let left;
+    if (vw <= 640) {
+      const card = btn.closest(".card") || btn;
+      const cr = card.getBoundingClientRect();
+      width = Math.min(cr.width, vw - 16);
+      left = clamp(cr.left, 8, Math.max(8, vw - 8 - width));
+    } else {
+      width = 280;
+      left = clamp(r.right - width, 8, Math.max(8, vw - width - 8));
+    }
+    const h = Math.min(menu.offsetHeight || 0, vh - 16);
+    let top = r.bottom + 6;
+    if (top + h > vh - 8 && r.top - 6 - h >= 8) top = r.top - 6 - h;
+    top = clamp(top, 8, Math.max(8, vh - 8 - h));
+    setPos({ top, left, width, maxH: Math.max(140, vh - top - 8) });
+  }, [closeMenu]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return undefined;
+    }
+    /* Ya montado el menu (aunque sea invisible): se puede medir. Vuelve a
+       correr cuando llega la lista, que cambia la altura y puede cambiar si
+       conviene abrirlo hacia arriba. */
+    place();
+    const onMove = () => place();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, phase, place]);
+
+  /* Foco al menu al abrir (no al primer item): con la lista todavia cargando
+     no hay item al que ir, y asi Escape funciona desde el primer instante. */
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.focus();
+  }, [open]);
+
+  /* Click fuera: cierra. El boton se excluye porque su propio click ya
+     alterna, y cerrar en el pointerdown lo volveria a abrir al soltar. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      if (btnRef.current?.contains(e.target)) return;
+      closeMenu(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [open, closeMenu]);
+
+  const pick = (height) => {
+    closeMenu(true);
+    /* Sin `height` = lo mejor disponible, exactamente igual que antes. */
+    onDownload(t, height);
+  };
+
+  const onMenuKey = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu(true);
+      return;
+    }
+    /* Tab cierra y deja el foco en el boton: el menu es un portal al final del
+       <body> y sin esto el tabulado siguiente caeria lejos de la tarjeta. */
+    if (e.key === "Tab") {
+      e.preventDefault();
+      closeMenu(true);
+      return;
+    }
+    const items = Array.from(
+      menuRef.current?.querySelectorAll('[role="menuitem"]') || []
+    ).filter((el) => !el.disabled);
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(cur + 1 + items.length) % items.length].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[cur <= 0 ? items.length - 1 : cur - 1].focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0].focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1].focus();
+    }
+  };
+
+  const resolutions = data?.resolutions || [];
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={cx("dl", "dl--split", open && "is-open")}
+        disabled={busy}
+        onClick={() => (open ? closeMenu(false) : setMenuOpen(key, true))}
+        onKeyDown={(e) => {
+          /* El patron del boton de menu: bajar abre en vez de mover el foco. */
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            setMenuOpen(key, true);
+          }
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        title={
+          downloaded
+            ? "Descargado: elige una resolución para volver a bajarlo"
+            : "Elige la resolución de la descarga"
+        }
+        aria-label={
+          downloaded
+            ? `Descargado: ${title}. Elegir resolución`
+            : `Descargar ${title}: elegir resolución`
+        }
+      >
+        <span className="swap" key={busy ? "busy" : downloaded ? "done" : "idle"}>
+          {busy ? (
+            <CircleNotch size={17} className="spin" />
+          ) : downloaded ? (
+            <Check size={17} weight="bold" />
+          ) : (
+            <DownloadSimple size={17} weight="bold" />
+          )}
+        </span>
+        <span className="dl__lbl">Descargar</span>
+        {!busy && <CaretDown size={13} weight="bold" className="dl__caret" aria-hidden="true" />}
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            id={menuId}
+            ref={menuRef}
+            className={cx("rsvm", pos && "is-placed")}
+            role="menu"
+            aria-label={`Resoluciones de ${title}`}
+            tabIndex={-1}
+            style={
+              pos
+                ? { top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxH }
+                : undefined
+            }
+            onKeyDown={onMenuKey}
+          >
+            {phase === "loading" && (
+              <p className="rsvm__msg" aria-live="polite">
+                <CircleNotch size={15} className="spin" aria-hidden="true" />
+                Buscando resoluciones…
+              </p>
+            )}
+
+            {phase === "error" && (
+              <div className="rsvm__err" role="alert">
+                <p className="rsvm__msg rsvm__msg--err">
+                  <WarningCircle size={15} weight="fill" aria-hidden="true" />
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="rsvm__item rsvm__item--retry"
+                  onClick={load}
+                >
+                  <ArrowClockwise size={15} aria-hidden="true" />
+                  Reintentar
+                </button>
+              </div>
+            )}
+
+            {phase === "list" && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="rsvm__item"
+                  onClick={() => pick(null)}
+                >
+                  <span className="rsvm__h">Mejor disponible</span>
+                  <span className="rsvm__meta">la mejor que haya</span>
+                </button>
+                {resolutions.length > 0 && <div className="rsvm__sep" role="separator" />}
+                <div className="rsvm__list" role="none">
+                  {resolutions.map((res) => (
+                    <button
+                      key={res.height}
+                      type="button"
+                      role="menuitem"
+                      className="rsvm__item"
+                      onClick={() => pick(res.height)}
+                    >
+                      <span className="rsvm__h">
+                        {res.label || `${res.height}p`}
+                        {res.hdr && <span className="rsvm__hdr">HDR</span>}
+                      </span>
+                      <span className="rsvm__meta">
+                        {res.fps ? <span>{res.fps} fps</span> : null}
+                        <span className="rsvm__size">{fmtApproxSize(res.filesize)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {resolutions.length === 0 && (
+                  <p className="rsvm__msg">Este vídeo no ofrece resoluciones sueltas.</p>
+                )}
+              </>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 const Track = React.memo(function Track({
   t,
   query,
+  media,
   onDownload,
+  onBotCheck,
+  menuOpen,
+  setMenuOpen,
   busy,
   downloaded,
   index,
@@ -2181,35 +2577,33 @@ const Track = React.memo(function Track({
             {ui.label}
           </StatusChip>
           {st === "full" ? (
-            <button
-              className="dl"
-              disabled={busy}
-              onClick={() => onDownload(t)}
-              title={
-                downloaded
-                  ? "Descargado: pulsa para volver a descargarlo"
-                  : "Descargar a la biblioteca"
-              }
-              aria-label={
-                downloaded
-                  ? `Descargado: ${t.title || "este resultado"}`
-                  : `Descargar ${t.title || "este resultado"}`
-              }
-            >
-              {busy ? (
-                <span className="swap" key="busy">
-                  <CircleNotch size={19} className="spin" />
-                </span>
-              ) : downloaded ? (
-                <span className="swap" key="done">
-                  <Check size={19} weight="bold" />
-                </span>
-              ) : (
-                <span className="swap" key="idle">
-                  <DownloadSimple size={19} weight="bold" />
-                </span>
-              )}
-            </button>
+            t.source === "ytdlp" && media !== "audio" && t.extra?.webpage_url ? (
+              <VideoSplitDownload
+                t={t}
+                busy={busy}
+                downloaded={downloaded}
+                onDownload={onDownload}
+                onBotCheck={onBotCheck}
+                menuOpen={menuOpen}
+                setMenuOpen={setMenuOpen}
+              />
+            ) : (
+              <DlButton
+                busy={busy}
+                downloaded={downloaded}
+                title={
+                  downloaded
+                    ? "Descargado: pulsa para volver a descargarlo"
+                    : "Descargar a la biblioteca"
+                }
+                ariaLabel={
+                  downloaded
+                    ? `Descargado: ${t.title || "este resultado"}`
+                    : `Descargar ${t.title || "este resultado"}`
+                }
+                onClick={() => onDownload(t)}
+              />
+            )
           ) : (
             <>
               {/* Texto visible (tactil y teclado no tienen tooltip). Ya lo lee
@@ -2947,6 +3341,9 @@ function App() {
   /* Qué partes se bajan en modo YouTube. Vive acá y no en el selector para que
      cambiar de modo y volver no lo reinicie (como fmt). */
   const [media, setMedia] = useState("audio");
+  /* Clave del resultado cuyo menú de resoluciones está abierto. Vive acá y no
+     en cada tarjeta para que abrir uno cierre el anterior: un menú a la vez. */
+  const [menuKey, setMenuKey] = useState(null);
   const [filter, setFilter] = useState("all");
   const [libOpen, setLibOpen] = useState(false);
   const drawerRef = useRef(null);
@@ -3054,6 +3451,19 @@ function App() {
      entero en cada tick del polling. */
   const setJobFor = useCallback((key, patch) => {
     setJobs((cur) => ({ ...cur, [key]: { ...cur[key], ...patch, key } }));
+  }, []);
+
+  /* Abrir/cerrar el menú de resoluciones por clave. Cerrar una clave que ya no
+     es la abierta no pisa a la que sí lo está (dos tarjetas no se pelean). */
+  const setMenuOpen = useCallback((key, open) => {
+    setMenuKey((cur) => (open ? key : cur === key ? null : cur));
+  }, []);
+
+  /* El muro de verificación de YouTube desde el menú de resoluciones: mismo
+     aviso y misma salida que una descarga (importar cookies.txt). */
+  const onBotCheck = useCallback((msg) => {
+    setErr(msg);
+    setBotCheck(true);
   }, []);
 
   /* La franja de exito/aviso (.msg) NO se retiraba nunca: se quedaba en
@@ -3190,7 +3600,7 @@ function App() {
   }, [mode, searched, query, runSearch]);
 
   const onDownload = useCallback(
-    async (t) => {
+    async (t, height) => {
       /* Todo el estado de ESTA descarga queda bajo su clave. Con dos a la vez
          cada una enciende su spinner, tiene su toast y anuncia su resultado
          sin pisar a la otra. `err`/`done` siguen siendo globales a proposito:
@@ -3244,6 +3654,11 @@ function App() {
               /* Solo el modo YouTube sabe bajar video. En el resto el cuerpo
                  queda exactamente como estaba. */
               ...(mode === "ytdlp" ? { media } : {}),
+              /* Altura elegida en el menú. Solo viaja cuando se baja vídeo: en
+                 audio el backend no la espera (y "Mejor disponible" = omitirla). */
+              ...(mode === "ytdlp" && media !== "audio" && Number.isInteger(height)
+                ? { height }
+                : {}),
             }),
           }
         );
@@ -3834,9 +4249,13 @@ function App() {
                   key={t.source + t.source_id}
                   t={t}
                   query={query}
+                  media={media}
                   busy={busyIds.has(rowKey(t))}
                   downloaded={downloadedIds.has(rowKey(t))}
                   onDownload={onDownload}
+                  onBotCheck={onBotCheck}
+                  menuOpen={menuKey === rowKey(t)}
+                  setMenuOpen={setMenuOpen}
                   index={i}
                 />
               )
