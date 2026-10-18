@@ -34,7 +34,7 @@ LAME_VERSION="3.100"
 LAME_SHA256="ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e"
 LAME_URL="https://sourceforge.net/projects/lame/files/lame/$LAME_VERSION/lame-$LAME_VERSION.tar.gz/download"
 NDK_VERSION="r27c"
-NDK_SHA256="${NDK_SHA256_PIN:-}"
+NDK_SHA256="59c2f6dc96743b5daf5d1626684640b20a6bd2b1d85b13156b90333741bad5cc"   # sha1 090e8083a715fdb1a3e402d0763c388abb03fb4e matches the one Google publishes
 NDK_URL="https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip"
 ANDROID_API="${ANDROID_API:-30}"   # keep in step with minSdk in android/app/build.gradle.kts
 
