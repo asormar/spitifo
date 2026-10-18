@@ -32,6 +32,7 @@ from urllib.parse import quote
 
 import httpx
 
+from .base import upload_ranges
 from .connect import provider_for, sign_in
 from .oauth import OAuthError, OAuthNotConfigured, Provider, TokenSet, refresh
 from .tokens import TokenStore, default_protector, default_token_dir
@@ -237,21 +238,6 @@ def onedrive_create_session(client: httpx.Client, headers: dict[str, str],
         headers=headers)
     resp.raise_for_status()
     return str(resp.json()["uploadUrl"])
-
-
-def upload_ranges(total: int, chunk: int) -> list[tuple[int, int]]:
-    """Rangos INCLUSIVOS `(start, end)` que cubren `total` bytes de a `chunk`."""
-    if total <= 0:
-        return []
-    if chunk <= 0:
-        raise ValueError("chunk tiene que ser > 0")
-    ranges: list[tuple[int, int]] = []
-    start = 0
-    while start < total:
-        end = min(start + chunk, total) - 1
-        ranges.append((start, end))
-        start = end + 1
-    return ranges
 
 
 def content_range_header(start: int, end: int, total: int) -> str:
