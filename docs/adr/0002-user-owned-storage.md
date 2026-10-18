@@ -274,6 +274,21 @@ back. This works on any provider; the conditional-write loop stays for providers
 that support it. The device id is random, generated once and kept in the app's
 data folder.
 
+### Update (2026-10-18, session 8): OneDrive dropped
+
+OneDrive is no longer planned. Microsoft requires an Entra tenant to register an
+app for personal Microsoft accounts, and the maintainer could not open one: the
+Azure sign-up needed for a tenant was rejected. Without a tenant there is no way
+to register the app, so OneDrive was dropped on 2026-10-18.
+
+Google Drive is the only connector for now. The attempt still left the codebase
+better: `CloudStorage` (`backend/app/cloud/base.py`) is a provider-neutral base
+class extracted from the Drive adapter. It holds everything that does not depend
+on the provider (retries, the per-device index and its merge, the offline cache,
+ranges and the quota), so adding a provider only means implementing the hooks at
+the end of the class plus its OAuth `Provider`. Dropbox and WebDAV remain
+options if a second connector is ever needed.
+
 ## Security note for session 3
 
 On Android, any app on the phone can connect to `127.0.0.1:8000`. Android's

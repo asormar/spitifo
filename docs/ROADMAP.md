@@ -188,15 +188,24 @@ playing from the cache with no request to Drive.
 Next: merging the branch. The release build still needs an Android OAuth client
 registered for the release signing certificate's SHA-1.
 
-- Starts with a benchmark of Google Drive and OneDrive: time to first audio,
-  stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
-  ADR 0002; otherwise OneDrive.
+- Starts with a benchmark of Google Drive (OneDrive was the fallback and was
+  never needed): time to first audio, stalls, seeking, and Android sign-in.
+  Drive met the targets in ADR 0002.
 - Connect, upload, the `index.json` library index, stream through the backend,
   prefetch and offline cache, disconnect.
 
 ### 8. Remaining connectors
 
-- One at a time, on the same port and the same contract tests.
+OneDrive was attempted and dropped on 2026-10-18: Microsoft requires an Entra
+tenant to register an app for personal accounts, and the maintainer could not
+open one (the Azure sign-up was rejected). That attempt still paid off: the
+provider-neutral `CloudStorage` base (`backend/app/cloud/base.py`) was extracted
+from the Drive adapter, so a future connector only implements the provider hooks
+(the file operations, upload, streaming, trash, quota and `describe`) plus its
+OAuth provider.
+
+**Google Drive is the only connector for now.** Dropbox and WebDAV remain
+options if a second connector is ever needed.
 
 ### 9. Release and maintenance
 
@@ -209,8 +218,8 @@ registered for the release signing certificate's SHA-1.
 ### 10. Companion player app
 
 - A separate app that plays the library from the user's storage.
-- Reuses the OAuth registration of the downloader (both `drive.file` and the
-  OneDrive app folder grant access per registered app), the `index.json` format
+- Reuses the OAuth registration of the downloader (the `drive.file` scope grants
+  access per registered app), the `index.json` format
   and the playback rules in ADR 0002: local first, prefetch the next track,
   stream from the first bytes, range requests for seeking.
 - Goal: playback starts in under a second and never stalls.
@@ -254,7 +263,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8, 10 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-onedrive`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:

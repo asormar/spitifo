@@ -1,6 +1,6 @@
 # Spitifo privacy policy
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 Spitifo is an open-source music app that runs entirely on your own device. It
 has no server of its own: the maintainers never receive, store or see your
@@ -9,7 +9,7 @@ data.
 ## What Spitifo stores, and where
 
 - **Your music library** is stored on your device. If you connect a cloud
-  storage account (Google Drive or OneDrive), Spitifo also stores your tracks
+  storage account (Google Drive), Spitifo also stores your tracks
   and a library index file (`index.json`) in a folder of that account named
   `Spitifo`.
 - **Sign-in tokens** for a connected cloud account are stored only on your
@@ -35,18 +35,11 @@ Spitifo's use and transfer of information received from Google APIs adheres to
 the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy),
 including the Limited Use requirements.
 
-## Microsoft user data
-
-When you connect OneDrive, Spitifo requests access only to its own app folder
-(`Apps/Spitifo`) and uses it in the same way, for the same purposes and with the
-same limits as described for Google Drive above.
-
 ## Disconnecting and deleting data
 
 - Disconnecting a cloud account in Spitifo deletes its tokens from your device.
 - You can also revoke access at any time: for Google at
-  <https://myaccount.google.com/permissions>, for Microsoft at
-  <https://account.live.com/consent/Manage>.
+  <https://myaccount.google.com/permissions>.
 - Uninstalling Spitifo deletes everything it stored on your device. Files in
   your cloud folder stay in your account until you delete them.
 
