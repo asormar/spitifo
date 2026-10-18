@@ -207,9 +207,11 @@ OAuth provider.
 **Google Drive is the only connector for now.** Dropbox and WebDAV remain
 options if a second connector is ever needed.
 
-### 9. Release and maintenance
+### 9. Release and maintenance — done
 
-In progress on `ci/release`. Done so far:
+[v0.1.0](https://github.com/asormar/spitifo/releases/tag/v0.1.0) was published
+on 2026-10-18 from the tag build: the Windows installer, the APK and
+`SHA256SUMS.txt`.
 
 - `.github/workflows/release.yml` builds the Windows installer and the release
   APK on each `v*` tag and opens a **draft** GitHub release with both files and
@@ -230,8 +232,6 @@ In progress on `ci/release`. Done so far:
   does not import. `SPITIFO_YTDLP_AUTOUPDATE=0` turns it off. The checksum comes
   from the same release, so it guards against corruption, not against a
   compromised GitHub account; yt-dlp's GPG signature is not checked.
-
-Next: set the repository secrets, run the dry run, and tag `v0.1.0`.
 
 - Not on Google Play: its policy does not allow YouTube downloaders.
 
