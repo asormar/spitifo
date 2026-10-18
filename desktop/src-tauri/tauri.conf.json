@@ -33,7 +33,8 @@
     "resources": {
       "../sidecar/dist/spitifo-backend/": "backend/",
       "../../frontend/dist/": "frontend/",
-      "../ffmpeg/": "ffmpeg/"
+      "../ffmpeg/": "ffmpeg/",
+      "../qjs/": "qjs/"
     },
     "windows": {
       "nsis": {

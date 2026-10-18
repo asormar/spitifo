@@ -86,6 +86,20 @@ Actions → **release** → **Run workflow**, enter the version (`0.1.0`). A
 `workflow_dispatch` run builds both artifacts and leaves them under the run's
 Artifacts; it never creates or touches a release.
 
+## Bundled QuickJS-ng
+
+Both apps ship QuickJS-ng (`qjs`), the small JavaScript runtime yt-dlp runs to
+solve YouTube's challenges, and pass the backend its absolute path through
+`SPITIFO_QJS`. The binary is downloaded at build time and **pinned by SHA-256**,
+never committed: `desktop/build.ps1` (`Get-QuickJs`) verifies
+`qjs-windows-x86_64.exe` and copies it to `desktop/qjs/qjs.exe`, and
+`android/app/build.gradle.kts` (`downloadQuickJs`) does the same for
+`qjs-linux-aarch64`, packaged as `libqjs.so`. Both builds fail on a hash
+mismatch. To bump it, change the version and **both** hashes in those two files,
+plus the `quickjs-<version>` suffix of the `desktop/.cache` cache key in
+`.github/workflows/release.yml` (the upstream release publishes no checksums
+file, so the pinned hashes are the only reference).
+
 ## Versions
 
 `scripts/set_version.py X.Y.Z` rewrites the version in `desktop/package.json`,

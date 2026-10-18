@@ -62,11 +62,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      # The ffmpeg zip that desktop/build.ps1 downloads and checksums.
+      # Everything desktop/build.ps1 downloads and checksums: the ffmpeg zip and
+      # the QuickJS-ng binary. The key carries both versions, so bumping either
+      # pin invalidates the whole cache: a cached ffmpeg must never be the
+      # reason a missing qjs goes unnoticed.
       - uses: actions/cache@v4
         with:
           path: desktop/.cache
-          key: ffmpeg-n9.0-latest-win64-lgpl-shared-9.0-win64
+          key: ffmpeg-n9.0-latest-win64-lgpl-shared-9.0-win64-quickjs-0.17.0
       - name: Set version
         shell: pwsh
         run: python scripts/set_version.py $env:VERSION
