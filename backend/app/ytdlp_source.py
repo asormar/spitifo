@@ -221,6 +221,93 @@ def is_transient_error(error: BaseException | str) -> bool:
     return bool(_TRANSIENT_RE.search(msg))
 
 
+# --------------------------------------------------- runtime de JS y clientes
+# YouTube exige resolver un reto de JavaScript para ciertos formatos. Sin un
+# runtime de JS, yt-dlp avisa "No supported JavaScript runtime" y algunos
+# clientes no devuelven formatos. `SPITIFO_QJS` apunta a un binario QuickJS
+# (qjs): si el archivo existe se le pasa a yt-dlp tal cual. Sin la variable
+# queda el default de yt-dlp (ninguno): no se inventa un runtime que no esta.
+def qjs_path() -> str | None:
+    """Ruta absoluta de `SPITIFO_QJS` si apunta a un archivo que existe."""
+    valor = (os.getenv("SPITIFO_QJS") or "").strip()
+    if not valor:
+        return None
+    ruta = Path(valor)
+    return str(ruta.resolve()) if ruta.is_file() else None
+
+
+def js_runtimes_opt() -> dict:
+    """`{'quickjs': {'path': ...}}` si hay qjs; `{}` si no (default de yt-dlp)."""
+    ruta = qjs_path()
+    return {"quickjs": {"path": ruta}} if ruta else {}
+
+
+def configured_js_runtime() -> str | None:
+    """Nombre del runtime de JS configurado, para /api/health."""
+    return "quickjs" if qjs_path() else None
+
+
+#: Clientes de YouTube que yt-dlp prueba, en orden. `default` expande a la
+#: lista propia de yt-dlp; los otros dos son los que hoy esquivan mejor el muro
+#: sin cuenta. NO se quitan los defaults: se agregan.
+PLAYER_CLIENTS = ("default", "android_vr", "web_embedded")
+
+
+def extractor_args_opt(existing: dict | None = None) -> dict:
+    """`extractor_args` con los clientes de YouTube, SIN pisar lo que ya haya.
+
+    Se fusiona sobre `existing` (y sobre su `youtube`): si algo ya traia
+    `player_client`, esos clientes se conservan y solo se completan los que
+    falten.
+    """
+    args = dict(existing or {})
+    youtube = dict(args.get("youtube") or {})
+    clientes = list(youtube.get("player_client") or [])
+    for cliente in PLAYER_CLIENTS:
+        if cliente not in clientes:
+            clientes.append(cliente)
+    youtube["player_client"] = clientes
+    args["youtube"] = youtube
+    return args
+
+
+def youtube_opts(base: dict | None = None) -> dict:
+    """Opciones de yt-dlp para YouTube: runtime de JS + clientes de respaldo.
+
+    Se usa en TODAS las construcciones de `YoutubeDL` que hablan con YouTube
+    (buscar, resolver y descargar) para que la resiliencia sea la misma en el
+    primer contacto que en la bajada.
+    """
+    opts = dict(base or {})
+    jr = js_runtimes_opt()
+    if jr:
+        opts["js_runtimes"] = jr
+    opts["extractor_args"] = extractor_args_opt(opts.get("extractor_args"))
+    return opts
+
+
+# ------------------------------------------------------- muro de verificacion
+class BotCheckError(RuntimeError):
+    """YouTube pidio verificar que no sos un bot y no hay cookies importadas.
+
+    `code` viaja al job y a la respuesta para que la UI ofrezca importar un
+    cookies.txt en lugar de un "fallo la descarga" generico.
+    """
+
+    code = "youtube_bot_check"
+
+
+#: "Sign in to confirm you're not a bot", con comillas tipograficas incluidas.
+_BOT_CHECK_RE = re.compile(
+    r"sign in to confirm you|confirm you[\u2018\u2019']?re not a bot",
+    re.IGNORECASE)
+
+
+def is_bot_check_error(error: BaseException | str) -> bool:
+    """True si el error es el muro de verificacion de YouTube. Funcion pura."""
+    return bool(_BOT_CHECK_RE.search(str(error)))
+
+
 # ------------------------------------------------------ formato de la descarga
 def postprocessor_opts(fmt: str) -> list[dict]:
     """Postprocessors de yt-dlp para el `fmt` pedido.
@@ -278,10 +365,10 @@ class YtDlpSource(Source):
     async def search_candidates(self, q: str, limit: int = 20) -> list[dict]:
         """Busca cruda en YouTube, sin filtrar por 'musical'. La usa el matcher."""
         import yt_dlp
-        opts = {
+        opts = youtube_opts({
             "quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
-        }
+        })
         loop = asyncio.get_running_loop()
 
         def _run():
@@ -296,11 +383,11 @@ class YtDlpSource(Source):
             return []
         import yt_dlp
         url = parse_youtube_url(q)
-        opts = {
+        opts = youtube_opts({
             "quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
             "noplaylist": True, "playlistend": limit,
-        }
+        })
         loop = asyncio.get_running_loop()
 
         def _run():
@@ -348,8 +435,9 @@ class YtDlpSource(Source):
         url = track.extra.get("webpage_url")
         if not url:
             raise LookupError("falta webpage_url")
-        opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-                "socket_timeout": 30, "retries": 1}
+        opts = youtube_opts({"quiet": True, "no_warnings": True,
+                             "skip_download": True, "socket_timeout": 30,
+                             "retries": 1})
         loop = asyncio.get_running_loop()
 
         def _run():
@@ -454,7 +542,7 @@ class YtDlpSource(Source):
                 # "downloading" y el reintento puede salvarlo.
                 _finish(job_id, status="error")
 
-        opts = {
+        opts = youtube_opts({
             "quiet": True, "no_warnings": True, "noprogress": True,
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
@@ -463,11 +551,16 @@ class YtDlpSource(Source):
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
-        }
+        })
         loop = asyncio.get_running_loop()
 
-        def _run():
-            with yt_dlp.YoutubeDL(opts) as ydl:
+        def _run(cookiefile: str | None = None):
+            # `cookiefile` solo llega en el reintento del muro de verificacion:
+            # va a una COPIA plana en un temporal, nunca al sobre cifrado.
+            o = dict(opts)
+            if cookiefile:
+                o["cookiefile"] = cookiefile
+            with yt_dlp.YoutubeDL(o) as ydl:
                 info = ydl.extract_info(url, download=True)
                 # Con FFmpegExtractAudio, `info['filepath']` viene None: yt-dlp
                 # lo limpia tras el postprocess. NO usar prepare_filename()
@@ -514,6 +607,37 @@ class YtDlpSource(Source):
                         info, fp = await loop.run_in_executor(None, _run)
                         break
                     except Exception as e:
+                        if is_bot_check_error(e):
+                            # ULTIMO RECURSO: el muro de verificacion. Con
+                            # cookies importadas se reintenta UNA vez con una
+                            # copia plana; sin ellas, se falla con un codigo
+                            # distinto para que la UI ofrezca importarlas.
+                            from . import youtube_cookies
+                            texto = youtube_cookies.load_text()
+                            if not texto:
+                                _finish(job_id, status="error", error=str(e),
+                                        error_code="youtube_bot_check")
+                                log.warning("ytdlp: YouTube pide verificar que no "
+                                            "es un bot y no hay cookies importadas")
+                                raise BotCheckError(
+                                    "YouTube pidio confirmar que no sos un bot. "
+                                    "Importa un cookies.txt desde la configuracion "
+                                    "y reintenta.") from e
+                            log.info("ytdlp: reintento unico con las cookies importadas")
+                            with youtube_cookies.plaintext_tempfile(
+                                    texto, TEMP_DIR) as cookiefile:
+                                try:
+                                    info, fp = await loop.run_in_executor(
+                                        None, lambda: _run(str(cookiefile)))
+                                    break
+                                except Exception as e2:
+                                    code = ("youtube_bot_check"
+                                            if is_bot_check_error(e2) else None)
+                                    _finish(job_id, status="error", error=str(e2),
+                                            **({"error_code": code} if code else {}))
+                                    log.warning("ytdlp: el reintento con cookies "
+                                                "fallo: %s", e2)
+                                    raise RuntimeError(f"yt-dlp: {e2}") from e2
                         if intento < intentos and is_transient_error(e):
                             espera = delays[intento - 1]
                             log.warning(

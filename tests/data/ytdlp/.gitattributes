@@ -1,0 +1,6 @@
+# Vectores de yt-dlp que se verifican BYTE A BYTE: el `SHA2-256SUMS` entra tal
+# cual en el hash de la firma, asi que un solo CRLF lo invalida. Con
+# `core.autocrlf=true` (lo normal en Windows) git los reescribiria al hacer
+# checkout y los tests de firma fallarian sin que nadie sepa por que.
+SHA2-256SUMS text eol=lf
+*.sig binary

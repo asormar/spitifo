@@ -239,6 +239,18 @@ on 2026-10-18 from the tag build: the Windows installer, the APK and
 
 Tackles the open risks that need no new toolchain, before building more on top.
 
+In progress on `feat/hardening`. Done so far: the auto-updater verifies
+`SHA2-256SUMS.sig` against yt-dlp's pinned signing key with a pure-stdlib
+OpenPGP check; QuickJS-ng 0.17.0 ships in both apps (pinned by SHA-256) and
+yt-dlp gets it through `SPITIFO_QJS`, with `android_vr` and `web_embedded` as
+fallback clients; an imported `cookies.txt` is used only to retry once when
+YouTube shows its bot check. PO-token providers were ruled out: they need
+Node 22 and native modules, impossible on Android and about 92 MB on Windows.
+Checked on the Pixel with the debug APK: QuickJS runs from the app's native
+library directory and a YouTube download completed and uploaded to Drive. The
+merged branches and the `android-spike/` build output were deleted.
+Left: smoke-testing the published release (release-signed APK and installer).
+
 - **YouTube's bot check.** Give yt-dlp the user's cookies when YouTube answers
   "Sign in to confirm you're not a bot": decide how each app supplies them
   (`--cookies-from-browser` on Windows; a cookies file or a sign-in WebView on

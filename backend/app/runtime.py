@@ -20,6 +20,11 @@ backend sí (Tauri en Windows, Chaquopy/WebView en Android):
    SOLO si ese zip es mas nuevo que el yt-dlp empaquetado: nunca se baja de
    version (`bundled_ytdlp_version` lo resuelve sin importar el paquete).
 
+4. **Temp escribible.** En Android el solver de JavaScript de yt-dlp escribe
+   archivos .js temporales. `SPITIFO_TEMP_DIR` deja `tempfile` apuntando a la
+   particion privada si se puede escribir; si no, no se toca el default (que en
+   Android ya lo fija el host con `TMPDIR`).
+
 Nada de acá importa starlette ni uvicorn: es un módulo neutral.
 """
 from __future__ import annotations
@@ -33,6 +38,7 @@ import mimetypes
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 log = logging.getLogger("spitifo.runtime")
@@ -69,6 +75,36 @@ def prepend_to_path(directory: str) -> bool:
 def setup_ffmpeg_dir() -> bool:
     """Aplica `SPITIFO_FFMPEG_DIR` al PATH. False si la variable no está."""
     return prepend_to_path(os.getenv("SPITIFO_FFMPEG_DIR", ""))
+
+
+def setup_temp_dir() -> bool:
+    """Deja `tempfile` apuntando a un directorio escribible.
+
+    En Android el solver de JavaScript de yt-dlp escribe archivos .js
+    temporales y el temp del sistema puede no ser escribible dentro del
+    sandbox de la app. `SPITIFO_TEMP_DIR` (la misma particion privada que usan
+    los temporales de descarga) manda si se puede crear y escribir; si no, NO
+    se toca el default de Python, que en Android ya lo fija el host con
+    `TMPDIR`. El objetivo puntual es no dejar `tempfile` apuntando a algo sin
+    permiso de escritura.
+    """
+    override = (os.getenv("SPITIFO_TEMP_DIR") or "").strip()
+    if not override:
+        return False
+    destino = Path(override)
+    try:
+        destino.mkdir(parents=True, exist_ok=True)
+        fd, prueba = tempfile.mkstemp(dir=destino, prefix=".spitifo-")
+        os.close(fd)
+        os.unlink(prueba)
+    except OSError as exc:
+        log.warning("SPITIFO_TEMP_DIR no es escribible (%s): se usa el temp "
+                    "del sistema", exc)
+        return False
+    if tempfile.tempdir == str(destino):
+        return False
+    tempfile.tempdir = str(destino)
+    return True
 
 
 def setup_ytdlp_dir() -> bool:
@@ -336,5 +372,6 @@ def register_audio_mime_types() -> None:
 def configure_runtime() -> None:
     """Todo lo que hay que dejar listo antes de servir la primera request."""
     register_audio_mime_types()
+    setup_temp_dir()
     setup_ffmpeg_dir()
     setup_ytdlp_dir()

@@ -3,14 +3,24 @@
 Todo OFFLINE. `check_and_update` recibe un `httpx.Client`; los tests le pasan uno
 con `httpx.MockTransport`, asi que GitHub nunca se toca. El `MockTransport`
 imita lo que hace github.com sin API: `/releases/latest` contesta 302 con el tag
-en el `Location` y despues se bajan las dos URLs directas (sumas y zipapp). El
-zipapp falso es un zip real (con shebang) para que `zipfile` y `zipimport` lo
-acepten igual que al oficial.
+en el `Location` y despues se bajan las tres URLs directas (sumas, firma y
+zipapp). El zipapp falso es un zip real (con shebang) para que `zipfile` y
+`zipimport` lo acepten igual que al oficial.
+
+La verificacion de la firma tiene su propio archivo, `test_ytdlp_signature.py`,
+con el vector real. Aca el zipapp de mentira NO lo puede firmar yt-dlp, asi que
+un fixture autouse reemplaza `ytdlp_signature.verify_detached` por un no-op y lo
+que se testea es que el updater la LLAME en el orden correcto y que se comporte
+bien cuando falla. El unico test que usa la verificacion de verdad es
+`test_firma_real_*`, que sirve el `SHA2-256SUMS` y el `.sig` reales (por eso
+tiene que cortar despues, en el checksum del zip).
 
 Cubre:
 - instalacion de una version nueva + `current.json`;
 - version igual o mas vieja => no baja;
 - checksum que no coincide y archivo que no es zip => no se instala nada;
+- firma invalida y firma faltante => no se instala nada;
+- firma real + sumas reales => pasa la firma y corta en el checksum del zip;
 - el tag sale del `Location`: sin `/tag/`, sin redirect o con un tag que no es
   numerico => no se instala nada y no se baja nada;
 - throttle de 24 h y actualizacion de `checked_at` cuando no hay novedades;
@@ -27,6 +37,7 @@ import hashlib
 import importlib
 import io
 import json
+import logging
 import os
 import sys
 import threading
@@ -38,10 +49,17 @@ import httpx
 import pytest
 
 from backend.app import runtime
+from backend.app import ytdlp_signature
 from backend.app import ytdlp_update as ytup
 
 #: Version que los tests dicen que esta cargada (asi no dependen del instalado).
 CARGADA = "2026.01.01"
+#: Verificacion de firmas de verdad; el fixture autouse la pisa por un no-op.
+FIRMA_REAL = ytdlp_signature.verify_detached
+#: Vector real del release 2026.08.19, el mismo que usa test_ytdlp_signature.py.
+VECTOR = Path(__file__).parent / "data" / "ytdlp" / "2026.08.19"
+#: Tag de ese vector: mas nuevo que CARGADA, asi el updater intenta instalarlo.
+TAG_REAL = "2026.08.19"
 
 
 # --------------------------------------------------------------------- helpers
@@ -59,15 +77,21 @@ def _manifest(version=None, archivo=None, sha=None, checked_at=0) -> str:
                        "checked_at": checked_at})
 
 
-def _github(version, zipapp=None, *, sums=None, registro=None,
-            zip_status=200, sums_status=200, tag_status=302, location=None):
+def _github(version, zipapp=None, *, sums=None, firma=None, registro=None,
+            zip_status=200, sums_status=200, firma_status=200, tag_status=302,
+            location=None):
     """`MockTransport` que imita los redirects de github.com (sin API).
 
     `/releases/latest` contesta 302 con el tag en el `Location`; con
-    `location=` se fuerza otro valor y con `tag_status=` otra respuesta.
+    `location=` se fuerza otro valor y con `tag_status=` otra respuesta. Los
+    assets son tres: sumas, firma y zipapp; con los `*_status` se simula que
+    alguno no esta (404, por ejemplo).
     """
     cuerpo = zipapp if zipapp is not None else _zipapp("2099.1.1")
-    linea = sums if sums is not None else f"{hashlib.sha256(cuerpo).hexdigest()}  yt-dlp\n"
+    suma = sums if sums is not None else f"{hashlib.sha256(cuerpo).hexdigest()}  yt-dlp\n"
+    # El verificador mira bytes exactos: si `sums` ya viene en bytes, se sirve tal cual.
+    datos_suma = suma if isinstance(suma, bytes) else suma.encode("utf-8")
+    sig = firma if firma is not None else b"firma-de-mentira"
 
     def handler(request: httpx.Request) -> httpx.Response:
         if registro is not None:
@@ -78,10 +102,14 @@ def _github(version, zipapp=None, *, sums=None, registro=None,
                 return httpx.Response(tag_status)
             destino = location or f"/yt-dlp/yt-dlp/releases/tag/{version}"
             return httpx.Response(302, headers={"location": destino})
+        if ruta.endswith("SHA2-256SUMS.sig"):
+            if firma_status != 200:
+                return httpx.Response(firma_status)
+            return httpx.Response(200, content=sig)
         if ruta.endswith("SHA2-256SUMS"):
             if sums_status != 200:
                 return httpx.Response(sums_status)
-            return httpx.Response(200, text=linea)
+            return httpx.Response(200, content=datos_suma)
         if ruta.endswith("yt-dlp"):
             return httpx.Response(zip_status, content=cuerpo)
         return httpx.Response(404)
@@ -116,6 +144,19 @@ def update_dir(tmp_path, monkeypatch):
     return d
 
 
+@pytest.fixture(autouse=True)
+def firma_noop(monkeypatch):
+    """Neutraliza la verificacion de firmas salvo que el test pida la real.
+
+    Los zipapp de mentira no los firma yt-dlp, asi que sin esto ningun test de
+    instalacion llegaria al final. Lo que queda testeado igual es que el updater
+    llame al verificador y que no instale nada cuando este falla. Los tests que
+    si necesitan la verificacion de verdad la vuelven a poner con `FIRMA_REAL`.
+    """
+    monkeypatch.setattr(ytup.ytdlp_signature, "verify_detached",
+                        lambda data, signature: None)
+
+
 # ------------------------------------------------------- instalacion / version
 def test_version_nueva_instala_y_escribe_manifest(update_dir, cargada):
     nuevo = _zipapp("2099.1.1")
@@ -132,11 +173,12 @@ def test_version_nueva_instala_y_escribe_manifest(update_dir, cargada):
     # no quedan temporales
     assert list(update_dir.glob(".yt-dlp-*")) == []
     assert list(update_dir.glob(".current-*")) == []
-    # consulto la release, las sumas y el zip, en ese orden
-    assert len(registro) == 3
+    # consulto la release, las sumas, la firma y el zip, en ese orden
+    assert len(registro) == 4
     assert registro[0].endswith("/releases/latest")
     assert registro[1].endswith("/releases/download/2099.1.1/SHA2-256SUMS")
-    assert registro[2].endswith("/releases/download/2099.1.1/yt-dlp")
+    assert registro[2].endswith("/releases/download/2099.1.1/SHA2-256SUMS.sig")
+    assert registro[3].endswith("/releases/download/2099.1.1/yt-dlp")
 
 
 def test_tag_con_v_inicial_se_normaliza(update_dir, cargada):
@@ -180,6 +222,98 @@ def test_checksum_no_coincide_no_instala(update_dir, cargada):
 
 def test_no_es_zip_no_instala(update_dir, cargada):
     assert _correr(_github("2099.1.1", b"no soy un zip")) is None
+    assert _zips(update_dir) == []
+
+
+def test_verifica_las_sumas_antes_de_creerles(update_dir, cargada, monkeypatch):
+    """El verificador recibe los bytes EXACTOS de las sumas y de la firma."""
+    visto: list[tuple[bytes, bytes]] = []
+
+    def _espia(data, signature):
+        visto.append((data, signature))
+
+    monkeypatch.setattr(ytup.ytdlp_signature, "verify_detached", _espia)
+    suma = f"{hashlib.sha256(_zipapp('2099.1.1')).hexdigest()}  yt-dlp\n".encode()
+    assert _correr(_github("2099.1.1", sums=suma, firma=b"firma-x")) == "2099.1.1"
+    assert visto == [(suma, b"firma-x")]
+
+
+def test_firma_invalida_no_instala(update_dir, cargada, monkeypatch, caplog):
+    """Si la firma no valida, no se baja el zip ni se toca el manifest."""
+    def _rechaza(data, signature):
+        raise ytdlp_signature.SignatureError("firma rota")
+
+    monkeypatch.setattr(ytup.ytdlp_signature, "verify_detached", _rechaza)
+    registro: list[str] = []
+    with caplog.at_level(logging.WARNING, logger="spitifo.ytdlp_update"):
+        assert _correr(_github("2099.1.1", registro=registro)) is None
+
+    assert _zips(update_dir) == []
+    assert list(update_dir.glob(".yt-dlp-*")) == []
+    manifest = json.loads((update_dir / "current.json").read_text("utf-8"))
+    assert manifest["checked_at"] == 0
+    # corto en la firma: nunca pidio el zip
+    assert len(registro) == 3
+    assert registro[2].endswith("/releases/download/2099.1.1/SHA2-256SUMS.sig")
+    assert "firma invalida" in caplog.text
+
+
+def test_firma_faltante_no_instala(update_dir, cargada, caplog):
+    """Una release sin `.sig` (404) no se instala: sin firma no hay confianza."""
+    registro: list[str] = []
+    with caplog.at_level(logging.WARNING, logger="spitifo.ytdlp_update"):
+        assert _correr(_github("2099.1.1", registro=registro,
+                               firma_status=404)) is None
+
+    assert _zips(update_dir) == []
+    assert len(registro) == 3
+    assert registro[2].endswith("SHA2-256SUMS.sig")
+    assert "SHA2-256SUMS.sig" in caplog.text
+    manifest = json.loads((update_dir / "current.json").read_text("utf-8"))
+    assert manifest["checked_at"] == 0
+
+
+def test_sumas_faltantes_no_instala(update_dir, cargada):
+    """Sin sumas no hay nada que verificar ni que comparar."""
+    assert _correr(_github("2099.1.1", sums_status=404)) is None
+    assert _zips(update_dir) == []
+
+
+def test_firma_real_pasa_y_corta_en_el_checksum_del_zip(update_dir, cargada,
+                                                        monkeypatch, caplog):
+    """Con el vector REAL: la firma valida y el que rechaza es el SHA-256.
+
+    Las sumas reales describen los archivos reales del release, que no tenemos
+    (ni podemos fabricar: seria una preimagen de SHA-256). Asi que el zip que se
+    sirve es un zipapp valido cualquiera: tiene que fallar en el checksum, y eso
+    es justamente la prueba de que la firma paso antes.
+    """
+    monkeypatch.setattr(ytup.ytdlp_signature, "verify_detached", FIRMA_REAL)
+    sumas = (VECTOR / "SHA2-256SUMS").read_bytes()
+    firma = (VECTOR / "SHA2-256SUMS.sig").read_bytes()
+    registro: list[str] = []
+    transport = _github(TAG_REAL, _zipapp("2099.1.1"), sums=sumas, firma=firma,
+                        registro=registro)
+
+    with caplog.at_level(logging.WARNING, logger="spitifo.ytdlp_update"):
+        assert _correr(transport) is None
+
+    assert _zips(update_dir) == []
+    assert registro[1].endswith(f"/{TAG_REAL}/SHA2-256SUMS")
+    assert registro[2].endswith(f"/{TAG_REAL}/SHA2-256SUMS.sig")
+    # llego hasta el zip: la firma paso, corto el checksum
+    assert registro[3].endswith(f"/{TAG_REAL}/yt-dlp")
+    assert "SHA-256" in caplog.text
+    assert "firma invalida" not in caplog.text
+
+
+def test_firma_real_sobre_sumas_tocadas_falla(update_dir, cargada, monkeypatch):
+    """El vector real deja de pasar si se toca una sola linea de las sumas."""
+    monkeypatch.setattr(ytup.ytdlp_signature, "verify_detached", FIRMA_REAL)
+    sumas = (VECTOR / "SHA2-256SUMS").read_bytes().replace(b"  yt-dlp\n",
+                                                           b"  yt-dlp \n")
+    firma = (VECTOR / "SHA2-256SUMS.sig").read_bytes()
+    assert _correr(_github(TAG_REAL, sums=sumas, firma=firma)) is None
     assert _zips(update_dir) == []
 
 

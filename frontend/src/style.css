@@ -3244,6 +3244,64 @@ body.has-mini .progstack {
   opacity: 0.55;
 }
 
+/* ---------------------------------------------------------------------------
+   Cookies de YouTube: ultimo recurso del bloque de configuracion. Separado del
+   resto por una linea porque ya no es "donde vive la musica", es una salida
+   manual para el muro de verificacion.
+   ------------------------------------------------------------------------- */
+.store__cookies {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.store__cookies-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.store__cookies-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font: 600 14px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.store__cookies-title svg {
+  color: var(--icon-dim);
+}
+
+.store__cookies-state {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.store__cookies-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.store__cookies-actions .vf {
+  margin-top: 0;
+}
+
+.store__file {
+  display: none;
+}
+
+.store__cookies code {
+  font-size: 0.92em;
+  color: var(--ink);
+}
+
 .store__note {
   margin: 14px 0 0;
   color: var(--muted);

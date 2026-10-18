@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.HttpURLConnection
+import java.net.URI
+import java.security.MessageDigest
 import java.util.Properties
 import java.util.zip.ZipFile
 
@@ -146,6 +149,84 @@ val stageNativeSupportLibs = tasks.register("stageNativeSupportLibs") {
     }
 }
 
+/* ------------------------------------------------------------------ quickjs
+ * QuickJS-ng: the small JavaScript runtime yt-dlp runs to solve YouTube's
+ * challenges. The release ships a static-pie arm64 binary, which is the only
+ * kind that works here: no interpreter path to find and no shared libraries of
+ * its own to load.
+ *
+ * The asset is fetched by the task below (never at configuration time), checked
+ * against the hash pinned here and written into a generated jniLibs dir as
+ * `libqjs.so`. The `.so` name is what makes AGP package it as a native library,
+ * and jniLibs.useLegacyPackaging = true is what makes the install extract it to
+ * applicationInfo.nativeLibraryDir as a real, executable file, which is where
+ * Backend.kt points SPITIFO_QJS. */
+val quickJsVersion = "0.17.0"
+val quickJsAsset = "qjs-linux-aarch64"
+// The release publishes no checksums file: this hash was computed from the
+// downloaded asset and is the only thing guarding the build against a swapped
+// or truncated binary.
+val quickJsSha256 = "3372133484edf50a69f3c67903af41206d22a061e930e3cfb63269272ef56d2e"
+val quickJsJniLibsDir = stageDir.resolve("jniLibs/arm64-v8a")
+
+val downloadQuickJs = tasks.register("downloadQuickJs") {
+    val out = quickJsJniLibsDir.resolve("libqjs.so")
+    val cached = layout.buildDirectory.dir("quickjs").get().asFile.resolve(quickJsAsset)
+    inputs.property("quickJsVersion", quickJsVersion)
+    inputs.property("quickJsSha256", quickJsSha256)
+    outputs.file(out)
+    doLast {
+        if (!cached.isFile) {
+            val url = "https://github.com/quickjs-ng/quickjs/releases/download/" +
+                "v$quickJsVersion/$quickJsAsset"
+            logger.lifecycle("downloading $url")
+            cached.parentFile.mkdirs()
+            download(url, cached)
+        }
+        val actual = MessageDigest.getInstance("SHA-256").digest(cached.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        if (!actual.equals(quickJsSha256, ignoreCase = true)) {
+            cached.delete()
+            throw GradleException(
+                "QuickJS checksum mismatch for $quickJsAsset: got $actual, expected " +
+                    "$quickJsSha256. If the version was bumped on purpose, update " +
+                    "quickJsVersion and quickJsSha256 in android/app/build.gradle.kts.")
+        }
+        out.parentFile.mkdirs()
+        cached.copyTo(out, overwrite = true)
+        logger.lifecycle("staged libqjs.so (${out.length()} bytes) from $quickJsAsset")
+    }
+}
+
+/**
+ * Downloads [url] into [dest], following redirects by hand: GitHub serves
+ * release assets from a second host, and plain HttpURLConnection only follows
+ * redirects within one protocol anyway.
+ */
+private fun download(url: String, dest: File) {
+    var current = URI(url).toURL()
+    var redirects = 0
+    while (true) {
+        val conn = current.openConnection() as HttpURLConnection
+        conn.instanceFollowRedirects = false
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 120_000
+        val code = conn.responseCode
+        if (code in 300..399) {
+            val location = conn.getHeaderField("Location")
+                ?: throw GradleException("HTTP $code from $current with no Location")
+            conn.disconnect()
+            if (++redirects > 5) throw GradleException("more than 5 redirects downloading $url")
+            current = URI(current.toString()).resolve(location).toURL()
+            continue
+        }
+        if (code != 200) throw GradleException("HTTP $code downloading $url")
+        conn.inputStream.use { i -> dest.outputStream().use { o -> i.copyTo(o) } }
+        conn.disconnect()
+        return
+    }
+}
+
 /* ------------------------------------------------------------------ release
  * assembleRelease signs with android/keystore.properties, which is
  * machine-specific and gitignored. Nothing here ever creates a keystore or
@@ -216,6 +297,9 @@ android {
     }
 
     sourceSets["main"].assets.srcDir(stageDir.resolve("assets"))
+    // downloadQuickJs writes libqjs.so under here: AGP only packages native
+    // libraries that live in a jniLibs dir and end in .so.
+    sourceSets["main"].jniLibs.srcDir(stageDir.resolve("jniLibs"))
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -256,14 +340,16 @@ chaquopy {
     }
 }
 
-// The staging tasks feed Chaquopy's python sources and the merged assets, so
-// whatever the build actually packages is always freshly staged.
+// The staging tasks feed Chaquopy's python sources, the merged assets and the
+// merged jniLibs, so whatever the build actually packages is always freshly
+// staged.
 tasks.configureEach {
     if (name == "preBuild" ||
         (name.startsWith("merge") &&
-            (name.endsWith("PythonSources") || name.endsWith("Assets"))) ||
+            (name.endsWith("PythonSources") || name.endsWith("Assets") ||
+                name.endsWith("JniLibFolders"))) ||
         (name.startsWith("generate") && name.endsWith("PythonRequirements"))) {
-        dependsOn(stageBackend, stageFrontend, stageNativeSupportLibs)
+        dependsOn(stageBackend, stageFrontend, stageNativeSupportLibs, downloadQuickJs)
     }
     if (name == "validateSigningRelease" || name.startsWith("packageRelease") ||
         name.startsWith("assembleRelease") || name.startsWith("bundleRelease")) {

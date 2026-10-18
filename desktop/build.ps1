@@ -1,4 +1,5 @@
-# Builds the Windows installer: frontend, backend sidecar, ffmpeg, Tauri shell.
+# Builds the Windows installer: frontend, backend sidecar, ffmpeg, QuickJS,
+# Tauri shell.
 #
 # Usage, from any directory:
 #   powershell -ExecutionPolicy Bypass -File desktop\build.ps1 [-FfmpegDir C:\ffmpeg\bin] [-Python C:\python.exe] [-Dev]
@@ -59,6 +60,30 @@ function Get-SharedFfmpeg {
     return $bin
 }
 
+# Downloads QuickJS-ng once into desktop\.cache, checks it against the hash
+# pinned below and returns the cached binary. yt-dlp runs it to solve YouTube's
+# challenges; the backend learns its path from SPITIFO_QJS.
+function Get-QuickJs {
+    $version = "0.17.0"
+    $name = "qjs-windows-x86_64.exe"
+    # The release publishes no checksums file, so these hashes are the only
+    # thing standing between the installer and a tampered or truncated asset.
+    $sha256 = "2AEABF0092C3262D6B2609824418F7DD7ED1F1DF939F73B2B15645230CAC0D77"
+    $cache = Join-Path $desktop ".cache"
+    $exe = Join-Path $cache $name
+    if (-not (Test-Path $exe)) {
+        New-Item -ItemType Directory -Force $cache | Out-Null
+        $base = "https://github.com/quickjs-ng/quickjs/releases/download/v$version"
+        Invoke-WebRequest "$base/$name" -OutFile $exe -UseBasicParsing
+    }
+    $actual = (Get-FileHash $exe -Algorithm SHA256).Hash
+    if ($actual -ne $sha256) {
+        Remove-Item $exe
+        throw "QuickJS checksum mismatch for $name ($actual)"
+    }
+    return $exe
+}
+
 Step "frontend" { Push-Location "$root\frontend"; try { npm ci; npm run build } finally { Pop-Location } }
 
 Step "backend sidecar" {
@@ -78,6 +103,17 @@ Step "ffmpeg" {
         Copy-Item (Join-Path $FfmpegDir $exe) $target
     }
     Copy-Item (Join-Path $FfmpegDir "*.dll") $target
+}
+
+Step "quickjs" {
+    $qjs = Get-QuickJs
+    # A second resource dir, mapped into the bundle next to ffmpeg's. Unlike
+    # desktop\ffmpeg (fully generated, so it is wiped), this one holds a tracked
+    # file - the .gitignore that keeps qjs.exe out of the repository - so only
+    # the binary itself is replaced.
+    $target = Join-Path $desktop "qjs"
+    New-Item -ItemType Directory -Force $target | Out-Null
+    Copy-Item $qjs (Join-Path $target "qjs.exe") -Force
 }
 
 Step "tauri" {

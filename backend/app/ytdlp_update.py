@@ -8,6 +8,12 @@ arranque (reemplazar el modulo ya importado no tiene efecto). `runtime.py` es
 quien lo carga al arrancar: lee `current.json` y mete la ruta del zip en
 `sys.path`.
 
+`SHA2-256SUMS` sola no alcanza: sale del mismo release que el zip, asi que quien
+pueda tocar una puede tocar la otra. Antes de creerle una linea se verifica la
+firma OpenPGP detached (`SHA2-256SUMS.sig`) contra la clave pineada de yt-dlp;
+de eso se encarga `ytdlp_signature.py`, con stdlib pura porque en Android no hay
+`gpg`. Si la firma no valida, o no se puede bajar, no se instala nada.
+
 Nada de API de GitHub: sin token son 60 pedidos por hora por IP y ya nos comio
 un 403. El tag de la ultima release sale del redirect de `.../releases/latest`
 (GitHub contesta 302 y el tag esta al final del `Location`, en
@@ -42,6 +48,7 @@ from pathlib import Path
 import httpx
 
 from . import runtime
+from . import ytdlp_signature
 
 log = logging.getLogger("spitifo.ytdlp_update")
 
@@ -51,8 +58,11 @@ LATEST_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest"
 DOWNLOAD_URL = "https://github.com/yt-dlp/yt-dlp/releases/download"
 #: El zipapp oficial: un zip con shebang, importable por zipimport.
 ASSET_ZIPAPP = "yt-dlp"
-#: Sumas de la propia release, linea "<hex>  <archivo>".
+#: Sumas de la propia release, linea "<hex>  <archivo>". Sin la firma de al
+#: lado no valen nada: vienen del mismo release.
 ASSET_SUMS = "SHA2-256SUMS"
+#: Firma detached (OpenPGP binario) de `SHA2-256SUMS`.
+ASSET_SIG = "SHA2-256SUMS.sig"
 #: Marca que separa el tag dentro del `Location` de `/releases/latest`.
 _TAG_EN_LOCATION = "/releases/tag/"
 #: Un tag de yt-dlp es solo digitos y puntos (por ejemplo 2026.10.18).
@@ -231,8 +241,9 @@ def _consultar(client: httpx.Client, directorio: Path, manifest: dict | None,
 
     url_zip = f"{DOWNLOAD_URL}/{remota}/{ASSET_ZIPAPP}"
     url_sumas = f"{DOWNLOAD_URL}/{remota}/{ASSET_SUMS}"
+    url_firma = f"{DOWNLOAD_URL}/{remota}/{ASSET_SIG}"
 
-    esperado = _sha_esperado(client, url_sumas)
+    esperado = _sumas_verificadas(client, url_sumas, url_firma)
     if esperado is None:
         log.warning("yt-dlp: %s no trae la linea de %s", ASSET_SUMS, ASSET_ZIPAPP)
         return None
@@ -258,14 +269,43 @@ def _tag(valor: object) -> str:
     return texto
 
 
-def _sha_esperado(client: httpx.Client, url: str) -> str | None:
-    resp = client.get(url, follow_redirects=True)
+def _sumas_verificadas(client: httpx.Client, url_sumas: str,
+                       url_firma: str) -> str | None:
+    """SHA-256 de `yt-dlp` segun sumas cuya firma OpenPGP ya se verifico.
+
+    Baja las sumas y su firma, verifica la firma contra la clave pineada y recien
+    ahi busca la linea. Si la firma no valida -o no se puede bajar- devuelve None:
+    mejor quedarse con la yt-dlp que ya funciona que instalar algo sin respaldo.
+    """
+    resp = client.get(url_sumas, follow_redirects=True)
     resp.raise_for_status()
-    for linea in resp.text.splitlines():
+    datos = resp.content
+
+    firma = _bajar_firma(client, url_firma)
+    if firma is None:
+        return None
+    try:
+        ytdlp_signature.verify_detached(datos, firma)
+    except ytdlp_signature.SignatureError as exc:
+        log.warning("yt-dlp: firma invalida de %s (%s); no se instala nada",
+                    ASSET_SUMS, exc)
+        return None
+
+    for linea in datos.decode("utf-8", "replace").splitlines():
         partes = linea.split()
         if len(partes) >= 2 and partes[1].lstrip("*") == ASSET_ZIPAPP:
             return partes[0].strip()
     return None
+
+
+def _bajar_firma(client: httpx.Client, url: str) -> bytes | None:
+    """Baja `SHA2-256SUMS.sig`, o None si el status no es 200."""
+    resp = client.get(url, follow_redirects=True)
+    if resp.status_code != httpx.codes.OK:
+        log.warning("yt-dlp: no se pudo bajar %s (status %s); no se instala nada",
+                    ASSET_SIG, resp.status_code)
+        return None
+    return resp.content
 
 
 def _bajar_y_verificar(client: httpx.Client, url: str, esperado: str,

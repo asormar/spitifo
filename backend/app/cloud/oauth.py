@@ -361,6 +361,9 @@ class LoopbackReceiver:
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._results: queue.Queue = queue.Queue()
+        # `close` corre a la vez desde `cancel` (la UI) y desde el `finally`
+        # del flujo: el lock hace que solo uno se quede con el server.
+        self._close_lock = threading.Lock()
         self.redirect_uri: str | None = None
 
     def start(self) -> str:
@@ -413,13 +416,14 @@ class LoopbackReceiver:
         self.close()
 
     def close(self) -> None:
-        if self._server is not None:
-            self._server.shutdown()
-            self._server.server_close()
-            self._server = None
-        if self._thread is not None:
-            self._thread.join(timeout=5)
-            self._thread = None
+        with self._close_lock:
+            server, self._server = self._server, None
+            thread, self._thread = self._thread, None
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=5)
 
     def __enter__(self) -> LoopbackReceiver:
         self.start()

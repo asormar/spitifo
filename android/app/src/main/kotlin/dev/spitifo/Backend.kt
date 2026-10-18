@@ -148,6 +148,10 @@ class Backend(private val app: Application) {
             environ.callAttr("__setitem__", "YTDLP_ENABLED", "1")
             // yt-dlp and friends keep their caches under HOME.
             environ.callAttr("__setitem__", "HOME", app.filesDir.absolutePath)
+            // yt-dlp writes the JavaScript it feeds to QuickJS into a temp
+            // file, and TMPDIR is what Python's tempfile reads: setdefault
+            // keeps an already configured one.
+            environ.callAttr("setdefault", "TMPDIR", app.cacheDir.absolutePath)
 
             if (natives != null) {
                 val (binDir, libDir) = natives
@@ -163,6 +167,17 @@ class Backend(private val app: Application) {
                 probeFfmpeg(File(binDir, "ffmpeg"), ldPath)
             } else {
                 Log.e(TAG, "continuing without ffmpeg: YouTube downloads will fail")
+            }
+
+            // QuickJS-ng, extracted next to ffmpeg's binaries because it ships
+            // as libqjs.so (see downloadQuickJs in app/build.gradle.kts). It is
+            // the JavaScript runtime yt-dlp runs to solve YouTube's challenges.
+            val qjs = File(app.applicationInfo.nativeLibraryDir, "libqjs.so")
+            if (qjs.isFile) {
+                environ.callAttr("__setitem__", "SPITIFO_QJS", qjs.absolutePath)
+            } else {
+                Log.w(TAG, "libqjs.so is not in ${app.applicationInfo.nativeLibraryDir}: " +
+                    "YouTube challenges will go unsolved")
             }
 
             Log.i(TAG, "library=${library.absolutePath} temp=${temp.absolutePath} " +

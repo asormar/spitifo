@@ -111,6 +111,7 @@ pub fn start(app: &AppHandle, window: WebviewWindow) -> Result<(), String> {
 fn spawn(resources: &Path, library: &Path, log_path: &Path, token: &str) -> std::io::Result<Child> {
     let exe = resources.join("backend").join(executable("spitifo-backend"));
     let log = File::create(log_path)?;
+    let qjs = resources.join("qjs").join(executable("qjs"));
 
     let mut cmd = Command::new(&exe);
     cmd.env("SPITIFO_TOKEN", token)
@@ -124,6 +125,13 @@ fn spawn(resources: &Path, library: &Path, log_path: &Path, token: &str) -> std:
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(log);
+
+    // QuickJS-ng, the JavaScript runtime yt-dlp runs to solve YouTube's
+    // challenges. Missing when the app is built without desktop\build.ps1, in
+    // which case the backend falls back to the `qjs` it finds on PATH.
+    if qjs.is_file() {
+        cmd.env("SPITIFO_QJS", &qjs);
+    }
 
     #[cfg(windows)]
     {
