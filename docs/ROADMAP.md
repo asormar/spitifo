@@ -177,8 +177,16 @@ The "Connect service" dialog (two cards plus the Drive quota bar) signs in
 from the UI with no environment variables: OAuth clients come from
 `backend/app/cloud/oauth_clients.json` (gitignored) and the choice persists in
 `storage.json`. Checked against a real account on the PC.
-Next: the Android token bridge (Kotlin pushes the `AuthorizationClient` token
-into `StaticTokenSource`), prefetch of the next track, and merging the branch.
+On Android the host signs in natively: `DriveAuth.kt` gets a `drive.file`
+token from `AuthorizationClient` and pushes it into `StaticTokenSource`
+(`backend/app/cloud/android.py`), refreshing it silently on start, on resume
+and every 50 minutes; no OAuth client file ships in the APK. The library
+auto-advances to the next row and prefetches it into the audio cache
+(`POST /api/prefetch`). Both were checked on the Pixel against a real Drive:
+sign-in from the dialog, a download uploaded from the phone, and the next track
+playing from the cache with no request to Drive.
+Next: merging the branch. The release build still needs an Android OAuth client
+registered for the release signing certificate's SHA-1.
 
 - Starts with a benchmark of Google Drive and OneDrive: time to first audio,
   stalls, seeking, and Android sign-in. Drive is chosen if it meets the targets in
