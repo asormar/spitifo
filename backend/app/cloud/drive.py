@@ -277,6 +277,10 @@ class DriveStorage:
         self._own_unreadable = False
         self._quota_cache: dict | None = None
         self._quota_cache_at = float("-inf")
+        # Prefetch del proximo tema: el par (remote_id, revision) que YA se esta
+        # bajando, para que dos avisos seguidos de la UI no lo bajen dos veces.
+        self._prefetch_lock = threading.Lock()
+        self._prefetching: set[tuple[str, str]] = set()
 
     # --------------------------------------------------------- HTTP con reintentos
     def _auth(self) -> dict[str, str]:
@@ -640,6 +644,67 @@ class DriveStorage:
             stream.__exit__(None, None, None)
             raise
         return _RemoteBody(stream, resp, n)
+
+    def prefetch(self, key: str) -> bool:
+        """Baja `key` ENTERO a la cache, SIN pinnearlo: adelanto del proximo tema.
+
+        La UI lo pide al empezar un tema para que el siguiente arranque de la
+        cache en vez de la red (auto-advance). El archivo queda unpinned, asi que
+        el LRU puede sacarlo: es un adelanto, no algo que el usuario pidio.
+
+        Devuelve False si no hay cache, la clave no esta en el indice o la
+        entrada no tiene `remote_id`; True si ya estaba en cache o si termino de
+        bajarlo. Un prefetch del mismo `(remote_id, revision)` ya en curso no
+        arranca otro. Las excepciones salen al llamador: la ruta las loguea.
+        """
+        validate_key(key)
+        cache = self.cache
+        if cache is None:
+            return False
+        entry = self._entry(key)
+        if entry is None or not entry.remote_id:
+            return False
+        remote_id, revision = entry.remote_id, entry.revision
+        if cache.get(remote_id, revision) is not None:
+            return True
+        token = (remote_id, revision)
+        with self._prefetch_lock:
+            if token in self._prefetching:
+                return False
+            self._prefetching.add(token)
+        try:
+            self._download_to_cache(entry)
+        finally:
+            with self._prefetch_lock:
+                self._prefetching.discard(token)
+        return True
+
+    def _download_to_cache(self, entry: IndexEntry) -> None:
+        """Streaming a un temporal y despues `cache.put` (unpinned).
+
+        El temporal vive en la misma raiz de la cache (mismo volumen), asi que
+        `put` es una copia local. Se borra SIEMPRE, haya salido bien o mal.
+        """
+        cache = self.cache
+        assert cache is not None  # `prefetch` ya lo chequeo
+        fd, tmp = tempfile.mkstemp(dir=cache.root, prefix=".prefetch-",
+                                   suffix=".tmp")
+        tmp_path = Path(tmp)
+        try:
+            # El cuerpo se escribe a disco a medida que llega: nada de juntar el
+            # archivo entero en memoria (eso es `_download_all`, solo para el indice).
+            with os.fdopen(fd, "wb") as out:
+                with self._stream("GET", f"{DRIVE_FILES}/{entry.remote_id}",
+                                  params={"alt": "media"}) as resp:
+                    for chunk in resp.iter_bytes():
+                        out.write(chunk)
+            cache.put(entry.remote_id, entry.revision, tmp_path,
+                      _ext_of(entry.key))
+        finally:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
     def put_file(self, key: str, src: Path) -> StoredFile:
         """Sube `src` a `key` y lo BORRA (el puerto MUEVE)."""

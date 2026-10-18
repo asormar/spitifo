@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import os
 import re
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -863,6 +864,38 @@ async def audio(request: Request):
         headers={"Accept-Ranges": _UNIT, "Content-Length": str(size)})
 
 
+def _prefetch_bg(fn, key: str) -> None:
+    """Corre `prefetch` fuera del request: los fallos se loguean, no se tiran."""
+    try:
+        fn(key)
+    except Exception as exc:
+        log.warning("prefetch de %s fallo: %s: %s", key, type(exc).__name__, exc)
+
+
+async def prefetch(request: Request):
+    """Adelanta la descarga del proximo tema (auto-advance de la biblioteca).
+
+    La UI lo dispara al empezar un tema, con la clave del SIGUIENTE. La respuesta
+    no espera la descarga: arranca en un thread y vuelve ya. Un almacenamiento sin
+    cache (disco local) contesta 204: no hay nada que adelantar.
+    """
+    body = await _json_body(request)
+    key = body.get("key")
+    if not isinstance(key, str) or Path(key).suffix.lower() not in AUDIO_EXTS:
+        raise HTTPException(400, "clave invalida")
+    storage = get_storage()
+    try:
+        # Igual que /api/audio: `stat` confirma que existe antes de encolar nada.
+        await asyncio.to_thread(storage.stat, key)
+    except (InvalidKey, FileNotFoundError, OSError):
+        raise HTTPException(404, "no encontrado")
+    fn = getattr(storage, "prefetch", None)
+    if fn is None:
+        return Response(status_code=204)
+    threading.Thread(target=_prefetch_bg, args=(fn, key), daemon=True).start()
+    return JSONResponse({"key": key}, status_code=202)
+
+
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
     """Mismo cuerpo de error que FastAPI: {"detail": ...} en todos los casos."""
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
@@ -925,6 +958,7 @@ routes = [
     Route("/api/storage/use", storage_use, methods=["POST"]),
     Route("/api/storage/disconnect", storage_disconnect, methods=["POST"]),
     Route("/api/audio", audio),
+    Route("/api/prefetch", prefetch, methods=["POST"]),
 ]
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
