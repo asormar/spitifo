@@ -19,28 +19,36 @@ Actions**, or with `gh`). None of them is public, and CI never prints them.
 | `ANDROID_KEY_PASSWORD` | the key's `keyPassword` |
 
 The Google desktop client comes from `docs/oauth-setup.md` (step 6, "Desktop
-app"). The keystore passwords are the ones written into
-`android/keystore.properties` when the key was created.
+app") and is the same one in `backend/app/cloud/oauth_clients.json`. The
+keystore passwords are the ones in `android/keystore.properties`.
 
-### Encoding the keystore
+### Setting them from the local files
+
+From the repository root, in PowerShell. Every value is read from the files you
+already have and piped into `gh` (without `--body`, `gh secret set` reads the
+value from stdin), so no secret is typed, kept in the shell history or written
+to a temporary file:
 
 ```powershell
+$oauth = Get-Content backend\app\cloud\oauth_clients.json -Raw | ConvertFrom-Json
+$ks = Get-Content android\keystore.properties -Raw | ConvertFrom-StringData
+
+$oauth.google.client_id     | gh secret set SPITIFO_GOOGLE_CLIENT_ID
+$oauth.google.client_secret | gh secret set SPITIFO_GOOGLE_CLIENT_SECRET
+$ks.storePassword           | gh secret set ANDROID_KEYSTORE_PASSWORD
+$ks.keyAlias                | gh secret set ANDROID_KEY_ALIAS
+$ks.keyPassword             | gh secret set ANDROID_KEY_PASSWORD
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("android\spitifo-release.jks")) |
-    Set-Content keystore.b64
-gh secret set ANDROID_KEYSTORE_BASE64 < keystore.b64
-Remove-Item keystore.b64
+    gh secret set ANDROID_KEYSTORE_BASE64
+
+Remove-Variable oauth, ks
+gh secret list
 ```
 
-The intermediate file exists so the secret is never typed or pasted by hand;
-delete it once the secret is set. Short values can be set directly instead:
-
-```bash
-gh secret set SPITIFO_GOOGLE_CLIENT_ID --body "1234.apps.googleusercontent.com"
-gh secret set SPITIFO_GOOGLE_CLIENT_SECRET --body "GOCSPX-..."
-gh secret set ANDROID_KEYSTORE_PASSWORD --body "<storePassword>"
-gh secret set ANDROID_KEY_ALIAS --body "spitifo"
-gh secret set ANDROID_KEY_PASSWORD --body "<keyPassword>"
-```
+`gh secret list` shows the six names (never the values). Avoid
+`gh secret set NAME --body "<password>"`: it leaves the password in the shell
+history. PowerShell has no `<` input redirection, so `gh secret set NAME < file`
+does not work there either.
 
 ## Android OAuth client
 
