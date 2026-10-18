@@ -235,7 +235,35 @@ on 2026-10-18 from the tag build: the Windows installer, the APK and
 
 - Not on Google Play: its policy does not allow YouTube downloaders.
 
-### 10. Companion player app
+### 10. Hardening: YouTube's bot check, yt-dlp's signature and cleanup
+
+Tackles the open risks that need no new toolchain, before building more on top.
+
+- **YouTube's bot check.** Give yt-dlp the user's cookies when YouTube answers
+  "Sign in to confirm you're not a bot": decide how each app supplies them
+  (`--cookies-from-browser` on Windows; a cookies file or a sign-in WebView on
+  Android) and keep them out of logs and of the synced library.
+- **yt-dlp's signature.** The auto-updater only checks `SHA2-256SUMS` from the
+  same release, which guards against corruption, not against a compromised
+  release. Verify yt-dlp's signature over the sums (`SHA2-256SUMS.sig`) with
+  its public key pinned in the app before loading a downloaded version.
+- **Cleanup.** Delete the merged local branches (`feat/cloud-connector`,
+  `refactor/cloud-base`) and decide what to do with the untracked
+  `android-spike/` folder.
+- Smoke-test the published release on the PC and the Pixel, including Drive
+  sign-in from the release-signed APK.
+
+### 11. Smaller and signed binaries
+
+- **Audio-only ffmpeg.** 150 MB of the 192 MB installed on Windows are ffmpeg's
+  shared libraries, mostly video codecs Spitifo never uses. Build an audio-only
+  ffmpeg (the demuxers, decoders and encoders the downloader needs) for Windows
+  and Android, in CI, and measure the installer and APK sizes against today's.
+- **Code signing.** SmartScreen warns on the unsigned installer. Compare the
+  options (a code-signing certificate, Azure Trusted Signing, SignPath for open
+  source) on cost and eligibility, then sign the installer in `release.yml`.
+
+### 12. Companion player app
 
 - A separate app that plays the library from the user's storage.
 - Reuses the OAuth registration of the downloader (the `drive.file` scope grants
@@ -250,8 +278,8 @@ on 2026-10-18 from the tag build: the Windows installer, the APK and
 1 Feasibility ──┬── 3 Embeddable backend ──┬── 4 Desktop
                 │                          └── 5 Android
 2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ──┬── 8 Others
-                                                                    └── 10 Companion app
-                                                             9 Release (last)
+                                                                    └── 12 Companion app
+                                                             9 Release ── 10 Hardening ── 11 Smaller, signed binaries
 ```
 
 Session 2 does not depend on session 1 and can run in parallel. It comes early
@@ -283,7 +311,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8, 10 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10–12 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:
