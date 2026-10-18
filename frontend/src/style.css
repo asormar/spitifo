@@ -1746,6 +1746,459 @@ body.has-mini .progstack {
 }
 
 /* ---------------------------------------------------------------------------
+   8c. VIDEO: fila de la biblioteca + VideoHost
+
+   Un archivo de video no se reproduce dentro de la lista, se abre: la fila solo
+   lleva los titulos y una miniatura 16:9 que es el boton. El video en si vive
+   en el VideoHost, UNA sola ventana que va de centrada (modal) a
+   minireproductor (mini) moviendo la misma caja. El <video> es el mismo nodo,
+   asi que el cambio de modo no recarga nada.
+
+   Superficie oscura en los DOS temas (--video-bg): un marco claro alrededor de
+   un video oscuro se lee como un fallo de carga. El resto va con los tokens de
+   siempre, asi que el tema oscuro no necesita una regla propia.
+   ------------------------------------------------------------------------- */
+
+:root {
+  --video-bg: #22303f;
+  --video-ink: #dbe8f2;
+  --video-scrim: rgba(20, 32, 43, 0.55);
+  /* Radio del diseno de video (8 px): mas chico que la escala general, que
+     empieza en 12. En una miniatura de 96 px un radio mayor se come la imagen. */
+  --r-thumb: 8px;
+}
+
+:root[data-theme="dark"] {
+  --video-bg: #0d151d;
+  --video-ink: #b9c9d6;
+  --video-scrim: rgba(0, 0, 0, 0.62);
+}
+
+/* --- Fila de video: mismos margenes que la de audio, sin controles --------- */
+
+.pl--video {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.pl__tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.pl__tag svg {
+  color: var(--icon-dim);
+}
+
+.pl__meta--row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl__dim {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plthumb {
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-thumb);
+  background: none;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.plthumb:active {
+  transform: scale(0.97);
+}
+
+.plthumb__box {
+  position: relative;
+  display: block;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-thumb);
+  background: var(--video-bg);
+}
+
+.plthumb__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.plthumb__ph {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--video-ink);
+}
+
+.plthumb__play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding-left: 2px;
+  border-radius: var(--r-pill);
+  background: rgba(8, 14, 20, 0.55);
+  color: #fff;
+  transform: translate(-50%, -50%);
+  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+}
+
+.plthumb__dur {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgba(8, 14, 20, 0.72);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+@media (hover: hover) {
+  .plthumb:hover .plthumb__play {
+    background: var(--accent);
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+}
+
+.plthumb:focus-visible .plthumb__play {
+  background: var(--accent);
+}
+
+/* --- VideoHost ------------------------------------------------------------ */
+
+.vhost {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+/* Cerrado no se desmonta (el <video> tiene que seguir siendo el mismo nodo):
+   se apaga. Opacidad y no `display`, para no sacarlo del arbol de pintado
+   mientras el video vive en una ventana flotante. `pointer-events` es
+   heredada, asi que los hijos dejan de recibir clics sin reglas propias. */
+.vhost[data-mode="closed"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vhost__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--video-scrim);
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+}
+
+.vhost[data-mode="modal"] .vhost__scrim {
+  opacity: 1;
+}
+
+.vhost[data-mode="mini"] .vhost__scrim {
+  display: none;
+}
+
+.vhost__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-panel);
+}
+
+/* --- Modal: centrada, con el fondo oscurecido y el scroll de la pagina
+   bloqueado (lo pone el componente en <html>). Flex + `margin: auto` en la
+   tarjeta: si no cabe en una pantalla baja, scrollea en vez de recortarse por
+   arriba, que es lo que hace `place-items: center` a secas. --- */
+
+.vhost[data-mode="modal"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 4vw, 40px);
+  overflow-y: auto;
+}
+
+.vhost[data-mode="modal"] .vhost__card {
+  width: min(880px, 100%);
+  max-height: 100%;
+  margin: auto;
+  overflow: auto;
+  animation: vhost-in 200ms var(--ease) both;
+}
+
+@keyframes vhost-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- Mini: esquina inferior derecha, sin bloquear nada. El contenedor no
+   recibe clics; solo la tarjeta. --- */
+
+.vhost[data-mode="mini"] {
+  pointer-events: none;
+}
+
+.vhost[data-mode="mini"] .vhost__card {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: 280px;
+  gap: 8px;
+  padding: 8px;
+  pointer-events: auto;
+}
+
+/* Con el mini-reproductor de audio a la vista, el video se pone encima. */
+body.has-mini .vhost[data-mode="mini"] .vhost__card {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--mini-h) + 12px);
+}
+
+/* --- El marco que se pone a pantalla completa: el video, no la pagina ----- */
+
+.vhost__frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 72vh;
+  overflow: hidden;
+  border-radius: var(--r-inner);
+  background: var(--video-bg);
+}
+
+.vhost__frame:fullscreen {
+  max-height: none;
+  border-radius: 0;
+  background: #000;
+}
+
+.vhost__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--video-bg);
+}
+
+/* El video no se pudo cargar (404, codec): el aviso va DENTRO del marco, no
+   una caja vacia. */
+.vhost__fail {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  background: var(--video-bg);
+  color: var(--video-ink);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* En el mini el video no lleva controles nativos: los botones van encima.
+   Siempre visibles: en tactil no hay hover que los saque. */
+.vhost__mini {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px;
+  background: linear-gradient(to top, rgba(8, 14, 20, 0.66), transparent);
+}
+
+.vhost__mini-title {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Boton secundario del VideoHost (misma receta que .vf) ---------------- */
+
+.vhb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
+}
+
+.vhb:active {
+  transform: scale(0.97);
+}
+
+.vhb--over {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(8, 14, 20, 0.6);
+  color: #fff;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+@media (hover: hover) {
+  .vhb:hover {
+    background: var(--track-hover);
+  }
+
+  .vhb--over:hover {
+    background: rgba(8, 14, 20, 0.82);
+  }
+}
+
+.vhost__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.vhost__titles {
+  min-width: 0;
+}
+
+.vhost__title {
+  margin: 0;
+  font: 600 17px/1.25 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vhost__sub {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.vhost__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Aviso del propio reproductor (PiP rechazado, pantalla completa rechazada):
+   el mismo tono que los avisos de fallo del resto de la app. */
+.vhost__notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  font-size: 13px;
+}
+
+/* Bloqueo del scroll mientras esta la ventana centrada. */
+html.vscroll-lock {
+  overflow: hidden;
+}
+
+/* Movil: la tarjeta ocupa casi todo el ancho y la fila de botones pasa a
+   iconos (el texto se esconde, el nombre accesible lo sigue dando aria-label). */
+@media (max-width: 640px) {
+  .vhost[data-mode="modal"] {
+    padding: 10px;
+  }
+
+  .vhost[data-mode="modal"] .vhost__card {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .vhost__titles {
+    width: 100%;
+  }
+
+  .vhost__tools {
+    margin-left: 0;
+  }
+
+  .vhost__lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .vhost[data-mode="mini"] .vhost__card {
+    left: max(16px, env(safe-area-inset-left));
+    right: max(16px, env(safe-area-inset-right));
+    width: auto;
+  }
+}
+
+/* Movimiento reducido: nada de escala, la ventana aparece sin animacion. */
+@media (prefers-reduced-motion: reduce) {
+  .vhost[data-mode="modal"] .vhost__card {
+    animation: none;
+    transform: none;
+  }
+
+  .vhost__scrim {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
    9. RESULTADOS: cabecera + rejilla de tarjetas
    ------------------------------------------------------------------------- */
 
