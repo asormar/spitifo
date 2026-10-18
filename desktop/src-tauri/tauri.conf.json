@@ -34,7 +34,7 @@
       "../sidecar/dist/spitifo-backend/": "backend/",
       "../../frontend/dist/": "frontend/",
       "../ffmpeg/": "ffmpeg/",
-      "../qjs/": "qjs/"
+      "../qjs/qjs.exe": "qjs/qjs.exe"
     },
     "windows": {
       "nsis": {
