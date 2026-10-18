@@ -2,10 +2,12 @@
 
 Kotlin sets every environment variable the backend reads (SPITIFO_TOKEN,
 SPITIFO_LIBRARY, SPITIFO_TEMP_DIR, SPITIFO_FRONTEND_DIST, SPITIFO_FFMPEG_DIR,
-YTDLP_ENABLED, HOME) BEFORE importing this module, because `backend.app.main`
-reads them while importing: `SPITIFO_TOKEN` builds the auth middleware,
-`SPITIFO_FRONTEND_DIST` decides whether the static mount exists and
+SPITIFO_PLATFORM, YTDLP_ENABLED, HOME) BEFORE importing this module, because
+`backend.app.main` reads them while importing: `SPITIFO_TOKEN` builds the auth
+middleware, `SPITIFO_FRONTEND_DIST` decides whether the static mount exists and
 `SPITIFO_LIBRARY` / `SPITIFO_TEMP_DIR` are resolved at import of downloader.py.
+`SPITIFO_PLATFORM` only changes how the Drive token is obtained (the app pushes
+it in; see backend/app/cloud/android.py).
 
 Nothing else is patched: the same app desktop ships is what Android serves.
 """

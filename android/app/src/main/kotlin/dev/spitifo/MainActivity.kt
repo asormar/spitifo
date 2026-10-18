@@ -10,11 +10,13 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import com.chaquo.python.Python
 
 /**
  * The whole UI: a full-screen WebView pointed at the embedded backend.
@@ -30,11 +32,21 @@ class MainActivity : Activity() {
 
     private val backend: Backend get() = (application as SpitifoApp).backend
 
+    /**
+     * Google Drive sign-in, which needs an Activity for the consent screen.
+     * See [DriveAuth]: the token itself goes to Python, not to the WebView.
+     */
+    private val driveAuth by lazy { DriveAuth(this) }
+
     private var web: WebView? = null
     private var pendingShare: String? = null
 
     private val listener = object : Backend.Listener {
-        override fun onReady(port: Int) = showUi(port)
+        override fun onReady(port: Int) {
+            showUi(port)
+            refreshDriveTokenIfConnected()
+        }
+
         override fun onFailed(message: String) = showStatus(message)
     }
 
@@ -50,6 +62,20 @@ class MainActivity : Activity() {
         if (pendingShare != null) Log.i(TAG, "shared link: $pendingShare")
         showStatus("Starting…")
         backend.addListener(listener)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Coming back from the background can mean the token aged out while the
+        // app was not running: DriveAuth refreshes only if it is old enough.
+        driveAuth.onResume()
+    }
+
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        driveAuth.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -76,6 +102,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         backend.removeListener(listener)
+        driveAuth.onDestroy()
         val view = web
         if (view != null) {
             (view.parent as? ViewGroup)?.removeView(view)
@@ -83,6 +110,50 @@ class MainActivity : Activity() {
             web = null
         }
         super.onDestroy()
+    }
+
+    // ------------------------------------------------------- google drive auth
+
+    /**
+     * The page asks for the native Drive sign-in.
+     *
+     * Only the 127.0.0.1 page the shell loads can reach this: it is the only
+     * origin the WebView ever has (see `shouldOverrideUrlLoading`), and the
+     * interface is added after the backend is up, so nothing else can be
+     * showing.
+     *
+     * Public on purpose: the WebView bridge reflects on it, and it only sees
+     * public classes and methods.
+     */
+    inner class AndroidBridge {
+        @JavascriptInterface
+        fun connectDrive() {
+            // JavascriptInterfaces are called on the WebView's own thread; the
+            // consent screen and the Activity lifecycle belong to the UI one.
+            runOnUiThread { driveAuth.connect() }
+        }
+    }
+
+    /**
+     * On startup the grant is usually already there, so this is the silent path
+     * (ADR 0002, section 2: sign-in survives a restart with no user action).
+     *
+     * Asks Python whether a Google account is connected — on Android that flag
+     * is persisted, while the token itself is memory-only and lost on restart —
+     * then refreshes in silence. Never on the main thread: Chaquopy can take a
+     * moment and the first frame must not wait for it.
+     */
+    private fun refreshDriveTokenIfConnected() {
+        Thread({
+            val connected = try {
+                Python.getInstance().getModule(DRIVE_AUTH_MODULE)
+                    .callAttr("is_google_connected").toJava(Boolean::class.java) ?: false
+            } catch (e: Exception) {
+                Log.w(TAG, "could not ask Python about Drive", e)
+                false
+            }
+            if (connected) runOnUiThread { driveAuth.refreshSilently() }
+        }, "spitifo-drive-startup").apply { isDaemon = true }.start()
     }
 
     // ------------------------------------------------------------------- ui
@@ -101,6 +172,14 @@ class MainActivity : Activity() {
         val view = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // The library auto-advances to the next track on `ended`, which
+            // means calling audio.play() with no user gesture. Android WebView
+            // blocks exactly that by default, so the next track would silently
+            // never start.
+            settings.mediaPlaybackRequiresUserGesture = false
+            // The Drive sign-in needs a native Activity: the page asks for it
+            // through this interface instead of a link (see DriveAuth).
+            addJavascriptInterface(AndroidBridge(), "SpitifoAndroid")
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
@@ -161,6 +240,9 @@ class MainActivity : Activity() {
     private companion object {
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
+
+        /** The Python module the native Drive bridge talks to (and its flag). */
+        const val DRIVE_AUTH_MODULE = "backend.app.cloud.android"
 
         /** YouTube shares "Title https://youtu.be/xyz": the URL is the search. */
         val URL_PATTERN = Regex("""https?://\S+""")

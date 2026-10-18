@@ -141,6 +141,10 @@ class Backend(private val app: Application) {
             environ.callAttr("__setitem__", "SPITIFO_LIBRARY", library.absolutePath)
             environ.callAttr("__setitem__", "SPITIFO_TEMP_DIR", temp.absolutePath)
             environ.callAttr("__setitem__", "SPITIFO_FRONTEND_DIST", dist.absolutePath)
+            // Tells the backend it is the embedded shell, not the desktop one:
+            // Drive sign-in goes through this app (DriveAuth), not a loopback
+            // OAuth flow. See backend/app/cloud/android.py.
+            environ.callAttr("__setitem__", "SPITIFO_PLATFORM", "android")
             environ.callAttr("__setitem__", "YTDLP_ENABLED", "1")
             // yt-dlp and friends keep their caches under HOME.
             environ.callAttr("__setitem__", "HOME", app.filesDir.absolutePath)

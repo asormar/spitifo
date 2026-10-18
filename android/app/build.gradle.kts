@@ -91,10 +91,12 @@ dependencies {
         isTransitive = false
     }
     nativeSupportSource("io.github.junkfood02.youtubedl-android:library:0.18.1@aar")
-    // Session 7 spike, debug builds only: Google sign-in on Android goes
-    // through the Identity Services AuthorizationClient (ADR 0002, section 3).
-    // See src/debug/kotlin/dev/spitifo/DriveProbeActivity.kt.
-    debugImplementation("com.google.android.gms:play-services-auth:21.2.0")
+    // Google sign-in on Android goes through the Identity Services
+    // AuthorizationClient (ADR 0002, section 3): the host asks for a
+    // `drive.file` access token and pushes it into the embedded Python backend.
+    // See src/main/kotlin/dev/spitifo/DriveAuth.kt (and DriveProbeActivity.kt,
+    // the session 7 spike, in debug).
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 }
 
 // Not jniLibs: AGP only packages native libs whose name ends in .so, and the
