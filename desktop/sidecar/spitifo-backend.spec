@@ -8,7 +8,7 @@
 # every launch, which adds seconds to startup and leaves files behind when the
 # process is killed. The frontend and ffmpeg are not bundled here; the shell
 # ships them as resources and points the backend at them.
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 import os
 
 ROOT = SPECPATH + "/../.."
@@ -24,6 +24,11 @@ hiddenimports = collect_submodules("uvicorn")
 # Google source is simply unavailable, and nothing else breaks.
 oauth_clients = os.path.join(ROOT, "backend", "app", "cloud", "oauth_clients.json")
 datas = [(oauth_clients, "backend/app/cloud")] if os.path.exists(oauth_clients) else []
+
+# yt-dlp's dist-info: runtime.bundled_ytdlp_version() reads it so the
+# auto-updater never loads a downloaded yt-dlp older than the bundled one (the
+# PYZ keeps bytecode only, so version.py cannot be read from it).
+datas += copy_metadata("yt-dlp")
 
 a = Analysis(
     [SPECPATH + "/entry.py"],

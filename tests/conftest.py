@@ -47,7 +47,8 @@ DATOS_TEMPORALES = Path(tempfile.mkdtemp(prefix="spitifo-tests-data-"))
 os.environ["SPITIFO_DATA_DIR"] = str(DATOS_TEMPORALES)
 os.environ["SPITIFO_CACHE_DIR"] = str(DATOS_TEMPORALES / "cache")
 for _var in ("SPITIFO_STORAGE", "SPITIFO_GOOGLE_CLIENT_ID",
-             "SPITIFO_GOOGLE_CLIENT_SECRET"):
+             "SPITIFO_GOOGLE_CLIENT_SECRET", "SPITIFO_YTDLP_DIR",
+             "SPITIFO_YTDLP_AUTOUPDATE"):
     os.environ.pop(_var, None)
 
 
@@ -57,6 +58,15 @@ def _sin_client_ids_reales(monkeypatch, tmp_path):
     reales de la persona: ningun test lo lee."""
     from backend.app.cloud import oauth
     monkeypatch.setattr(oauth, "BUNDLED_CONFIG", tmp_path / "no-bundled.json")
+
+
+@pytest.fixture(autouse=True)
+def _sin_autoupdate_de_ytdlp(monkeypatch):
+    """El chequeo de fondo de yt-dlp nunca pega a GitHub en los tests.
+
+    Los tests del actualizador lo vuelven a habilitar con `monkeypatch.setenv`
+    (el cuerpo del test corre despues de esta fixture, asi que gana)."""
+    monkeypatch.setenv("SPITIFO_YTDLP_AUTOUPDATE", "0")
 
 # --- tiempo maximo para cualquier test que hable con una API externa ----------
 TIMEOUT_RED = 30.0

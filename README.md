@@ -273,6 +273,7 @@ to `SPITIFO_HOST` and `SPITIFO_PORT`.
 | `SPITIFO_FRONTEND_DIST` | `./frontend/dist` | Built frontend to serve |
 | `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
 | `SPITIFO_YTDLP_DIR` | — | Directory with a newer `yt_dlp/` (or the official yt-dlp zip), put first on `sys.path` so it wins over the bundled one |
+| `SPITIFO_YTDLP_AUTOUPDATE` | `1` | `0` turns off the daily background check for a newer yt-dlp |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
 `SPITIFO_TOKEN` is the per-launch secret. On Android any app on the phone can reach
@@ -296,7 +297,14 @@ ships no MIME database, and without them `.ogg` was served as
 `yt_dlp/` or to the official zip-importable `yt-dlp` file; the backend puts it first on
 `sys.path` at startup, before anything imports the engine. The version actually in use is
 reported by `GET /api/health` as `ytdlp_version` (`null` if yt-dlp cannot be imported).
-Only the loading hook exists so far; downloading new versions comes later.
+
+The backend also updates yt-dlp by itself: on start, in the background and at most once
+a day, it looks up the latest yt-dlp release, downloads the official `yt-dlp` file into
+the update directory (`SPITIFO_YTDLP_DIR`, or `yt-dlp/` under the data dir), checks it
+against the release's `SHA2-256SUMS` and records it in `current.json`. The next start
+loads it, unless the bundled yt-dlp is newer. `GET /api/health` reports a downloaded
+version still waiting for that restart as `ytdlp_pending`. A `SPITIFO_YTDLP_DIR` without
+`current.json` is treated as managed by hand and never updated.
 
 ## API
 
