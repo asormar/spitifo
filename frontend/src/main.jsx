@@ -8,19 +8,27 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  useId,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { flushSync } from "react-dom";
+import { flushSync, createPortal } from "react-dom";
 import {
+  ArrowClockwise,
   ArrowUpRight,
+  ArrowsIn,
+  ArrowsOut,
+  CaretDown,
   CaretRight,
   Check,
   CheckCircle,
   CircleNotch,
   Cookie,
+  CornersIn,
+  CornersOut,
   Crosshair,
   DeviceMobile,
   DownloadSimple,
+  FilmStrip,
   GoogleDriveLogo,
   HardDrives,
   Headphones,
@@ -29,6 +37,7 @@ import {
   MagnifyingGlass,
   MusicNotes,
   Pause,
+  PictureInPicture,
   Play,
   Prohibit,
   Question,
@@ -52,7 +61,7 @@ const API = "/api";
 /* Cuanto tarda en desaparecer el aviso de descarga una vez terminada. */
 const JOB_DISMISS_MS = 5000;
 
-document.title = "Spitifo: descarga música libre";
+document.title = "Spitifo: descarga contenido libre";
 
 const SOURCE_LABEL = {
   itunes: "iTunes",
@@ -88,6 +97,16 @@ const FORMATS = [
     // (ytdlp_source.py, preferredcodec "best").
     title: "Sin convertir: el audio tal cual lo publica la fuente (en YouTube, normalmente Opus o AAC)",
   },
+];
+
+/* Que partes de la descarga se piden en modo YouTube: solo el audio (como
+   siempre), solo el video o las dos cosas. En el resto de los modos el archivo
+   siempre es audio y este selector ni se pinta. El valor que viaja en el POST
+   es el `id`, sin traducir. */
+const MEDIA_OPTIONS = [
+  { id: "audio", label: "Solo audio" },
+  { id: "video", label: "Solo vídeo" },
+  { id: "both", label: "Audio y vídeo" },
 ];
 
 /* Aviso bajo los controles cuando se elige "original". El title de FORMATS no
@@ -226,6 +245,49 @@ function fmtSize(mb) {
   if (mb == null) return null;
   return `${Number(mb).toFixed(mb < 10 ? 1 : 0)} MB`;
 }
+
+/* Tamano aproximado de una resolucion. El backend manda BYTES (o null, que es
+   "no se sabe", no "0"): null se pinta como raya, no como "0 MB". */
+function fmtApproxSize(bytes) {
+  if (bytes == null) return "—";
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return `~${(mb / 1024).toFixed(1)} GB`;
+  return `~${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+}
+
+/* Resoluciones ya pedidas, por URL de video. Vive lo que vive la pestana: el
+   menu se puede cerrar y reabrir sin volver a preguntar. Los fallos NO se
+   guardan (el usuario tiene que poder reintentar). */
+const formatsCache = new Map();
+
+/* GET /api/formats con el mismo fetch pelado que el resto de la app (mismo
+   origen, /api). Devuelve { duration_s, resolutions } ordenado de mayor a menor
+   altura: el backend ya lo manda asi, pero ordenar aca cuesta nada y protege
+   contra un cambio de contrato. */
+async function fetchFormats(url, signal) {
+  const cached = formatsCache.get(url);
+  if (cached) return cached;
+  const r = await fetch(`${API}/formats?url=${encodeURIComponent(url)}`, { signal });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(errMsg(d, "no se pudieron leer las resoluciones"));
+    /* El muro de verificacion llega como 502 {detail, code}. Se propaga para
+       que el menu lo trate igual que la descarga (aviso de cookies.txt). */
+    err.code = d.code || null;
+    throw err;
+  }
+  const data = {
+    duration_s: d.duration_s ?? null,
+    resolutions: [...(d.resolutions || [])].sort((a, b) => b.height - a.height),
+  };
+  formatsCache.set(url, data);
+  return data;
+}
+
+/* Todos los bytes de la biblioteca (audio, video o su miniatura) se piden por
+   clave al mismo endpoint, que responde con Range. Un solo armador de URL para
+   que no haya dos formas de pedir el mismo archivo. */
+const keyUrl = (key) => `${API}/audio?key=${encodeURIComponent(key)}`;
 
 /* El estado que domina la fila: se baja entero / solo preview / no coincide.
 
@@ -607,6 +669,8 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
         players.forEach((o) => {
           if (o !== e.currentTarget) o.pause();
         });
+        /* Un solo medio a la vez: si sonaba un video, se para. */
+        pauseVideo();
         e.currentTarget.volume = shared.volume;
         e.currentTarget.muted = shared.muted;
         setCurrent(e.currentTarget);
@@ -755,6 +819,84 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   FILA DE VIDEO EN LA BIBLIOTECA
+
+   Misma caja que la fila de audio (.pl) para que la lista no se parta en dos
+   lenguajes, pero sin controles de audio: un video no se "reproduce" dentro de
+   la lista, se abre. A la derecha va la miniatura 16:9, que ES el boton (con
+   su aro de foco y su aria-label); el resto de la fila no es pulsable.
+   ------------------------------------------------------------------------- */
+function VideoRow({ f, index }) {
+  const btnRef = useRef(null);
+  /* Miniatura que ya fallo: no se vuelve a pedir (sale el bloque con la
+     pelicula). Mismo criterio que la portada de las tarjetas. */
+  const [badThumb, setBadThumb] = useState(false);
+  const thumb = f.thumb_key && !badThumb ? keyUrl(f.thumb_key) : null;
+  const sinAudio = f.has_audio === false;
+  const dur = f.duration_s ? clock(Math.round(f.duration_s)) : null;
+
+  const open = () => {
+    openVideo(
+      {
+        src: keyUrl(f.key),
+        title: f.filename,
+        artist: f.folder,
+        hasAudio: !sinAudio,
+      },
+      btnRef.current
+    );
+  };
+
+  return (
+    <div className="pl pl--video" style={{ "--i": index }}>
+      <div className="pl__mid">
+        <div className="pl__top">
+          <span className="pl__title" title={f.filename}>
+            {f.filename}
+          </span>
+        </div>
+        <div className="pl__meta pl__meta--row">
+          <span className="pl__tag">
+            <FilmStrip size={12} weight="bold" aria-hidden="true" />
+            {sinAudio ? "Vídeo sin audio" : "Vídeo"}
+          </span>
+          {f.folder && <span className="pl__dim">{f.folder}</span>}
+          {f.size_mb != null && <span className="pl__dim">{fmtSize(f.size_mb)}</span>}
+        </div>
+      </div>
+      <button
+        ref={btnRef}
+        type="button"
+        className="plthumb"
+        onClick={open}
+        aria-label="Ampliar el vídeo"
+        title="Ampliar el vídeo"
+      >
+        <span className="plthumb__box">
+          {thumb ? (
+            <img
+              className="plthumb__img"
+              src={thumb}
+              alt=""
+              loading="lazy"
+              onError={() => setBadThumb(true)}
+            />
+          ) : (
+            <span className="plthumb__ph">
+              <FilmStrip size={22} aria-hidden="true" />
+            </span>
+          )}
+          <span className="plthumb__play" aria-hidden="true">
+            <Play size={13} weight="fill" />
+          </span>
+          {dur && <span className="plthumb__dur">{dur}</span>}
+        </span>
+      </button>
     </div>
   );
 }
@@ -1117,6 +1259,429 @@ function MiniPlayer({ libOpen, onReveal }) {
         </span>
       </div>
     </section>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   VIDEOHOST
+
+   Un video no cabe en el <Player> de audio: su <audio> no pinta imagen y su
+   interfaz habla de canciones. VideoHost es su superficie, y es UNA sola: vive
+   montado en la raiz de App y es dueno de un unico <video> que NUNCA se
+   desmonta. Pasar de ventana centrada (modal) a minireproductor (mini) es
+   cambiar la clase de la caja que lo contiene; el archivo no se vuelve a pedir
+   y la reproduccion sigue en el mismo segundo.
+
+   El estado vive en un almacen de modulo, como `current`/`watchers` del
+   reproductor de audio: cualquier fila de la biblioteca puede pedir
+   openVideo(...) sin arrastrar callbacks por medio arbol.
+
+   Estados: closed | modal | mini
+   ------------------------------------------------------------------------- */
+
+const videoHost = {
+  mode: "closed",
+  item: null,
+  /* Boton (la miniatura) que lo abrio: ahi vuelve el foco al cerrar. */
+  opener: null,
+  /* A que modo vuelve el video cuando se cierra la ventana flotante: al entrar
+     en PiP se recuerda el que estaba. */
+  pipReturn: "modal",
+};
+
+const videoWatchers = new Set();
+
+function setVideoHost(patch) {
+  Object.assign(videoHost, patch);
+  videoWatchers.forEach((w) => w());
+}
+
+function useVideoHost() {
+  const [, repaint] = useReducer((n) => n + 1, 0);
+  useEffect(() => {
+    videoWatchers.add(repaint);
+    return () => videoWatchers.delete(repaint);
+  }, []);
+  return videoHost;
+}
+
+/* El <video> de verdad. El Player de audio lo pausa en cuanto empieza a sonar
+   algo: una sola cosa suena a la vez, y eso incluye al video. */
+let videoEl = null;
+
+function pauseVideo() {
+  if (videoEl && !videoEl.paused) videoEl.pause();
+}
+
+function openVideo(item, opener) {
+  setVideoHost({ item, opener: opener || null, mode: "modal" });
+}
+
+/* Lo que se puede tabular dentro del dialogo, para atrapar el Tab. */
+const VHOST_FOCUSABLE =
+  'a[href], button:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])';
+
+const VHOST_TITLE_ID = "vhost-title";
+
+function VideoHost() {
+  const st = useVideoHost();
+  const mode = st.mode;
+  const item = st.item;
+  const vidRef = useRef(null);
+  const frameRef = useRef(null);
+  const cardRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [pip, setPip] = useState(false);
+  const [fs, setFs] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  /* En WebView2 ninguna de las dos APIs existe en todas las versiones: los
+     botones se esconden cuando no estan, en vez de fallar al pulsarlos. */
+  const pipSupported =
+    typeof document.pictureInPictureEnabled === "boolean"
+    && document.pictureInPictureEnabled;
+  const fsSupported = Boolean(document.fullscreenEnabled);
+
+  const inPip = useCallback(
+    () =>
+      Boolean(document.pictureInPictureElement)
+      && document.pictureInPictureElement === vidRef.current,
+    []
+  );
+
+  /* El elemento se monta una sola vez: aca solo se le enganchan los eventos
+     nativos y se expone a pauseVideo. */
+  useEffect(() => {
+    const v = vidRef.current;
+    if (!v) return undefined;
+    videoEl = v;
+    const onPlay = () => {
+      /* Un solo medio a la vez. `players` es el mismo registro que usa el audio
+         para eso; el mini-reproductor se apaga solo al soltar `current`. */
+      players.forEach((o) => o.pause());
+      if (current) setCurrent(null);
+      setFailed(false);
+      setPlaying(true);
+    };
+    const onPause = () => setPlaying(false);
+    const onEnded = () => setPlaying(false);
+    const onError = () => {
+      setPlaying(false);
+      setFailed(true);
+    };
+    const onEnterPip = () => setPip(true);
+    const onLeavePip = () => {
+      setPip(false);
+      /* Cerrar la ventana flotante devuelve el video a la app, en el modo en
+         que estaba antes de sacarlo. */
+      if (videoHost.mode === "closed") {
+        setVideoHost({ mode: videoHost.pipReturn || "modal" });
+      }
+    };
+    const onFs = () => setFs(Boolean(document.fullscreenElement));
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("ended", onEnded);
+    v.addEventListener("error", onError);
+    v.addEventListener("enterpictureinpicture", onEnterPip);
+    v.addEventListener("leavepictureinpicture", onLeavePip);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => {
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("ended", onEnded);
+      v.removeEventListener("error", onError);
+      v.removeEventListener("enterpictureinpicture", onEnterPip);
+      v.removeEventListener("leavepictureinpicture", onLeavePip);
+      document.removeEventListener("fullscreenchange", onFs);
+      videoEl = null;
+    };
+  }, []);
+
+  /* El src se escribe a mano y SOLO cuando cambia el archivo. Atado al render,
+     cada cambio de modo volveria a pedir el video (y mataria la reproduccion). */
+  useEffect(() => {
+    const v = vidRef.current;
+    if (!v) return;
+    const next = item?.src || "";
+    if (next === (v.getAttribute("src") || "")) return;
+    setFailed(false);
+    setNotice(null);
+    if (next) v.setAttribute("src", next);
+    else {
+      /* Cerrar de verdad: se suelta el archivo (y con el, el buffer). */
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    }
+  }, [item?.src]);
+
+  /* Al abrir se intenta arrancar solo: venimos de un clic, asi que el navegador
+     lo permite. Si lo bloquea, queda pausado y manda el boton de play. */
+  useEffect(() => {
+    if (!item) return;
+    const v = vidRef.current;
+    v?.play().catch(() => {});
+  }, [item]);
+
+  /* La ventana centrada bloquea el scroll de la pagina. El minireproductor no:
+     la biblioteca tiene que seguir viva por detras. */
+  useEffect(() => {
+    document.documentElement.classList.toggle("vscroll-lock", mode === "modal");
+    return () => document.documentElement.classList.remove("vscroll-lock");
+  }, [mode]);
+
+  const close = useCallback(() => {
+    /* Con la ventana flotante activa, cerrar la caja de la app no corta el
+       video: se sigue viendo en PiP y al salir de el vuelve aca. */
+    if (inPip()) {
+      setVideoHost({ mode: "closed" });
+      return;
+    }
+    vidRef.current?.pause();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setVideoHost({ mode: "closed", item: null });
+  }, [inPip]);
+
+  /* Foco: entra al dialogo al abrir, se queda dentro (Tab) y vuelve a la
+     miniatura al cerrar. El primer tabulado es el propio <video>: es lo primero
+     que se quiere tocar. */
+  useEffect(() => {
+    if (mode !== "modal") return undefined;
+    const card = cardRef.current;
+    if (!card) return undefined;
+    const focusables = () =>
+      Array.from(card.querySelectorAll(VHOST_FOCUSABLE)).filter(
+        (el) => el.getClientRects().length > 0
+      );
+    (focusables()[0] || card).focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        /* El atajo de Escape tambien cierra la biblioteca: se corta aca para
+           que haga una sola cosa. */
+        e.stopPropagation();
+        close();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (!list.length) {
+        e.preventDefault();
+        return;
+      }
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      if (!card.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [mode, close]);
+
+  /* Devolver el foco se hace despues del cambio (si no, el boton ya esta
+     oculto y el foco cae al <body>). */
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (mode !== "closed") {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    const op = videoHost.opener;
+    videoHost.opener = null;
+    if (op?.isConnected) op.focus();
+  }, [mode]);
+
+  const togglePlay = () => {
+    const v = vidRef.current;
+    if (!v || failed) return;
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+  };
+
+  const toggleFs = async () => {
+    const frame = frameRef.current;
+    if (!frame || !fsSupported) return;
+    setNotice(null);
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await frame.requestFullscreen();
+    } catch (e) {
+      setNotice("No se pudo poner el vídeo a pantalla completa.");
+    }
+  };
+
+  const togglePip = async () => {
+    const v = vidRef.current;
+    if (!v || !pipSupported) return;
+    setNotice(null);
+    try {
+      if (inPip()) await document.exitPictureInPicture();
+      else {
+        setVideoHost({ pipReturn: mode === "mini" ? "mini" : "modal" });
+        await v.requestPictureInPicture();
+      }
+    } catch (e) {
+      setNotice("No se pudo abrir la ventana flotante.");
+    }
+  };
+
+  const toMini = async () => {
+    /* Pantalla completa y minireproductor no pueden convivir: el marco a
+       pantalla completa tapa la esquina. */
+    if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen();
+      } catch (e) {
+        /* sin pantalla completa que salir */
+      }
+    }
+    setVideoHost({ mode: "mini" });
+  };
+
+  const toModal = () => setVideoHost({ mode: "modal" });
+
+  const label = item?.title || "Vídeo";
+  const sub = [item?.artist, item?.hasAudio === false ? "sin audio" : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="vhost" data-mode={mode}>
+      <div className="vhost__scrim" aria-hidden="true" onClick={close} />
+      <div
+        ref={cardRef}
+        className="vhost__card"
+        data-mode={mode}
+        role={mode === "modal" ? "dialog" : "region"}
+        aria-modal={mode === "modal" ? "true" : undefined}
+        aria-labelledby={mode === "modal" ? VHOST_TITLE_ID : undefined}
+        aria-label={mode === "modal" ? undefined : `Minireproductor: ${label}`}
+        aria-hidden={mode === "closed" ? true : undefined}
+        inert={mode === "closed" ? "" : undefined}
+        tabIndex={-1}
+      >
+        <div ref={frameRef} className="vhost__frame">
+          {/* El <video> NO cambia de nodo entre modal y mini: por eso la
+              reproduccion no se corta al cambiar de modo. */}
+          <video
+            ref={vidRef}
+            className="vhost__video"
+            controls={mode === "modal" ? true : undefined}
+            playsInline
+            preload="metadata"
+          />
+          {failed && (
+            <p className="vhost__fail" role="alert">
+              No se pudo cargar el vídeo.
+            </p>
+          )}
+          {mode === "mini" && (
+            <div className="vhost__mini">
+              <button
+                type="button"
+                className="vhb vhb--over"
+                onClick={togglePlay}
+                aria-label={`${playing ? "Pausar" : "Reproducir"}: ${label}`}
+                title={playing ? "Pausar" : "Reproducir"}
+              >
+                {playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+              </button>
+              <button
+                type="button"
+                className="vhb vhb--over"
+                onClick={toModal}
+                aria-label="Ampliar el vídeo"
+                title="Ampliar el vídeo"
+              >
+                <CornersOut size={16} />
+              </button>
+              <button
+                type="button"
+                className="vhb vhb--over"
+                onClick={close}
+                aria-label="Cerrar el vídeo"
+                title="Cerrar el vídeo"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {mode === "modal" ? (
+          <div className="vhost__foot">
+            <div className="vhost__titles">
+              <h2 className="vhost__title" id={VHOST_TITLE_ID}>
+                {label}
+              </h2>
+              {sub && <p className="vhost__sub">{sub}</p>}
+            </div>
+            <div className="vhost__tools">
+              {fsSupported && (
+                <button
+                  type="button"
+                  className="vhb"
+                  onClick={toggleFs}
+                  aria-label={fs ? "Salir de pantalla completa" : "Pantalla completa"}
+                >
+                  {fs ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
+                  <span className="vhost__lbl">{fs ? "Salir" : "Pantalla completa"}</span>
+                </button>
+              )}
+              {pipSupported && (
+                <button
+                  type="button"
+                  className="vhb"
+                  onClick={togglePip}
+                  aria-label="Otra ventana"
+                  title={pip ? "Volver a traer la ventana flotante" : "Ver en una ventana flotante"}
+                >
+                  <PictureInPicture size={16} />
+                  <span className="vhost__lbl">Otra ventana</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="vhb"
+                onClick={toMini}
+                aria-label="Minireproductor"
+                title="Ver en el minireproductor"
+              >
+                <CornersIn size={16} />
+                <span className="vhost__lbl">Minireproductor</span>
+              </button>
+              <button type="button" className="vhb" onClick={close} aria-label="Cerrar el vídeo">
+                <X size={16} />
+                <span className="vhost__lbl">Cerrar</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="vhost__mini-title" title={label}>
+            {label}
+          </p>
+        )}
+
+        {notice && (
+          <p className="vhost__notice" role="alert">
+            {notice}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1586,10 +2151,365 @@ function ProgressBar({ job }) {
   );
 }
 
+/* Boton de descarga cuadrado con los tres estados de siempre (bajar, en curso,
+   ya bajado). Es el boton unico: en YouTube con video lo reemplaza el dividido
+   que abre el menu de resoluciones. */
+function DlButton({ busy, downloaded, title, ariaLabel, onClick }) {
+  return (
+    <button className="dl" disabled={busy} onClick={onClick} title={title} aria-label={ariaLabel}>
+      {busy ? (
+        <span className="swap" key="busy">
+          <CircleNotch size={19} className="spin" />
+        </span>
+      ) : downloaded ? (
+        <span className="swap" key="done">
+          <Check size={19} weight="bold" />
+        </span>
+      ) : (
+        <span className="swap" key="idle">
+          <DownloadSimple size={19} weight="bold" />
+        </span>
+      )}
+    </button>
+  );
+}
+
+/* Descarga de un video de YouTube: boton dividido + menu de resoluciones.
+
+   Con "Solo audio" el boton baja directo (lo de siempre). Con video el boton NO
+   baja: abre un menu con las alturas que ofrece ese video (GET /api/formats).
+   El primer item baja sin `height` (lo mejor disponible) y cada uno de los
+   siguientes, una altura concreta.
+
+   El menu vive en un portal a <body>: dentro de la tarjeta lo recortarian el
+   `overflow-x: clip` de la pagina y el cajon de la biblioteca, y su z-index
+   quedaria por debajo del reproductor de video. */
+function VideoSplitDownload({
+  t,
+  busy,
+  downloaded,
+  onDownload,
+  onBotCheck,
+  menuOpen,
+  setMenuOpen,
+}) {
+  const key = rowKey(t);
+  const url = t.extra?.webpage_url;
+  const title = t.title || "este resultado";
+  const menuId = useId();
+  /* phase: loading | list | error. Nunca hay "cerrado" a medias: si no hay
+     menu, no hay estado que mostrar. */
+  const [phase, setPhase] = useState("loading");
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const abortRef = useRef(null);
+  const open = menuOpen;
+
+  const closeMenu = useCallback(
+    (focusButton) => {
+      /* Cerrar cancela la peticion en vuelo: un menu que ya no esta no tiene
+         por que seguir preguntando. */
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setMenuOpen(key, false);
+      if (focusButton) btnRef.current?.focus();
+    },
+    [key, setMenuOpen]
+  );
+
+  const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setPhase("loading");
+    setError(null);
+    try {
+      const d = await fetchFormats(url, ac.signal);
+      if (ac.signal.aborted) return;
+      setData(d);
+      setPhase("list");
+    } catch (e) {
+      if (e?.name === "AbortError" || ac.signal.aborted) return;
+      /* Mismo muro de bot que la descarga: mismo aviso de cookies.txt. El menu
+         cierra para no dejar al usuario mirando una lista que no va a llegar. */
+      if (e.code === "youtube_bot_check") {
+        closeMenu(false);
+        onBotCheck(e.message);
+        return;
+      }
+      setError(fetchErr(e, e.message));
+      setPhase("error");
+    }
+  }, [url, closeMenu, onBotCheck]);
+
+  /* Abrir: de la cache si ya se pregunto por este video; si no, se pregunta. */
+  useEffect(() => {
+    if (!open) return;
+    const cached = formatsCache.get(url);
+    if (cached) {
+      setData(cached);
+      setPhase("list");
+    } else {
+      load();
+    }
+  }, [open, url, load]);
+
+  /* Una busqueda nueva reemplaza los resultados y desmonta la tarjeta: la clave
+     del menu abierto se limpia para no quedar apuntando a algo que ya no
+     existe (y no reabrir el menu si la misma clave vuelve). */
+  useEffect(() => () => setMenuOpen(key, false), [key, setMenuOpen]);
+
+  /* Coloca el menu fixed bajo el boton. Ancho 280 en escritorio, alineado a la
+     derecha; en pantallas angostas ocupa el ancho de su propia tarjeta, que ya
+     respeta el gutter. Si abajo no cabe y arriba si, se abre hacia arriba. */
+  const place = useCallback(() => {
+    const btn = btnRef.current;
+    const menu = menuRef.current;
+    if (!btn || !menu) return;
+    const r = btn.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    /* El boton salio de pantalla (la lista scrolleo): no hay donde anclar. */
+    if (r.bottom < 0 || r.top > vh) {
+      closeMenu(false);
+      return;
+    }
+    let width;
+    let left;
+    if (vw <= 640) {
+      const card = btn.closest(".card") || btn;
+      const cr = card.getBoundingClientRect();
+      width = Math.min(cr.width, vw - 16);
+      left = clamp(cr.left, 8, Math.max(8, vw - 8 - width));
+    } else {
+      width = 280;
+      left = clamp(r.right - width, 8, Math.max(8, vw - width - 8));
+    }
+    const h = Math.min(menu.offsetHeight || 0, vh - 16);
+    let top = r.bottom + 6;
+    if (top + h > vh - 8 && r.top - 6 - h >= 8) top = r.top - 6 - h;
+    top = clamp(top, 8, Math.max(8, vh - 8 - h));
+    setPos({ top, left, width, maxH: Math.max(140, vh - top - 8) });
+  }, [closeMenu]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      return undefined;
+    }
+    /* Ya montado el menu (aunque sea invisible): se puede medir. Vuelve a
+       correr cuando llega la lista, que cambia la altura y puede cambiar si
+       conviene abrirlo hacia arriba. */
+    place();
+    const onMove = () => place();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, phase, place]);
+
+  /* Foco al menu al abrir (no al primer item): con la lista todavia cargando
+     no hay item al que ir, y asi Escape funciona desde el primer instante. */
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.focus();
+  }, [open]);
+
+  /* Click fuera: cierra. El boton se excluye porque su propio click ya
+     alterna, y cerrar en el pointerdown lo volveria a abrir al soltar. */
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (menuRef.current?.contains(e.target)) return;
+      if (btnRef.current?.contains(e.target)) return;
+      closeMenu(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [open, closeMenu]);
+
+  const pick = (height) => {
+    closeMenu(true);
+    /* Sin `height` = lo mejor disponible, exactamente igual que antes. */
+    onDownload(t, height);
+  };
+
+  const onMenuKey = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu(true);
+      return;
+    }
+    /* Tab cierra y deja el foco en el boton: el menu es un portal al final del
+       <body> y sin esto el tabulado siguiente caeria lejos de la tarjeta. */
+    if (e.key === "Tab") {
+      e.preventDefault();
+      closeMenu(true);
+      return;
+    }
+    const items = Array.from(
+      menuRef.current?.querySelectorAll('[role="menuitem"]') || []
+    ).filter((el) => !el.disabled);
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      items[(cur + 1 + items.length) % items.length].focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      items[cur <= 0 ? items.length - 1 : cur - 1].focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0].focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1].focus();
+    }
+  };
+
+  const resolutions = data?.resolutions || [];
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={cx("dl", "dl--split", open && "is-open")}
+        disabled={busy}
+        onClick={() => (open ? closeMenu(false) : setMenuOpen(key, true))}
+        onKeyDown={(e) => {
+          /* El patron del boton de menu: bajar abre en vez de mover el foco. */
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            e.preventDefault();
+            setMenuOpen(key, true);
+          }
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        title={
+          downloaded
+            ? "Descargado: elige una resolución para volver a bajarlo"
+            : "Elige la resolución de la descarga"
+        }
+        aria-label={
+          downloaded
+            ? `Descargado: ${title}. Elegir resolución`
+            : `Descargar ${title}: elegir resolución`
+        }
+      >
+        <span className="swap" key={busy ? "busy" : downloaded ? "done" : "idle"}>
+          {busy ? (
+            <CircleNotch size={17} className="spin" />
+          ) : downloaded ? (
+            <Check size={17} weight="bold" />
+          ) : (
+            <DownloadSimple size={17} weight="bold" />
+          )}
+        </span>
+        <span className="dl__lbl">Descargar</span>
+        {!busy && <CaretDown size={13} weight="bold" className="dl__caret" aria-hidden="true" />}
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            id={menuId}
+            ref={menuRef}
+            className={cx("rsvm", pos && "is-placed")}
+            role="menu"
+            aria-label={`Resoluciones de ${title}`}
+            tabIndex={-1}
+            style={
+              pos
+                ? { top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxH }
+                : undefined
+            }
+            onKeyDown={onMenuKey}
+          >
+            {phase === "loading" && (
+              <p className="rsvm__msg" aria-live="polite">
+                <CircleNotch size={15} className="spin" aria-hidden="true" />
+                Buscando resoluciones…
+              </p>
+            )}
+
+            {phase === "error" && (
+              <div className="rsvm__err" role="alert">
+                <p className="rsvm__msg rsvm__msg--err">
+                  <WarningCircle size={15} weight="fill" aria-hidden="true" />
+                  {error}
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="rsvm__item rsvm__item--retry"
+                  onClick={load}
+                >
+                  <ArrowClockwise size={15} aria-hidden="true" />
+                  Reintentar
+                </button>
+              </div>
+            )}
+
+            {phase === "list" && (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="rsvm__item"
+                  onClick={() => pick(null)}
+                >
+                  <span className="rsvm__h">Mejor disponible</span>
+                  <span className="rsvm__meta">la mejor que haya</span>
+                </button>
+                {resolutions.length > 0 && <div className="rsvm__sep" role="separator" />}
+                <div className="rsvm__list" role="none">
+                  {resolutions.map((res) => (
+                    <button
+                      key={res.height}
+                      type="button"
+                      role="menuitem"
+                      className="rsvm__item"
+                      onClick={() => pick(res.height)}
+                    >
+                      <span className="rsvm__h">
+                        {res.label || `${res.height}p`}
+                        {res.hdr && <span className="rsvm__hdr">HDR</span>}
+                      </span>
+                      <span className="rsvm__meta">
+                        {res.fps ? <span>{res.fps} fps</span> : null}
+                        <span className="rsvm__size">{fmtApproxSize(res.filesize)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {resolutions.length === 0 && (
+                  <p className="rsvm__msg">Este vídeo no ofrece resoluciones sueltas.</p>
+                )}
+              </>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
+
 const Track = React.memo(function Track({
   t,
   query,
+  media,
   onDownload,
+  onBotCheck,
+  menuOpen,
+  setMenuOpen,
   busy,
   downloaded,
   index,
@@ -1657,35 +2577,33 @@ const Track = React.memo(function Track({
             {ui.label}
           </StatusChip>
           {st === "full" ? (
-            <button
-              className="dl"
-              disabled={busy}
-              onClick={() => onDownload(t)}
-              title={
-                downloaded
-                  ? "Descargado: pulsa para volver a descargarlo"
-                  : "Descargar a la biblioteca"
-              }
-              aria-label={
-                downloaded
-                  ? `Descargado: ${t.title || "este resultado"}`
-                  : `Descargar ${t.title || "este resultado"}`
-              }
-            >
-              {busy ? (
-                <span className="swap" key="busy">
-                  <CircleNotch size={19} className="spin" />
-                </span>
-              ) : downloaded ? (
-                <span className="swap" key="done">
-                  <Check size={19} weight="bold" />
-                </span>
-              ) : (
-                <span className="swap" key="idle">
-                  <DownloadSimple size={19} weight="bold" />
-                </span>
-              )}
-            </button>
+            t.source === "ytdlp" && media !== "audio" && t.extra?.webpage_url ? (
+              <VideoSplitDownload
+                t={t}
+                busy={busy}
+                downloaded={downloaded}
+                onDownload={onDownload}
+                onBotCheck={onBotCheck}
+                menuOpen={menuOpen}
+                setMenuOpen={setMenuOpen}
+              />
+            ) : (
+              <DlButton
+                busy={busy}
+                downloaded={downloaded}
+                title={
+                  downloaded
+                    ? "Descargado: pulsa para volver a descargarlo"
+                    : "Descargar a la biblioteca"
+                }
+                ariaLabel={
+                  downloaded
+                    ? `Descargado: ${t.title || "este resultado"}`
+                    : `Descargar ${t.title || "este resultado"}`
+                }
+                onClick={() => onDownload(t)}
+              />
+            )
           ) : (
             <>
               {/* Texto visible (tactil y teclado no tienen tooltip). Ya lo lee
@@ -1784,6 +2702,71 @@ function FmtPicker({ value, onChange }) {
             }}
           >
             {f.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* Selector de que se baja de YouTube. Es el mismo componente visual que el de
+   modo/formato y comparte rol, asi que comparte tambien el patron: radiogroup
+   navegable con flechas y roving tabindex. Solo existe en modo YouTube. */
+function MediaPicker({ value, onChange }) {
+  const refs = useRef([]);
+  const segsRef = useRef(null);
+  useSlidingPill(segsRef, value);
+  const current = Math.max(
+    0,
+    MEDIA_OPTIONS.findIndex((m) => m.id === value)
+  );
+
+  const move = (next) => {
+    const i = (next + MEDIA_OPTIONS.length) % MEDIA_OPTIONS.length;
+    onChange(MEDIA_OPTIONS[i].id);
+    refs.current[i]?.focus();
+  };
+
+  return (
+    <div className="fmts">
+      <span className="fmts__lbl" aria-hidden="true">
+        Contenido
+      </span>
+      <div
+        ref={segsRef}
+        className="segs"
+        role="radiogroup"
+        aria-label="Qué se descarga de YouTube"
+      >
+        {MEDIA_OPTIONS.map((m, i) => (
+          <button
+            key={m.id}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={value === m.id}
+            tabIndex={value === m.id ? 0 : -1}
+            className={`seg ${value === m.id ? "is-on" : ""}`}
+            onClick={() => onChange(m.id)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                e.preventDefault();
+                move(current + 1);
+              } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                e.preventDefault();
+                move(current - 1);
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                move(0);
+              } else if (e.key === "End") {
+                e.preventDefault();
+                move(MEDIA_OPTIONS.length - 1);
+              }
+            }}
+          >
+            {m.label}
           </button>
         ))}
       </div>
@@ -2355,6 +3338,12 @@ function App() {
   const [done, setDone] = useState(null);
   const [health, setHealth] = useState(null);
   const [fmt, setFmt] = useState("mp3");
+  /* Qué partes se bajan en modo YouTube. Vive acá y no en el selector para que
+     cambiar de modo y volver no lo reinicie (como fmt). */
+  const [media, setMedia] = useState("audio");
+  /* Clave del resultado cuyo menú de resoluciones está abierto. Vive acá y no
+     en cada tarjeta para que abrir uno cierre el anterior: un menú a la vez. */
+  const [menuKey, setMenuKey] = useState(null);
   const [filter, setFilter] = useState("all");
   const [libOpen, setLibOpen] = useState(false);
   const drawerRef = useRef(null);
@@ -2462,6 +3451,19 @@ function App() {
      entero en cada tick del polling. */
   const setJobFor = useCallback((key, patch) => {
     setJobs((cur) => ({ ...cur, [key]: { ...cur[key], ...patch, key } }));
+  }, []);
+
+  /* Abrir/cerrar el menú de resoluciones por clave. Cerrar una clave que ya no
+     es la abierta no pisa a la que sí lo está (dos tarjetas no se pelean). */
+  const setMenuOpen = useCallback((key, open) => {
+    setMenuKey((cur) => (open ? key : cur === key ? null : cur));
+  }, []);
+
+  /* El muro de verificación de YouTube desde el menú de resoluciones: mismo
+     aviso y misma salida que una descarga (importar cookies.txt). */
+  const onBotCheck = useCallback((msg) => {
+    setErr(msg);
+    setBotCheck(true);
   }, []);
 
   /* La franja de exito/aviso (.msg) NO se retiraba nunca: se quedaba en
@@ -2598,7 +3600,7 @@ function App() {
   }, [mode, searched, query, runSearch]);
 
   const onDownload = useCallback(
-    async (t) => {
+    async (t, height) => {
       /* Todo el estado de ESTA descarga queda bajo su clave. Con dos a la vez
          cada una enciende su spinner, tiene su toast y anuncia su resultado
          sin pisar a la otra. `err`/`done` siguen siendo globales a proposito:
@@ -2645,7 +3647,19 @@ function App() {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source: track.source, track, fmt }),
+            body: JSON.stringify({
+              source: track.source,
+              track,
+              fmt,
+              /* Solo el modo YouTube sabe bajar video. En el resto el cuerpo
+                 queda exactamente como estaba. */
+              ...(mode === "ytdlp" ? { media } : {}),
+              /* Altura elegida en el menú. Solo viaja cuando se baja vídeo: en
+                 audio el backend no la espera (y "Mejor disponible" = omitirla). */
+              ...(mode === "ytdlp" && media !== "audio" && Number.isInteger(height)
+                ? { height }
+                : {}),
+            }),
           }
         );
         const j = await rd.json();
@@ -2705,7 +3719,7 @@ function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fmt, query, setQuery, setJobFor]
+    [fmt, media, mode, query, setQuery, setJobFor]
   );
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
@@ -2921,6 +3935,11 @@ function App() {
   const matchedDead =
     ytDead && mode === "matched" && results.length > 0 && fullCount === 0;
 
+  /* Con "solo vídeo" o "audio y vídeo" el archivo que baja YouTube es un
+     mp4/webm: ni el formato de audio (mp3/m4a/original) ni su aviso tienen
+     sentido, y el selector se esconde. */
+  const audioOnly = !(mode === "ytdlp" && media !== "audio");
+
   /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco. */
   const srMsg = loading
     ? "Buscando…"
@@ -2994,7 +4013,7 @@ function App() {
       </p>
 
       <section className="hero">
-        <h1 className="hero__title">Descarga música libremente</h1>
+        <h1 className="hero__title">Descarga contenido libremente</h1>
 
         <div className="finder">
           <form
@@ -3025,9 +4044,12 @@ function App() {
 
           <section className="controls" aria-label="Cómo buscar">
             <ModePicker value={mode} onChange={setMode} ytDead={ytDead} />
-            <FmtPicker value={fmt} onChange={setFmt} />
+            {mode === "ytdlp" && (
+              <MediaPicker value={media} onChange={setMedia} />
+            )}
+            {audioOnly && <FmtPicker value={fmt} onChange={setFmt} />}
           </section>
-          {fmt === "original" && (
+          {audioOnly && fmt === "original" && (
             <p className="finder__hint" key={mode === "ytdlp" ? "yt" : "any"}>
               {mode === "ytdlp" ? ORIGINAL_HINT_YT : ORIGINAL_HINT}
             </p>
@@ -3163,20 +4185,26 @@ function App() {
                     )}
                   </p>
                 )}
-                {libFiles.map((f, n) => (
-                  <Player
-                    key={f.key}
-                    src={`${API}/audio?key=${encodeURIComponent(f.key)}`}
-                    label={f.filename}
-                    title={f.filename}
-                    meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}
-                    duration={f.duration_s}
-                    index={n}
-                    registerAudio={registerLibAudio}
-                    onStart={() => startLibTrack(n)}
-                    onEnded={() => endLibTrack(n)}
-                  />
-                ))}
+                {libFiles.map((f, n) =>
+                  f.kind === "video" ? (
+                    /* Una fila de video no tiene controles de audio: se abre en
+                       el VideoHost. Misma lista y mismo indice que las de audio. */
+                    <VideoRow key={f.key} f={f} index={n} />
+                  ) : (
+                    <Player
+                      key={f.key}
+                      src={keyUrl(f.key)}
+                      label={f.filename}
+                      title={f.filename}
+                      meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}
+                      duration={f.duration_s}
+                      index={n}
+                      registerAudio={registerLibAudio}
+                      onStart={() => startLibTrack(n)}
+                      onEnded={() => endLibTrack(n)}
+                    />
+                  )
+                )}
               </div>
             </section>
           </div>
@@ -3221,9 +4249,13 @@ function App() {
                   key={t.source + t.source_id}
                   t={t}
                   query={query}
+                  media={media}
                   busy={busyIds.has(rowKey(t))}
                   downloaded={downloadedIds.has(rowKey(t))}
                   onDownload={onDownload}
+                  onBotCheck={onBotCheck}
+                  menuOpen={menuKey === rowKey(t)}
+                  setMenuOpen={setMenuOpen}
                   index={i}
                 />
               )
@@ -3285,6 +4317,9 @@ function App() {
         </div>
       )}
       <MiniPlayer libOpen={libOpen} onReveal={revealSong} />
+      {/* Montado una sola vez: es el dueno del <video> y por eso la
+          reproduccion no se corta al cambiar de modo. */}
+      <VideoHost />
       <StorageDialog
         open={storageOpen}
         onClose={() => {

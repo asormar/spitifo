@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from .config import USER_AGENT
+from .config import IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .models import Track, safe_name
 from .storage import get_storage
 
@@ -211,11 +211,36 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _thumb_sidecar(key: str) -> str:
+    """Clave del sidecar `.jpg` de una clave de media (mismo nombre, otra ext).
+
+    Se arma sobre POSIX (`/`) y no con `Path`: en Windows `Path` metería
+    backslashes y la clave dejaría de coincidir con la del `Storage`.
+    """
+    nombre = key.rsplit("/", 1)[-1]
+    base = key[: len(key) - len(nombre)] + (
+        nombre.rsplit(".", 1)[0] if "." in nombre else nombre)
+    return base + ".jpg"
+
+
 def library_scan() -> list[dict]:
-    """Lista la biblioteca terminada a traves del puerto, con la duracion real."""
+    """Lista la biblioteca terminada a traves del puerto, con la duracion real.
+
+    Devuelve audio y video. Cada entrada suma `kind` (audio/video), `thumb_key`
+    (la miniatura `.jpg` que existe al lado, o None) y `has_audio` (False solo
+    en un video "sin audio": el que bajo `media=video`). Los `.jpg` NO se listan
+    como temas: son sidecars, asi que uno huerfano queda oculto.
+    """
+    files = list(get_storage().list())
+    thumbs = {f.key for f in files if Path(f.key).suffix.lower() in IMAGE_EXTS}
     out = []
-    for f in get_storage().list():
+    for f in files:
+        ext = Path(f.key).suffix.lower()
+        if ext in IMAGE_EXTS:
+            continue  # huerfano o sidecar: lo resuelve `thumb_key` de su video
         partes = f.key.split("/")
+        sidecar = _thumb_sidecar(f.key)
+        es_video = ext in VIDEO_EXTS
         out.append({
             "key": f.key,
             "filename": partes[-1],
@@ -224,5 +249,10 @@ def library_scan() -> list[dict]:
             "size_mb": round(f.size / 1_048_576, 2),
             "duration_s": f.duration,
             "modified": f.mtime,
+            "kind": "video" if es_video else "audio",
+            "thumb_key": sidecar if sidecar in thumbs else None,
+            # Un video "sin audio" lo dice su propio nombre. El resto (audio y
+            # el mp4 del modo "both") tiene pista de sonido.
+            "has_audio": not (es_video and Path(partes[-1]).stem.endswith(" (sin audio)")),
         })
     return sorted(out, key=lambda x: -x["modified"])

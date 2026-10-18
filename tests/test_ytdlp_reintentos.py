@@ -295,15 +295,21 @@ def test_toda_extension_que_puede_producir_yt_dlp_esta_en_AUDIO_EXTS():
     assert producidas <= set(AUDIO_EXTS)
 
 
-def test_library_scan_lista_opus_y_ogg(tmp_path, storage_temporal):
+def test_library_scan_lista_audio_y_video(tmp_path, storage_temporal):
+    """`library_scan` lista audio y VIDEO (el `.webm` ya no se descarta), y
+    marca cada entrada con su `kind`. Lo que no es media (.txt) sigue afuera."""
     import backend.app.downloader as dl
 
     storage_temporal(tmp_path)
     (tmp_path / "Artista").mkdir()
-    for nombre in ("a.opus", "b.ogg", "c.m4a", "d.webm"):
+    for nombre in ("a.opus", "b.ogg", "c.m4a", "d.webm", "notas.txt"):
         (tmp_path / "Artista" / nombre).write_bytes(b"\x00" * 64)
     archivos = dl.library_scan()
-    assert sorted(f["filename"] for f in archivos) == ["a.opus", "b.ogg", "c.m4a"]
+    assert sorted(f["filename"] for f in archivos) == [
+        "a.opus", "b.ogg", "c.m4a", "d.webm"]
+    kinds = {f["filename"]: f["kind"] for f in archivos}
+    assert kinds["d.webm"] == "video"
+    assert kinds["a.opus"] == "audio"
     assert all(f["key"].startswith("Artista/") for f in archivos)
 
 

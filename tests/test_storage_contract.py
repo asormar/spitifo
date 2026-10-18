@@ -152,6 +152,30 @@ def test_list_usa_extension_sin_importar_mayusculas(storage, tmp_path):
     assert [f.key for f in storage.list()] == ["A/mayus.MP3"]
 
 
+# ------------------------------------------------- media nueva: video y jpg
+def test_list_incluye_video_y_miniaturas(storage, tmp_path):
+    """`list()` suma video (.mp4/.webm/.mkv) y el sidecar `.jpg`; el resto no."""
+    for key in ("A/tema.mp3", "A/clip.mp4", "A/clip.jpg", "A/otro.webm",
+                "A/matroska.mkv", "A/notas.txt"):
+        _poner(storage, tmp_path, key, b"x")
+    assert sorted(f.key for f in storage.list()) == [
+        "A/clip.jpg", "A/clip.mp4", "A/matroska.mkv", "A/otro.webm",
+        "A/tema.mp3"]
+
+
+@pytest.mark.parametrize("ext", [".mp4", ".webm", ".mkv", ".jpg"])
+def test_video_y_miniatura_round_trip(storage, tmp_path, ext):
+    """put -> stat -> open_range (con rango) sobre las extensiones nuevas."""
+    data = bytes(range(256)) * 3  # 768 bytes
+    key = f"A/A - Clip{ext}"
+    _poner(storage, tmp_path, key, data)
+
+    assert storage.stat(key).size == len(data)
+    assert b"".join(storage.open_range(key)) == data
+    assert b"".join(storage.open_range(key, 10, 20)) == data[10:21]
+    assert [f.key for f in storage.list()] == [key]
+
+
 # ------------------------------------------------------------------ open_range
 def test_open_range_completo(storage, tmp_path):
     data = bytes(range(256)) * 4  # 1 KiB

@@ -28,7 +28,8 @@ from typing import Callable, ContextManager, Iterator
 
 import httpx
 
-from ..config import AUDIO_EXTS
+from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
 from .cache import AudioCache
 from .library_index import IndexEntry, IndexFormatError, LibraryIndex
@@ -69,7 +70,16 @@ def _ext_of(key: str) -> str:
 
 
 def _mime_of(key: str) -> str:
-    return mimetypes.guess_type(key)[0] or "application/octet-stream"
+    """MIME de la clave. Cae a la tabla de media si `mimetypes` no lo sabe.
+
+    El runtime ya registra los tipos al arrancar; esto es el respaldo por si el
+    adapter se usa sin llamar a `configure_runtime` (los tests, por ejemplo).
+    """
+    mime = mimetypes.guess_type(key)[0]
+    if mime:
+        return mime
+    return MEDIA_MIME_TYPES.get(Path(key).suffix.lower(),
+                                "application/octet-stream")
 
 
 def _first(audio, name: str) -> str:
@@ -431,7 +441,7 @@ class CloudStorage:
 
     # ---------------------------------------------------------------------- puerto
     def list(self) -> list[StoredFile]:
-        exts = {e.lower() for e in AUDIO_EXTS}
+        exts = {e.lower() for e in (*AUDIO_EXTS, *VIDEO_EXTS, *IMAGE_EXTS)}
         out: list[StoredFile] = []
         for entry in self._load_index().live():
             key = entry.key
@@ -544,7 +554,13 @@ class CloudStorage:
         size = src.stat().st_size
         ext = _ext_of(key)
         media_type = _mime_of(key)
-        title, artist, album, duration = _read_tags(src)
+        # Un jpg no tiene tags que leer (y mutagen no lo parsea): se sube con la
+        # metadata vacia. El video si se intenta; si mutagen falla, queda vacia.
+        if Path(key).suffix.lower() in IMAGE_EXTS:
+            title = artist = album = ""
+            duration: float | None = None
+        else:
+            title, artist, album, duration = _read_tags(src)
 
         existing = self._entry(key)
         existing_id = existing.remote_id if existing is not None else None

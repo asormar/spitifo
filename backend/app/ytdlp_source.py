@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .config import AUDIO_EXTS
+from .config import AUDIO_EXTS, USER_AGENT, VIDEO_EXTS
 from .models import Track, safe_name
 from .sources import Source, looks_like_music, relevance
 
@@ -326,7 +326,313 @@ def postprocessor_opts(fmt: str) -> list[dict]:
              "preferredquality": "2"}]
 
 
-def pick_output(found: list[Path], fmt: str) -> Path | None:
+# ------------------------------------------------------------- tipo de media
+#: Tipos de media validos. "audio" es la bajada de solo-audio de siempre;
+#: "both" une video y audio en un mp4; "video" deja SOLO el stream de video.
+MEDIA_KINDS = ("audio", "video", "both")
+
+#: Sin AV1: se descarga bien, pero Chromium en Windows (WebView2) no lo
+#: reproduce sin una extension del sistema, y el video quedaria negro.
+_NO_AV1 = "[vcodec!^=av01]"
+
+#: Timeout de la bajada de la miniatura: es un extra, no puede colgar el job.
+THUMB_TIMEOUT_S = 15.0
+
+#: Alturas (px) que acepta el picker de resolucion y el `height` del request.
+MIN_HEIGHT = 144
+MAX_HEIGHT = 4320
+
+
+def _video_branches(height: int | None) -> list[str]:
+    """Selectores de SOLO video, de mas a menos preferido.
+
+    Dos decisiones que salieron de probarlo contra YouTube de verdad:
+    - `bv` y no `bv*`: `bv*` tambien matchea los formatos que ya traen audio, y
+      el 360p progresivo (formato 18) hoy responde 403. Los combinados quedan
+      solo como ultimo recurso de "both".
+    - Con `height`, la altura EXACTA va primero. Si el primer intento fuera el
+      mp4/avc1 acotado con `<=`, pedir 1440p o 4K bajaria en silencio un 1080p
+      avc1, porque YouTube no publica avc1 por encima de 1080p.
+    """
+    if height is None:
+        # Lo mejor que haya (yt-dlp ordena por resolucion), sin AV1.
+        return [f"bv{_NO_AV1}", "bv"]
+    return [
+        f"bv[height={height}][ext=mp4][vcodec^=avc1]",
+        f"bv[height={height}]{_NO_AV1}",
+        f"bv[height<={height}][ext=mp4][vcodec^=avc1]",
+        f"bv[height<={height}]{_NO_AV1}",
+        f"bv[height<={height}]",
+    ]
+
+
+def media_selector(media: str, height: int | None = None) -> str:
+    """Cadena de `format` de yt-dlp para `media`, acotada a `height` si viene.
+
+    Funcion PURA. "audio" es el selector de siempre y ignora `height`. "video"
+    baja solo el stream de video (sin sonido). "both" suma el audio m4a (AAC, el
+    que cabe en un mp4 en cualquier reproductor) y cae a Opus y, al final, a un
+    archivo que ya traiga ambas pistas. No hay fallback silencioso a una altura
+    MAYOR: si nada entra en el limite yt-dlp falla y el job lo reporta.
+    """
+    if media == "audio" or media not in MEDIA_KINDS:
+        return "bestaudio/best"
+    videos = _video_branches(height)
+    if media == "video":
+        return "/".join(videos)
+    combinado = "b" if height is None else f"b[height<={height}]"
+    ramas = [f"{v}+ba[ext=m4a]" for v in videos]
+    ramas += [f"{v}+ba" for v in videos[-2:]]
+    ramas.append(combinado)
+    return "/".join(ramas)
+
+
+def media_opts(media: str, fmt: str = "mp3", height: int | None = None) -> dict:
+    """Opciones de yt-dlp (formato, merge y postprocessors) para `media`.
+
+    Funcion PURA para poder testearla sin yt-dlp. `media="audio"` devuelve
+    EXACTAMENTE lo de siempre: formato de solo-audio + FFmpegExtractAudio segun
+    `fmt`. "both" une video+audio en mp4 SIN recodificar, asi que NO lleva el
+    postprocessor de extraccion de audio. "video" baja solo el stream de video y
+    no lleva postprocessors (no hay audio que extraer). Un `media` desconocido
+    cae a "audio": la validacion del request es de la API.
+
+    `height` solo aplica a video ("both"/"video"): con "audio" se ignora y el
+    selector es el de siempre.
+    """
+    elegido = media if media in MEDIA_KINDS else "audio"
+    h = height if elegido in ("both", "video") else None
+    opts: dict = {"format": media_selector(elegido, h)}
+    if elegido == "both":
+        opts["merge_output_format"] = "mp4"
+    opts["postprocessors"] = (postprocessor_opts(fmt) if elegido == "audio"
+                              else [])
+    return opts
+
+
+# --------------------------------------------------- resoluciones de un video
+def _resolution_label(height: int) -> str:
+    """Etiqueta legible de una altura. Predecible: `f{h}p` salvo los extremos."""
+    if height >= 4320:
+        return "8K"
+    if height >= 2160:
+        return "4K"
+    return f"{height}p"
+
+
+def _es_storyboard(f: dict) -> bool:
+    """True si el formato es un storyboard (slideshow de la miniatura)."""
+    return (f.get("ext") == "mhtml"
+            or "storyboard" in str(f.get("format_note") or "").lower())
+
+
+def _rank_video(f: dict) -> tuple:
+    """Clave de preferencia de un formato de video (mayor gana).
+
+    Primero mp4 con `avc1` (compatible con todo), despues mas fps, despues mas
+    tamano. El tamano usa `filesize` o, si falta, la estimacion.
+    """
+    avc1_mp4 = int(f.get("ext") == "mp4"
+                   and str(f.get("vcodec") or "").startswith("avc1"))
+    fps = f.get("fps") or 0
+    size = f.get("filesize") or f.get("filesize_approx") or 0
+    return (avc1_mp4, fps, size)
+
+
+def summarize_formats(info: dict) -> list[dict]:
+    """Resoluciones de video de `info`, deduplicadas por altura y de mayor a menor.
+
+    Funcion PURA: entra el dict crudo de `extract_info`, sale lo que consume la
+    UI. Solo mira formatos con stream de video y altura entera; descarta los
+    storyboards/`mhtml` y las alturas irreales (< 144). Por altura se queda con
+    el MEJOR candidato (`_rank_video`): el `filesize` es solo del video aunque
+    el formato necesite un audio aparte.
+    """
+    mejores: dict[int, dict] = {}
+    for f in info.get("formats") or []:
+        vcodec = f.get("vcodec")
+        if vcodec in (None, "none"):
+            continue
+        if _es_storyboard(f):
+            continue
+        height = f.get("height")
+        if not isinstance(height, int) or isinstance(height, bool):
+            continue
+        if height < MIN_HEIGHT:
+            continue
+        actual = mejores.get(height)
+        if actual is None or _rank_video(f) > _rank_video(actual):
+            mejores[height] = f
+
+    def fps_redondeado(v) -> int:
+        return int(round(v)) if isinstance(v, (int, float)) else 0
+
+    out = []
+    for height in sorted(mejores, reverse=True):
+        f = mejores[height]
+        dr = f.get("dynamic_range")
+        out.append({
+            "height": height,
+            "label": _resolution_label(height),
+            "fps": fps_redondeado(f.get("fps")),
+            "ext": f.get("ext"),
+            "filesize": f.get("filesize") or f.get("filesize_approx") or None,
+            "hdr": bool(dr) and str(dr).upper() != "SDR",
+        })
+    return out
+
+
+# Cache en memoria de las resoluciones por id de video: reabrir el picker del
+# mismo video no puede volver a golpear YouTube (el probe tarda segundos). 5
+# minutos y 64 entradas alcanzan para una sesion de uso; el lock es porque el
+# endpoint puede correr en varios hilos. `clear_formats_cache()` es para tests.
+FORMATS_TTL_S = 300.0
+FORMATS_MAX = 64
+_FORMATS_CACHE: dict[str, tuple[float, dict]] = {}
+_FORMATS_LOCK = threading.Lock()
+
+
+def clear_formats_cache() -> None:
+    """Vacia la cache de resoluciones (los tests la usan entre casos)."""
+    with _FORMATS_LOCK:
+        _FORMATS_CACHE.clear()
+
+
+def _formats_cache_get(video_id: str, now: float | None = None) -> dict | None:
+    now = time.time() if now is None else now
+    with _FORMATS_LOCK:
+        hit = _FORMATS_CACHE.get(video_id)
+        if hit is None:
+            return None
+        cuando, payload = hit
+        if now - cuando > FORMATS_TTL_S:
+            del _FORMATS_CACHE[video_id]
+            return None
+        return payload
+
+
+def _formats_cache_put(video_id: str, payload: dict,
+                       now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    with _FORMATS_LOCK:
+        _FORMATS_CACHE[video_id] = (now, payload)
+        # Acotada: si se paso, se van los mas viejos.
+        if len(_FORMATS_CACHE) > FORMATS_MAX:
+            viejos = sorted(_FORMATS_CACHE.items(), key=lambda kv: kv[1][0])
+            for clave, _ in viejos[: len(_FORMATS_CACHE) - FORMATS_MAX]:
+                del _FORMATS_CACHE[clave]
+
+
+def bot_check_error() -> BotCheckError:
+    """El mismo mensaje/codigo que publica la descarga cuando el muro persiste."""
+    return BotCheckError(
+        "YouTube pidio confirmar que no sos un bot. "
+        "Importa un cookies.txt desde la configuracion y reintenta.")
+
+
+async def probe_info(url: str) -> dict:
+    """`extract_info(url, download=False)` con el manejo de cookies de la descarga.
+
+    Mismo ultimo recurso que `YtDlpSource.download`: ante el muro de verificacion
+    se reintenta UNA vez con las cookies importadas (copia plana temporal) y, si
+    sigue, se levanta `BotCheckError` para que la API conteste 502 con el codigo.
+    """
+    import yt_dlp
+    opts = youtube_opts({"quiet": True, "no_warnings": True, "skip_download": True,
+                         "socket_timeout": 30, "retries": 1})
+
+    def _run(cookiefile: str | None = None):
+        o = dict(opts)
+        if cookiefile:
+            o["cookiefile"] = cookiefile
+        with yt_dlp.YoutubeDL(o) as ydl:
+            return ydl.extract_info(url, download=False)
+
+    try:
+        return await asyncio.to_thread(_run)
+    except Exception as e:
+        if not is_bot_check_error(e):
+            raise
+        from . import youtube_cookies
+        from .downloader import TEMP_DIR
+        texto = youtube_cookies.load_text()
+        if not texto:
+            raise bot_check_error() from e
+        log.info("ytdlp: probe de formatos reintenta con las cookies importadas")
+        with youtube_cookies.plaintext_tempfile(texto, TEMP_DIR) as cookiefile:
+            try:
+                return await asyncio.to_thread(_run, str(cookiefile))
+            except Exception as e2:
+                if is_bot_check_error(e2):
+                    raise bot_check_error() from e2
+                raise
+
+
+async def video_formats(url: str, video_id: str) -> dict:
+    """Payload de `/api/formats` de un video, con cache de 5 min por id.
+
+    `video_id` es la clave de cache (el id de 11 caracteres); `url` la usa el
+    probe de yt-dlp.
+    """
+    hit = _formats_cache_get(video_id)
+    if hit is not None:
+        return hit
+    info = await probe_info(url) or {}
+    dur = info.get("duration")
+    payload = {
+        "id": info.get("id") or video_id,
+        "title": info.get("title") or "",
+        "duration_s": (int(dur) if isinstance(dur, (int, float))
+                       and not isinstance(dur, bool) else None),
+        "resolutions": summarize_formats(info),
+    }
+    _formats_cache_put(video_id, payload)
+    return payload
+
+
+def thumb_sidecar_key(key: str) -> str:
+    """Clave del sidecar `.jpg` de una clave de media (mismo nombre, otra ext).
+
+    Sobre POSIX (`/`): en Windows `Path` metería backslashes y la clave no
+    coincidiria con la que espera `library_scan`.
+    """
+    nombre = key.rsplit("/", 1)[-1]
+    base = key[: len(key) - len(nombre)] + (
+        nombre.rsplit(".", 1)[0] if "." in nombre else nombre)
+    return base + ".jpg"
+
+
+async def fetch_thumb(video_id: str | None, key: str, work: Path) -> str | None:
+    """Baja la miniatura del video y la guarda al lado de `key`. Best effort.
+
+    Best effort de verdad: una miniatura que no llega NUNCA tiene que tumbar la
+    descarga, asi que cualquier fallo se loguea y devuelve None. Usa httpx (el
+    cliente que ya usa el proyecto) y timeout corto, sin ffmpeg: la futura build
+    de ffmpeg sera solo de audio, sin codecs de imagen.
+    """
+    if not video_id:
+        return None
+    thumb_key = thumb_sidecar_key(key)
+    try:
+        import httpx  # import perezoso: solo hace falta para la miniatura
+        from .storage import get_storage
+        url = thumbnail_url(video_id)
+        timeout = httpx.Timeout(THUMB_TIMEOUT_S)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
+                                     headers={"User-Agent": USER_AGENT}) as c:
+            r = await c.get(url)
+            r.raise_for_status()
+            data = r.content
+        tmp = work / f".thumb-{uuid.uuid4().hex[:8]}.jpg"
+        tmp.write_bytes(data)
+        await asyncio.to_thread(get_storage().put_file, thumb_key, tmp)
+        return thumb_key
+    except Exception as e:
+        log.warning("ytdlp: no se pudo bajar la miniatura de %s: %s", video_id, e)
+        return None
+
+
+def pick_output(found: list[Path], fmt: str, media: str = "audio") -> Path | None:
     """Elige el archivo final entre los `<stem>.*` que quedaron en la carpeta.
 
     Es el fallback para cuando yt-dlp no devuelve `filepath`. Tiene que
@@ -336,8 +642,14 @@ def pick_output(found: list[Path], fmt: str) -> Path | None:
     gana cualquier extension de audio, y entre varias, la mas reciente (el
     archivo que se acaba de escribir). Lo que no es audio (.webm intermedio,
     .part) va al final.
+
+    Con `media` de video ("both"/"video") prefieren las extensiones de video:
+    asi un intermedio de audio que quedo en la carpeta no le gana al archivo
+    final.
     """
-    if fmt in ("mp3", "m4a"):
+    if media in ("both", "video"):
+        rank = dict.fromkeys(VIDEO_EXTS, 0)
+    elif fmt in ("mp3", "m4a"):
         want = "." + fmt
         other = ".m4a" if want == ".mp3" else ".mp3"
         rank = {want: 0, other: 1}
@@ -480,7 +792,9 @@ class YtDlpSource(Source):
     # -------------------------------------------------------------- download
     async def download(self, track: Track, fmt: str = "mp3",
                        job_id: str | None = None,
-                       query: str | None = None) -> dict:
+                       query: str | None = None,
+                       media: str = "audio",
+                       height: int | None = None) -> dict:
         """Descarga via yt-dlp (usa su postprocessor de ffmpeg) con progreso.
 
         No reutiliza downloader.download_track porque yt-dlp gestiona su propio
@@ -491,6 +805,14 @@ class YtDlpSource(Source):
         contra el titulo real del video, para publicar el veredicto de
         identidad en el job: sin esto la UI recibe status=done sin `match` y
         nunca puede avisar "esto no es lo que buscabas".
+
+        `media` decide que se baja: "audio" (default, comportamiento de
+        siempre), "both" (video+audio unidos en mp4) o "video" (solo el stream
+        de video, sin sonido). El resultado suma `kind`, `thumb_key` y `height`.
+
+        `height` (video/both) acota la resolucion a esa altura o menos; con
+        "audio" se ignora. Cuando viene, la clave de salida lleva ` [Hp]` para
+        que dos resoluciones del mismo video convivan en la biblioteca.
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
@@ -501,11 +823,25 @@ class YtDlpSource(Source):
         if not url:
             raise ValueError("ytdlp: falta webpage_url")
 
+        media = media if media in MEDIA_KINDS else "audio"
+        kind = "video" if media in ("both", "video") else "audio"
+
         if job_id is None:
             job_id = new_job(track.title)
 
         folder = safe_name(track.artist or "varios", 60)
         stem = safe_name(f"{track.artist} - {track.title}", 100)
+        # Con una resolucion elegida, la clave lleva ` [Hp]`: asi dos alturas
+        # del mismo video (o el mismo video en "both" y "video") no comparten
+        # clave. `height` se ignora con audio, que no tiene resolucion.
+        if height is not None and media in ("both", "video"):
+            stem = f"{stem} [{int(height)}p]"
+        # Con media=video el archivo NO lleva audio. El sufijo va DESPUES de
+        # ` [Hp]` y tiene que quedar al FINAL del nombre: `library_scan` deduce
+        # `has_audio` mirando si el stem termina en " (sin audio)". El video
+        # mudo tambien se distingue del mp4 de "both".
+        if media == "video":
+            stem = f"{stem} (sin audio)"
         # Clave de salida SIN extension: es a la vez la identidad del archivo
         # final en la biblioteca y la clave del lock de una descarga por salida.
         key_base = f"{folder}/{stem}"
@@ -544,13 +880,12 @@ class YtDlpSource(Source):
 
         opts = youtube_opts({
             "quiet": True, "no_warnings": True, "noprogress": True,
-            "format": "bestaudio/best",
             "outtmpl": outtmpl,
             "paths": paths,
-            "postprocessors": postprocessor_opts(fmt),
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
+            **media_opts(media, fmt, height),
         })
         loop = asyncio.get_running_loop()
 
@@ -575,7 +910,7 @@ class YtDlpSource(Source):
                     # "original", acepta la extension natural del audio
                     # (.opus, .m4a, .ogg...).
                     cand = pick_output(
-                        list(work.glob(glob.escape(stem) + ".*")), fmt)
+                        list(work.glob(glob.escape(stem) + ".*")), fmt, media)
                     if cand is not None:
                         fp = str(cand)
                 return info, fp
@@ -675,12 +1010,19 @@ class YtDlpSource(Source):
                     duration_s=int(info.get("duration") or 0) or track.duration_s,
                 )
                 _write_tags(path, tag_track)
+                # La extension es la del archivo real: con "both" el merge deja
+                # un .mp4, pero el fallback a un unico archivo (`b`) puede ser
+                # .webm, y la clave no puede mentir sobre lo que contiene.
                 key = f"{key_base}{path.suffix}"
                 # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
                 # su manera, y la UI tiene que mostrar lo que quedo guardado.
                 filename = key.rsplit("/", 1)[-1]
                 stored = await asyncio.to_thread(get_storage().put_file, key, path)
                 size = stored.size
+                # Miniatura best effort SOLO para video: si falla, la descarga
+                # sigue y `thumb_key` queda en None (nunca tumba el job).
+                thumb_key = (await fetch_thumb(info.get("id"), key, work)
+                             if kind == "video" else None)
 
             # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
             # calcula aca y no antes de la descarga porque hasta ahora no se
@@ -688,14 +1030,20 @@ class YtDlpSource(Source):
             # status=done sin `match` y no podia avisar nada. `query` es lo que el
             # usuario escribio; el titulo real del video es la otra mitad.
             estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
+            # `height` es la altura PEDIDA (None si no se eligio): la UI la
+            # muestra como "1080p" del archivo que acaba de bajar.
+            altura = (int(height) if height is not None
+                      and media in ("both", "video") else None)
             _finish(job_id, status="done", progress=100.0, key=key,
                     filename=filename, size_mb=round(size / 1_048_576, 2),
-                    format=path.suffix.lstrip(".").upper(),
+                    format=path.suffix.lstrip(".").upper(), kind=kind,
+                    thumb_key=thumb_key, height=altura,
                     match=estado, match_label=etiqueta, real_title=info_title or None)
             return {
                 "key": key, "filename": filename, "folder": folder,
                 "bytes": size, "size_mb": round(size / 1_048_576, 2),
                 "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
+                "kind": kind, "thumb_key": thumb_key, "height": altura,
                 "match": estado, "match_label": etiqueta,
                 "real_title": info_title or None,
             }

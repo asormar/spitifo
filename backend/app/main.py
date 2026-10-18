@@ -27,7 +27,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import activity, ytdlp_update
-from .config import AUDIO_EXTS
+from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from .runtime import configure_runtime, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -134,11 +134,43 @@ async def _json_body(request: Request) -> dict:
     return body
 
 
+#: Valores validos de `media`. El default ("audio") es el comportamiento de
+#: siempre; "video" y "both" bajan video de YouTube (solo en el camino yt-dlp).
+_MEDIA_CHOICES = ("audio", "video", "both")
+
+
+#: Limites de `height` (px): las resoluciones reales van de 144p a 8K.
+_MIN_HEIGHT, _MAX_HEIGHT = 144, 4320
+
+
+def _height_field(body: dict, media: str) -> int | None:
+    """Valida `height` (144..4320) y lo ignora cuando media es audio.
+
+    Acepta `int` y un `float` entero (modo laxo, como el resto de la API), pero
+    NUNCA un `bool`: `True` no es "1080". Ausente o `null` = mejor disponible.
+    """
+    if "height" not in body or body["height"] is None:
+        return None
+    v = body["height"]
+    entero = ((isinstance(v, int) and not isinstance(v, bool))
+              or (isinstance(v, float) and v.is_integer()))
+    if not entero:
+        raise _invalid(["body", "height"], "Input should be a valid integer")
+    v = int(v)
+    if v < _MIN_HEIGHT or v > _MAX_HEIGHT:
+        raise _invalid(["body", "height"],
+                       f"Input should be between {_MIN_HEIGHT} and {_MAX_HEIGHT}")
+    # El audio no tiene resolucion: se ignora (no cambia la descarga).
+    return v if media in ("video", "both") else None
+
+
 @dataclass
 class DownloadReq:
     source: str
     track: dict
     fmt: str = "original"  # original | mp3 | m4a
+    media: str = "audio"  # audio | video | both (solo en el camino yt-dlp)
+    height: int | None = None  # altura elegida (solo video/both)
 
     @classmethod
     def from_body(cls, body: dict) -> "DownloadReq":
@@ -156,7 +188,14 @@ class DownloadReq:
         fmt = body.get("fmt", "original")
         if not isinstance(fmt, str):
             raise _invalid(["body", "fmt"], "Input should be a valid string")
-        return cls(source=src, track=track, fmt=fmt)
+        media = body.get("media", "audio")
+        if not isinstance(media, str):
+            raise _invalid(["body", "media"], "Input should be a valid string")
+        if media not in _MEDIA_CHOICES:
+            esperado = " or ".join(repr(c) for c in _MEDIA_CHOICES)
+            raise _invalid(["body", "media"], f"Input should be {esperado}")
+        height = _height_field(body, media)
+        return cls(source=src, track=track, fmt=fmt, media=media, height=height)
 
 
 # TrackPayload: nombre de campo -> (tipo, obligatorio). El orden es el mismo
@@ -488,6 +527,36 @@ async def progress(request: Request):
     return JSONResponse({"job_id": job_id, **job})
 
 
+#: Forma canonica de una URL de UN video de YouTube (`parse_youtube_url`).
+_YT_WATCH = "https://www.youtube.com/watch?v="
+
+
+async def formats(request: Request):
+    """GET /api/formats?url=...: las resoluciones REALES que ofrece un video.
+
+    Es lo que alimenta el picker: no se puede ofrecer 4K en un video que solo
+    tiene 720p. Se valida con el parser de YouTube de siempre: cualquier cosa que
+    no sea la URL de UN video (playlist, otro sitio) es 422, asi el endpoint no
+    sirve de fetcher generico. El probe corre en un thread con cache de 5 min.
+    """
+    url = _query_str(request, "url", required=True, min_length=1, max_length=500)
+    from .ytdlp_source import BotCheckError, parse_youtube_url, video_formats
+    canonical = parse_youtube_url(url)
+    if not canonical or not canonical.startswith(_YT_WATCH):
+        raise _invalid(["query", "url"],
+                       "Input should be a valid YouTube video URL")
+    video_id = canonical[len(_YT_WATCH):]
+    try:
+        payload = await video_formats(canonical, video_id)
+    except BotCheckError as e:
+        # Mismo codigo que la descarga: la UI ofrece importar cookies.
+        return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
+    except Exception as e:
+        log.warning("ytdlp formats fallo: %s", e)
+        raise HTTPException(502, f"yt-dlp: {e}")
+    return JSONResponse(payload)
+
+
 async def download(request: Request):
     query = _query_str(request, "query", default=None)
     wait = _query_bool(request, "wait", False)
@@ -534,7 +603,8 @@ async def download(request: Request):
             try:
                 with activity.busy():
                     result = await ysrc.download(track, req.fmt, job_id=job_id,
-                                                 query=query)
+                                                 query=query, media=req.media,
+                                                 height=req.height)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except BotCheckError as e:
@@ -551,7 +621,8 @@ async def download(request: Request):
         async def _bg():
             try:
                 await ysrc.download(track, req.fmt, job_id=job_id,
-                                    query=query)
+                                    query=query, media=req.media,
+                                    height=req.height)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
             finally:
@@ -859,6 +930,12 @@ async def storage_disconnect(request: Request):
 _RANGO = re.compile(r"^bytes=(\d*)-(\d*)$")
 _UNIT = "bytes"
 
+#: Extensiones que sirve `/api/audio`: audio, video y la miniatura `.jpg`.
+_SERVE_EXTS = AUDIO_EXTS + VIDEO_EXTS + IMAGE_EXTS
+#: Extensiones que tiene sentido adelantar con `/api/prefetch` (el video tambien
+#: se reproduce: la UI precarga el proximo tema). Una miniatura no se precarga.
+_PREFETCH_EXTS = AUDIO_EXTS + VIDEO_EXTS
+
 
 def _parse_range(valor: str | None, size: int) -> tuple[int, int] | None | str:
     """Devuelve `(start, end)` inclusivo, None (ignorar) o "insatisfacible".
@@ -897,9 +974,13 @@ async def audio(request: Request):
 
     La clave es relativa a la raiz de la biblioteca: el puerto `Storage` dice si
     existe y de donde salen los bytes, asi que la API no maneja rutas del host.
+
+    Aunque la ruta se llame `/api/audio` sirve TAMBIEN video (.mp4/.webm/.mkv) y
+    la miniatura `.jpg`: la UI reproduce el video y dibuja el poster desde aca,
+    con los mismos chequeos de clave y el mismo manejo de `Range`.
     """
     key = _query_str(request, "key", required=True)
-    if Path(key).suffix.lower() not in AUDIO_EXTS:
+    if Path(key).suffix.lower() not in _SERVE_EXTS:
         raise HTTPException(404, "no encontrado")
     storage = get_storage()
     try:
@@ -909,8 +990,8 @@ async def audio(request: Request):
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
 
-    # El MIME sale de la extension; runtime.register_audio_mime_types ya
-    # registro los tipos de audio que Android no trae.
+    # El MIME sale de la extension; configure_runtime ya registro los tipos de
+    # audio, video y `.jpg` que Android no trae.
     ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
     rango = _parse_range(request.headers.get("range"), size)
     if rango == "insatisfacible":
@@ -953,7 +1034,7 @@ async def prefetch(request: Request):
     """
     body = await _json_body(request)
     key = body.get("key")
-    if not isinstance(key, str) or Path(key).suffix.lower() not in AUDIO_EXTS:
+    if not isinstance(key, str) or Path(key).suffix.lower() not in _PREFETCH_EXTS:
         raise HTTPException(400, "clave invalida")
     storage = get_storage()
     try:
@@ -1020,6 +1101,7 @@ routes = [
     Route("/api/resolve", resolve, methods=["POST"]),
     Route("/api/verify", verify),
     Route("/api/download/progress/{job_id}", progress),
+    Route("/api/formats", formats),
     Route("/api/download", download, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
