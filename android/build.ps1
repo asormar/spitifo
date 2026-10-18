@@ -9,12 +9,17 @@
 # android\keystore.properties and fails with instructions if that file is
 # missing. Nothing here ever creates a keystore or a password.
 #
+# -FfmpegDir uses a local build of the trimmed ffmpeg (a folder holding `ffmpeg`
+# and `ffprobe`, see scripts/ffmpeg/build.sh) instead of the release pinned in
+# scripts/ffmpeg/release.properties.
+#
 # Requirements: JDK 17+, Android SDK platform 34 and build-tools 34.0.0
 # (sdk.dir in android\local.properties), Python 3.12 for Chaquopy
 # (spitifo.buildPython in android\local.properties, or SPITIFO_BUILD_PYTHON),
 # and Node.
 param(
-    [switch]$Debug
+    [switch]$Debug,
+    [string]$FfmpegDir = $env:SPITIFO_FFMPEG_SOURCE
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,7 +43,9 @@ Step "frontend" {
 Step "apk" {
     Push-Location $android
     try {
-        if ($Debug) { .\gradlew.bat assembleDebug } else { .\gradlew.bat assembleRelease }
+        $gradleArgs = @()
+        if ($FfmpegDir) { $gradleArgs += "-PffmpegDir=$FfmpegDir" }
+        if ($Debug) { .\gradlew.bat assembleDebug @gradleArgs } else { .\gradlew.bat assembleRelease @gradleArgs }
     } finally { Pop-Location }
 }
 

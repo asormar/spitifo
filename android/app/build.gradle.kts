@@ -69,84 +69,13 @@ val stageFrontend = tasks.register<Sync>("stageFrontend") {
     }
 }
 
-/* ------------------------------------------------------------------- ffmpeg
- * arm64 ffmpeg + ffprobe, from the youtubedl-android AAR that the spike
- * proved works. The AAR's jniLibs hold both binaries as real PIE executables
- * (`libffmpeg.so` / `libffprobe.so`) plus `libffmpeg.zip.so`, a zip of the
- * shared libraries they need at runtime.
- *
- * The AAR assumes those libraries are reachable next to the publisher's python
- * payload, which this app does not ship, so a second AAR (the same publisher's
- * `library`) is used as a plain source of five .so files that get staged as
- * assets and extracted next to ffmpeg's own libs. Transitives are dropped
- * everywhere: androidx would clash with android.useAndroidX=false, and none of
- * the AAR classes are ever loaded. */
-val nativeSupportSource by configurations.creating {
-    isCanBeConsumed = false
-    isTransitive = false
-}
-
-val supportLibs = listOf(
-    "libc++_shared.so",
-    "libexpat.so.1",
-    "libcrypto.so.3",
-    "libandroid-support.so",
-    "libandroid-posix-semaphore.so",
-)
-
 dependencies {
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1") {
-        isTransitive = false
-    }
-    nativeSupportSource("io.github.junkfood02.youtubedl-android:library:0.18.1@aar")
     // Google sign-in on Android goes through the Identity Services
     // AuthorizationClient (ADR 0002, section 3): the host asks for a
     // `drive.file` access token and pushes it into the embedded Python backend.
     // See src/main/kotlin/dev/spitifo/DriveAuth.kt (and DriveProbeActivity.kt,
     // the session 7 spike, in debug).
     implementation("com.google.android.gms:play-services-auth:21.2.0")
-}
-
-// Not jniLibs: AGP only packages native libs whose name ends in .so, and the
-// dynamic linker looks these up by their exact soname. They ride along as
-// assets and the app copies them into the ffmpeg lib dir at first run.
-val supportAssetsDir = stageDir.resolve("assets/ffmpeg-support")
-val stageNativeSupportLibs = tasks.register("stageNativeSupportLibs") {
-    inputs.files(nativeSupportSource)
-    inputs.property("supportLibs", supportLibs)
-    outputs.dir(supportAssetsDir)
-    doLast {
-        supportAssetsDir.deleteRecursively()
-        supportAssetsDir.mkdirs()
-        val aar = nativeSupportSource.singleFile
-        val payload = File(temporaryDir, "libpython.zip.so")
-        ZipFile(aar).use { outer ->
-            val entry = outer.getEntry("jni/arm64-v8a/libpython.zip.so")
-                ?: error("libpython.zip.so not found in ${aar.name}")
-            outer.getInputStream(entry).use { i -> payload.outputStream().use { o -> i.copyTo(o) } }
-        }
-        ZipFile(payload).use { zf ->
-            for (name in supportLibs) {
-                // Payload entries can be stored symlinks; follow a few hops.
-                var cur = name
-                var data: ByteArray? = null
-                for (hop in 0 until 5) {
-                    val e = zf.getEntry("usr/lib/$cur") ?: break
-                    val bytes = zf.getInputStream(e).use { it.readBytes() }
-                    val target = if (bytes.size <= 128) String(bytes, Charsets.UTF_8).trim() else ""
-                    if (target.isNotEmpty() && zf.getEntry("usr/lib/$target") != null) {
-                        cur = target
-                    } else {
-                        data = bytes
-                        break
-                    }
-                }
-                val bytes = data ?: error("could not resolve $name in libpython.zip.so")
-                File(supportAssetsDir, name).writeBytes(bytes)
-                logger.lifecycle("staged $name (${bytes.size} bytes) from ${aar.name}")
-            }
-        }
-    }
 }
 
 /* ------------------------------------------------------------------ quickjs
@@ -195,6 +124,94 @@ val downloadQuickJs = tasks.register("downloadQuickJs") {
         out.parentFile.mkdirs()
         cached.copyTo(out, overwrite = true)
         logger.lifecycle("staged libqjs.so (${out.length()} bytes) from $quickJsAsset")
+    }
+}
+
+/* ------------------------------------------------------------------- ffmpeg
+ * Spitifo's own audio-only ffmpeg and ffprobe (scripts/ffmpeg/build.sh, built
+ * by .github/workflows/ffmpeg.yml): two statically linked arm64 executables of
+ * about 4 MB each. They replace the youtubedl-android AAR, whose ffmpeg shipped
+ * 74 MB of libraries, mostly video codecs, plus five more libraries from a
+ * second AAR.
+ *
+ * They are staged like QuickJS: as libffmpeg.so / libffprobe.so in a generated
+ * jniLibs dir, so the install extracts them to nativeLibraryDir as real,
+ * executable files (jniLibs.useLegacyPackaging = true). Backend.kt symlinks
+ * them to the names the backend looks for.
+ *
+ * The release is pinned in scripts/ffmpeg/release.properties (tag and SHA-256).
+ * `-PffmpegDir=<folder>` uses a local build instead (a folder holding `ffmpeg`
+ * and `ffprobe`), which is how a change to the build script is tested before
+ * it is published. The LGPL texts and BUILDINFO.txt ride along as assets. */
+val ffmpegPins = Properties().apply {
+    rootProject.file("../scripts/ffmpeg/release.properties").inputStream().use { load(it) }
+}
+val ffmpegTag = ffmpegPins.getProperty("tag", "")
+val ffmpegSha256 = ffmpegPins.getProperty("android-arm64.sha256", "")
+val ffmpegLocalDir: String? = providers.gradleProperty("ffmpegDir").orNull
+val ffmpegLicenseFiles = listOf("COPYING.LGPLv2.1", "COPYING.lame", "LICENSE.md", "BUILDINFO.txt")
+
+val downloadFfmpeg = tasks.register("downloadFfmpeg") {
+    val libDir = quickJsJniLibsDir
+    val licenseDir = stageDir.resolve("assets/licenses/ffmpeg")
+    inputs.property("tag", ffmpegTag)
+    inputs.property("sha256", ffmpegSha256)
+    inputs.property("localDir", ffmpegLocalDir ?: "")
+    outputs.dir(libDir)
+    outputs.dir(licenseDir)
+    doLast {
+        val src: File
+        if (ffmpegLocalDir != null) {
+            src = File(ffmpegLocalDir)
+        } else {
+            if (ffmpegTag.isEmpty() || ffmpegSha256.isEmpty()) {
+                throw GradleException(
+                    "scripts/ffmpeg/release.properties has no published ffmpeg yet. Run the " +
+                        "`ffmpeg` workflow with a tag and fill the file in, or build against a " +
+                        "local copy with -PffmpegDir=<folder holding ffmpeg and ffprobe>.")
+            }
+            val asset = "ffmpeg-audio-android-arm64.zip"
+            val cached = layout.buildDirectory.dir("ffmpeg").get().asFile.resolve("$ffmpegTag-$asset")
+            if (!cached.isFile) {
+                val url = "https://github.com/asormar/spitifo/releases/download/$ffmpegTag/$asset"
+                logger.lifecycle("downloading $url")
+                cached.parentFile.mkdirs()
+                download(url, cached)
+            }
+            val actual = MessageDigest.getInstance("SHA-256").digest(cached.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            if (!actual.equals(ffmpegSha256, ignoreCase = true)) {
+                cached.delete()
+                throw GradleException(
+                    "ffmpeg checksum mismatch for $asset: got $actual, expected $ffmpegSha256. " +
+                        "If the release was replaced on purpose, update scripts/ffmpeg/release.properties.")
+            }
+            src = File(cached.parentFile, "$ffmpegTag-android-arm64")
+            src.deleteRecursively()
+            src.mkdirs()
+            ZipFile(cached).use { zf ->
+                for (e in zf.entries()) {
+                    if (e.isDirectory) continue
+                    zf.getInputStream(e).use { i -> File(src, File(e.name).name).outputStream().use { o -> i.copyTo(o) } }
+                }
+            }
+        }
+        // The libraries the old youtubedl-android ffmpeg needed used to be staged
+        // here; a build directory that predates this change still holds them.
+        stageDir.resolve("assets/ffmpeg-support").deleteRecursively()
+        libDir.mkdirs()
+        for ((from, to) in listOf("ffmpeg" to "libffmpeg.so", "ffprobe" to "libffprobe.so")) {
+            val exe = src.resolve(from)
+            if (!exe.isFile) throw GradleException("$from not found in ${src.absolutePath}")
+            exe.copyTo(libDir.resolve(to), overwrite = true)
+            logger.lifecycle("staged $to (${exe.length()} bytes)")
+        }
+        licenseDir.deleteRecursively()
+        licenseDir.mkdirs()
+        for (name in ffmpegLicenseFiles) {
+            val f = src.resolve(name)
+            if (f.isFile) f.copyTo(licenseDir.resolve(name), overwrite = true)
+        }
     }
 }
 
@@ -349,7 +366,7 @@ tasks.configureEach {
             (name.endsWith("PythonSources") || name.endsWith("Assets") ||
                 name.endsWith("JniLibFolders"))) ||
         (name.startsWith("generate") && name.endsWith("PythonRequirements"))) {
-        dependsOn(stageBackend, stageFrontend, stageNativeSupportLibs, downloadQuickJs)
+        dependsOn(stageBackend, stageFrontend, downloadFfmpeg, downloadQuickJs)
     }
     if (name == "validateSigningRelease" || name.startsWith("packageRelease") ||
         name.startsWith("assembleRelease") || name.startsWith("bundleRelease")) {
