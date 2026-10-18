@@ -33,7 +33,6 @@ from .oauth import (
     authorize_url,
     exchange_code,
     google_provider,
-    microsoft_provider,
     new_pkce,
     new_state,
     refresh,
@@ -50,8 +49,6 @@ def provider_for(which: str) -> Provider:
     """Proveedor del subcomando de la CLI."""
     if which == "google":
         return google_provider()
-    if which == "onedrive":
-        return microsoft_provider()
     raise ValueError(f"proveedor desconocido: {which!r}")
 
 
@@ -285,7 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m backend.app.cloud.connect",
         description="Conecta (o desconecta) un proveedor de nube en la PC.")
-    parser.add_argument("provider", choices=("google", "onedrive"),
+    parser.add_argument("provider", choices=("google",),
                         help="proveedor a conectar")
     parser.add_argument("--disconnect", action="store_true",
                         help="borra los tokens guardados y no hace sign-in")

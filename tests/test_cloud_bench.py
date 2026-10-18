@@ -1,8 +1,8 @@
 """Tests OFFLINE del benchmark de proveedores (backend/app/cloud/bench.py).
 
 Nada sale a internet: todo pasa por `httpx.MockTransport`. Se prueban los
-ayudantes puros (percentiles, Content-Range, armado de requests de Drive,
-troceo de la subida de OneDrive) y la medicion con un stream simulado.
+ayudantes puros (percentiles, Content-Range, armado de requests de Drive) y la
+medicion con un stream simulado.
 """
 from __future__ import annotations
 
@@ -152,83 +152,6 @@ def test_drive_upload_usa_el_location_de_la_sesion():
         "name": "bench-x", "parents": ["folder-1"]}
     assert str(put.url) == "https://upload.example/session/1"
     assert put.content == b"abc"
-
-
-# ------------------------------------------------------------------- OneDrive
-def test_upload_ranges_cubre_todo_el_archivo():
-    assert bench.upload_ranges(10, 4) == [(0, 3), (4, 7), (8, 9)]
-    assert bench.upload_ranges(8, 4) == [(0, 3), (4, 7)]
-    assert bench.upload_ranges(0, 4) == []
-
-
-def test_upload_ranges_chunk_invalido():
-    with pytest.raises(ValueError):
-        bench.upload_ranges(10, 0)
-
-
-def test_content_range_header():
-    assert bench.content_range_header(0, 3, 10) == "bytes 0-3/10"
-
-
-def test_onedrive_upload_trocea_sin_authorization():
-    seen = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen.append(request)
-        return httpx.Response(202, json={"id": "item-1"})
-
-    with _client(handler) as client:
-        item_id = bench.onedrive_upload(
-            client, "https://upload.example/s", b"0123456789", chunk=4)
-
-    assert item_id == "item-1"
-    assert [r.method for r in seen] == ["PUT", "PUT", "PUT"]
-    assert [r.headers["Content-Range"] for r in seen] == [
-        "bytes 0-3/10", "bytes 4-7/10", "bytes 8-9/10"]
-    assert [len(r.content) for r in seen] == [4, 4, 2]
-    # Graph RECHAZA el Authorization en el uploadUrl.
-    assert all("authorization" not in r.headers for r in seen)
-
-
-def test_onedrive_find_item_404_es_ausente():
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(404, json={"error": {"code": "itemNotFound"}})
-
-    with _client(handler) as client:
-        assert bench.onedrive_find_item(client, {}, "bench-x.m4a") is None
-
-
-def test_onedrive_create_session_arma_la_url_del_approot():
-    seen = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["method"] = request.method
-        seen["url"] = str(request.url)
-        return httpx.Response(200, json={"uploadUrl": "https://upload.example/s"})
-
-    with _client(handler) as client:
-        url = bench.onedrive_create_session(
-            client, {"Authorization": "Bearer x"}, "bench-x.m4a")
-
-    assert url == "https://upload.example/s"
-    assert seen["method"] == "POST"
-    assert seen["url"].endswith(
-        "/approot:/bench/bench-x.m4a:/createUploadSession")
-
-
-def test_onedrive_presigned_url_pide_el_select():
-    seen = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        seen["select"] = request.url.params["select"]
-        return httpx.Response(200, json={
-            "id": "i", "@microsoft.graph.downloadUrl": "https://dl.example/x"})
-
-    with _client(handler) as client:
-        url = bench.onedrive_presigned_url(client, {}, "i")
-
-    assert url == "https://dl.example/x"
-    assert seen["select"] == "id,@microsoft.graph.downloadUrl"
 
 
 # ------------------------------------------------------------------ mediciones

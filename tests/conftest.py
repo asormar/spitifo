@@ -47,7 +47,7 @@ DATOS_TEMPORALES = Path(tempfile.mkdtemp(prefix="spitifo-tests-data-"))
 os.environ["SPITIFO_DATA_DIR"] = str(DATOS_TEMPORALES)
 os.environ["SPITIFO_CACHE_DIR"] = str(DATOS_TEMPORALES / "cache")
 for _var in ("SPITIFO_STORAGE", "SPITIFO_GOOGLE_CLIENT_ID",
-             "SPITIFO_GOOGLE_CLIENT_SECRET", "SPITIFO_MS_CLIENT_ID"):
+             "SPITIFO_GOOGLE_CLIENT_SECRET"):
     os.environ.pop(_var, None)
 
 

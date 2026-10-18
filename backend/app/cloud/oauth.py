@@ -4,7 +4,7 @@ El backend en Python es dueno del flujo: genera PKCE y `state`, canjea el code,
 refresca y guarda tokens. El shell solo abre el navegador y, en Android, le pasa
 el redirect a Python en proceso (docs/adr/0002-user-owned-storage.md, seccion 3).
 
-Neutral al proveedor: Google y Microsoft se describen con la misma `Provider`.
+Neutral al proveedor: cada proveedor se describe con la misma `Provider`.
 Toda salida a la red va por el `httpx.Client` que recibe cada funcion, nunca por
 un cliente propio.
 """
@@ -31,13 +31,6 @@ GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 #: Scope no sensible: no exige verificacion de la app (ADR 0002, seccion 1).
 GOOGLE_SCOPE = "https://www.googleapis.com/auth/drive.file"
-
-# ---------------------------------------------------------------- Microsoft
-MS_AUTHORIZE_URL = (
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize")
-MS_TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
-#: App Folder, no todo el Drive. `offline_access` habilita el refresh token.
-MS_SCOPES = ("Files.ReadWrite.AppFolder", "offline_access")
 
 
 class OAuthError(RuntimeError):
@@ -71,9 +64,8 @@ class Provider:
     client_secret: str | None
     scopes: tuple[str, ...]
     extra_authorize_params: dict[str, str] = field(default_factory=dict)
-    #: Host del redirect de loopback. Google acepta cualquier puerto en
-    #: `127.0.0.1`; Microsoft ignora el puerto solo con `localhost`, asi que
-    #: ahi se registra `http://localhost/callback`.
+    #: Host con el que se escribe el redirect de loopback. El server escucha
+    #: siempre en `127.0.0.1`; esto solo cambia el nombre del redirect.
     redirect_host: str = "127.0.0.1"
 
 
@@ -149,19 +141,6 @@ def google_provider() -> Provider:
         # `access_type=offline` pide refresh token; `prompt=consent` fuerza a
         # que Google lo entregue tambien en reconexiones.
         extra_authorize_params={"access_type": "offline", "prompt": "consent"},
-    )
-
-
-def microsoft_provider() -> Provider:
-    """Cliente publico de Microsoft: sin secret, app folder de OneDrive."""
-    return Provider(
-        name="microsoft",
-        authorize_url=MS_AUTHORIZE_URL,
-        token_url=MS_TOKEN_URL,
-        client_id=_setting("SPITIFO_MS_CLIENT_ID", "microsoft", "client_id"),
-        client_secret=None,
-        scopes=MS_SCOPES,
-        redirect_host="localhost",
     )
 
 
@@ -269,8 +248,8 @@ def refresh(client: httpx.Client, provider: Provider, tokens: TokenSet,
     }
     if provider.client_secret:
         data["client_secret"] = provider.client_secret
-    # Google no devuelve refresh_token al refrescar: se conserva el viejo.
-    # Microsoft lo rota en cada uso: si viene, se toma el nuevo.
+    # Es comun que el proveedor no devuelva refresh_token al refrescar: en ese
+    # caso se conserva el viejo. Si viene uno nuevo (rotacion), se toma ese.
     return _token_set(provider, _post_token(client, provider, data), now,
                       tokens.refresh_token)
 
@@ -377,8 +356,7 @@ class LoopbackReceiver:
 
     def __init__(self, host: str = "127.0.0.1") -> None:
         # El server escucha siempre en `127.0.0.1`; `host` solo cambia como se
-        # escribe el redirect (`Provider.redirect_host`). Con `localhost` el
-        # navegador cae a `127.0.0.1` si `::1` no responde.
+        # escribe el redirect (`Provider.redirect_host`).
         self.host = host
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None

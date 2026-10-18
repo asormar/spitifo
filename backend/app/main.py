@@ -639,7 +639,7 @@ async def library(request: Request):
 
 # --------------------------------------------------------- almacenamiento activo
 # La pantalla de conexion elige donde vive la biblioteca (este dispositivo o una
-# nube) sin tocar variables de entorno. OneDrive todavia no se lista.
+# nube) sin tocar variables de entorno. Hoy el unico proveedor es Google Drive.
 _CONNECT_PROVIDERS = ("google",)
 _STORAGE_CHOICES = ("local", "google")
 

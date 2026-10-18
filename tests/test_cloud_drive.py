@@ -11,6 +11,7 @@ import os
 import httpx
 import pytest
 
+from backend.app.cloud.base import upload_ranges
 from backend.app.cloud.cache import AudioCache
 from backend.app.cloud.drive import INDEX_TTL, DriveStorage, QuotaExceeded
 from backend.app.cloud.oauth import Provider
@@ -266,3 +267,15 @@ def test_quota_suma_lo_de_spitifo_y_se_cachea(tmp_path):
     fake.reset_calls()
     storage.quota()
     assert fake.calls == [], "dentro del TTL no vuelve a preguntar"
+
+
+# --------------------------------------------------------------- troceo subida
+def test_upload_ranges_cubre_todo_el_archivo():
+    assert upload_ranges(10, 4) == [(0, 3), (4, 7), (8, 9)]
+    assert upload_ranges(8, 4) == [(0, 3), (4, 7)]
+    assert upload_ranges(0, 4) == []
+
+
+def test_upload_ranges_chunk_invalido():
+    with pytest.raises(ValueError):
+        upload_ranges(10, 0)

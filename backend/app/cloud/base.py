@@ -1,6 +1,6 @@
 """Base COMUN de un adapter de `Storage` sobre una nube (ADR 0002, secciones 4 a 8).
 
-Un proveedor concreto (Google Drive, OneDrive) hereda de `CloudStorage` y
+Un proveedor concreto (hoy solo Google Drive) hereda de `CloudStorage` y
 completa los hooks de la seccion final: la biblioteca vive en la carpeta visible
 de la app, con las carpetas del usuario espejadas debajo. El indice NO esta en un
 solo `index.json`: no todos los proveedores tienen escritura condicional, asi que
@@ -214,7 +214,7 @@ class CloudStorage:
 
     Esta clase tiene todo lo que NO depende del proveedor: reintentos, el indice
     por dispositivo con su merge, la cache, los rangos y la cuota. Los hooks de
-    la seccion final son lo unico que cambia entre Google Drive y OneDrive.
+    la seccion final son lo unico que cambia entre proveedores.
     """
 
     def __init__(self, tokens: TokenSource, client: httpx.Client, device_id: str,

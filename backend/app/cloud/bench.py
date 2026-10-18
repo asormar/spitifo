@@ -1,20 +1,19 @@
-"""Benchmark de proveedores de nube contra los objetivos del ADR 0002.
+"""Benchmark de un proveedor de nube contra los objetivos del ADR 0002.
 
-Mide Google Drive y OneDrive desde una PC con cuentas reales: sube UN archivo de
-audio a la carpeta visible del proveedor y despues cronometra el primer byte, el
-seek al medio y la descarga completa. Los objetivos que una PC puede chequear
-estan en docs/adr/0002-user-owned-storage.md, seccion 2.
+Mide Google Drive desde una PC con una cuenta real: sube UN archivo de audio a
+la carpeta visible del proveedor y despues cronometra el primer byte, el seek al
+medio y la descarga completa. Los objetivos que una PC puede chequear estan en
+docs/adr/0002-user-owned-storage.md, seccion 2.
 
 Se corre a mano:
 
     python -m backend.app.cloud.bench google --file track.m4a --runs 10
-    python -m backend.app.cloud.bench onedrive --file track.m4a --json out.json
 
 Los tests NO tocan la red: los ayudantes puros (percentiles, Content-Range,
-armado de requests, troceo de subida) se prueban offline con
-`httpx.MockTransport`. Toda funcion HTTP recibe un `httpx.Client`; las
-mediciones usan un cliente NUEVO por corrida (conexion TLS fresca, como una
-reproduccion sin cache). Los tokens nunca se imprimen.
+armado de requests) se prueban offline con `httpx.MockTransport`. Toda funcion
+HTTP recibe un `httpx.Client`; las mediciones usan un cliente NUEVO por corrida
+(conexion TLS fresca, como una reproduccion sin cache). Los tokens nunca se
+imprimen.
 """
 from __future__ import annotations
 
@@ -28,11 +27,9 @@ import webbrowser
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Sequence
-from urllib.parse import quote
 
 import httpx
 
-from .base import upload_ranges
 from .connect import provider_for, sign_in
 from .oauth import OAuthError, OAuthNotConfigured, Provider, TokenSet, refresh
 from .tokens import TokenStore, default_protector, default_token_dir
@@ -40,18 +37,12 @@ from .tokens import TokenStore, default_protector, default_token_dir
 # ------------------------------------------------------------------- constantes
 DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
-GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 #: Carpeta visible que crea la app (ADR 0002, seccion 1).
 FOLDER_NAME = "Spitifo"
 DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 DRIVE_FIELDS_FOLDER = "files(id,name)"
 DRIVE_FIELDS_FILE = "files(id,name,size)"
-
-#: OneDrive deja los archivos en `Apps/Spitifo`; el benchmark usa `bench/`.
-ONEDRIVE_SUBFOLDER = "bench"
-#: Graph exige multiplos de 320 KiB; 10x es comodo y pocas requests.
-ONEDRIVE_CHUNK = 10 * 327680
 
 #: Objetivo del ADR: p50 por debajo de 1 s.
 TARGET_P50_MS = 1000.0
@@ -206,81 +197,6 @@ def drive_ensure_file(client: httpx.Client, headers: dict[str, str],
     if found and int(found.get("size", -1)) == len(data):
         return str(found["id"]), True
     return drive_upload(client, headers, folder_id, name, data), False
-
-
-# ------------------------------------------------------------- OneDrive / Graph
-def onedrive_item_url(name: str) -> str:
-    """URL del item dentro de la carpeta app (`approot:/bench/<name>`)."""
-    return (f"{GRAPH_BASE}/me/drive/special/approot:"
-            f"/{ONEDRIVE_SUBFOLDER}/{quote(name)}")
-
-
-def onedrive_content_url(item_id: str) -> str:
-    return f"{GRAPH_BASE}/me/drive/items/{item_id}/content"
-
-
-def onedrive_find_item(client: httpx.Client, headers: dict[str, str],
-                       name: str) -> dict | None:
-    """Metadata del archivo o None si no existe (404)."""
-    resp = client.get(onedrive_item_url(name), headers=headers)
-    if resp.status_code == 404:
-        return None
-    resp.raise_for_status()
-    return resp.json()
-
-
-def onedrive_create_session(client: httpx.Client, headers: dict[str, str],
-                            name: str) -> str:
-    """Abre la sesion de subida y devuelve el `uploadUrl`."""
-    resp = client.post(
-        onedrive_item_url(name) + ":/createUploadSession",
-        json={"item": {"@microsoft.graph.conflictBehavior": "replace"}},
-        headers=headers)
-    resp.raise_for_status()
-    return str(resp.json()["uploadUrl"])
-
-
-def content_range_header(start: int, end: int, total: int) -> str:
-    """Header Content-Range de una subida por partes."""
-    return f"bytes {start}-{end}/{total}"
-
-
-def onedrive_upload(client: httpx.Client, upload_url: str, data: bytes,
-                    chunk: int = ONEDRIVE_CHUNK) -> str:
-    """Sube por partes al `uploadUrl`. SIN Authorization: Graph lo rechaza ahi."""
-    last: dict = {}
-    for start, end in upload_ranges(len(data), chunk):
-        resp = client.put(
-            upload_url,
-            content=data[start:end + 1],
-            headers={"Content-Range": content_range_header(start, end, len(data))})
-        resp.raise_for_status()
-        last = resp.json() if resp.content else {}
-    return str(last.get("id") or "")
-
-
-def onedrive_ensure_file(client: httpx.Client, headers: dict[str, str],
-                         name: str, data: bytes) -> tuple[str, bool]:
-    """Id del archivo: reusa el que ya tiene el mismo tamano, si no lo sube."""
-    found = onedrive_find_item(client, headers, name)
-    if found and int(found.get("size", -1)) == len(data):
-        return str(found["id"]), True
-    upload_url = onedrive_create_session(client, headers, name)
-    return onedrive_upload(client, upload_url, data), False
-
-
-def onedrive_presigned_url(client: httpx.Client, headers: dict[str, str],
-                           item_id: str) -> str:
-    """URL de descarga pre-autenticada (expira pronto: hay que re-mintarla)."""
-    resp = client.get(
-        f"{GRAPH_BASE}/me/drive/items/{item_id}",
-        params={"select": "id,@microsoft.graph.downloadUrl"},
-        headers=headers)
-    resp.raise_for_status()
-    url = resp.json().get("@microsoft.graph.downloadUrl")
-    if not url:
-        raise OAuthError("OneDrive no devolvio @microsoft.graph.downloadUrl")
-    return str(url)
 
 
 # --------------------------------------------------------------- mediciones
@@ -555,22 +471,14 @@ def run_provider(which: str, file_path: Path | str, runs: int, chunk: int,
 
     with httpx.Client(timeout=120.0) as client:
         headers = creds.headers(client)
-        if which == "google":
-            folder_id = drive_find_or_create_folder(client, headers, FOLDER_NAME)
-            item_id, upload_reused = drive_ensure_file(
-                client, headers, folder_id, remote_name, data)
-        else:
-            item_id, upload_reused = onedrive_ensure_file(
-                client, headers, remote_name, data)
+        folder_id = drive_find_or_create_folder(client, headers, FOLDER_NAME)
+        item_id, upload_reused = drive_ensure_file(
+            client, headers, folder_id, remote_name, data)
     out(f"Item: {item_id} | "
         f"{'reused existing upload' if upload_reused else 'uploaded'}")
 
-    if which == "google":
-        direct_url = f"{DRIVE_FILES_URL}/{item_id}?alt=media"
-        follow = False
-    else:
-        direct_url = onedrive_content_url(item_id)
-        follow = True
+    direct_url = f"{DRIVE_FILES_URL}/{item_id}?alt=media"
+    follow = False
 
     samples: dict[str, list[dict]] = {}
     first_end = min(chunk, size) - 1
@@ -591,17 +499,6 @@ def run_provider(which: str, file_path: Path | str, runs: int, chunk: int,
                                    chunk, headers=headers,
                                    follow_redirects=follow)
         samples.setdefault("seek_middle", []).append(asdict(timing))
-
-    if which == "onedrive":
-        for _ in range(runs):
-            with httpx.Client(timeout=120.0) as client:
-                headers = creds.headers(client)
-                presigned = onedrive_presigned_url(client, headers, item_id)
-            with httpx.Client(timeout=120.0) as client:
-                timing = measure_range(client, presigned, seek_start, seek_end,
-                                       chunk, follow_redirects=True)
-            samples.setdefault("seek_middle_presigned", []).append(
-                asdict(timing))
 
     full_runs = min(3, runs)
     for _ in range(full_runs):
@@ -657,9 +554,9 @@ def run_provider(which: str, file_path: Path | str, runs: int, chunk: int,
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m backend.app.cloud.bench",
-        description="Mide Google Drive y OneDrive contra los objetivos "
-                    "del ADR 0002 (seccion 2).")
-    parser.add_argument("provider", choices=("google", "onedrive"),
+        description="Mide Google Drive contra los objetivos del ADR 0002 "
+                    "(seccion 2).")
+    parser.add_argument("provider", choices=("google",),
                         help="proveedor a medir")
     parser.add_argument("--file", required=True,
                         help="archivo de audio a subir y medir")

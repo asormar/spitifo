@@ -71,14 +71,6 @@ def test_google_arma_urls_scopes_y_params(google):
         "access_type": "offline", "prompt": "consent"}
 
 
-def test_microsoft_es_cliente_publico_sin_secret(monkeypatch):
-    monkeypatch.setenv("SPITIFO_MS_CLIENT_ID", "mid")
-    p = oauth.microsoft_provider()
-    assert p.name == "microsoft"
-    assert p.client_secret is None
-    assert p.scopes == ("Files.ReadWrite.AppFolder", "offline_access")
-
-
 def test_falta_de_env_nombra_la_variable(monkeypatch):
     monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_ID", raising=False)
     with pytest.raises(oauth.OAuthNotConfigured) as exc:
@@ -132,14 +124,6 @@ def test_error_nombra_env_y_archivo(monkeypatch):
     assert oauth.CLIENT_CONFIG_FILE in mensaje
 
 
-def test_microsoft_lee_solo_el_client_id(monkeypatch, tmp_path):
-    _write_config(tmp_path, {"microsoft": {"client_id": "ms-file"}})
-    monkeypatch.delenv("SPITIFO_MS_CLIENT_ID", raising=False)
-    p = oauth.microsoft_provider()
-    assert p.client_id == "ms-file"
-    assert p.client_secret is None
-
-
 def test_authorize_url_trae_todos_los_parametros(google):
     url = oauth.authorize_url(google, "http://127.0.0.1:1234/callback",
                               "st", "ch")
@@ -190,9 +174,12 @@ def test_exchange_manda_el_secret_de_google(google):
     assert tokens.expires_at == 4600.0
 
 
-def test_exchange_no_manda_secret_con_microsoft(monkeypatch):
-    monkeypatch.setenv("SPITIFO_MS_CLIENT_ID", "mid")
-    provider = oauth.microsoft_provider()
+def test_exchange_no_manda_secret_sin_secret():
+    # Un cliente publico (sin secret) no manda `client_secret` al canjear.
+    provider = oauth.Provider(
+        name="google", authorize_url=oauth.GOOGLE_AUTHORIZE_URL,
+        token_url=oauth.GOOGLE_TOKEN_URL, client_id="gid",
+        client_secret=None, scopes=(oauth.GOOGLE_SCOPE,))
     visto = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -200,7 +187,7 @@ def test_exchange_no_manda_secret_con_microsoft(monkeypatch):
         return httpx.Response(200, json={"access_token": "at", "expires_in": 60})
 
     with _client(handler) as client:
-        oauth.exchange_code(client, provider, "c", "v", "http://localhost",
+        oauth.exchange_code(client, provider, "c", "v", "http://127.0.0.1",
                             now=0.0)
     assert "client_secret" not in visto["body"]
 
@@ -219,9 +206,8 @@ def test_refresh_conserva_el_refresh_token_viejo(google):
     assert tokens.refresh_token == "viejo"
 
 
-def test_refresh_toma_el_refresh_token_nuevo_de_microsoft(monkeypatch):
-    monkeypatch.setenv("SPITIFO_MS_CLIENT_ID", "mid")
-    provider = oauth.microsoft_provider()
+def test_refresh_toma_el_refresh_token_nuevo(google):
+    # Si el proveedor rota el refresh token, se toma el nuevo.
     old = oauth.TokenSet("a", "viejo", 0.0)
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -230,7 +216,7 @@ def test_refresh_toma_el_refresh_token_nuevo_de_microsoft(monkeypatch):
             "expires_in": 100})
 
     with _client(handler) as client:
-        tokens = oauth.refresh(client, provider, old, now=0.0)
+        tokens = oauth.refresh(client, google, old, now=0.0)
     assert tokens.refresh_token == "rotado"
 
 
@@ -310,17 +296,15 @@ def test_loopback_timeout():
             recv.wait("st", timeout=0.2)
 
 
-def test_loopback_con_localhost_para_microsoft(monkeypatch):
-    # Microsoft ignora el puerto solo con `localhost` (redirect registrado
-    # `http://localhost/callback`); el server sigue en 127.0.0.1.
-    monkeypatch.setenv("SPITIFO_MS_CLIENT_ID", "mid")
-    provider = oauth.microsoft_provider()
-    with oauth.LoopbackReceiver(provider.redirect_host) as recv:
+def test_loopback_con_host_explicito():
+    # `host` solo cambia como se escribe el redirect; el server sigue en
+    # 127.0.0.1, asi que tambien se lo alcanza por ahi.
+    with oauth.LoopbackReceiver("localhost") as recv:
         uri = recv.redirect_uri
         assert uri.startswith("http://localhost:") and uri.endswith("/callback")
         port = urlparse(uri).port
-        _get(f"http://127.0.0.1:{port}/callback?state=st&code=MS")
-        assert recv.wait("st", timeout=5.0) == "MS"
+        _get(f"http://127.0.0.1:{port}/callback?state=st&code=OK")
+        assert recv.wait("st", timeout=5.0) == "OK"
 
 
 def test_los_valores_se_recortan(monkeypatch):

@@ -1,4 +1,4 @@
-"""Conector de nube: piezas neutrales al proveedor (Google Drive u OneDrive).
+"""Conector de nube: piezas neutrales al proveedor (hoy solo Google Drive).
 
 La biblioteca del usuario puede vivir en su propia nube. Este paquete junta lo
 que NO depende de quien gane el benchmark: el flujo OAuth PKCE, el guardado de
