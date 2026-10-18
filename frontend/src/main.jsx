@@ -444,7 +444,7 @@ function toggleSharedMute() {
    que un Player desmontado no retenga nada. */
 const audioMeta = new WeakMap();
 
-function Player({ src, label, title, meta, duration, artwork, variant = "row", index = 0 }) {
+function Player({ src, label, title, meta, duration, artwork, variant = "row", index = 0, registerAudio, onStart, onEnded }) {
   const audioRef = useRef(null);
   const railRef = useRef(null);
   const rootRef = useRef(null);
@@ -471,6 +471,15 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
       a.pause();
     };
   }, []);
+
+  /* El auto-advance de la biblioteca necesita el <audio> de la fila VECINA: el
+     cajon registra cada fila por su indice y reproduce la siguiente al terminar.
+     No se consulta el DOM por selectores: el mapa lo llena cada Player. */
+  useEffect(() => {
+    if (!registerAudio) return undefined;
+    registerAudio(index, audioRef.current);
+    return () => registerAudio(index, null);
+  }, [index, registerAudio]);
 
   /* Aparte del efecto de montaje: titulo y meta pueden cambiar sin que el
      elemento se remonte, y el registro tiene que seguirlos. */
@@ -599,6 +608,7 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
         e.currentTarget.muted = shared.muted;
         setCurrent(e.currentTarget);
         setPlaying(true);
+        onStart?.();
       }}
       onPlaying={() => setBuffering(false)}
       onWaiting={() => setBuffering(true)}
@@ -610,6 +620,7 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
         e.currentTarget.currentTime = 0;
         setPlaying(false);
         setCur(0);
+        onEnded?.();
       }}
       onError={() => {
         setFailed(true);
@@ -2607,6 +2618,43 @@ function App() {
   const libFiles = lib || [];
   const libReady = lib !== null;
   const libCount = libFiles.length;
+
+  /* AUTO-ADVANCE Y PREFETCH DE LA BIBLIOTECA
+
+     Las filas del cajon son <Player> independientes y el cajon no se desmonta,
+     asi que "seguir con la de abajo" necesita hablar con la fila VECINA. El
+     mapa indice -> <audio> lo llena cada Player al montarse (`registerAudio`):
+     nada de buscar en el DOM por selectores.
+
+     `startLibTrack` adelanta el SIGUIENTE tema con POST /api/prefetch, sin
+     esperar respuesta (si falla, no pasa nada: al final se bajara igual). El
+     guardia evita repetir la misma clave dos veces seguidas, que es lo que
+     pasa al reanudar una pausa. */
+  const libAudio = useRef(new Map());
+  const prefetched = useRef(null);
+
+  const registerLibAudio = useCallback((n, el) => {
+    if (el) libAudio.current.set(n, el);
+    else libAudio.current.delete(n);
+  }, []);
+
+  const startLibTrack = (n) => {
+    const next = libFiles[n + 1];
+    if (!next || prefetched.current === next.key) return;
+    prefetched.current = next.key;
+    fetch(`${API}/prefetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: next.key }),
+    }).catch(() => {});
+  };
+
+  const endLibTrack = (n) => {
+    const next = libAudio.current.get(n + 1);
+    /* La ultima fila solo se detiene, como siempre. */
+    if (next) next.play().catch(() => {});
+  };
+
   const libTitle = libOpen
     ? "Ocultar la biblioteca"
     : libCount > 0
@@ -2905,6 +2953,9 @@ function App() {
                     meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}
                     duration={f.duration_s}
                     index={n}
+                    registerAudio={registerLibAudio}
+                    onStart={() => startLibTrack(n)}
+                    onEnded={() => endLibTrack(n)}
                   />
                 ))}
               </div>
