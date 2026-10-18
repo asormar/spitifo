@@ -139,12 +139,38 @@ async def _json_body(request: Request) -> dict:
 _MEDIA_CHOICES = ("audio", "video", "both")
 
 
+#: Limites de `height` (px): las resoluciones reales van de 144p a 8K.
+_MIN_HEIGHT, _MAX_HEIGHT = 144, 4320
+
+
+def _height_field(body: dict, media: str) -> int | None:
+    """Valida `height` (144..4320) y lo ignora cuando media es audio.
+
+    Acepta `int` y un `float` entero (modo laxo, como el resto de la API), pero
+    NUNCA un `bool`: `True` no es "1080". Ausente o `null` = mejor disponible.
+    """
+    if "height" not in body or body["height"] is None:
+        return None
+    v = body["height"]
+    entero = ((isinstance(v, int) and not isinstance(v, bool))
+              or (isinstance(v, float) and v.is_integer()))
+    if not entero:
+        raise _invalid(["body", "height"], "Input should be a valid integer")
+    v = int(v)
+    if v < _MIN_HEIGHT or v > _MAX_HEIGHT:
+        raise _invalid(["body", "height"],
+                       f"Input should be between {_MIN_HEIGHT} and {_MAX_HEIGHT}")
+    # El audio no tiene resolucion: se ignora (no cambia la descarga).
+    return v if media in ("video", "both") else None
+
+
 @dataclass
 class DownloadReq:
     source: str
     track: dict
     fmt: str = "original"  # original | mp3 | m4a
     media: str = "audio"  # audio | video | both (solo en el camino yt-dlp)
+    height: int | None = None  # altura elegida (solo video/both)
 
     @classmethod
     def from_body(cls, body: dict) -> "DownloadReq":
@@ -168,7 +194,8 @@ class DownloadReq:
         if media not in _MEDIA_CHOICES:
             esperado = " or ".join(repr(c) for c in _MEDIA_CHOICES)
             raise _invalid(["body", "media"], f"Input should be {esperado}")
-        return cls(source=src, track=track, fmt=fmt, media=media)
+        height = _height_field(body, media)
+        return cls(source=src, track=track, fmt=fmt, media=media, height=height)
 
 
 # TrackPayload: nombre de campo -> (tipo, obligatorio). El orden es el mismo
@@ -500,6 +527,36 @@ async def progress(request: Request):
     return JSONResponse({"job_id": job_id, **job})
 
 
+#: Forma canonica de una URL de UN video de YouTube (`parse_youtube_url`).
+_YT_WATCH = "https://www.youtube.com/watch?v="
+
+
+async def formats(request: Request):
+    """GET /api/formats?url=...: las resoluciones REALES que ofrece un video.
+
+    Es lo que alimenta el picker: no se puede ofrecer 4K en un video que solo
+    tiene 720p. Se valida con el parser de YouTube de siempre: cualquier cosa que
+    no sea la URL de UN video (playlist, otro sitio) es 422, asi el endpoint no
+    sirve de fetcher generico. El probe corre en un thread con cache de 5 min.
+    """
+    url = _query_str(request, "url", required=True, min_length=1, max_length=500)
+    from .ytdlp_source import BotCheckError, parse_youtube_url, video_formats
+    canonical = parse_youtube_url(url)
+    if not canonical or not canonical.startswith(_YT_WATCH):
+        raise _invalid(["query", "url"],
+                       "Input should be a valid YouTube video URL")
+    video_id = canonical[len(_YT_WATCH):]
+    try:
+        payload = await video_formats(canonical, video_id)
+    except BotCheckError as e:
+        # Mismo codigo que la descarga: la UI ofrece importar cookies.
+        return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
+    except Exception as e:
+        log.warning("ytdlp formats fallo: %s", e)
+        raise HTTPException(502, f"yt-dlp: {e}")
+    return JSONResponse(payload)
+
+
 async def download(request: Request):
     query = _query_str(request, "query", default=None)
     wait = _query_bool(request, "wait", False)
@@ -546,7 +603,8 @@ async def download(request: Request):
             try:
                 with activity.busy():
                     result = await ysrc.download(track, req.fmt, job_id=job_id,
-                                                 query=query, media=req.media)
+                                                 query=query, media=req.media,
+                                                 height=req.height)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except BotCheckError as e:
@@ -563,7 +621,8 @@ async def download(request: Request):
         async def _bg():
             try:
                 await ysrc.download(track, req.fmt, job_id=job_id,
-                                    query=query, media=req.media)
+                                    query=query, media=req.media,
+                                    height=req.height)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
             finally:
@@ -1042,6 +1101,7 @@ routes = [
     Route("/api/resolve", resolve, methods=["POST"]),
     Route("/api/verify", verify),
     Route("/api/download/progress/{job_id}", progress),
+    Route("/api/formats", formats),
     Route("/api/download", download, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),

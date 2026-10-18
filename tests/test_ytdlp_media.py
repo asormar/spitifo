@@ -29,13 +29,13 @@ from backend.app.main import DownloadReq
 from backend.app.models import Track
 from backend.app.ytdlp_source import (
     media_opts,
+    media_selector,
     postprocessor_opts,
     thumb_sidecar_key,
 )
 
-FORMATO_BOTH = ("bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]"
-                "/bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b")
-FORMATO_VIDEO = "bv*[ext=mp4][vcodec^=avc1]/bv*[ext=mp4]/bv*"
+FORMATO_BOTH = media_selector("both")
+FORMATO_VIDEO = media_selector("video")
 
 
 # ------------------------------------------------------------- media_opts
