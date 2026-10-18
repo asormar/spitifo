@@ -235,11 +235,11 @@ on 2026-10-18 from the tag build: the Windows installer, the APK and
 
 - Not on Google Play: its policy does not allow YouTube downloaders.
 
-### 10. Hardening: YouTube's bot check, yt-dlp's signature and cleanup
+### 10. Hardening: YouTube's bot check, yt-dlp's signature and cleanup — done
 
 Tackles the open risks that need no new toolchain, before building more on top.
 
-In progress on `feat/hardening`. Done so far: the auto-updater verifies
+Released as [v0.2.0](https://github.com/asormar/spitifo/releases/tag/v0.2.0). The auto-updater verifies
 `SHA2-256SUMS.sig` against yt-dlp's pinned signing key with a pure-stdlib
 OpenPGP check; QuickJS-ng 0.17.0 ships in both apps (pinned by SHA-256) and
 yt-dlp gets it through `SPITIFO_QJS`, with `android_vr` and `web_embedded` as
@@ -249,7 +249,10 @@ Node 22 and native modules, impossible on Android and about 92 MB on Windows.
 Checked on the Pixel with the debug APK: QuickJS runs from the app's native
 library directory and a YouTube download completed and uploaded to Drive. The
 merged branches and the `android-spike/` build output were deleted.
-Left: smoke-testing the published release (release-signed APK and installer).
+The v0.2.0 tag build was then checked on both devices: the release-signed APK
+signs in to Drive interactively (so the Android OAuth client matches the
+release certificate) and downloads from YouTube with QuickJS; the Windows
+installer downloads from YouTube, uploads to Drive and streams the result.
 
 - **YouTube's bot check.** Give yt-dlp the user's cookies when YouTube answers
   "Sign in to confirm you're not a bot": decide how each app supplies them
