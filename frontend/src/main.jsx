@@ -17,6 +17,7 @@ import {
   Check,
   CheckCircle,
   CircleNotch,
+  Cookie,
   Crosshair,
   DeviceMobile,
   DownloadSimple,
@@ -38,6 +39,8 @@ import {
   Stack,
   Sun,
   Moon,
+  Trash,
+  UploadSimple,
   Waveform,
   WarningCircle,
   X,
@@ -1945,7 +1948,156 @@ function QuotaBar({ quota }) {
   );
 }
 
-function StorageDialog({ open, onClose, onChanged }) {
+/* ---------------------------------------------------------------------------
+   COOKIES DE YOUTUBE (ultimo recurso)
+   YouTube a veces pide verificar que no eres un bot. Importar un cookies.txt de
+   una sesion iniciada es la salida, pero el backend SOLO lo usa como reintento
+   cuando el muro aparece: nunca en el primer intento. El archivo se guarda
+   cifrado en el servidor (DPAPI); esta pantalla nunca muestra su contenido.
+   Ver backend/app/youtube_cookies.py.
+   ------------------------------------------------------------------------- */
+function fmtImportDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function YouTubeCookies({ focus }) {
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const fileRef = useRef(null);
+  const boxRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/youtube/cookies`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(String(r.status));
+      setInfo(d);
+      setErr(null);
+    } catch (e) {
+      setErr(fetchErr(e, "No se pudo leer el estado de las cookies."));
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  /* El aviso de "verifica que no eres un bot" abre este bloque: lo trae a la vista. */
+  useEffect(() => {
+    if (focus) boxRef.current?.scrollIntoView({ block: "nearest" });
+  }, [focus]);
+
+  const onPick = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`${API}/youtube/cookies`, { method: "POST", body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setErr(errMsg(d, "No se pudo importar el archivo."));
+        return;
+      }
+      setInfo(d);
+    } catch (e2) {
+      setErr(fetchErr(e2, "No se pudo importar el archivo."));
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${API}/youtube/cookies`, { method: "DELETE" });
+      if (!r.ok) throw new Error(String(r.status));
+      await load();
+    } catch (e) {
+      setErr(fetchErr(e, "No se pudo quitar las cookies."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const configured = Boolean(info?.configured);
+  let state = "Comprobando…";
+  if (info) {
+    if (configured) {
+      const fecha = fmtImportDate(info.imported_at);
+      state = `Configuradas · ${info.count} ${
+        info.count === 1 ? "cookie" : "cookies"
+      }${fecha ? ` · ${fecha}` : ""}`;
+    } else {
+      state = "Sin configurar";
+    }
+  }
+
+  return (
+    <section
+      className="store__cookies"
+      ref={boxRef}
+      aria-labelledby="ytcookies-title"
+    >
+      <div className="store__cookies-head">
+        <h3 id="ytcookies-title" className="store__cookies-title">
+          <Cookie size={16} weight="duotone" aria-hidden="true" />
+          Cookies de YouTube
+        </h3>
+        <span className="store__cookies-state">{state}</span>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".txt,text/plain"
+        className="store__file"
+        onChange={onPick}
+      />
+      <div className="store__cookies-actions">
+        <button
+          type="button"
+          className="vf"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+        >
+          <UploadSimple size={15} aria-hidden="true" />
+          {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
+        </button>
+        {configured && (
+          <button type="button" className="vf" onClick={remove} disabled={busy}>
+            <Trash size={15} aria-hidden="true" />
+            Quitar
+          </button>
+        )}
+      </div>
+      <p className="store__note">
+        Exporta un <code>cookies.txt</code> desde una ventana privada con sesión
+        iniciada en YouTube. Solo se usa si YouTube pide verificar que no eres un
+        bot. Usar tu cuenta tiene riesgo de bloqueo: conviene una cuenta
+        secundaria.
+      </p>
+      {err && (
+        <p className="store__err" role="alert">
+          {err}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function StorageDialog({ open, onClose, onChanged, focusCookies }) {
   const ref = useRef(null);
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -2174,6 +2326,8 @@ function StorageDialog({ open, onClose, onChanged }) {
           </p>
         )}
 
+        <YouTubeCookies focus={focusCookies} />
+
         <div className="store__foot">
           {google?.connected && !locked && (
             <button type="button" className="store__link" onClick={disconnect} disabled={busy}>
@@ -2195,6 +2349,9 @@ function App() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
+  /* El ultimo fallo fue el muro de verificacion de YouTube: el aviso ofrece
+     importar cookies.txt y abre esa seccion de la configuracion. */
+  const [botCheck, setBotCheck] = useState(false);
   const [done, setDone] = useState(null);
   const [health, setHealth] = useState(null);
   const [fmt, setFmt] = useState("mp3");
@@ -2263,6 +2420,8 @@ function App() {
   }, []);
   useEffect(loadHealth, [loadHealth]);
   const [storageOpen, setStorageOpen] = useState(false);
+  /* Abre la configuracion con la seccion de cookies de YouTube a la vista. */
+  const [cookiesHint, setCookiesHint] = useState(false);
 
   /* Un job terminal (done/error/timeout/gone) se retira solo a los 5 s. Con
      varias descargas en curso cada uno tiene su propio temporizador: el de la
@@ -2449,6 +2608,7 @@ function App() {
       setBusyIds((cur) => new Set(cur).add(key));
       setErr(null);
       setDone(null);
+      setBotCheck(false);
       try {
         let track = { ...t };
         delete track.downloadable;
@@ -2489,7 +2649,10 @@ function App() {
           }
         );
         const j = await rd.json();
-        if (!rd.ok) throw new Error(errMsg(j, "falló la descarga"));
+        if (!rd.ok) {
+          if (j.code === "youtube_bot_check") setBotCheck(true);
+          throw new Error(errMsg(j, "falló la descarga"));
+        }
 
         // yt-dlp devuelve job_id: la descarga corre en background, hacer polling
         if (j.job_id) {
@@ -2502,6 +2665,7 @@ function App() {
             );
           } else if (finished) {
             if (finished.status === "error") {
+              if (finished.error_code === "youtube_bot_check") setBotCheck(true);
               setErr(finished.error || "la descarga falló");
             } else {
               // El veredicto lo publica el backend DENTRO del job (lo calcula
@@ -2874,7 +3038,21 @@ function App() {
       {err && (
         <div className="msg msg--err" role="alert" ref={msgRef} tabIndex={-1}>
           <WarningCircle size={17} weight="fill" />
-          <span>{err}</span>
+          <span>
+            {err}
+            {botCheck && (
+              <button
+                type="button"
+                className="vf vf--retry"
+                onClick={() => {
+                  setCookiesHint(true);
+                  setStorageOpen(true);
+                }}
+              >
+                Importar cookies
+              </button>
+            )}
+          </span>
         </div>
       )}
       <ProgressStack jobs={jobs} />
@@ -3109,8 +3287,12 @@ function App() {
       <MiniPlayer libOpen={libOpen} onReveal={revealSong} />
       <StorageDialog
         open={storageOpen}
-        onClose={() => setStorageOpen(false)}
+        onClose={() => {
+          setStorageOpen(false);
+          setCookiesHint(false);
+        }}
         onChanged={onStorageChanged}
+        focusCookies={cookiesHint}
       />
     </main>
   );

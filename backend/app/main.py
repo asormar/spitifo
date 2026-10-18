@@ -260,6 +260,9 @@ class TrackPayload:
 # -------------------------------------------------------------------- rutas
 async def health(request: Request):
     _register_ytdlp()  # mostrar yt-dlp en health si esta habilitada
+    # Runtime de JS de yt-dlp: "quickjs" solo si SPITIFO_QJS apunta a un
+    # archivo que existe; sin eso queda el default de yt-dlp (null).
+    from .ytdlp_source import configured_js_runtime
     return JSONResponse({
         "ok": True,
         "sources": [
@@ -273,6 +276,7 @@ async def health(request: Request):
         "ytdlp_version": await asyncio.to_thread(ytdlp_version),
         # Version ya bajada que todavia no es la cargada (se aplica al reiniciar).
         "ytdlp_pending": await asyncio.to_thread(ytdlp_update.pending_version),
+        "js_runtime": configured_js_runtime(),
     })
 
 
@@ -419,7 +423,9 @@ async def resolve(request: Request):
             url = t.extra.get("webpage_url")
             if not url:
                 raise ValueError("falta webpage_url")
-            opts = {"quiet": True, "skip_download": True, "no_warnings": True}
+            from .ytdlp_source import youtube_opts
+            opts = youtube_opts({"quiet": True, "skip_download": True,
+                                 "no_warnings": True})
             loop = asyncio.get_running_loop()
 
             def _run():
@@ -507,7 +513,7 @@ async def download(request: Request):
     if req.source == "ytdlp" or (
         req.source == "itunes" and track.extra.get("webpage_url")
     ):
-        from .ytdlp_source import new_job
+        from .ytdlp_source import BotCheckError, new_job
         job_id = new_job(track.title)  # el job lo crea main, no hay race
         if req.source == "itunes":
             # ficha canonica de iTunes: el nombre y los tags van de ahi, no
@@ -531,6 +537,11 @@ async def download(request: Request):
                                                  query=query)
             except ValueError as e:
                 raise HTTPException(422, str(e))
+            except BotCheckError as e:
+                # Codigo propio: la UI ofrece importar un cookies.txt en vez de
+                # un "fallo la descarga" generico.
+                return JSONResponse({"detail": str(e), "code": e.code},
+                                    status_code=502)
             except Exception as e:
                 log.exception("ytdlp descarga fallo")
                 raise HTTPException(502, f"yt-dlp: {e}")
@@ -640,6 +651,47 @@ async def library(request: Request):
     files = await asyncio.to_thread(library_scan)
     return JSONResponse({"library": get_storage().describe(), "count": len(files),
                          "files": files})
+
+
+# ----------------------------------------------------------------- cookies YT
+# Ultimo recurso para el muro de verificacion de YouTube. El archivo NUNCA se
+# devuelve: la API solo informa estado (configurado, cuando se importo y
+# cuantas cookies). El contenido se guarda cifrado (DPAPI) o con 0600.
+async def _cookies_upload(request: Request) -> bytes:
+    """Bytes del archivo subido: multipart (`file`) o cuerpo de texto crudo."""
+    ctype = request.headers.get("content-type", "")
+    if ctype.startswith("multipart/form-data"):
+        form = await request.form()
+        subido = form.get("file")
+        if subido is None or isinstance(subido, str):
+            return b""
+        data = await subido.read()
+        return data if isinstance(data, bytes) else str(data).encode("utf-8")
+    return await request.body()
+
+
+async def youtube_cookies_info(request: Request):
+    """GET /api/youtube/cookies: estado sin exponer el contenido."""
+    from . import youtube_cookies
+    return JSONResponse(await asyncio.to_thread(youtube_cookies.status))
+
+
+async def youtube_cookies_import(request: Request):
+    """POST /api/youtube/cookies: importa un cookies.txt (200 o 422)."""
+    from . import youtube_cookies
+    raw = await _cookies_upload(request)
+    try:
+        info = await asyncio.to_thread(youtube_cookies.import_bytes, raw)
+    except youtube_cookies.CookieImportError as e:
+        raise _invalid(["body", "file"], str(e))
+    return JSONResponse(info)
+
+
+async def youtube_cookies_delete(request: Request):
+    """DELETE /api/youtube/cookies: olvida las cookies importadas."""
+    from . import youtube_cookies
+    await asyncio.to_thread(youtube_cookies.remove)
+    return Response(status_code=204)
 
 
 # --------------------------------------------------------- almacenamiento activo
@@ -971,6 +1023,9 @@ routes = [
     Route("/api/download", download, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
+    Route("/api/youtube/cookies", youtube_cookies_info),
+    Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
+    Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),
     Route("/api/storage", storage_info),
     Route("/api/storage/connect", storage_connect, methods=["POST"]),
     Route("/api/storage/connect/cancel", storage_connect_cancel,

@@ -235,6 +235,7 @@ Read the [Legal](#legal) section before you do.
 | `SPITIFO_TOKEN` | — | Per-launch secret; unset means no auth |
 | `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
 | `SPITIFO_YTDLP_DIR` | — | Directory with a newer `yt_dlp/` (or the official yt-dlp zip), put first on `sys.path` so it wins over the bundled one |
+| `SPITIFO_QJS` | — | Path to a QuickJS (`qjs`) binary; when it exists, yt-dlp uses it as its JavaScript runtime |
 | `JAMENDO_CLIENT_ID` | — | Enables the Jamendo source (free key) |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
@@ -274,6 +275,7 @@ to `SPITIFO_HOST` and `SPITIFO_PORT`.
 | `SPITIFO_FFMPEG_DIR` | — | Directory with `ffmpeg`/`ffprobe`, prepended to `PATH` |
 | `SPITIFO_YTDLP_DIR` | — | Directory with a newer `yt_dlp/` (or the official yt-dlp zip), put first on `sys.path` so it wins over the bundled one |
 | `SPITIFO_YTDLP_AUTOUPDATE` | `1` | `0` turns off the daily background check for a newer yt-dlp |
+| `SPITIFO_QJS` | — | Path to a QuickJS (`qjs`) binary; when it exists, yt-dlp uses it as its JavaScript runtime |
 | `YTDLP_ENABLED` | `0` | Enables the yt-dlp source |
 
 `SPITIFO_TOKEN` is the per-launch secret. On Android any app on the phone can reach
@@ -306,6 +308,28 @@ loads it, unless the bundled yt-dlp is newer. `GET /api/health` reports a downlo
 version still waiting for that restart as `ytdlp_pending`. A `SPITIFO_YTDLP_DIR` without
 `current.json` is treated as managed by hand and never updated.
 
+### Surviving YouTube without an account
+
+YouTube increasingly requires solving a JavaScript challenge, and sometimes shows a
+"confirm you're not a bot" wall. Two optional escapes, both account-free by default:
+
+`SPITIFO_QJS` points to a [QuickJS](https://github.com/quickjs-ng/quickjs) `qjs` binary.
+When the file exists the backend hands it to yt-dlp as its JavaScript runtime
+(`js_runtimes={'quickjs': {'path': ...}}`) so it can solve the challenge; `GET /api/health`
+reports this as `js_runtime` (`"quickjs"`, or `null`). The backend also asks yt-dlp for a
+fallback set of extractor clients (`player_client`: `default`, `android_vr`,
+`web_embedded`), merged on top of whatever is already configured.
+
+Cookies are the last resort. `POST /api/youtube/cookies` imports a Netscape `cookies.txt`
+(either a multipart `file` field or a raw text body); only `youtube.com`/`google.com` lines
+are kept, and the file is stored under the data dir, encrypted with DPAPI on Windows (0600
+elsewhere). `GET` reports `{configured, imported_at, count}` and `DELETE` forgets it — the
+cookie contents are never returned or logged. Cookies are **never** used on the first
+attempt: only when a download hits the bot-check wall is it retried once with a throwaway
+plaintext copy deleted right after. Without cookies that failure comes back with the
+`youtube_bot_check` code, which the frontend turns into an "import cookies" prompt. Using an
+account risks a ban; a secondary account is advisable.
+
 ## API
 
 | Method | Route | Description |
@@ -318,6 +342,9 @@ version still waiting for that restart as `ytdlp_pending`. A `SPITIFO_YTDLP_DIR`
 | `POST` | `/api/download` | Start a download; returns a `job_id` |
 | `GET` | `/api/download/progress/{job_id}` | Progress, speed, ETA and identity verdict |
 | `GET` | `/api/library` | Everything already downloaded, with durations |
+| `GET` | `/api/youtube/cookies` | Whether a `cookies.txt` is imported, and when |
+| `POST` | `/api/youtube/cookies` | Import a `cookies.txt` (multipart `file` or raw body) |
+| `DELETE` | `/api/youtube/cookies` | Forget the imported cookies |
 | `GET` | `/api/audio?path=` | Stream a file from the library |
 
 <details>
@@ -346,6 +373,7 @@ backend/app/
   runtime.py       Startup setup: ffmpeg directory, audio MIME types
   sources.py       Source adapters, anti-noise filters, relevance ranking
   ytdlp_source.py  YouTube via yt-dlp: formats, ffmpeg postprocess, progress, locks
+  youtube_cookies.py  Imported cookies.txt (last resort), encrypted at rest
   matcher.py       Pairs metadata entries with the right video
   identify.py      Reads real tags and scores them against your query
   downloader.py    Streaming, ffmpeg conversion, ID3 writing, library scan
