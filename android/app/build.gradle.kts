@@ -35,11 +35,16 @@ val buildPythonExe: String = localProps.getProperty("spitifo.buildPython")
 
 // The backend/ package exactly as it is in the repo: Starlette, no FastAPI, no
 // pydantic. Chaquopy imports it as `backend.app.main`.
+//
+// oauth_clients.json is excluded on purpose: it holds the *desktop* Google
+// client, and Android signs in natively through the Identity Services
+// AuthorizationClient (ADR 0002, section 3). Shipping the file would put a
+// desktop secret in the APK for no reason.
 val stageBackend = tasks.register<Sync>("stageBackend") {
     into(stageDir.resolve("python"))
     from(repoRoot.resolve("backend")) {
         into("backend")
-        exclude("**/__pycache__/**", "**/*.pyc")
+        exclude("**/__pycache__/**", "**/*.pyc", "**/oauth_clients.json")
     }
 }
 

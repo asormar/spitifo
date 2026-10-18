@@ -9,6 +9,7 @@
 # process is killed. The frontend and ffmpeg are not bundled here; the shell
 # ships them as resources and points the backend at them.
 from PyInstaller.utils.hooks import collect_submodules
+import os
 
 ROOT = SPECPATH + "/../.."
 
@@ -16,9 +17,18 @@ ROOT = SPECPATH + "/../.."
 # runtime, so static analysis misses them.
 hiddenimports = collect_submodules("uvicorn")
 
+# The desktop app signs in to Drive with a client that is NOT in the repository
+# (backend/app/cloud/oauth_clients.json is gitignored; CI writes it from
+# secrets). oauth.py looks for it next to its own module first, so it has to sit
+# at the same package path inside the bundle. Optional: without the file the
+# Google source is simply unavailable, and nothing else breaks.
+oauth_clients = os.path.join(ROOT, "backend", "app", "cloud", "oauth_clients.json")
+datas = [(oauth_clients, "backend/app/cloud")] if os.path.exists(oauth_clients) else []
+
 a = Analysis(
     [SPECPATH + "/entry.py"],
     pathex=[ROOT],
+    datas=datas,
     hiddenimports=hiddenimports,
     # Test-only and unused heavy modules.
     excludes=["pytest", "tkinter", "_pytest"],
