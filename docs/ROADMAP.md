@@ -209,11 +209,31 @@ options if a second connector is ever needed.
 
 ### 9. Release and maintenance
 
-- GitHub Actions builds the `.exe` and `.apk` on each tag and publishes them to
-  GitHub Releases.
+In progress on `ci/release`. Done so far:
+
+- `.github/workflows/release.yml` builds the Windows installer and the release
+  APK on each `v*` tag and opens a **draft** GitHub release with both files and
+  `SHA256SUMS.txt`; `workflow_dispatch` is a dry run that only uploads
+  artifacts. The APK job fails unless the APK is signed with the certificate the
+  Android OAuth client is registered for. `.github/workflows/test.yml` runs the
+  offline suite and the frontend build on pushes and pull requests.
+  `scripts/set_version.py` writes the tag's version into the five files that
+  carry it. Secrets and the release steps are in [release.md](release.md).
+- The desktop bundle now includes `oauth_clients.json` (it was missing, so Drive
+  would have been "not configured" in the installer), and the APK excludes it.
+- yt-dlp updates itself: on start, in the background and at most once a day,
+  `backend/app/ytdlp_update.py` reads the latest tag from the
+  `github.com/yt-dlp/yt-dlp/releases/latest` redirect (the API's 60 requests an
+  hour per IP is too tight), downloads the official zipapp, checks it against
+  the release's `SHA2-256SUMS` and records it in `current.json` under the data
+  dir. The next start loads it, unless the bundled yt-dlp is newer or the zip
+  does not import. `SPITIFO_YTDLP_AUTOUPDATE=0` turns it off. The checksum comes
+  from the same release, so it guards against corruption, not against a
+  compromised GitHub account; yt-dlp's GPG signature is not checked.
+
+Next: set the repository secrets, run the dry run, and tag `v0.1.0`.
+
 - Not on Google Play: its policy does not allow YouTube downloaders.
-- yt-dlp update strategy: download a newer yt-dlp into `SPITIFO_YTDLP_DIR` and
-  verify its checksum before loading it (the loading hook exists since session 3).
 
 ### 10. Companion player app
 
