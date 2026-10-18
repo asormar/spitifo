@@ -133,6 +133,8 @@ def test_get_muestra_local(api):
         "id": "google", "name": "Google Drive",
         "configured": True, "connected": False}]
     assert body["connect"] == {"state": "idle", "provider": None, "error": None}
+    # En la PC el sign-in sigue siendo el del navegador.
+    assert body["connect_via"] == "browser"
     assert "library" in body
     assert fake.calls == []  # el GET no golpeo la red
 

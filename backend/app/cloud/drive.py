@@ -29,6 +29,7 @@ import httpx
 
 from ..config import AUDIO_EXTS
 from ..storage import StoredFile, validate_key
+from .android import android_tokens, is_android
 from .bench import _q, upload_ranges
 from .cache import AudioCache, default_cache_dir
 from .library_index import IndexEntry, IndexFormatError, LibraryIndex
@@ -789,12 +790,23 @@ def drive_storage_from_env() -> DriveStorage:
     UN cliente HTTP de vida larga compartido por el origen de tokens, las
     descargas y las subidas: reusar la conexion TLS es lo que mantiene el primer
     audio por debajo de 1 s (ADR 0002, actualizacion de la sesion 7).
+
+    El origen del token depende de la plataforma: en la PC sale del
+    `oauth_clients.json` + `TokenStore` + refresh; en Android lo empuja Kotlin al
+    `StaticTokenSource` del proceso, y ese archivo no se lee nunca (ahi no hay
+    client secret que leer).
     """
-    provider = google_provider()
-    store = TokenStore(default_token_dir(), default_protector())
-    client = httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0),
-                          follow_redirects=False)
-    tokens = StoredTokenSource(provider, store, provider.name, client)
+    tokens: TokenSource
+    if is_android():
+        tokens = android_tokens()
+        client = httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0),
+                              follow_redirects=False)
+    else:
+        provider = google_provider()
+        store = TokenStore(default_token_dir(), default_protector())
+        client = httpx.Client(timeout=httpx.Timeout(60.0, connect=15.0),
+                              follow_redirects=False)
+        tokens = StoredTokenSource(provider, store, provider.name, client)
     cache = AudioCache(
         default_cache_dir(),
         budget_bytes=int(os.getenv("SPITIFO_CACHE_BYTES", 2 * 1024 ** 3)))

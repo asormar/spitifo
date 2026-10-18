@@ -118,9 +118,15 @@ def _build_google() -> Storage:
     La eleccion puede venir de `storage.json` (la pantalla de conexion), sin
     variables de entorno de por medio: si el cliente OAuth no esta configurado,
     la app tiene que arrancar igual y quedarse con la biblioteca local.
+
+    En Android no hay configuracion OAuth que pueda faltar —el token lo trae el
+    host—, asi que ahi no se cae a local: el adapter de Drive se arma siempre.
     """
+    from ..cloud.android import is_android
     from ..cloud.drive import drive_storage_from_env
     from ..cloud.oauth import OAuthNotConfigured
+    if is_android():
+        return drive_storage_from_env()
     try:
         return drive_storage_from_env()
     except OAuthNotConfigured as exc:

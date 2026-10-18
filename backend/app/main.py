@@ -647,17 +647,25 @@ _connect_flow = None
 
 
 def _new_connect_flow():
-    """Arma el flujo del proceso: al conectar, deja ese proveedor como activo."""
-    from .cloud.connect import ConnectFlow
-    from .cloud.settings import set_active_storage
-    from .cloud.tokens import TokenStore, default_protector, default_token_dir
+    """Arma el flujo del proceso: al conectar, deja ese proveedor como activo.
 
-    store = TokenStore(default_token_dir(), default_protector())
+    En Android no hay navegador: el flujo espera a que Kotlin empuje el token
+    (`cloud/android.py`). En la PC es el loopback de siempre.
+    """
+    from .cloud.android import AndroidConnectFlow, is_android
+    from .cloud.settings import set_active_storage
 
     def _on_connected(provider: str) -> None:
         set_active_storage(provider)
         reset_storage()
 
+    if is_android():
+        return AndroidConnectFlow(on_connected=_on_connected)
+
+    from .cloud.connect import ConnectFlow
+    from .cloud.tokens import TokenStore, default_protector, default_token_dir
+
+    store = TokenStore(default_token_dir(), default_protector())
     return ConnectFlow(store, on_connected=_on_connected)
 
 
@@ -680,15 +688,21 @@ def _provider_from_body(body: dict, choices: tuple[str, ...]) -> str:
 
 def _storage_payload(flow) -> dict:
     """Cuerpo de `GET /api/storage`. Bloquea: `describe` y tokens son I/O."""
-    from .cloud.connect import is_connected, provider_for
+    from .cloud.android import is_android
+    from .cloud.connect import provider_for
     from .cloud.oauth import OAuthNotConfigured
     from .cloud.settings import active_storage
 
-    try:
-        provider_for("google")
+    android = is_android()
+    if android:
+        # Sin client id de escritorio y sin que falte: el token lo trae el host.
         configured = True
-    except (OAuthNotConfigured, ValueError):
-        configured = False
+    else:
+        try:
+            provider_for("google")
+            configured = True
+        except (OAuthNotConfigured, ValueError):
+            configured = False
     # `SPITIFO_STORAGE` pisa el ajuste en get_storage: la UI tiene que mostrar
     # lo que de verdad se esta usando, no lo que dice storage.json.
     override = os.getenv("SPITIFO_STORAGE", "").strip()
@@ -705,11 +719,14 @@ def _storage_payload(flow) -> dict:
         "override": bool(override),
         "library": storage.describe(),
         "quota": quota,
+        # Como se firma el sign-in en este dispositivo: la UI decide con esto si
+        # abre un link o si le pide el token al shell nativo.
+        "connect_via": "android" if android else "browser",
         "providers": [{
             "id": "google",
             "name": "Google Drive",
             "configured": configured,
-            "connected": is_connected(flow.store, "google"),
+            "connected": flow.is_connected("google"),
         }],
         "connect": flow.status(),
     }
@@ -748,13 +765,12 @@ async def storage_use(request: Request):
 
     `google` exige tokens guardados: cambiar el ajuste no conecta la cuenta.
     """
-    from .cloud.connect import is_connected
     from .cloud.settings import set_active_storage
     body = await _json_body(request)
     provider = _provider_from_body(body, _STORAGE_CHOICES)
     flow = _get_connect_flow()
     if provider == "google" and not await asyncio.to_thread(
-            is_connected, flow.store, "google"):
+            flow.is_connected, "google"):
         return JSONResponse({"detail": "Google Drive is not connected",
                              "code": "not_connected"}, status_code=409)
     await asyncio.to_thread(set_active_storage, provider)
@@ -764,14 +780,13 @@ async def storage_use(request: Request):
 
 async def storage_disconnect(request: Request):
     """Borra los tokens; si ese proveedor estaba activo, vuelve a local."""
-    from .cloud.connect import disconnect
     from .cloud.settings import active_storage, set_active_storage
     body = await _json_body(request)
     provider = _provider_from_body(body, _CONNECT_PROVIDERS)
     flow = _get_connect_flow()
 
     def _do() -> None:
-        disconnect(flow.store, provider)
+        flow.disconnect(provider)
         if active_storage() == provider:
             # Sin tokens, dejar `google` activo solo daria errores al leer.
             set_active_storage("local")

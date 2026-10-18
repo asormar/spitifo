@@ -253,6 +253,19 @@ class ConnectFlow:
             self._state = state
             self._error = error
 
+    # ------------------------------------------------ consultas y desconexion
+    def is_connected(self, provider_id: str) -> bool:
+        """Si el proveedor tiene tokens guardados (lo mismo que `is_connected`).
+
+        Un flujo que no es este (Android) contesta distinto: por eso `main` le
+        pregunta al flujo y no mira `flow.store`.
+        """
+        return is_connected(self.store, provider_id)
+
+    def disconnect(self, provider_id: str) -> None:
+        """Borra los tokens guardados del proveedor (no toca el ajuste activo)."""
+        disconnect(self.store, provider_id)
+
 
 def is_connected(store: TokenStore, provider_id: str) -> bool:
     """True si hay tokens guardados para el proveedor. False si no esta config."""
