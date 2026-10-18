@@ -27,7 +27,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import activity, ytdlp_update
-from .config import AUDIO_EXTS
+from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from .runtime import configure_runtime, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -134,11 +134,17 @@ async def _json_body(request: Request) -> dict:
     return body
 
 
+#: Valores validos de `media`. El default ("audio") es el comportamiento de
+#: siempre; "video" y "both" bajan video de YouTube (solo en el camino yt-dlp).
+_MEDIA_CHOICES = ("audio", "video", "both")
+
+
 @dataclass
 class DownloadReq:
     source: str
     track: dict
     fmt: str = "original"  # original | mp3 | m4a
+    media: str = "audio"  # audio | video | both (solo en el camino yt-dlp)
 
     @classmethod
     def from_body(cls, body: dict) -> "DownloadReq":
@@ -156,7 +162,13 @@ class DownloadReq:
         fmt = body.get("fmt", "original")
         if not isinstance(fmt, str):
             raise _invalid(["body", "fmt"], "Input should be a valid string")
-        return cls(source=src, track=track, fmt=fmt)
+        media = body.get("media", "audio")
+        if not isinstance(media, str):
+            raise _invalid(["body", "media"], "Input should be a valid string")
+        if media not in _MEDIA_CHOICES:
+            esperado = " or ".join(repr(c) for c in _MEDIA_CHOICES)
+            raise _invalid(["body", "media"], f"Input should be {esperado}")
+        return cls(source=src, track=track, fmt=fmt, media=media)
 
 
 # TrackPayload: nombre de campo -> (tipo, obligatorio). El orden es el mismo
@@ -534,7 +546,7 @@ async def download(request: Request):
             try:
                 with activity.busy():
                     result = await ysrc.download(track, req.fmt, job_id=job_id,
-                                                 query=query)
+                                                 query=query, media=req.media)
             except ValueError as e:
                 raise HTTPException(422, str(e))
             except BotCheckError as e:
@@ -551,7 +563,7 @@ async def download(request: Request):
         async def _bg():
             try:
                 await ysrc.download(track, req.fmt, job_id=job_id,
-                                    query=query)
+                                    query=query, media=req.media)
             except Exception as e:
                 log.warning("ytdlp bg fallo: %s", e)
             finally:
@@ -859,6 +871,12 @@ async def storage_disconnect(request: Request):
 _RANGO = re.compile(r"^bytes=(\d*)-(\d*)$")
 _UNIT = "bytes"
 
+#: Extensiones que sirve `/api/audio`: audio, video y la miniatura `.jpg`.
+_SERVE_EXTS = AUDIO_EXTS + VIDEO_EXTS + IMAGE_EXTS
+#: Extensiones que tiene sentido adelantar con `/api/prefetch` (el video tambien
+#: se reproduce: la UI precarga el proximo tema). Una miniatura no se precarga.
+_PREFETCH_EXTS = AUDIO_EXTS + VIDEO_EXTS
+
 
 def _parse_range(valor: str | None, size: int) -> tuple[int, int] | None | str:
     """Devuelve `(start, end)` inclusivo, None (ignorar) o "insatisfacible".
@@ -897,9 +915,13 @@ async def audio(request: Request):
 
     La clave es relativa a la raiz de la biblioteca: el puerto `Storage` dice si
     existe y de donde salen los bytes, asi que la API no maneja rutas del host.
+
+    Aunque la ruta se llame `/api/audio` sirve TAMBIEN video (.mp4/.webm/.mkv) y
+    la miniatura `.jpg`: la UI reproduce el video y dibuja el poster desde aca,
+    con los mismos chequeos de clave y el mismo manejo de `Range`.
     """
     key = _query_str(request, "key", required=True)
-    if Path(key).suffix.lower() not in AUDIO_EXTS:
+    if Path(key).suffix.lower() not in _SERVE_EXTS:
         raise HTTPException(404, "no encontrado")
     storage = get_storage()
     try:
@@ -909,8 +931,8 @@ async def audio(request: Request):
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
 
-    # El MIME sale de la extension; runtime.register_audio_mime_types ya
-    # registro los tipos de audio que Android no trae.
+    # El MIME sale de la extension; configure_runtime ya registro los tipos de
+    # audio, video y `.jpg` que Android no trae.
     ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
     rango = _parse_range(request.headers.get("range"), size)
     if rango == "insatisfacible":
@@ -953,7 +975,7 @@ async def prefetch(request: Request):
     """
     body = await _json_body(request)
     key = body.get("key")
-    if not isinstance(key, str) or Path(key).suffix.lower() not in AUDIO_EXTS:
+    if not isinstance(key, str) or Path(key).suffix.lower() not in _PREFETCH_EXTS:
         raise HTTPException(400, "clave invalida")
     storage = get_storage()
     try:

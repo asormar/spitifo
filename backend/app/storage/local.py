@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from ..config import AUDIO_EXTS
+from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from . import InvalidKey, StoredFile, validate_key
 
 #: Tamano de cada lectura de `open_range`. 64 KiB es lo que usa el downloader
@@ -60,8 +60,12 @@ class LocalStorage:
 
     # --------------------------------------------------------------- puerto
     def list(self) -> Iterable[StoredFile]:
-        """Audio de la biblioteca, saltando ocultos y symlinks que escapan."""
-        exts = {e.lower() for e in AUDIO_EXTS}
+        """Media de la biblioteca, saltando ocultos y symlinks que escapan.
+
+        Incluye video y las miniaturas `.jpg`: `library_scan` decide despues
+        cuales son temas y cuales sidecars.
+        """
+        exts = {e.lower() for e in (*AUDIO_EXTS, *VIDEO_EXTS, *IMAGE_EXTS)}
         root = self.root.resolve()
         for p in sorted(self.root.rglob("*")):
             if not p.is_file():

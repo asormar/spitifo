@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .config import AUDIO_EXTS
+from .config import AUDIO_EXTS, USER_AGENT, VIDEO_EXTS
 from .models import Track, safe_name
 from .sources import Source, looks_like_music, relevance
 
@@ -326,7 +326,85 @@ def postprocessor_opts(fmt: str) -> list[dict]:
              "preferredquality": "2"}]
 
 
-def pick_output(found: list[Path], fmt: str) -> Path | None:
+# ------------------------------------------------------------- tipo de media
+#: Formato de yt-dlp por tipo de media. "audio" es la bajada de solo-audio de
+#: siempre. "both" elige el mejor video mp4 (avc1 primero) + el mejor audio m4a
+#: para UNIRLOS en un mp4 (stream copy, sin recodificar) y cae a un archivo que
+#: ya traiga ambas pistas. "video" se queda SOLO con el stream de video (sin
+#: audio): puede salir mp4 o webm, segun lo que publique el video.
+_MEDIA_FORMAT = {
+    "audio": "bestaudio/best",
+    "both": ("bv*[ext=mp4][vcodec^=avc1]+ba[ext=m4a]"
+             "/bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"),
+    "video": "bv*[ext=mp4][vcodec^=avc1]/bv*[ext=mp4]/bv*",
+}
+
+#: Timeout de la bajada de la miniatura: es un extra, no puede colgar el job.
+THUMB_TIMEOUT_S = 15.0
+
+
+def media_opts(media: str, fmt: str = "mp3") -> dict:
+    """Opciones de yt-dlp (formato, merge y postprocessors) para `media`.
+
+    Funcion PURA para poder testearla sin yt-dlp. `media="audio"` devuelve
+    EXACTAMENTE lo de siempre: formato de solo-audio + FFmpegExtractAudio segun
+    `fmt`. "both" une video+audio en mp4 SIN recodificar, asi que NO lleva el
+    postprocessor de extraccion de audio. "video" baja solo el stream de video y
+    no lleva postprocessors (no hay audio que extraer). Un `media` desconocido
+    cae a "audio": la validacion del request es de la API.
+    """
+    elegido = media if media in _MEDIA_FORMAT else "audio"
+    opts: dict = {"format": _MEDIA_FORMAT[elegido]}
+    if elegido == "both":
+        opts["merge_output_format"] = "mp4"
+    opts["postprocessors"] = (postprocessor_opts(fmt) if elegido == "audio"
+                              else [])
+    return opts
+
+
+def thumb_sidecar_key(key: str) -> str:
+    """Clave del sidecar `.jpg` de una clave de media (mismo nombre, otra ext).
+
+    Sobre POSIX (`/`): en Windows `Path` metería backslashes y la clave no
+    coincidiria con la que espera `library_scan`.
+    """
+    nombre = key.rsplit("/", 1)[-1]
+    base = key[: len(key) - len(nombre)] + (
+        nombre.rsplit(".", 1)[0] if "." in nombre else nombre)
+    return base + ".jpg"
+
+
+async def fetch_thumb(video_id: str | None, key: str, work: Path) -> str | None:
+    """Baja la miniatura del video y la guarda al lado de `key`. Best effort.
+
+    Best effort de verdad: una miniatura que no llega NUNCA tiene que tumbar la
+    descarga, asi que cualquier fallo se loguea y devuelve None. Usa httpx (el
+    cliente que ya usa el proyecto) y timeout corto, sin ffmpeg: la futura build
+    de ffmpeg sera solo de audio, sin codecs de imagen.
+    """
+    if not video_id:
+        return None
+    thumb_key = thumb_sidecar_key(key)
+    try:
+        import httpx  # import perezoso: solo hace falta para la miniatura
+        from .storage import get_storage
+        url = thumbnail_url(video_id)
+        timeout = httpx.Timeout(THUMB_TIMEOUT_S)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
+                                     headers={"User-Agent": USER_AGENT}) as c:
+            r = await c.get(url)
+            r.raise_for_status()
+            data = r.content
+        tmp = work / f".thumb-{uuid.uuid4().hex[:8]}.jpg"
+        tmp.write_bytes(data)
+        await asyncio.to_thread(get_storage().put_file, thumb_key, tmp)
+        return thumb_key
+    except Exception as e:
+        log.warning("ytdlp: no se pudo bajar la miniatura de %s: %s", video_id, e)
+        return None
+
+
+def pick_output(found: list[Path], fmt: str, media: str = "audio") -> Path | None:
     """Elige el archivo final entre los `<stem>.*` que quedaron en la carpeta.
 
     Es el fallback para cuando yt-dlp no devuelve `filepath`. Tiene que
@@ -336,8 +414,14 @@ def pick_output(found: list[Path], fmt: str) -> Path | None:
     gana cualquier extension de audio, y entre varias, la mas reciente (el
     archivo que se acaba de escribir). Lo que no es audio (.webm intermedio,
     .part) va al final.
+
+    Con `media` de video ("both"/"video") prefieren las extensiones de video:
+    asi un intermedio de audio que quedo en la carpeta no le gana al archivo
+    final.
     """
-    if fmt in ("mp3", "m4a"):
+    if media in ("both", "video"):
+        rank = dict.fromkeys(VIDEO_EXTS, 0)
+    elif fmt in ("mp3", "m4a"):
         want = "." + fmt
         other = ".m4a" if want == ".mp3" else ".mp3"
         rank = {want: 0, other: 1}
@@ -480,7 +564,8 @@ class YtDlpSource(Source):
     # -------------------------------------------------------------- download
     async def download(self, track: Track, fmt: str = "mp3",
                        job_id: str | None = None,
-                       query: str | None = None) -> dict:
+                       query: str | None = None,
+                       media: str = "audio") -> dict:
         """Descarga via yt-dlp (usa su postprocessor de ffmpeg) con progreso.
 
         No reutiliza downloader.download_track porque yt-dlp gestiona su propio
@@ -491,6 +576,10 @@ class YtDlpSource(Source):
         contra el titulo real del video, para publicar el veredicto de
         identidad en el job: sin esto la UI recibe status=done sin `match` y
         nunca puede avisar "esto no es lo que buscabas".
+
+        `media` decide que se baja: "audio" (default, comportamiento de
+        siempre), "both" (video+audio unidos en mp4) o "video" (solo el stream
+        de video, sin sonido). El resultado suma `kind` y `thumb_key`.
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
@@ -501,11 +590,19 @@ class YtDlpSource(Source):
         if not url:
             raise ValueError("ytdlp: falta webpage_url")
 
+        media = media if media in _MEDIA_FORMAT else "audio"
+        kind = "video" if media in ("both", "video") else "audio"
+
         if job_id is None:
             job_id = new_job(track.title)
 
         folder = safe_name(track.artist or "varios", 60)
         stem = safe_name(f"{track.artist} - {track.title}", 100)
+        # Con media=video el archivo NO lleva audio. El sufijo lo distingue del
+        # mp4 de "both" (misma carpeta, misma base): sin esto los dos pedidos
+        # pelearian por la misma clave.
+        if media == "video":
+            stem = f"{stem} (sin audio)"
         # Clave de salida SIN extension: es a la vez la identidad del archivo
         # final en la biblioteca y la clave del lock de una descarga por salida.
         key_base = f"{folder}/{stem}"
@@ -544,13 +641,12 @@ class YtDlpSource(Source):
 
         opts = youtube_opts({
             "quiet": True, "no_warnings": True, "noprogress": True,
-            "format": "bestaudio/best",
             "outtmpl": outtmpl,
             "paths": paths,
-            "postprocessors": postprocessor_opts(fmt),
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
+            **media_opts(media, fmt),
         })
         loop = asyncio.get_running_loop()
 
@@ -575,7 +671,7 @@ class YtDlpSource(Source):
                     # "original", acepta la extension natural del audio
                     # (.opus, .m4a, .ogg...).
                     cand = pick_output(
-                        list(work.glob(glob.escape(stem) + ".*")), fmt)
+                        list(work.glob(glob.escape(stem) + ".*")), fmt, media)
                     if cand is not None:
                         fp = str(cand)
                 return info, fp
@@ -675,12 +771,19 @@ class YtDlpSource(Source):
                     duration_s=int(info.get("duration") or 0) or track.duration_s,
                 )
                 _write_tags(path, tag_track)
+                # La extension es la del archivo real: con "both" el merge deja
+                # un .mp4, pero el fallback a un unico archivo (`b`) puede ser
+                # .webm, y la clave no puede mentir sobre lo que contiene.
                 key = f"{key_base}{path.suffix}"
                 # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
                 # su manera, y la UI tiene que mostrar lo que quedo guardado.
                 filename = key.rsplit("/", 1)[-1]
                 stored = await asyncio.to_thread(get_storage().put_file, key, path)
                 size = stored.size
+                # Miniatura best effort SOLO para video: si falla, la descarga
+                # sigue y `thumb_key` queda en None (nunca tumba el job).
+                thumb_key = (await fetch_thumb(info.get("id"), key, work)
+                             if kind == "video" else None)
 
             # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
             # calcula aca y no antes de la descarga porque hasta ahora no se
@@ -690,12 +793,14 @@ class YtDlpSource(Source):
             estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
             _finish(job_id, status="done", progress=100.0, key=key,
                     filename=filename, size_mb=round(size / 1_048_576, 2),
-                    format=path.suffix.lstrip(".").upper(),
+                    format=path.suffix.lstrip(".").upper(), kind=kind,
+                    thumb_key=thumb_key,
                     match=estado, match_label=etiqueta, real_title=info_title or None)
             return {
                 "key": key, "filename": filename, "folder": folder,
                 "bytes": size, "size_mb": round(size / 1_048_576, 2),
                 "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
+                "kind": kind, "thumb_key": thumb_key,
                 "match": estado, "match_label": etiqueta,
                 "real_title": info_title or None,
             }

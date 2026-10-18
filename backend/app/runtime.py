@@ -55,6 +55,15 @@ AUDIO_MIME_TYPES = {
     ".wav": "audio/wav",
 }
 
+# Tipos de VIDEO y de la miniatura `.jpg`, por la MISMA razon que los de audio:
+# Android no trae base MIME del sistema y en Windows `.mkv` no siempre resuelve.
+MEDIA_MIME_TYPES = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".jpg": "image/jpeg",
+}
+
 
 def prepend_to_path(directory: str) -> bool:
     """Pone `directory` al frente de `PATH`, una sola vez.
@@ -369,9 +378,21 @@ def register_audio_mime_types() -> None:
         mimetypes.add_type(mime, ext)
 
 
+def register_media_mime_types() -> None:
+    """Registra los MIME de video y de la miniatura en `mimetypes`.
+
+    Sin esto, servir un `.mkv` o un `.jpg` desde `/api/audio` cae a
+    `application/octet-stream`: el `<video>` no lo reconoce y la `<img>` lo
+    trata como descarga.
+    """
+    for ext, mime in MEDIA_MIME_TYPES.items():
+        mimetypes.add_type(mime, ext)
+
+
 def configure_runtime() -> None:
     """Todo lo que hay que dejar listo antes de servir la primera request."""
     register_audio_mime_types()
+    register_media_mime_types()
     setup_temp_dir()
     setup_ffmpeg_dir()
     setup_ytdlp_dir()

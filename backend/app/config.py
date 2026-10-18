@@ -8,3 +8,9 @@ USER_AGENT = "spitifo/0.1 (+https://github.com/asormar/spitifo)"
 
 LIBRARY_NAME = "library"
 AUDIO_EXTS = (".mp3", ".flac", ".ogg", ".m4a", ".opus", ".wav")
+#: Video de la biblioteca (bajado de YouTube con media=video o media=both).
+#: Vive en la MISMA biblioteca que el audio: la clave es la misma, cambia la
+#: extension. `video` ademas agrega el sufijo " (sin audio)" al nombre.
+VIDEO_EXTS = (".mp4", ".webm", ".mkv")
+#: Miniatura de un video: sidecar `<mismo nombre>.jpg` al lado del archivo.
+IMAGE_EXTS = (".jpg",)
