@@ -35,11 +35,16 @@ val buildPythonExe: String = localProps.getProperty("spitifo.buildPython")
 
 // The backend/ package exactly as it is in the repo: Starlette, no FastAPI, no
 // pydantic. Chaquopy imports it as `backend.app.main`.
+//
+// oauth_clients.json is excluded on purpose: it holds the *desktop* Google
+// client, and Android signs in natively through the Identity Services
+// AuthorizationClient (ADR 0002, section 3). Shipping the file would put a
+// desktop secret in the APK for no reason.
 val stageBackend = tasks.register<Sync>("stageBackend") {
     into(stageDir.resolve("python"))
     from(repoRoot.resolve("backend")) {
         into("backend")
-        exclude("**/__pycache__/**", "**/*.pyc")
+        exclude("**/__pycache__/**", "**/*.pyc", "**/oauth_clients.json")
     }
 }
 
@@ -184,7 +189,7 @@ android {
         applicationId = "dev.spitifo"
         minSdk = 30          // Android 11: direct paths into the public Music folder work via FUSE
         targetSdk = 34
-        versionCode = 1
+        versionCode = 100
         versionName = "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
     }

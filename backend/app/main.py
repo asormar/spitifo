@@ -26,7 +26,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity
+from . import activity, ytdlp_update
 from .config import AUDIO_EXTS
 from .runtime import configure_runtime, ytdlp_version
 
@@ -60,6 +60,9 @@ BG_TASKS: set = set()
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
+    # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
+    # la deja lista para el proximo arranque (no reemplaza la ya importada).
+    ytdlp_update.start_background_check()
     log.info("biblioteca: %s", get_storage().describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
@@ -268,6 +271,8 @@ async def health(request: Request):
         # None si yt-dlp no se puede importar. El primer import es lento: va a
         # un thread para no frenar el event loop.
         "ytdlp_version": await asyncio.to_thread(ytdlp_version),
+        # Version ya bajada que todavia no es la cargada (se aplica al reiniciar).
+        "ytdlp_pending": await asyncio.to_thread(ytdlp_update.pending_version),
     })
 
 

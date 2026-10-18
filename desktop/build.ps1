@@ -1,22 +1,26 @@
 # Builds the Windows installer: frontend, backend sidecar, ffmpeg, Tauri shell.
 #
 # Usage, from any directory:
-#   powershell -ExecutionPolicy Bypass -File desktop\build.ps1 [-FfmpegDir C:\ffmpeg\bin] [-Dev]
+#   powershell -ExecutionPolicy Bypass -File desktop\build.ps1 [-FfmpegDir C:\ffmpeg\bin] [-Python C:\python.exe] [-Dev]
 #
 # -Dev runs `tauri dev` instead of building the installer.
 # -FfmpegDir must hold a *shared* ffmpeg build (ffmpeg.exe, ffprobe.exe and
 # their DLLs); without it the script downloads one.
+# -Python overrides the interpreter used for the sidecar; it defaults to the
+# repo's .venv (CI passes the setup-python one instead).
 # Requirements: the repo's .venv with requirements.txt installed, Node, Rust
 # (rustup, MSVC toolchain), Visual Studio C++ build tools and the Windows SDK.
 param(
     [string]$FfmpegDir = $env:SPITIFO_FFMPEG_SOURCE,
+    [string]$Python = "",
     [switch]$Dev
 )
 $ErrorActionPreference = "Stop"
 
 $desktop = $PSScriptRoot
 $root = Split-Path $desktop -Parent
-$python = Join-Path $root ".venv\Scripts\python.exe"
+if (-not $Python) { $Python = Join-Path $root ".venv\Scripts\python.exe" }
+$python = $Python
 
 # Git for Windows ships a GNU `link` that shadows the MSVC linker.
 $env:PATH = (@("$env:USERPROFILE\.cargo\bin") + ($env:PATH -split ";" |
