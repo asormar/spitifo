@@ -287,26 +287,64 @@ class StaticTokenSource:
     Identity Services SDK (ADR 0002, secciones 2, 3 y 7): no hay refresh token.
     El bridge va a llamar `set()` cada vez que su `AuthorizationClient` le da
     un token nuevo; si expira sin que llegue otro, hay que reconectar.
+
+    En un arranque en frio, la pagina puede pedir la biblioteca antes de que
+    el shell empuje el token del refresco silencioso. Con `first_token_wait_s`
+    mayor que cero, `access_token()` espera ese plazo a que `set()` lo
+    despierte en vez de pedir reconectar de entrada. La espera se saltea si
+    `expect_first_token` dice que no hay token en camino.
     """
 
-    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+    def __init__(
+            self, clock: Callable[[], float] | None = None,
+            first_token_wait_s: float = 0.0,
+            expect_first_token: Callable[[], bool] | None = None) -> None:
         self._clock = clock or time.time
         self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
         self._token: str | None = None
         self._expires_at = 0.0
+        self._first_token_wait_s = float(first_token_wait_s)
+        self._expect_first_token = expect_first_token
+        self._first_settled = False
+
+    def _valid(self) -> bool:
+        return bool(self._token) and self._clock() < self._expires_at
 
     def set(self, token: str, expires_at: float) -> None:
-        with self._lock:
+        with self._cond:
             self._token = token
             self._expires_at = float(expires_at)
+            self._first_settled = True
+            self._cond.notify_all()
+
+    def stop_waiting(self) -> None:
+        """El shell aviso que no viene ningun token (fallo el refresco).
+
+        Las requests que estan esperando el token del arranque fallan ya, en
+        vez de quedarse hasta el timeout.
+        """
+        with self._cond:
+            self._first_settled = True
+            self._cond.notify_all()
 
     def access_token(self) -> str:
-        with self._lock:
-            if not self._token or self._clock() >= self._expires_at:
+        with self._cond:
+            if (not self._valid() and not self._first_settled
+                    and self._first_token_wait_s > 0
+                    and (self._expect_first_token is None
+                         or self._expect_first_token())):
+                self._cond.wait_for(lambda: self._first_settled,
+                                    timeout=self._first_token_wait_s)
+                # El plazo se agoto sin token: no se vuelve a esperar.
+                self._first_settled = True
+            if not self._valid():
                 raise ReconnectRequired("no hay un access token valido")
             return self._token
 
     def invalidate(self) -> None:
-        with self._lock:
+        with self._cond:
             self._token = None
             self._expires_at = 0.0
+            self._first_settled = True
+            self._cond.notify_all()
