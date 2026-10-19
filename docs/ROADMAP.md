@@ -268,15 +268,31 @@ installer downloads from YouTube, uploads to Drive and streams the result.
 - Smoke-test the published release on the PC and the Pixel, including Drive
   sign-in from the release-signed APK.
 
-### 11. Smaller and signed binaries
+### 11. Smaller and signed binaries — in progress
 
-- **Audio-only ffmpeg.** 150 MB of the 192 MB installed on Windows are ffmpeg's
-  shared libraries, mostly video codecs Spitifo never uses. Build an audio-only
-  ffmpeg (the demuxers, decoders and encoders the downloader needs) for Windows
-  and Android, in CI, and measure the installer and APK sizes against today's.
-- **Code signing.** SmartScreen warns on the unsigned installer. Compare the
-  options (a code-signing certificate, Azure Trusted Signing, SignPath for open
-  source) on cost and eligibility, then sign the installer in `release.yml`.
+- **Audio-only ffmpeg — built and published as `ffmpeg-9.0.2-audio-1`.** `scripts/ffmpeg/build.sh`
+  compiles ffmpeg 9.0.2 and LAME 3.100 with `--disable-everything` and an
+  allow-list of what Spitifo uses: audio conversion to mp3 and m4a, audio
+  extraction, and stream-copy merging of video and audio. The binaries are
+  statically linked, about 4 MB each for Windows and Android arm64, with no DLLs.
+  `scripts/ffmpeg/smoke.sh` runs the real command lines (the app's and yt-dlp's)
+  against small committed samples; it found that the mp4 muxer needs the VP9
+  decoder to write a VP9 stream. The `ffmpeg` workflow builds both targets,
+  runs the smoke test on Linux and Windows and publishes the zips as a release;
+  `scripts/ffmpeg/release.properties` pins the published tag and hashes.
+  Measured with the real builds: Windows installer 70.1 MB to 23.1 MB, release
+  APK 56.9 MB to 29.5 MB. A full download through the app (mp3, and a VP9 1440p
+  plus AAC mp4 merge) worked with the trimmed ffmpeg on Windows; the Android
+  binaries still have to be run on the Pixel. The installer and the APK download the
+  published zips, pinned by SHA-256 in `scripts/ffmpeg/release.properties`.
+- **Code signing — parked.** SignPath Foundation was the only free option that
+  fit (see [code-signing.md](code-signing.md)) and the project applied on
+  2026-10-19. It was declined on 2026-10-19: the program wants external signs of
+  adoption (stars, forks, contributors, articles, discussions) and the project
+  was 18 days old. Releases ship unsigned. The signing steps in the release
+  workflow stay in place, gated on `SIGNPATH_ORGANIZATION_ID`, so reapplying
+  later (or switching to a paid SignPath plan or a Certum certificate) only
+  needs the account, the secret and the variable.
 
 ### 12. Companion player app
 
@@ -307,15 +323,14 @@ because it decides how the library is stored, which session 3 needs.
   you're not a bot" to every download from the development PC, hours after the
   same downloads worked. yt-dlp's answer is passing the user's browser cookies
   (`--cookies-from-browser`); the apps may need a way to supply them.
-- **APK size.** 56.9 MB for the release APK. Accepted, since the APK is not on
-  Google Play. Trimming the ffmpeg payload saves only 3.6 MB; an audio-only
-  ffmpeg build is what would shrink it.
-- **Installer size.** The Windows installer is 67 MiB, and 150 MB of the
-  installed 192 MB are ffmpeg's shared libraries, mostly video codecs Spitifo
-  never uses. An audio-only ffmpeg build would cut most of that, at the cost of
-  compiling and maintaining it.
+- **APK size.** 56.9 MB before session 11; 29.5 MB with the audio-only ffmpeg.
+- **Installer size.** 67 MiB before session 11 (150 MB of the 192 MB installed
+  were ffmpeg's video codecs); 22 MiB with the audio-only ffmpeg. The cost is
+  compiling and maintaining that build: the pinned versions in
+  `scripts/ffmpeg/build.sh` need a bump when ffmpeg ships a security fix.
 - **Unsigned binaries.** SmartScreen warns on an unsigned installer until it
-  builds reputation.
+  builds reputation. SignPath Foundation declined the project for lack of
+  visibility; revisit once it has some adoption.
 
 ## Branching
 

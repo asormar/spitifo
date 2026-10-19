@@ -5,8 +5,9 @@
 #   powershell -ExecutionPolicy Bypass -File desktop\build.ps1 [-FfmpegDir C:\ffmpeg\bin] [-Python C:\python.exe] [-Dev]
 #
 # -Dev runs `tauri dev` instead of building the installer.
-# -FfmpegDir must hold a *shared* ffmpeg build (ffmpeg.exe, ffprobe.exe and
-# their DLLs); without it the script downloads one.
+# -FfmpegDir must hold Spitifo's trimmed ffmpeg (ffmpeg.exe, ffprobe.exe and the
+# license texts, see scripts/ffmpeg/build.sh); without it the script downloads
+# the release pinned in scripts/ffmpeg/release.properties.
 # -Python overrides the interpreter used for the sidecar; it defaults to the
 # repo's .venv (CI passes the setup-python one instead).
 # Requirements: the repo's .venv with requirements.txt installed, Node, Rust
@@ -33,31 +34,35 @@ function Step($name, [scriptblock]$block) {
     if ($LASTEXITCODE) { throw "$name failed (exit $LASTEXITCODE)" }
 }
 
-# Downloads BtbN's LGPL shared ffmpeg build once into desktop\.cache, checks it
-# against the release's checksums and returns its bin directory.
-function Get-SharedFfmpeg {
-    $name = "ffmpeg-n9.0-latest-win64-lgpl-shared-9.0"
-    $base = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
+# Downloads Spitifo's own audio-only ffmpeg (built by .github/workflows/ffmpeg.yml,
+# about 4 MB per executable, statically linked) once into desktop\.cache, checks
+# it against the hash pinned in scripts/ffmpeg/release.properties and returns the
+# folder that holds it.
+function Get-AudioFfmpeg {
+    $pins = @{}
+    Get-Content (Join-Path $root "scripts\ffmpeg\release.properties") |
+        Where-Object { $_ -match "^\s*([\w.-]+)\s*=\s*(.*?)\s*$" } |
+        ForEach-Object { $pins[$Matches[1]] = $Matches[2] }
+    $tag = $pins["tag"]
+    $expected = $pins["win64.sha256"]
+    if (-not $tag -or -not $expected) {
+        throw "scripts\ffmpeg\release.properties has no published ffmpeg yet: run the ffmpeg workflow with a tag and fill it in, or pass -FfmpegDir."
+    }
     $cache = Join-Path $desktop ".cache"
-    $bin = Join-Path $cache "$name\bin"
-    if (Test-Path (Join-Path $bin "ffmpeg.exe")) { return $bin }
+    $dir = Join-Path $cache "ffmpeg-audio-$tag-win64"
+    if (Test-Path (Join-Path $dir "ffmpeg.exe")) { return $dir }
 
     New-Item -ItemType Directory -Force $cache | Out-Null
-    $zip = Join-Path $cache "$name.zip"
-    Invoke-WebRequest "$base/$name.zip" -OutFile $zip -UseBasicParsing
-    # Saved to a file: GitHub serves it as octet-stream, so .Content is bytes.
-    $sumsFile = Join-Path $cache "checksums.sha256"
-    Invoke-WebRequest "$base/checksums.sha256" -OutFile $sumsFile -UseBasicParsing
-    $expected = (Get-Content $sumsFile | Where-Object { $_ -match "\s$name\.zip$" }) -replace "\s.*$", ""
-    Remove-Item $sumsFile
+    $zip = Join-Path $cache "ffmpeg-audio-win64.zip"
+    Invoke-WebRequest "https://github.com/asormar/spitifo/releases/download/$tag/ffmpeg-audio-win64.zip" -OutFile $zip -UseBasicParsing
     $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
-    if (-not $expected -or $actual -ne $expected.ToUpper()) {
+    if ($actual -ne $expected.ToUpper()) {
         Remove-Item $zip
-        throw "ffmpeg checksum mismatch for $name.zip"
+        throw "ffmpeg checksum mismatch for ffmpeg-audio-win64.zip: got $actual, expected $expected"
     }
-    Expand-Archive $zip -DestinationPath $cache -Force
+    Expand-Archive $zip -DestinationPath $dir -Force
     Remove-Item $zip
-    return $bin
+    return $dir
 }
 
 # Downloads QuickJS-ng once into desktop\.cache, checks it against the hash
@@ -93,16 +98,19 @@ Step "backend sidecar" {
 }
 
 Step "ffmpeg" {
-    if (-not $FfmpegDir) { $FfmpegDir = Get-SharedFfmpeg }
-    # A shared build: ffmpeg.exe and ffprobe.exe are small and load the same
-    # DLLs, so the libraries ship once instead of twice as in a static build.
+    if (-not $FfmpegDir) { $FfmpegDir = Get-AudioFfmpeg }
+    # Two static executables plus the license texts that the LGPL asks us to
+    # ship with them (BUILDINFO.txt says how to rebuild the binaries).
     $target = Join-Path $desktop "ffmpeg"
     if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     New-Item -ItemType Directory $target | Out-Null
-    foreach ($exe in "ffmpeg.exe", "ffprobe.exe") {
-        Copy-Item (Join-Path $FfmpegDir $exe) $target
+    foreach ($file in "ffmpeg.exe", "ffprobe.exe") {
+        Copy-Item (Join-Path $FfmpegDir $file) $target
     }
-    Copy-Item (Join-Path $FfmpegDir "*.dll") $target
+    foreach ($file in "COPYING.LGPLv2.1", "COPYING.lame", "LICENSE.md", "BUILDINFO.txt") {
+        $src = Join-Path $FfmpegDir $file
+        if (Test-Path $src) { Copy-Item $src $target }
+    }
 }
 
 Step "quickjs" {

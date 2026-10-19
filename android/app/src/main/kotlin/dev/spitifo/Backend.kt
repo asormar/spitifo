@@ -17,7 +17,6 @@ import java.security.SecureRandom
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.zip.ZipFile
 
 /**
  * Owns the embedded Python backend for the whole process.
@@ -116,7 +115,7 @@ class Backend(private val app: Application) {
         val t0 = SystemClock.elapsedRealtime()
         try {
             val dist = extractFrontendDist()
-            val natives = setupFfmpeg()
+            val ffmpegBin = setupFfmpeg()
             // Leftovers from a download that was killed mid-flight: they would
             // never be finished, and yt-dlp's temp names are random.
             val temp = File(app.cacheDir, "downloads").apply {
@@ -153,18 +152,11 @@ class Backend(private val app: Application) {
             // keeps an already configured one.
             environ.callAttr("setdefault", "TMPDIR", app.cacheDir.absolutePath)
 
-            if (natives != null) {
-                val (binDir, libDir) = natives
+            if (ffmpegBin != null) {
                 // The backend prepends this to PATH itself (runtime.py), which
                 // is where shutil.which and yt-dlp look for it.
-                environ.callAttr("__setitem__", "SPITIFO_FFMPEG_DIR", binDir.absolutePath)
-                // ffmpeg and ffprobe load their .so's from here: not something
-                // the backend can know about.
-                val ldPath = listOf(libDir.absolutePath, app.applicationInfo.nativeLibraryDir)
-                    .filter { it.isNotEmpty() }
-                    .joinToString(":") { it }
-                environ.callAttr("__setitem__", "LD_LIBRARY_PATH", ldPath)
-                probeFfmpeg(File(binDir, "ffmpeg"), ldPath)
+                environ.callAttr("__setitem__", "SPITIFO_FFMPEG_DIR", ffmpegBin.absolutePath)
+                probeFfmpeg(File(ffmpegBin, "ffmpeg"))
             } else {
                 Log.e(TAG, "continuing without ffmpeg: YouTube downloads will fail")
             }
@@ -275,81 +267,43 @@ class Backend(private val app: Application) {
     }
 
     /**
-     * Makes the ffmpeg/ffprobe binaries from the youtubedl-android `ffmpeg` AAR
-     * usable by the unchanged backend, which shells out to `ffmpeg`/`ffprobe`
-     * by name (shutil.which in downloader.py) and lets yt-dlp find them on PATH.
+     * Makes Spitifo's own ffmpeg/ffprobe usable by the unchanged backend, which
+     * shells out to `ffmpeg`/`ffprobe` by name (shutil.which in downloader.py)
+     * and lets yt-dlp find them on PATH.
      *
-     * The AAR ships three files in nativeLibraryDir (Android extracts them
-     * there because jniLibs useLegacyPackaging = true):
-     *   libffmpeg.so      - the ffmpeg PIE executable (interp /system/bin/linker64)
-     *   libffprobe.so     - the ffprobe PIE executable
-     *   libffmpeg.zip.so  - a zip of the usr/lib shared libraries both need
+     * Both are statically linked executables (scripts/ffmpeg/build.sh), staged
+     * as libffmpeg.so and libffprobe.so (see downloadFfmpeg in
+     * app/build.gradle.kts). Android extracts them to nativeLibraryDir because
+     * jniLibs useLegacyPackaging = true, and that is the only place an app may
+     * exec from. They need no libraries of their own, so all that is left is to
+     * symlink them under the names the backend looks for.
      *
-     * So: unzip the payload next to the app, symlink `ffmpeg`/`ffprobe` to the
-     * executables, and hand back binDir (PATH lookup) and libDir
-     * (LD_LIBRARY_PATH).
-     *
-     * @return binDir to libDir, or null if the artifact is not in the APK.
+     * @return the directory that holds the `ffmpeg` and `ffprobe` links, or null
+     *   if the executables are not in the APK.
      */
-    private fun setupFfmpeg(): Pair<File, File>? {
-        val t0 = SystemClock.elapsedRealtime()
+    private fun setupFfmpeg(): File? {
         val nativeDir = File(app.applicationInfo.nativeLibraryDir)
         val ffmpegExe = File(nativeDir, "libffmpeg.so")
         val ffprobeExe = File(nativeDir, "libffprobe.so")
-        val payload = File(nativeDir, "libffmpeg.zip.so")
-        if (!ffmpegExe.isFile || !ffprobeExe.isFile || !payload.isFile) {
-            Log.e(TAG, "ffmpeg artifact incomplete in ${nativeDir.absolutePath}: " +
-                "ffmpeg=${ffmpegExe.exists()} ffprobe=${ffprobeExe.exists()} zip=${payload.exists()}")
+        if (!ffmpegExe.isFile || !ffprobeExe.isFile) {
+            Log.e(TAG, "ffmpeg missing in ${nativeDir.absolutePath}: " +
+                "ffmpeg=${ffmpegExe.exists()} ffprobe=${ffprobeExe.exists()}")
             return null
         }
-
-        // Unzipped once, and the payload size doubles as its version: a new AAR
-        // changes it and forces a re-extract. The schema prefix bumps the
-        // extraction when this code changes. The whole payload is kept as-is:
-        // ffmpeg and ffprobe share 70.9 of its 74.5 MB, so trimming would buy
-        // almost nothing.
-        val ffmpegDir = File(app.noBackupFilesDir, "youtubedl-android/packages/ffmpeg")
-        val stamp = "1:${payload.length()}"
-        val marker = File(ffmpegDir, ".payload-size")
-        if (!marker.isFile || marker.readText() != stamp) {
-            ffmpegDir.deleteRecursively()
-            ffmpegDir.mkdirs()
-            val tUnzip = SystemClock.elapsedRealtime()
-            val (files, links) = extractZip(payload, ffmpegDir)
-            // Libraries the ffmpeg payload does not ship (libexpat, libcrypto,
-            // libc++_shared...), staged as assets from the same publisher's
-            // library AAR. Same dir, so one LD_LIBRARY_PATH entry covers all.
-            val copied = copyAssetDir("ffmpeg-support", File(ffmpegDir, "usr/lib"))
-            marker.writeText(stamp)
-            Log.i(TAG, "ffmpeg payload unzipped in ${SystemClock.elapsedRealtime() - tUnzip} ms " +
-                "($files files, $links symlinks, $copied support libs, " +
-                "${payload.length() / 1_048_576} MB -> ${dirSize(ffmpegDir) / 1_048_576} MB)")
-        } else {
-            Log.i(TAG, "ffmpeg payload already extracted (${marker.readText()})")
-        }
-        val libDir = File(ffmpegDir, "usr/lib")
-
-        // The names the backend looks for, pointing at the extracted executables.
         val binDir = File(app.filesDir, "bin").apply { mkdirs() }
         symlink(File(binDir, "ffmpeg"), ffmpegExe.absolutePath)
         symlink(File(binDir, "ffprobe"), ffprobeExe.absolutePath)
-
-        Log.i(TAG, "ffmpeg ready in ${SystemClock.elapsedRealtime() - t0} ms; " +
-            "exe=${ffmpegExe.absolutePath} libs=${libDir.absolutePath} " +
-            "libCount=${libDir.list()?.size}")
-        return binDir to libDir
+        return binDir
     }
 
     /**
-     * Runs `ffmpeg -version` the same way the backend will: by name, with the
-     * extracted libraries on LD_LIBRARY_PATH. A binary that is present but
-     * cannot load its libraries would otherwise only show up as a mysterious
-     * failed download, and failures here are logged, not fatal.
+     * Runs `ffmpeg -version` the same way the backend will: by name. A binary
+     * that is present but cannot start would otherwise only show up as a
+     * mysterious failed download, and failures here are logged, not fatal.
      */
-    private fun probeFfmpeg(ffmpeg: File, ldLibraryPath: String) {
+    private fun probeFfmpeg(ffmpeg: File) {
         try {
             val process = ProcessBuilder(ffmpeg.absolutePath, "-version")
-                .apply { environment()["LD_LIBRARY_PATH"] = ldLibraryPath }
                 .redirectErrorStream(true)
                 .start()
             val output = process.inputStream.bufferedReader().use { it.readText() }
@@ -358,79 +312,6 @@ class Backend(private val app: Application) {
         } catch (e: Exception) {
             Log.e(TAG, "ffmpeg probe failed", e)
         }
-    }
-
-    /**
-     * Extracts a zip that stores some entries as Unix symlinks. Java's
-     * java.util.zip does not expose the Unix mode, so this sniffs them the way
-     * they are stored: a tiny entry whose content is the (relative) link
-     * target. Anything ambiguous is written as a plain file instead.
-     */
-    private fun extractZip(zip: File, destDir: File): Pair<Int, Int> {
-        var files = 0
-        val candidates = LinkedHashMap<String, ByteArray>()
-        ZipFile(zip).use { zf ->
-            val entries = zf.entries()
-            while (entries.hasMoreElements()) {
-                val e = entries.nextElement()
-                val out = File(destDir, e.name)
-                if (e.isDirectory) {
-                    out.mkdirs()
-                    continue
-                }
-                val bytes = zf.getInputStream(e).use { it.readBytes() }
-                if (bytes.size <= MAX_SYMLINK_ENTRY) {
-                    candidates[e.name] = bytes
-                    continue
-                }
-                out.parentFile?.mkdirs()
-                out.writeBytes(bytes)
-                files++
-            }
-        }
-        var links = 0
-        // Symlinks can point at other symlinks (glib-2.0.so -> .so.0 ->
-        // .so.0.8600.0), so link in several passes: a target may not exist yet.
-        var remaining = candidates
-        while (remaining.isNotEmpty()) {
-            val next = LinkedHashMap<String, ByteArray>()
-            var progressed = false
-            for ((name, bytes) in remaining) {
-                val out = File(destDir, name)
-                out.parentFile?.mkdirs()
-                val target = String(bytes, StandardCharsets.UTF_8).trim()
-                val resolved = out.parentFile?.let { File(it, target) }
-                if (target.isNotEmpty() && !target.startsWith("/") &&
-                    !target.contains("..") && resolved != null && resolved.exists()
-                ) {
-                    Os.symlink(target, out.absolutePath)
-                    links++
-                    progressed = true
-                } else {
-                    next[name] = bytes
-                }
-            }
-            if (!progressed) break
-            remaining = next
-        }
-        for ((name, bytes) in remaining) {
-            File(destDir, name).writeBytes(bytes)
-            files++
-            Log.w(TAG, "payload entry kept as a file: $name")
-        }
-        return files to links
-    }
-
-    /** Copies every flat asset in `assetsPath` into `destDir`, keeping names. */
-    private fun copyAssetDir(assetsPath: String, destDir: File): Int {
-        val names = app.assets.list(assetsPath) ?: return 0
-        destDir.mkdirs()
-        for (n in names) {
-            app.assets.open("$assetsPath/$n").use { i ->
-                File(destDir, n).outputStream().use { o -> i.copyTo(o) }
-            }
-        }
-        return names.size
     }
 
     /** Creates/replaces a symlink (File.delete removes the link, not the target). */
@@ -442,9 +323,6 @@ class Backend(private val app: Application) {
             Log.e(TAG, "could not symlink ${link.absolutePath} -> $target", e)
         }
     }
-
-    private fun dirSize(dir: File): Long =
-        dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
     /** Recursive copy of an asset file or directory tree. */
     private fun copyAsset(path: String, dest: File) {
@@ -460,9 +338,6 @@ class Backend(private val app: Application) {
 
     companion object {
         private const val TAG = "Spitifo"
-
-        /** A stored symlink entry is just the target path, far below this. */
-        private const val MAX_SYMLINK_ENTRY = 128
 
         /**
          * A fresh secret per launch, hex-encoded: the backend refuses every
