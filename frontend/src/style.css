@@ -3872,6 +3872,12 @@ html.rsvm-lock {
   transform: rotate(180deg);
 }
 
+/* Mientras el menu esta abierto el boton lleva un aro suave: se ve de donde
+   sale. */
+.dl--split[aria-expanded="true"] {
+  box-shadow: 0 0 0 3px rgba(255, 138, 117, 0.35);
+}
+
 /* Sin las medidas del botón todavía (primer fotograma): existe para poder
    medirlo, pero no se ve ni se anuncia. */
 .rsvm:not(.is-placed) {
