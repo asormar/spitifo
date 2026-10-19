@@ -7,6 +7,7 @@ adapter de Drive hagan lo que dice la ADR 0002 —sin navegador, sin
 """
 from __future__ import annotations
 
+import threading
 import time
 
 import httpx
@@ -46,6 +47,9 @@ def android_env(monkeypatch, tmp_path):
     monkeypatch.delenv("SPITIFO_STORAGE", raising=False)
     monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_ID", raising=False)
     monkeypatch.delenv("SPITIFO_GOOGLE_CLIENT_SECRET", raising=False)
+    # La espera del primer token es de la app real; los tests existentes
+    # quieren el fallo inmediato de siempre.
+    monkeypatch.setattr(android, "STARTUP_TOKEN_WAIT_S", 0.0)
     # El token y el flujo son singletons de proceso: no se los deja al test que
     # sigue (monkeypatch restauraria el valor que hubiera al parchear, que ya
     # puede ser el de otro test).
@@ -279,6 +283,54 @@ def test_use_google_sin_conectar_es_409(api):
     r = c.post("/api/storage/use", json={"provider": "google"})
     assert r.status_code == 409
     assert r.json()["code"] == "not_connected"
+
+
+def _drive_sin_token(api, monkeypatch, espera_s):
+    """Rearma Drive con un origen creado despues de fijar la espera.
+
+    El fixture `api` arma el adapter con la espera de la app; para probar el
+    arranque hace falta que el `StaticTokenSource` vea el valor parcheado.
+    """
+    c, fake = api
+    monkeypatch.setattr(android, "STARTUP_TOKEN_WAIT_S", espera_s)
+    android._tokens = None
+    adapter = DriveStorage(
+        android_tokens(), httpx.Client(transport=httpx.MockTransport(fake)),
+        "dev", sleep=lambda s: None)
+    monkeypatch.setattr("backend.app.cloud.drive.drive_storage_from_env",
+                        lambda: adapter)
+    set_storage(None)
+    set_google_connected(True)
+    set_active_storage("google")
+    return c
+
+
+def test_library_espera_el_token_del_arranque(api, monkeypatch):
+    c = _drive_sin_token(api, monkeypatch, 5.0)
+    temporizador = threading.Timer(
+        0.3, set_token, args=("tok", time.time() + 3600))
+    temporizador.start()
+    try:
+        r = c.get("/api/library")
+    finally:
+        temporizador.cancel()
+    assert r.status_code == 200
+    assert r.json()["library"] == "Google Drive: Spitifo"
+
+
+def test_library_falla_ya_si_el_refresco_silencioso_falla(api, monkeypatch):
+    c = _drive_sin_token(api, monkeypatch, 5.0)
+    inicio = time.monotonic()
+    temporizador = threading.Timer(
+        0.3, connect_failed, args=("silent refresh failed", False))
+    temporizador.start()
+    try:
+        r = c.get("/api/library")
+    finally:
+        temporizador.cancel()
+    assert r.status_code == 503
+    assert r.json()["code"] == "reconnect_required"
+    assert time.monotonic() - inicio < 3.0
 
 
 def test_new_connect_flow_en_pc_es_el_del_loopback(monkeypatch):

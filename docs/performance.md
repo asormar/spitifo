@@ -109,7 +109,8 @@ is no antivirus in the way. Medians of 5 cold starts (`am force-stop`, then
 - Found while measuring: **in one of five launches `/api/library` answered 503**
   because the page asked before that token had arrived (request at 0.8 s, token
   at 1.06 s), and the page did not ask again within the next 10 s, so the
-  library stayed unloaded.
+  library stayed unloaded. Fixed: a request that finds no token yet now waits
+  up to 5 s for it (`STARTUP_TOKEN_WAIT_S` in `backend/app/cloud/android.py`).
 
 ## What makes the library slow
 

@@ -43,6 +43,13 @@ def is_android() -> bool:
     return os.getenv(PLATFORM_ENV, "").strip().lower() == "android"
 
 
+#: En un arranque en frio la pagina puede pedir la biblioteca antes de que
+#: Kotlin empuje el token del refresco silencioso (medido en un Pixel 9 Pro:
+#: request a los 0.8 s, token a los 1.06 s). Una request que todavia no
+#: encuentra token espera hasta este plazo en vez de contestar 503. Solo
+#: mientras Google esta marcado como conectado: si no, no hay token en camino.
+STARTUP_TOKEN_WAIT_S = 5.0
+
 #: Un unico `StaticTokenSource` por proceso: el mismo objeto que llena Kotlin y
 #: que usan todos los adapters, aunque `reset_storage()` los rearme.
 _tokens: StaticTokenSource | None = None
@@ -54,7 +61,9 @@ def android_tokens() -> StaticTokenSource:
     global _tokens
     with _tokens_lock:
         if _tokens is None:
-            _tokens = StaticTokenSource()
+            _tokens = StaticTokenSource(
+                first_token_wait_s=STARTUP_TOKEN_WAIT_S,
+                expect_first_token=google_connected)
         return _tokens
 
 
@@ -165,7 +174,12 @@ def set_token(token: str, expires_at: float, interactive: bool = False) -> None:
 
 
 def connect_failed(message: str, cancelled: bool = False) -> None:
-    """Kotlin informa que el sign-in no salio (o que el usuario lo cancelo)."""
+    """Kotlin informa que el sign-in no salio (o que el usuario lo cancelo).
+
+    Tambien se llama cuando falla el refresco silencioso del arranque: no
+    viene ningun token, asi que las requests que esperan fallan ya.
+    """
+    android_tokens().stop_waiting()
     flow = _current_flow()
     if flow is not None:
         flow._failed(message, cancelled)

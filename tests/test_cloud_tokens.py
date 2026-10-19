@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import threading
+import time
 
 import pytest
 
@@ -192,3 +194,75 @@ def test_static_source_invalidate_lo_descarta():
     source.invalidate()
     with pytest.raises(tokens_mod.ReconnectRequired):
         source.access_token()
+
+
+def test_static_espera_el_primer_token():
+    source = tokens_mod.StaticTokenSource(first_token_wait_s=5)
+    resultado = []
+
+    def leer():
+        inicio = time.monotonic()
+        token = source.access_token()
+        resultado.append((token, time.monotonic() - inicio))
+
+    hilo = threading.Thread(target=leer)
+    hilo.start()
+    temporizador = threading.Timer(
+        0.2, source.set, args=("tarde", time.time() + 3600))
+    temporizador.start()
+    try:
+        hilo.join(timeout=5)
+    finally:
+        temporizador.cancel()
+    assert len(resultado) == 1
+    assert resultado[0][0] == "tarde"
+    assert resultado[0][1] < 4.0
+
+
+def test_static_stop_waiting_despierta_la_espera():
+    source = tokens_mod.StaticTokenSource(first_token_wait_s=5)
+    esperas = []
+
+    def leer():
+        inicio = time.monotonic()
+        with pytest.raises(tokens_mod.ReconnectRequired):
+            source.access_token()
+        esperas.append(time.monotonic() - inicio)
+
+    hilo = threading.Thread(target=leer)
+    hilo.start()
+    temporizador = threading.Timer(0.2, source.stop_waiting)
+    temporizador.start()
+    try:
+        hilo.join(timeout=5)
+    finally:
+        temporizador.cancel()
+    assert len(esperas) == 1
+    assert esperas[0] < 4.0
+
+
+def test_static_no_espera_si_el_shell_dice_que_no_viene():
+    source = tokens_mod.StaticTokenSource(
+        first_token_wait_s=5, expect_first_token=lambda: False)
+    inicio = time.monotonic()
+    with pytest.raises(tokens_mod.ReconnectRequired):
+        source.access_token()
+    assert time.monotonic() - inicio < 0.5
+
+
+def test_static_invalidate_no_deja_esperando():
+    source = tokens_mod.StaticTokenSource(first_token_wait_s=5)
+    source.invalidate()
+    inicio = time.monotonic()
+    with pytest.raises(tokens_mod.ReconnectRequired):
+        source.access_token()
+    assert time.monotonic() - inicio < 0.5
+
+
+def test_static_timeout_sin_token_pide_reconectar():
+    source = tokens_mod.StaticTokenSource(first_token_wait_s=0.2)
+    inicio = time.monotonic()
+    with pytest.raises(tokens_mod.ReconnectRequired):
+        source.access_token()
+    # Margen para el reloj de Windows (~15 ms por tick).
+    assert time.monotonic() - inicio >= 0.15
