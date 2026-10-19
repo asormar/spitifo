@@ -2476,11 +2476,21 @@ function VideoSplitDownload({
                 <button
                   type="button"
                   role="menuitem"
-                  className="rsvm__item"
+                  className="rsvm__item rsvm__item--best"
                   onClick={() => pick(null)}
                 >
                   <span className="rsvm__h">Mejor disponible</span>
-                  <span className="rsvm__meta">la mejor que haya</span>
+                  <span className="rsvm__meta">
+                    {resolutions[0] ? (
+                      <span>
+                        {resolutions[0].label || `${resolutions[0].height}p`}
+                        {resolutions[0].fps ? ` · ${resolutions[0].fps} fps` : ""}
+                      </span>
+                    ) : null}
+                    {resolutions[0] ? (
+                      <span className="rsvm__size">{fmtApproxSize(resolutions[0].filesize)}</span>
+                    ) : null}
+                  </span>
                 </button>
                 {resolutions.length > 0 && <div className="rsvm__sep" role="separator" />}
                 <div className="rsvm__list" role="none">
@@ -2497,7 +2507,11 @@ function VideoSplitDownload({
                         {res.hdr && <span className="rsvm__hdr">HDR</span>}
                       </span>
                       <span className="rsvm__meta">
-                        {res.fps ? <span>{res.fps} fps</span> : null}
+                        {res.fps ? (
+                          <span className={cx("rsvm__fps", res.fps >= 50 && "rsvm__fps--hi")}>
+                            {res.fps} fps
+                          </span>
+                        ) : null}
                         <span className="rsvm__size">{fmtApproxSize(res.filesize)}</span>
                       </span>
                     </button>
