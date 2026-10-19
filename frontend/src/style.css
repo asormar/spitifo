@@ -2144,8 +2144,10 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   font-size: 13px;
 }
 
-/* Bloqueo del scroll mientras esta la ventana centrada. */
-html.vscroll-lock {
+/* Bloqueo del scroll mientras esta la ventana centrada o el menu de
+   resoluciones. Clases distintas: cada una se quita sola al cerrarse. */
+html.vscroll-lock,
+html.rsvm-lock {
   overflow: hidden;
 }
 
@@ -3870,6 +3872,12 @@ html.vscroll-lock {
   transform: rotate(180deg);
 }
 
+/* Mientras el menu esta abierto el boton lleva un aro suave: se ve de donde
+   sale. */
+.dl--split[aria-expanded="true"] {
+  box-shadow: 0 0 0 3px rgba(255, 138, 117, 0.35);
+}
+
 /* Sin las medidas del botón todavía (primer fotograma): existe para poder
    medirlo, pero no se ve ni se anuncia. */
 .rsvm:not(.is-placed) {
@@ -3881,9 +3889,11 @@ html.vscroll-lock {
   z-index: 70;
   display: flex;
   flex-direction: column;
-  padding: 6px;
-  border-radius: var(--r-md);
-  background: var(--surface);
+  padding: 8px;
+  border-radius: 24px;
+  background: var(--glass-card);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  backdrop-filter: blur(22px) saturate(1.3);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-panel);
 }
@@ -3929,10 +3939,10 @@ html.vscroll-lock {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: 44px;
+  padding: 8px 14px;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: 14px;
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -3945,8 +3955,45 @@ html.vscroll-lock {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-family: var(--font-display);
+  font-size: 17px;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* "Mejor disponible": la fila que más se pulsa, con el coral de la app. */
+.rsvm__item--best {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 56px;
+  border-radius: 16px;
+  background: var(--accent-fill);
+  color: #2a0d07;
+}
+
+.rsvm__item--best .rsvm__h {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.rsvm__item--best .rsvm__meta {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.rsvm__item--best .rsvm__size {
+  min-width: 0;
+}
+
+/* 50 fps o más: el dato que distingue dos filas casi iguales. */
+.rsvm__fps--hi {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  color: var(--ok-fg);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .rsvm__meta {
@@ -3977,7 +4024,7 @@ html.vscroll-lock {
 
 .rsvm__sep {
   height: 1px;
-  margin: 5px 8px;
+  margin: 8px 6px;
   background: var(--line);
 }
 
@@ -4014,10 +4061,21 @@ html.vscroll-lock {
   .rsvm__item:hover {
     background: var(--row-hover);
   }
+
+  .rsvm__item--best:hover {
+    background: var(--accent-fill);
+    filter: brightness(0.95);
+  }
 }
 
 .rsvm__item:focus-visible {
   background: var(--row-hover);
+}
+
+.rsvm__item--best:focus-visible {
+  background: var(--accent-fill);
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 @media (pointer: coarse) {

@@ -3,13 +3,18 @@ package dev.spitifo
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -39,6 +44,10 @@ class MainActivity : Activity() {
     private val driveAuth by lazy { DriveAuth(this) }
 
     private var web: WebView? = null
+
+    /** The element the page asked to show full screen, while there is one. */
+    private var fullscreenView: View? = null
+    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingShare: String? = null
 
     private val listener = object : Backend.Listener {
@@ -97,10 +106,16 @@ class MainActivity : Activity() {
     @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override fun onBackPressed() {
         val view = web
-        if (view != null && view.canGoBack()) view.goBack() else super.onBackPressed()
+        when {
+            // Back leaves full screen before it does anything else.
+            fullscreenView != null -> hideFullscreen()
+            view != null && view.canGoBack() -> view.goBack()
+            else -> super.onBackPressed()
+        }
     }
 
     override fun onDestroy() {
+        hideFullscreen()
         backend.removeListener(listener)
         driveAuth.onDestroy()
         val view = web
@@ -166,6 +181,45 @@ class MainActivity : Activity() {
         })
     }
 
+    /**
+     * Puts the page's full screen element above everything, hides the system
+     * bars (they come back with a swipe from the edge) and turns the screen to
+     * landscape, which is what a 16:9 video wants. Undone by [hideFullscreen].
+     */
+    private fun showFullscreen(view: View, callback: WebChromeClient.CustomViewCallback) {
+        if (fullscreenView != null) {
+            callback.onCustomViewHidden()
+            return
+        }
+        fullscreenView = view
+        fullscreenCallback = callback
+        (window.decorView as ViewGroup).addView(
+            view,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        window.insetsController?.apply {
+            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsets.Type.systemBars())
+        }
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    private fun hideFullscreen() {
+        val view = fullscreenView ?: return
+        fullscreenView = null
+        (view.parent as? ViewGroup)?.removeView(view)
+        fullscreenCallback?.onCustomViewHidden()
+        fullscreenCallback = null
+        window.insetsController?.show(WindowInsets.Type.systemBars())
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+
     private fun showUi(port: Int) {
         if (web != null) return
         Log.i(TAG, "showing the UI on port $port")
@@ -180,7 +234,16 @@ class MainActivity : Activity() {
             // The Drive sign-in needs a native Activity: the page asks for it
             // through this interface instead of a link (see DriveAuth).
             addJavascriptInterface(AndroidBridge(), "SpitifoAndroid")
-            webChromeClient = WebChromeClient()
+            // Without these two callbacks a WebView cannot go full screen at all:
+            // the Fullscreen API reports itself as unavailable and the video
+            // controls drop their full screen button.
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                    showFullscreen(view, callback)
+                }
+
+                override fun onHideCustomView() = hideFullscreen()
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView,

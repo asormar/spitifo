@@ -2262,9 +2262,10 @@ function VideoSplitDownload({
      existe (y no reabrir el menu si la misma clave vuelve). */
   useEffect(() => () => setMenuOpen(key, false), [key, setMenuOpen]);
 
-  /* Coloca el menu fixed bajo el boton. Ancho 280 en escritorio, alineado a la
-     derecha; en pantallas angostas ocupa el ancho de su propia tarjeta, que ya
-     respeta el gutter. Si abajo no cabe y arriba si, se abre hacia arriba. */
+  /* Coloca el menu fixed junto al boton: 300 de ancho, alineado a su borde
+     derecho, tambien en el movil (ahi el boton queda a la derecha de la
+     tarjeta, asi que el menu sale pegado a el, como un popover). Si abajo no
+     cabe y arriba si, se abre hacia arriba. */
   const place = useCallback(() => {
     const btn = btnRef.current;
     const menu = menuRef.current;
@@ -2277,22 +2278,34 @@ function VideoSplitDownload({
       closeMenu(false);
       return;
     }
-    let width;
-    let left;
-    if (vw <= 640) {
-      const card = btn.closest(".card") || btn;
-      const cr = card.getBoundingClientRect();
-      width = Math.min(cr.width, vw - 16);
-      left = clamp(cr.left, 8, Math.max(8, vw - 8 - width));
+    const width = Math.min(300, vw - 16);
+    const left = clamp(r.right - width, 8, Math.max(8, vw - width - 8));
+    /* La altura NATURAL del menu: sin el tope de la colocacion anterior, que
+       si no lo mediria ya recortado (y saldria con tres filas). El estilo se
+       devuelve tal cual para que React no se entere. */
+    const prevMax = menu.style.maxHeight;
+    menu.style.maxHeight = "none";
+    const natural = menu.offsetHeight || 0;
+    menu.style.maxHeight = prevMax;
+    const gap = 6;
+    const edge = 8;
+    const below = vh - (r.bottom + gap) - edge;
+    const above = r.top - gap - edge;
+    let top;
+    let room;
+    if (natural <= below) {
+      top = r.bottom + gap;
+      room = below;
+    } else if (natural <= above || above > below) {
+      /* Abajo no cabe: arriba, pegado al boton. Si tampoco cabe entero, la
+         lista scrollea dentro del menu. */
+      room = above;
+      top = r.top - gap - Math.min(natural, above);
     } else {
-      width = 280;
-      left = clamp(r.right - width, 8, Math.max(8, vw - width - 8));
+      top = r.bottom + gap;
+      room = below;
     }
-    const h = Math.min(menu.offsetHeight || 0, vh - 16);
-    let top = r.bottom + 6;
-    if (top + h > vh - 8 && r.top - 6 - h >= 8) top = r.top - 6 - h;
-    top = clamp(top, 8, Math.max(8, vh - 8 - h));
-    setPos({ top, left, width, maxH: Math.max(140, vh - top - 8) });
+    setPos({ top: Math.max(edge, top), left, width, maxH: Math.max(140, room) });
   }, [closeMenu]);
 
   useLayoutEffect(() => {
@@ -2320,18 +2333,31 @@ function VideoSplitDownload({
     menuRef.current?.focus();
   }, [open]);
 
-  /* Click fuera: cierra. El boton se excluye porque su propio click ya
-     alterna, y cerrar en el pointerdown lo volveria a abrir al soltar. */
+  /* Tocar fuera cierra, pero ARRASTRAR no. Se escucha `click` y no
+     `pointerdown`: en el movil, poner el dedo fuera para desplazar la pagina
+     empezaba con un pointerdown y el menu se cerraba antes de que el usuario
+     llegara a mover nada. `click` solo existe si hubo un toque, no un arrastre.
+     El boton se excluye porque su propio click ya alterna. */
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => {
+    const onOutside = (e) => {
       if (menuRef.current?.contains(e.target)) return;
       if (btnRef.current?.contains(e.target)) return;
       closeMenu(false);
     };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    document.addEventListener("click", onOutside, true);
+    return () => document.removeEventListener("click", onOutside, true);
   }, [open, closeMenu]);
+
+  /* Con el menu abierto la pagina no se desplaza: el menu es fixed bajo el
+     boton, y si la pagina se mueve el menu se separa de su boton (o el boton
+     sale de pantalla y el menu se cierra solo, que era lo que pasaba al
+     arrastrar fuera). Lo que se desplaza es la lista del propio menu. */
+  useEffect(() => {
+    if (!open) return undefined;
+    document.documentElement.classList.add("rsvm-lock");
+    return () => document.documentElement.classList.remove("rsvm-lock");
+  }, [open]);
 
   const pick = (height) => {
     closeMenu(true);
@@ -2463,11 +2489,21 @@ function VideoSplitDownload({
                 <button
                   type="button"
                   role="menuitem"
-                  className="rsvm__item"
+                  className="rsvm__item rsvm__item--best"
                   onClick={() => pick(null)}
                 >
                   <span className="rsvm__h">Mejor disponible</span>
-                  <span className="rsvm__meta">la mejor que haya</span>
+                  <span className="rsvm__meta">
+                    {resolutions[0] ? (
+                      <span>
+                        {resolutions[0].label || `${resolutions[0].height}p`}
+                        {resolutions[0].fps ? ` · ${resolutions[0].fps} fps` : ""}
+                      </span>
+                    ) : null}
+                    {resolutions[0] ? (
+                      <span className="rsvm__size">{fmtApproxSize(resolutions[0].filesize)}</span>
+                    ) : null}
+                  </span>
                 </button>
                 {resolutions.length > 0 && <div className="rsvm__sep" role="separator" />}
                 <div className="rsvm__list" role="none">
@@ -2484,7 +2520,11 @@ function VideoSplitDownload({
                         {res.hdr && <span className="rsvm__hdr">HDR</span>}
                       </span>
                       <span className="rsvm__meta">
-                        {res.fps ? <span>{res.fps} fps</span> : null}
+                        {res.fps ? (
+                          <span className={cx("rsvm__fps", res.fps >= 50 && "rsvm__fps--hi")}>
+                            {res.fps} fps
+                          </span>
+                        ) : null}
                         <span className="rsvm__size">{fmtApproxSize(res.filesize)}</span>
                       </span>
                     </button>
