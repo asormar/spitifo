@@ -2320,18 +2320,31 @@ function VideoSplitDownload({
     menuRef.current?.focus();
   }, [open]);
 
-  /* Click fuera: cierra. El boton se excluye porque su propio click ya
-     alterna, y cerrar en el pointerdown lo volveria a abrir al soltar. */
+  /* Tocar fuera cierra, pero ARRASTRAR no. Se escucha `click` y no
+     `pointerdown`: en el movil, poner el dedo fuera para desplazar la pagina
+     empezaba con un pointerdown y el menu se cerraba antes de que el usuario
+     llegara a mover nada. `click` solo existe si hubo un toque, no un arrastre.
+     El boton se excluye porque su propio click ya alterna. */
   useEffect(() => {
     if (!open) return undefined;
-    const onDown = (e) => {
+    const onOutside = (e) => {
       if (menuRef.current?.contains(e.target)) return;
       if (btnRef.current?.contains(e.target)) return;
       closeMenu(false);
     };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    document.addEventListener("click", onOutside, true);
+    return () => document.removeEventListener("click", onOutside, true);
   }, [open, closeMenu]);
+
+  /* Con el menu abierto la pagina no se desplaza: el menu es fixed bajo el
+     boton, y si la pagina se mueve el menu se separa de su boton (o el boton
+     sale de pantalla y el menu se cierra solo, que era lo que pasaba al
+     arrastrar fuera). Lo que se desplaza es la lista del propio menu. */
+  useEffect(() => {
+    if (!open) return undefined;
+    document.documentElement.classList.add("rsvm-lock");
+    return () => document.documentElement.classList.remove("rsvm-lock");
+  }, [open]);
 
   const pick = (height) => {
     closeMenu(true);
