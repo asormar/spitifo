@@ -17,6 +17,29 @@ already signed with the app's own key (a different mechanism).
 requirements match how the project already works (public repo, tagged releases
 built in CI).
 
+## Outcome: declined (2026-10-19)
+
+The application was declined. SignPath Foundation looks for signs of public
+trust that the project, 18 days old with no stars, forks or outside mentions, did
+not have yet: community adoption, external articles or discussions, institutional
+backing and sustained activity. It is not a judgment on the code, and they invite
+a new application once the project is better known.
+
+**Current state: releases ship unsigned.** Nothing breaks, and the signing steps
+in `release.yml` stay off because `SIGNPATH_ORGANIZATION_ID` is not set. What is
+left to choose from, when it is worth the money or the wait:
+
+- **Reapply to the Foundation** after the project has some adoption.
+- **A paid SignPath plan**, which they offered in the reply (price not checked:
+  the pricing page was not reachable).
+- **Certum's open source certificate**, from about 49 EUR a year for the cloud
+  version. Its cloud signing asks for a one-time code from a phone app, which
+  makes unattended CI signing awkward, and whether it counts for Windows
+  Authenticode should be confirmed with Certum before paying.
+
+The steps below apply as they are if the Foundation, or a paid SignPath plan,
+is set up later.
+
 ## What SignPath asks for
 
 From [signpath.org/terms](https://signpath.org/terms):

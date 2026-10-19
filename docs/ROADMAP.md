@@ -285,12 +285,14 @@ installer downloads from YouTube, uploads to Drive and streams the result.
   plus AAC mp4 merge) worked with the trimmed ffmpeg on Windows; the Android
   binaries still have to be run on the Pixel. The installer and the APK download the
   published zips, pinned by SHA-256 in `scripts/ffmpeg/release.properties`.
-- **Code signing — chosen, waiting on the application.** SignPath Foundation is
-  the only free option that fits (see [code-signing.md](code-signing.md)):
-  Azure Artifact Signing does not take individuals in Spain, and a commercial
-  certificate costs money and needs a cloud signing service. The release workflow
-  already has the signing steps, gated on `SIGNPATH_ORGANIZATION_ID`. What is
-  left is the application, the SignPath setup and the README policy.
+- **Code signing — parked.** SignPath Foundation was the only free option that
+  fit (see [code-signing.md](code-signing.md)) and the project applied on
+  2026-10-19. It was declined on 2026-10-19: the program wants external signs of
+  adoption (stars, forks, contributors, articles, discussions) and the project
+  was 18 days old. Releases ship unsigned. The signing steps in the release
+  workflow stay in place, gated on `SIGNPATH_ORGANIZATION_ID`, so reapplying
+  later (or switching to a paid SignPath plan or a Certum certificate) only
+  needs the account, the secret and the variable.
 
 ### 12. Companion player app
 
@@ -327,7 +329,8 @@ because it decides how the library is stored, which session 3 needs.
   compiling and maintaining that build: the pinned versions in
   `scripts/ffmpeg/build.sh` need a bump when ffmpeg ships a security fix.
 - **Unsigned binaries.** SmartScreen warns on an unsigned installer until it
-  builds reputation.
+  builds reputation. SignPath Foundation declined the project for lack of
+  visibility; revisit once it has some adoption.
 
 ## Branching
 
