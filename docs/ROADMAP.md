@@ -268,7 +268,7 @@ installer downloads from YouTube, uploads to Drive and streams the result.
 - Smoke-test the published release on the PC and the Pixel, including Drive
   sign-in from the release-signed APK.
 
-### 11. Smaller and signed binaries — in progress
+### 11. Smaller and signed binaries — done, except code signing (parked)
 
 - **Audio-only ffmpeg — built and published as `ffmpeg-9.0.2-audio-1`.** `scripts/ffmpeg/build.sh`
   compiles ffmpeg 9.0.2 and LAME 3.100 with `--disable-everything` and an
@@ -282,8 +282,8 @@ installer downloads from YouTube, uploads to Drive and streams the result.
   `scripts/ffmpeg/release.properties` pins the published tag and hashes.
   Measured with the real builds: Windows installer 70.1 MB to 23.1 MB, release
   APK 56.9 MB to 29.5 MB. A full download through the app (mp3, and a VP9 1440p
-  plus AAC mp4 merge) worked with the trimmed ffmpeg on Windows; the Android
-  binaries still have to be run on the Pixel. The installer and the APK download the
+  plus AAC mp4 merge) worked with the trimmed ffmpeg on Windows and on the
+  Pixel. The installer and the APK download the
   published zips, pinned by SHA-256 in `scripts/ffmpeg/release.properties`.
 - **Code signing — parked.** SignPath Foundation was the only free option that
   fit (see [code-signing.md](code-signing.md)) and the project applied on
@@ -294,14 +294,152 @@ installer downloads from YouTube, uploads to Drive and streams the result.
   later (or switching to a paid SignPath plan or a Certum certificate) only
   needs the account, the secret and the variable.
 
-### 12. Companion player app
+### Three modes: Download, Listen and Discover
 
-- A separate app that plays the library from the user's storage.
-- Reuses the OAuth registration of the downloader (the `drive.file` scope grants
-  access per registered app), the `index.json` format
-  and the playback rules in ADR 0002: local first, prefetch the next track,
-  stream from the first bytes, range requests for seeking.
-- Goal: playback starts in under a second and never stalls.
+Decided on 2026-10-19: instead of a separate companion app, Spitifo becomes one
+app with three modes: **Download** (what exists today), **Listen** and
+**Discover**. One app keeps a single backend, a single OAuth registration and a
+single library. Listen comes first (sessions 12–20), then Discover (21–24).
+
+Each session is small enough for one conversation and ends merged into `main`
+with the app still working.
+
+The mode switcher was picked from ten interactive mockups: a bottom tab bar on
+phones and an icon rail on the PC, with swipeable pages as an option on phones.
+
+### Speed, motion and size are features
+
+Decided on 2026-10-19: navigation has to feel instant and animated, and the app
+must not grow without a reason as features land.
+
+- **Budgets** (session 12 measures the starting point and fixes the numbers):
+  time from launch to a usable screen, time to switch modes, time from a tap to
+  visible feedback, frame rate while scrolling the library and during
+  animations, JavaScript and CSS bundle size, installer size and APK size.
+  Starting targets to check against the measurements: a mode switch under
+  100 ms, feedback on a tap under 50 ms, 60 frames per second.
+- **Guard rails in CI:** the test workflow fails a pull request that pushes the
+  frontend bundle over its budget; the release workflow does the same for the
+  installer and the APK. Raising a budget is a deliberate, reviewed change.
+- **Motion rules:** animate only `transform` and `opacity`, keep interactions
+  interruptible, and honour `prefers-reduced-motion`.
+- **Recurring reviews:** after every few feature sessions comes a session that
+  only removes weight and slowness: sessions 20 and 24 so far, and one more
+  after every three or four feature sessions from then on.
+
+### 12. Speed and size baseline
+
+- Measure the budgets above on the PC and on the Pixel, with the release
+  builds, and write them down in `docs/performance.md` with how to repeat each
+  measurement.
+- Find where the start-up time goes: the backend's cold start (Chaquopy on
+  Android, PyInstaller on Windows), Python imports such as yt-dlp, and the
+  first `/api/library`.
+- Add the bundle size check to the test workflow and the installer and APK
+  checks to the release workflow.
+- Measures and adds checks only; the fixes go to the sessions below.
+
+### 13. Split the frontend into modules
+
+- `frontend/src/main.jsx` holds the whole UI in 4,376 lines. Split it into
+  `shared/`, `download/` and `player/` modules, and `style.css` alongside.
+- Each mode becomes its own lazily loaded chunk, so a mode's code is not parsed
+  before it is opened.
+- No visible change, and no budget from session 12 gets worse.
+
+### 14. A single playback engine
+
+- Today each library row owns its own `<audio>` and auto-advance looks for the
+  neighbouring row's element. Replace that with one engine that owns the only
+  `<audio>`, the current track and a queue.
+- Library rows and the mini-player become views of the engine; prefetch of the
+  next track moves into it.
+- Keeps the playback rules in ADR 0002: local first, prefetch the next track,
+  stream from the first bytes, range requests for seeking. Goal: playback
+  starts in under a second and never stalls.
+- Media Session API, so the phone's lock screen and the PC's media keys control
+  playback.
+
+### 15. App shell: mode switcher and Settings
+
+- Bottom tab bar on phones, icon rail on the PC; the rail leaves room for
+  playlists below the icons. The mini-player stays visible across modes.
+- Built for instant switching: a mode stays mounted once opened, so coming back
+  keeps its scroll position and data; the next likely mode is preloaded while
+  the app is idle.
+- A Settings screen that takes in the storage dialog and the YouTube cookies,
+  plus an Interface section whose first option switches phones from the tab
+  bar to swipeable pages. Swipes must start outside areas with their own
+  horizontal gestures, such as the genre map in Discover.
+- Listen and Discover start as empty screens.
+
+### 16. Motion system
+
+- Shared motion tokens (durations, easing curves, springs) in the stylesheet,
+  used by every animation from here on.
+- Transitions between modes, the tab bar and rail indicators, the mini-player
+  appearing and disappearing, press feedback on buttons, and list items
+  entering.
+- The View Transitions API where the WebView supports it, with a plain fade as
+  the fallback.
+- Checked on the Pixel at 60 frames per second and with reduced motion on.
+
+### 17. Listen: library and queue
+
+- Browse the library by song, artist and album, with search.
+- Long lists are virtualised, so a library of thousands of songs scrolls as
+  smoothly as one of ten.
+- Queue controls: play next, add to the queue, reorder by dragging, remove;
+  shuffle and repeat.
+
+### 18. Listen: now playing
+
+- A full-screen "now playing" view that grows out of the mini-player as one
+  continuous animation and shrinks back with a swipe down.
+- Artwork-tinted background, seek bar with drag, and the queue one swipe away.
+
+### 19. Listen: playlists
+
+- Create, rename, delete and reorder playlists, and add songs from anywhere.
+- Playlists live in the user's storage next to `index.json` (local or Drive),
+  with conditional writes like the index, so they sync between devices.
+- Optimistic updates: the UI changes at once and the write happens in the
+  background, undone with a notice if it fails.
+
+### 20. Speed and size review 1
+
+- Measure every budget again and fix whatever regressed since session 12.
+- Start-up: whatever session 12 found slowest, such as lazy Python imports or a
+  cached first library page shown while the real one loads.
+- Size: unused dependencies, fonts and icons; the Python packages that the
+  PyInstaller build and the APK carry but never import.
+
+### 21. Discover: research (no code)
+
+- Where genre tags and artist similarity come from, what each source costs and
+  whether it works offline.
+- What to record about listening (plays, skips, likes) and where it lives.
+- How much data the genre map needs on the device, against the size budgets.
+- Deliverable: an ADR with the data sources and the recommendation approach.
+
+### 22. Discover: the genre map
+
+- An interactive genre map in the spirit of
+  [Every Noise at Once](https://everynoise.com/engenremap.html), with more to
+  do on it than browsing: zoom, the user's own genres highlighted, play a
+  sample, jump to Download.
+- Drawn on a canvas so thousands of genres pan and zoom at 60 frames per
+  second.
+
+### 23. Discover: recommendations
+
+- Recommendations from what the user listens to and the artists, songs and
+  genres they like, built on session 21's ADR.
+
+### 24. Speed and size review 2
+
+- The same review as session 20, now covering Discover: the map's data and
+  rendering, and anything the recommendations added to start-up.
 
 ## Dependencies
 
@@ -309,7 +447,9 @@ installer downloads from YouTube, uploads to Drive and streams the result.
 1 Feasibility ──┬── 3 Embeddable backend ──┬── 4 Desktop
                 │                          └── 5 Android
 2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ──┬── 8 Others
-                                                                    └── 12 Companion app
+                                                                    └── 19 Playlists
+12 Baseline ── 13 Split frontend ── 14 Playback engine ── 15 App shell ── 16 Motion ──┬── 17 Library and queue ── 18 Now playing ── 19 Playlists ── 20 Review 1
+                                                                                      └── 21 Discover research ── 22 Genre map ── 23 Recommendations ── 24 Review 2
                                                              9 Release ── 10 Hardening ── 11 Smaller, signed binaries
 ```
 
@@ -341,7 +481,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8, 10–12 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10–24 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:
