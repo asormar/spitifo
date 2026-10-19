@@ -146,6 +146,11 @@ jobs:
           Remove-Item dist/*.exe
           Copy-Item $signed.FullName "dist/$($signed.Name)"
           (Get-AuthenticodeSignature "dist/$($signed.Name)").Status
+      # Fails when the installer is over its budget in scripts/perf/budgets.json
+      # (docs/performance.md).
+      - name: Check the installer size
+        shell: pwsh
+        run: node scripts/perf/check_size.mjs installer (Get-ChildItem dist/*.exe | Select-Object -First 1).FullName
       - uses: actions/upload-artifact@v4
         with:
           name: Spitifo-${{ needs.version.outputs.value }}-windows-x64-setup.exe
@@ -234,6 +239,10 @@ jobs:
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk \
             "dist/Spitifo-$VERSION-android-arm64.apk"
+      # Fails when the APK is over its budget in scripts/perf/budgets.json
+      # (docs/performance.md).
+      - name: Check the APK size
+        run: node scripts/perf/check_size.mjs apk "dist/Spitifo-$VERSION-android-arm64.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: Spitifo-${{ needs.version.outputs.value }}-android-arm64.apk

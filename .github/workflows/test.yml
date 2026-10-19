@@ -48,3 +48,7 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+      # Fails when the JS or CSS bundle is over its budget in
+      # scripts/perf/budgets.json (docs/performance.md).
+      - name: Check the bundle size
+        run: node scripts/perf/check_size.mjs bundle frontend/dist

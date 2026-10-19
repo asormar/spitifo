@@ -1,6 +1,7 @@
 package dev.spitifo
 
 import android.app.Application
+import android.webkit.WebView
 
 /**
  * The process is the backend's lifetime, so it starts here and nowhere else:
@@ -15,6 +16,8 @@ class SpitifoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Only in a build made for measuring (docs/performance.md).
+        if (BuildConfig.INSPECTABLE) WebView.setWebContentsDebuggingEnabled(true)
         backend.start()
     }
 }

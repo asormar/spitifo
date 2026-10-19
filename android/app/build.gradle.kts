@@ -290,7 +290,14 @@ android {
         versionCode = 100
         versionName = "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a") }
+        // `-Pspitifo.inspectable=true` lets chrome://inspect and
+        // scripts/perf/ui.mjs attach to the WebView of a release build, which is
+        // how docs/performance.md measures the UI on a phone. Never set by CI.
+        val inspectable = providers.gradleProperty("spitifo.inspectable").orNull == "true"
+        buildConfigField("boolean", "INSPECTABLE", inspectable.toString())
     }
+
+    buildFeatures { buildConfig = true }
 
     signingConfigs {
         create("release") {

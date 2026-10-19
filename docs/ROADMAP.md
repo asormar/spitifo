@@ -327,7 +327,28 @@ must not grow without a reason as features land.
   only removes weight and slowness: sessions 20 and 24 so far, and one more
   after every three or four feature sessions from then on.
 
-### 12. Speed and size baseline
+### 12. Speed and size baseline — done
+
+Measured on v0.3.0 and written down, with the budgets and how to repeat every
+measurement, in [performance.md](performance.md). The size checks run in CI.
+What it found, slowest first:
+
+- **The library list is the bottleneck.** `/api/library` reads every file's
+  duration on every call, with no cache: 4.2 s for 300 tracks on the Pixel
+  (through FUSE) and 0.75 s on the PC. With 300 tracks the drawer takes
+  260–400 ms to open and scrolls at 25–50 fps, because every row is rendered
+  at once and the drawer animates `grid-template-rows`.
+- **Python is not the problem.** The backend is ready 0.44 s after launch on
+  the Pixel; on the PC the frozen sidecar needs 1.0 s (yt-dlp is already
+  imported lazily). With Drive as the library, the network listing (~2.5 s)
+  dominates.
+- Taps and in-page mode switches already meet their budgets (13–19 ms).
+- Two bugs found on the way: upgrading the Windows app leaves the files of the
+  previous release behind (157 MB of old ffmpeg DLLs), and on Android the first
+  `/api/library` can answer 503 before the Drive token arrives and is never
+  retried.
+
+The plan as written:
 
 - Measure the budgets above on the PC and on the Pixel, with the release
   builds, and write them down in `docs/performance.md` with how to repeat each
@@ -410,7 +431,8 @@ must not grow without a reason as features land.
 
 - Measure every budget again and fix whatever regressed since session 12.
 - Start-up: whatever session 12 found slowest, such as lazy Python imports or a
-  cached first library page shown while the real one loads.
+  cached first library page shown while the real one loads. Session 12 found
+  it: the uncached library listing (see performance.md).
 - Size: unused dependencies, fonts and icons; the Python packages that the
   PyInstaller build and the APK carry but never import.
 
