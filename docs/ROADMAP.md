@@ -270,7 +270,7 @@ installer downloads from YouTube, uploads to Drive and streams the result.
 
 ### 11. Smaller and signed binaries — in progress
 
-- **Audio-only ffmpeg — built, wiring in review.** `scripts/ffmpeg/build.sh`
+- **Audio-only ffmpeg — built and published as `ffmpeg-9.0.2-audio-1`.** `scripts/ffmpeg/build.sh`
   compiles ffmpeg 9.0.2 and LAME 3.100 with `--disable-everything` and an
   allow-list of what Spitifo uses: audio conversion to mp3 and m4a, audio
   extraction, and stream-copy merging of video and audio. The binaries are
@@ -283,7 +283,8 @@ installer downloads from YouTube, uploads to Drive and streams the result.
   Measured with the real builds: Windows installer 70.1 MB to 23.1 MB, release
   APK 56.9 MB to 29.5 MB. A full download through the app (mp3, and a VP9 1440p
   plus AAC mp4 merge) worked with the trimmed ffmpeg on Windows; the Android
-  binaries still have to be run on the Pixel.
+  binaries still have to be run on the Pixel. The installer and the APK download the
+  published zips, pinned by SHA-256 in `scripts/ffmpeg/release.properties`.
 - **Code signing — chosen, waiting on the application.** SignPath Foundation is
   the only free option that fits (see [code-signing.md](code-signing.md)):
   Azure Artifact Signing does not take individuals in Spain, and a commercial
