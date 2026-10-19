@@ -113,6 +113,38 @@ jobs:
           $exe = Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe |
             Select-Object -First 1
           Copy-Item $exe.FullName "dist/Spitifo-$($env:VERSION)-windows-x64-setup.exe"
+      # Code signing through SignPath Foundation (docs/code-signing.md). Only runs
+      # once the project is set up there: until the variable exists the release
+      # simply ships unsigned. The signed installer replaces the unsigned one.
+      - name: Upload the unsigned installer
+        id: unsigned
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer
+          path: dist/*.exe
+          if-no-files-found: error
+      - name: Sign the installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: spitifo
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - name: Use the signed installer
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed/*.exe | Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no installer" }
+          Remove-Item dist/*.exe
+          Copy-Item $signed.FullName "dist/$($signed.Name)"
+          (Get-AuthenticodeSignature "dist/$($signed.Name)").Status
       - uses: actions/upload-artifact@v4
         with:
           name: Spitifo-${{ needs.version.outputs.value }}-windows-x64-setup.exe

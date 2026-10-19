@@ -1,0 +1,116 @@
+name: ffmpeg
+
+# Builds the trimmed audio-only ffmpeg/ffprobe (scripts/ffmpeg/build.sh) for
+# Windows and Android, smoke-tests them, and optionally publishes them as a
+# release that desktop/build.ps1 and android/app/build.gradle.kts download.
+#
+# Run it by hand. Leave `tag` empty to just build and test; give a tag such as
+# ffmpeg-9.0.2-audio-1 to publish. After publishing, copy the tag and the
+# SHA-256 of each asset (printed in the job summary) into
+# scripts/ffmpeg/release.properties.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (empty = build and test only)"
+        required: false
+        default: ""
+  pull_request:
+    paths:
+      - scripts/ffmpeg/**
+      - tests/data/ffmpeg/**
+      - .github/workflows/ffmpeg.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [win64, android-arm64, linux-x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm make mingw-w64 xz-utils
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/spitifo-ffmpeg/src
+          key: ffmpeg-sources-${{ hashFiles('scripts/ffmpeg/build.sh') }}
+      - name: Build
+        run: |
+          if [ "${{ matrix.target }}" = "android-arm64" ]; then
+            export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:?the runner image has no NDK}"
+          fi
+          bash scripts/ffmpeg/build.sh "${{ matrix.target }}"
+      - name: Smoke test (native Linux build runs the same component list)
+        if: matrix.target == 'linux-x64'
+        run: bash scripts/ffmpeg/smoke.sh out/linux-x64/ffmpeg out/linux-x64/ffprobe
+      - name: Check the Android binaries are arm64 executables
+        if: matrix.target == 'android-arm64'
+        run: |
+          sudo apt-get install -y --no-install-recommends file
+          for b in ffmpeg ffprobe; do
+            file "out/android-arm64/$b" | tee /dev/stderr | grep -q "ARM aarch64"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: out/${{ matrix.target }}/
+          if-no-files-found: error
+
+  smoke-windows:
+    name: smoke test on Windows
+    needs: build
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-win64
+          path: out/win64
+      - name: Run every operation Spitifo relies on
+        shell: bash
+        run: bash scripts/ffmpeg/smoke.sh out/win64/ffmpeg.exe out/win64/ffprobe.exe
+
+  publish:
+    name: publish ${{ inputs.tag }}
+    needs: [build, smoke-windows]
+    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-win64
+          path: win64
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-android-arm64
+          path: android-arm64
+      - name: Package and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir dist
+          (cd win64 && zip -qr ../dist/ffmpeg-audio-win64.zip .)
+          (cd android-arm64 && zip -qr ../dist/ffmpeg-audio-android-arm64.zip .)
+          (cd dist && sha256sum ./*.zip | sed 's# \./# #' | tee SHA256SUMS)
+          {
+            echo '### ffmpeg release assets'
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "Audio-only ffmpeg $TAG" \
+            --notes "Trimmed, statically linked ffmpeg and ffprobe built by scripts/ffmpeg/build.sh at ${GITHUB_SHA}. LGPL v2.1: BUILDINFO.txt in each zip lists the exact sources and configure line."
