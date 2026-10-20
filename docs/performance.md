@@ -121,8 +121,9 @@ the first time), 470 ms to settle, frames of up to 150 ms while it animates,
 and 43–50 fps on a 120 Hz screen. With 13 tracks the same drawer opens in
 20 ms on the PC and 49 ms on the Pixel and scrolls at full refresh rate (60 and
 119 fps), so the cost grows with the list.
-Likely causes, for session 13 (the split, with each mode lazily loaded) and
-session 20 (the first review) to confirm with a profile:
+Likely causes, for session 20 (the first review) to confirm with a profile
+(the split in session 13 moved this code without changing it, and the drawer
+measured the same before and after):
 
 - every track is rendered at once (no virtualisation), and each row is a full
   `Player` with its own `<audio>` element and state;
@@ -135,14 +136,38 @@ session 20 (the first review) to confirm with a profile:
 
 ### Frontend bundle
 
-`npm run build` in `frontend/` writes one script and one stylesheet (Vite, no
-code splitting yet):
+`npm run build` in `frontend/` wrote one script and one stylesheet at v0.3.0
+(Vite, no code splitting):
 
 | File | Raw | gzip -9 |
 | --- | --- | --- |
 | `index-*.js` (React, Phosphor icons, the whole UI in `main.jsx`) | 314,126 B | 88,464 B |
 | `index-*.css` | 52,787 B | 11,115 B |
 | Fonts (Figtree and Outfit, latin and latin-ext woff2) | 77,548 B | — |
+
+Since session 13 the UI is split into modules and the build writes one script
+per lazily loaded part. Only the entry is in `index.html`; the download view is
+requested while the first render runs, and the library and the settings dialog
+when the app is idle:
+
+| File | Raw | gzip -9 |
+| --- | --- | --- |
+| `index-*.js` (React, Phosphor icons, the shell, the player engine, mini-player and video host) | 214,071 B | 64,421 B |
+| `DownloadView-*.js` (search, result cards, downloads) | 65,345 B | 17,925 B |
+| `StorageDialog-*.js` (storage dialog, YouTube cookies) | 20,704 B | 5,918 B |
+| `Library-*.js` (library drawer) | 8,691 B | 2,766 B |
+| `Player-*.js` (shared by the results and the library) | 4,892 B | 1,995 B |
+| `GoogleDriveLogo.es-*.js` (an icon both lazy parts use) | 3,576 B | 1,327 B |
+| **All scripts** | **317,279 B** (+1.0%, chunk overhead) | 94,352 B |
+| `index-*.css` (unchanged: every stylesheet is imported by the entry, in the old order) | 52,787 B | 11,115 B |
+
+With the smaller first script, the PC starts faster: on the same installed
+app with 300 tracks, `/api/library` is requested at 188 ms instead of 276 ms,
+first contentful paint is at 444 ms instead of 468 ms and launch to usable
+takes 2.88 s instead of 2.99 s (medians of `ui.mjs` runs: three of the split
+build and two of `main`, leaving out its first run, which read the freshly
+seeded files while the antivirus scanned them; both builds were swapped into
+the same install). Taps, mode switches and the library drawer did not change.
 
 The limits count raw bytes: everything runs from disk, so what costs time is
 what the WebView parses, not what crosses a network.

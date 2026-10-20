@@ -360,7 +360,31 @@ The plan as written:
   checks to the release workflow.
 - Measures and adds checks only; the fixes go to the sessions below.
 
-### 13. Split the frontend into modules
+### 13. Split the frontend into modules — done
+
+`main.jsx` is now an entry of 21 lines, and the UI lives in `app/` (the shell:
+header, library drawer, settings dialog), `download/`, `player/`, `settings/`
+and `shared/`, each with the stylesheets it owns. What changed, measured with
+`ui.mjs` on the PC against `main` in the same installed app (medians, 300
+tracks):
+
+- **Start-up got faster.** The first script went from 307 KiB to 209 KiB, so
+  `/api/library` is requested 87 ms earlier (276 → 188 ms), the first paint
+  comes at 444 ms instead of 468 ms and launch to usable is 2.88 s instead of
+  2.99 s.
+- **The download view, the library and the settings dialog are separate
+  chunks.** The download view loads in parallel with the first render; the
+  library and settings load when the app is idle, so opening them stays a
+  synchronous update in the click, as before.
+- **No visible change.** The computed style and position of every element
+  match the old build in four states (start, results, library open, settings
+  open) on a phone and a desktop viewport, and the stylesheets concatenated in
+  import order are byte for byte the old `style.css`.
+- Taps, mode switches, the library drawer and its scroll are unchanged (within
+  run-to-run noise). All JavaScript together grew 1.0% (chunk overhead), well
+  under its budget.
+
+The plan as written:
 
 - `frontend/src/main.jsx` holds the whole UI in 4,376 lines. Split it into
   `shared/`, `download/` and `player/` modules, and `style.css` alongside.

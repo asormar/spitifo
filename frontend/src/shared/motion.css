@@ -1,0 +1,506 @@
+/* ---------------------------------------------------------------------------
+   12. HOVER, TACTIL, RESPONSIVE
+   El hover va detras de (hover: hover) and (pointer: fine): en pantallas
+   tactiles no existe y serian estados falsos. Cambian de color al instante.
+   ------------------------------------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .libbtn:hover {
+    background: var(--ink-hover);
+  }
+
+  .themesw:hover {
+    filter: brightness(1.06);
+  }
+
+  .libbtn.is-on:hover {
+    background: var(--surface-hover);
+  }
+
+  .libbtn.is-empty:hover {
+    background: var(--track-hover);
+  }
+
+  .search__go:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+
+  .seg:not(.is-on):hover {
+    background: var(--seg-hover);
+    color: var(--ink);
+  }
+
+  .dl:not(:disabled):not(.dl--off):hover {
+    background: var(--ink-hover);
+  }
+
+  .vf:not(:disabled):not(.vf--static):hover,
+  .disclosure:hover {
+    background: var(--track-hover);
+  }
+
+  .example:hover {
+    background: var(--track);
+  }
+
+  .ext:hover {
+    color: var(--accent-fg);
+    text-decoration-color: var(--accent-fg);
+  }
+
+  .pl:not(.is-active):hover {
+    background: var(--row-hover);
+  }
+
+  .pl:hover .scrub__knob {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .scrub:hover .scrub__rail {
+    transform: scaleY(1.5);
+  }
+
+  :is(.pl, .pv):not(.is-playing) .pbtn:not(:disabled):hover {
+    border-color: var(--accent-fill);
+    color: var(--accent-fg);
+  }
+
+  :is(.pl, .pv).is-playing .pbtn:hover {
+    background: var(--accent-hover);
+  }
+
+  .pl__mute:hover {
+    color: var(--ink);
+  }
+
+  /* Tarjeta: se eleva un poco. Las anchas (conciertos) no: llevan botones
+     dentro y moverse bajo el puntero cansa. */
+  .card:not(.card--wide):not(.skel):hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 40px rgba(var(--shadow-rgb), 0.16);
+  }
+
+  .example:not(:active):hover {
+    transform: translateY(-2px);
+  }
+
+  .example:hover svg {
+    animation: wiggle 520ms var(--ease);
+  }
+}
+
+/* Dedo: los botones secundarios tambien llegan a 44px. */
+@media (pointer: coarse) {
+  .seg,
+  .disclosure,
+  .vf {
+    min-height: 44px;
+  }
+
+  .scrub {
+    height: 32px;
+  }
+
+  .pv .pbtn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Enlaces externos: mas area de toque sin mover el diseno (el margen
+     negativo compensa el padding). */
+  .ext {
+    padding: 10px 6px;
+    margin: -10px -6px;
+  }
+
+  .dl--sm {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Pantallas muy estrechas: el boton de biblioteca queda en icono + contador
+   (lleva aria-label) para que la barra no se desborde a 360 px. */
+@media (max-width: 420px) {
+  .libbtn__lbl {
+    display: none;
+  }
+
+  .libbtn {
+    gap: 6px;
+    padding: 0 12px;
+  }
+
+  .top {
+    padding-left: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .top {
+    padding-left: 18px;
+  }
+
+  /* En movil no hay "derecha libre": el toast vuelve a ocupar el ancho, pero
+     centrado y por ENCIMA de una banda de contenido, que es lo unico que
+     funciona sin tapar la fila que se esta leyendo. */
+  .progstack {
+    left: 0;
+    right: 0;
+    width: min(560px, calc(100% - 32px));
+    margin: 0 auto;
+  }
+
+  /* En movil el toast suelto nunca deberia verse: el stack es quien posiciona.
+     Si se deja, apareceria dos veces (una fija, una en el stack). */
+  .progstack > .prog {
+    position: static;
+  }
+
+  .finder {
+    margin-top: 24px;
+    padding: 10px;
+    border-radius: var(--r-card);
+  }
+
+  .search {
+    height: 60px;
+    gap: 8px;
+    padding-left: 16px;
+  }
+
+  .search__go {
+    height: 48px;
+    padding: 0 20px;
+  }
+
+  .controls {
+    padding: 0;
+  }
+
+  .controls > .segs,
+  .fmts {
+    width: 100%;
+  }
+
+  .controls > .segs .seg {
+    flex: 1;
+    padding: 8px 8px;
+  }
+
+  .fmts .segs {
+    flex: 1;
+  }
+
+  .fmts .seg {
+    flex: 1;
+    padding: 0 8px;
+  }
+
+  .results__head {
+    padding-top: 32px;
+  }
+
+  .results__head .segs {
+    width: 100%;
+  }
+
+  .results__head .seg {
+    flex: 1;
+    padding: 8px 10px;
+  }
+
+  .card--wide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .card--wide .card__art {
+    width: min(100%, 260px);
+  }
+
+  /* El volumen no tiene sentido en movil: el sistema manda. */
+  .pl__vol {
+    display: none;
+  }
+
+  .panel__path {
+    display: none;
+  }
+
+  .intro {
+    padding: 28px 18px 24px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   13. MOVIMIENTO
+   Solo transiciones de estado: entrada de tarjetas y avisos, progreso, cambio
+   de chip. Sin animacion por scroll ni parallax. Solo transform y opacity.
+   ------------------------------------------------------------------------- */
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(56px, 40px, 0) scale(1.12);
+  }
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes rise-soft {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Como pop-spring pero desde mas cerca: el contador se vuelve a montar con
+   cada descarga y arrancar casi invisible parpadeaba. */
+@keyframes bump-spring {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pop-spring {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes msg-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.25);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* La lupa recorre un circulo pequeno, como quien barre la zona con el cristal.
+   El circulo pasa POR el punto de reposo (gira alrededor de un centro a 4 px),
+   asi que empieza y acaba donde esta el icono: sin salto al arrancar y, como el
+   JSX deja terminar la vuelta antes de quitar la clase, sin corte al parar.
+   El ultimo rotate contrarresta el giro para que la lupa no rote sobre si. */
+@keyframes scan {
+  from {
+    transform: translate(4px, 0) rotate(0deg) translate(-4px, 0) rotate(0deg);
+  }
+  to {
+    transform: translate(4px, 0) rotate(360deg) translate(-4px, 0) rotate(-360deg);
+  }
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-14deg);
+  }
+  65% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1.15s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .spin,
+  .skel--pulse,
+  .blob,
+  .eq i,
+  .pbtn::after,
+  .prog__fill::after,
+  .search.is-scanning .search__icon {
+    animation: none !important;
+  }
+
+  /* Avisos de exito/fallo: su unica animacion de salida llevaba un delay de
+     5 s que aqui se colapsaba a 0 y los ocultaba al instante. React los
+     desmonta igualmente. */
+  .msg--ok,
+  .prog.is-done,
+  .prog.is-failed {
+    animation: none !important;
+  }
+
+  .eq i {
+    transform: scaleY(0.6);
+  }
+
+  /* Cajon y mini-reproductor: solo fundido, sin desplazamiento. */
+  .mini,
+  .panel {
+    transform: none !important;
+  }
+}
+
+/* Solo para lectores de pantalla. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+

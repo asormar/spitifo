@@ -1,0 +1,365 @@
+/* ---------------------------------------------------------------------------
+   DONDE VIVE LA BIBLIOTECA (modal "Conectar servicio")
+   <dialog> nativo con la misma tarjeta de cristal que el resto. Dos opciones
+   grandes; la elegida lleva el borde coral. La barra de espacio es la de
+   Drive: Spitifo en coral, el resto de la cuenta en coral claro, lo libre es
+   la pista.
+   ------------------------------------------------------------------------- */
+.panel__store {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
+}
+
+.panel__store:hover {
+  background: var(--surface-hover);
+}
+
+.panel__store:active {
+  transform: scale(0.97);
+}
+
+.panel__store svg {
+  flex: none;
+  color: var(--accent-fg);
+}
+
+.panel__store .panel__path {
+  color: inherit;
+}
+
+.store {
+  width: min(520px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  overflow: visible;
+}
+
+.store::backdrop {
+  background: rgba(20, 32, 43, 0.38);
+}
+
+.store__card {
+  padding: 22px;
+  border-radius: var(--r-card);
+  background: var(--surface);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-panel);
+}
+
+.store__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.store__title {
+  margin: 0;
+  font: 600 20px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.store__x {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.store__x:active {
+  transform: scale(0.94);
+}
+
+.store__opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.store__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), border-color var(--t-press) var(--ease),
+    background-color var(--t-press) var(--ease);
+}
+
+.store__opt:hover {
+  background: var(--surface-hover);
+}
+
+.store__opt:active {
+  transform: scale(0.98);
+}
+
+/* La elegida: 2px coral. El padding baja 1px para que nada salte. */
+.store__opt[aria-checked="true"] {
+  padding: 13px;
+  border: 2px solid var(--accent);
+}
+
+.store__opt[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.store__opt:disabled {
+  cursor: progress;
+}
+
+.store__icon {
+  margin-bottom: 6px;
+  color: var(--icon-dim);
+}
+
+.store__opt[aria-checked="true"] .store__icon {
+  color: var(--accent-fg);
+}
+
+.store__name {
+  font-weight: 600;
+}
+
+.store__sub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.store__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.store__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok-fg);
+}
+
+.quota {
+  margin-top: 16px;
+}
+
+.quota__bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--track);
+}
+
+.quota__app {
+  background: var(--accent);
+}
+
+.quota__other {
+  background: var(--accent-fill);
+  opacity: 0.55;
+}
+
+.quota__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quota__key {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.quota__key--app {
+  background: var(--accent);
+}
+
+.quota__key--other {
+  background: var(--accent-fill);
+  opacity: 0.55;
+}
+
+/* ---------------------------------------------------------------------------
+   Cookies de YouTube: ultimo recurso del bloque de configuracion. Separado del
+   resto por una linea porque ya no es "donde vive la musica", es una salida
+   manual para el muro de verificacion.
+   ------------------------------------------------------------------------- */
+.store__cookies {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.store__cookies-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.store__cookies-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font: 600 14px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.store__cookies-title svg {
+  color: var(--icon-dim);
+}
+
+.store__cookies-state {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.store__cookies-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.store__cookies-actions .vf {
+  margin-top: 0;
+}
+
+.store__file {
+  display: none;
+}
+
+.store__cookies code {
+  font-size: 0.92em;
+  color: var(--ink);
+}
+
+.store__note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.store__note a {
+  color: var(--accent-fg);
+}
+
+.store__err {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  font-size: 13px;
+}
+
+.store__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.store__link {
+  margin-right: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-decoration-color: var(--link-line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.store__note .store__link {
+  margin-left: 10px;
+}
+
+.store__done {
+  min-height: 40px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
+}
+
+.store__done:hover {
+  background: var(--accent-hover);
+}
+
+.store__done:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .store[open] .store__card {
+    animation: enter-up var(--t-enter) var(--ease);
+  }
+}
+
+@media (max-width: 480px) {
+  .store__opts {
+    grid-template-columns: 1fr;
+  }
+
+  .store__opt {
+    min-height: 0;
+  }
+}
+

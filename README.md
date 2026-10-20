@@ -380,8 +380,12 @@ backend/app/
   models.py        Track type and filename sanitisation
   config.py        Shared constants
 frontend/src/
-  main.jsx         The whole interface: search, cards, player, theme, downloads
-  style.css        Design tokens, both themes, layout and motion
+  main.jsx         Entry: fonts, stylesheets in cascade order, mounts the app
+  app/             Shell: header, theme switch, library drawer, settings dialog
+  download/        Search, result cards, pickers, downloads (loaded lazily)
+  player/          Playback engine, players, mini-player, video host, library
+  settings/        Storage dialog and YouTube cookies (loaded on first use)
+  shared/          API helpers, formatting, theme, design tokens and motion
 docs/              Roadmap, ADRs, the release guide (docs/release.md) and the screenshots used in this README
 tests/             179 tests, offline by default
 ```

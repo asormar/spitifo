@@ -1,0 +1,218 @@
+/* ---------------------------------------------------------------------------
+   6. AVISOS: error, descarga terminada, combinacion que degrada el resultado
+   Cada tono trae su par fondo/texto; el aviso mezcla el fondo con blanco.
+   ------------------------------------------------------------------------- */
+
+.st--ok,
+.msg--ok {
+  --tone-bg: var(--ok-bg);
+  --tone-fg: var(--ok-fg);
+}
+
+.st--warn,
+.msg--warn {
+  --tone-bg: var(--warn-bg);
+  --tone-fg: var(--warn-fg);
+}
+
+.st--bad,
+.msg--err {
+  --tone-bg: var(--bad-bg);
+  --tone-fg: var(--bad-fg);
+}
+
+.st--mute {
+  --tone-bg: var(--track);
+  --tone-fg: var(--muted);
+}
+
+.msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 860px;
+  margin: 20px auto 0;
+  padding: 14px 18px;
+  border-radius: var(--r-field);
+  background: color-mix(in srgb, var(--tone-bg) 60%, var(--surface));
+  border: 1px solid var(--tone-bg);
+  color: var(--tone-fg);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
+  scroll-margin-block: 84px 120px;
+  animation: reveal var(--t-enter) var(--ease) both;
+}
+
+/* El aviso de exito se retira solo a los 5 s (JOB_DISMISS_MS, que llega como
+   --dismiss): antes desaparecia de golpe. La salida arranca 240 ms antes de
+   que React lo desmonte. Error y "esto no es lo que buscabas" NO se retiran. */
+.msg--ok {
+  animation: reveal var(--t-enter) var(--ease) both,
+    msg-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+}
+
+.msg svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.msg--ok svg {
+  animation: pop-spring 420ms var(--ease-spring) 120ms both;
+}
+
+.msg__sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+   7. PROGRESO DE DESCARGA
+   Toast fijo abajo al centro. Sin transform para centrarlo (left/right/auto),
+   asi la animacion de entrada puede usar transform. El relleno se mueve con
+   scaleX, nunca con width.
+   ------------------------------------------------------------------------- */
+
+/* El toast NO va fijo al centro: con position:fixed se superponia a los
+   resultados a mitad de scroll, y el padding-bottom de .app solo protege el
+   final de la pagina. Va abajo a la DERECHA, donde la lista tiene menos
+   texto, y con un ancho mas angosto. Sigue siendo fixed (tiene que verse
+   mientras scrollea) pero ya no se sienta encima de lo que estas leyendo. */
+/* Varias descargas a la vez: una columna de toasts apilados hacia arriba desde
+   abajo a la derecha. Con una sola, .progstack no tiene fondo ni padding y el
+   toast se posiciona exactamente como antes (esto no cambia el caso comum). */
+.progstack {
+  position: fixed;
+  z-index: 50;
+  right: 16px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: min(380px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  transition: transform 220ms var(--ease);
+}
+
+/* El mini-reproductor ocupa el centro inferior y los toasts van abajo a la
+   derecha: en pantallas anchas se pisan. Se suben por encima. Transform y no
+   `bottom`, para no animar layout. */
+body.has-mini .progstack {
+  transform: translateY(calc(-1 * (var(--mini-h) + 10px)));
+}
+
+.progstack .prog {
+  position: static;
+  width: 100%;
+  margin: 0;
+  pointer-events: auto;
+}
+
+.prog {
+  position: fixed;
+  z-index: 50;
+  right: 16px;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: min(380px, calc(100% - 32px));
+  /* sin margin:auto: centraria el toast y anularia el right de arriba */
+  padding: 16px 20px;
+  border-radius: var(--r-card);
+  background: var(--toast-bg);
+  border: 1px solid var(--toast-edge);
+  color: #fff;
+  box-shadow: 0 20px 50px rgba(20, 32, 43, 0.35);
+  animation: toast-in var(--t-enter) var(--ease) both;
+}
+
+.prog__top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 15px;
+}
+
+/* Toast terminado: sale por donde entro, en los ultimos 240 ms de su vida. */
+.prog.is-done,
+.prog.is-failed {
+  animation: toast-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+}
+
+.prog__ico {
+  display: inline-flex;
+  flex: none;
+  color: var(--accent-fill);
+}
+
+/* El giro del spinner se queda en .spin; el icono final (check o aviso) entra
+   con rebote, que es el unico momento de celebracion de la app. */
+.prog.is-done .prog__ico svg,
+.prog.is-failed .prog__ico svg {
+  animation: pop-spring 420ms var(--ease-spring) both;
+}
+
+.prog.is-done .prog__ico {
+  color: #7fdda8;
+}
+
+.prog.is-failed .prog__ico {
+  color: #ff9c8f;
+}
+
+.prog__title {
+  flex: 1 1 8ch;
+  min-width: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prog__state {
+  flex: 0 1 auto;
+  color: #c8d6e0;
+  font-variant-numeric: tabular-nums;
+}
+
+.prog__bar {
+  height: 6px;
+  margin-top: 10px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.prog__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--accent-fill);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 260ms var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Brillo que recorre el relleno mientras la descarga sigue en curso: dice que
+   el proceso esta vivo aunque el porcentaje no se mueva (la conversion final
+   puede tardar minutos en el 99%). */
+.prog:not(.is-done):not(.is-failed) .prog__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: sheen 1.4s ease-in-out infinite;
+}
+
+.prog.is-done .prog__fill {
+  background: #7fdda8;
+}
+
+.prog.is-failed .prog__fill {
+  background: #ff9c8f;
+}
+

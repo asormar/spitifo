@@ -1,0 +1,491 @@
+/* --- Verificacion (Internet Archive) -------------------------------------- */
+
+.vf {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 36px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.vf:active {
+  transform: scale(0.97);
+}
+
+.vf:disabled {
+  cursor: progress;
+}
+
+.vf--static {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  cursor: default;
+}
+
+.vf--static:active {
+  transform: none;
+}
+
+/* Error con salida: mismo tono que .vf--static pero pulsable. */
+.vf--retry {
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+/* Resultado de la verificacion. Antes era un bloque verde macizo (y otro
+   encima repitiendo el titulo): rompia el cristal de la tarjeta y gritaba mas
+   que la portada. Ahora es una superficie neutra como el reproductor; el tono
+   lo lleva SOLO la etiqueta, que ya trae icono y texto. */
+.vfbox {
+  margin-top: 12px;
+  padding: 12px 14px 12px;
+  border-radius: var(--r-inner);
+  background: color-mix(in srgb, var(--track) 55%, transparent);
+  border: 1px solid var(--line);
+  animation: reveal var(--t-enter) var(--ease) both;
+}
+
+.vfbox__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.vfbox__score {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clave a la izquierda, valor a la derecha: se escanea como una ficha. */
+.vfbox__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.vfbox__facts:empty {
+  display: none;
+}
+
+.vfbox__facts dt {
+  color: var(--faint);
+}
+
+.vfbox__facts dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.vfbox__facts code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.vfbox__strong {
+  font-weight: 700;
+}
+
+.vfbox__note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.vfbox__link {
+  display: inline-flex;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------------------
+   10. CONCIERTOS: tarjeta ancha + setlist
+   Ocupa todas las columnas. Portada a la izquierda (230px), datos a la
+   derecha; en movil se apila.
+   ------------------------------------------------------------------------- */
+
+.card--wide {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  padding: 18px;
+}
+
+.card--wide .card__body {
+  padding: 0;
+  container: wide / inline-size;
+}
+
+.card--wide .card__title {
+  margin: 0;
+}
+
+.card__title--lg {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.card--wide .card__facts {
+  margin-top: 10px;
+}
+
+.wide__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wide__titles {
+  min-width: 0;
+}
+
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 7px;
+  min-height: 40px;
+  margin-top: 14px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.disclosure:active {
+  transform: scale(0.97);
+}
+
+.disclosure__caret {
+  transition: transform 260ms var(--ease);
+}
+
+.disclosure[aria-expanded="true"] .disclosure__caret {
+  transform: rotate(90deg);
+}
+
+/* Acordeon: la altura se anima con grid-template-rows 0fr -> 1fr (no hace falta
+   medir nada) y el contenido entra con un fundido. Cerrado es `inert`, asi que
+   no recibe foco ni lo lee un lector de pantalla. */
+.fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 320ms var(--ease), opacity 220ms var(--ease);
+}
+
+.fold[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* overflow:hidden es lo que permite colapsar a 0fr, pero recorta el aro de
+   foco de los botones pegados al borde (la descarga de cada pista). El padding
+   deja sitio al aro dentro del recorte y el margen negativo lo compensa para
+   que el contenido no se mueva. */
+.fold__in {
+  min-height: 0;
+  margin: -4px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.setlist {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Las pistas entran una tras otra cada vez que se abre. */
+.fold[data-open] .tr {
+  animation: rise-soft 300ms var(--ease) backwards;
+  animation-delay: min(260ms, calc(var(--i, 0) * 30ms));
+}
+
+/* Fila de pista: numero, titulo, veredicto + duracion, descarga. */
+.tr {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 190px 40px;
+  grid-template-areas: "n main info btn";
+  gap: 14px;
+  align-items: center;
+  min-height: 54px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: 15.5px;
+}
+
+.tr:first-child {
+  border-top: 0;
+}
+
+.tr--dim {
+  display: block;
+  padding: 14px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tr__n {
+  grid-area: n;
+  color: var(--faint);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tr__main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.tr__title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.tr__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 10px;
+  margin-top: 1px;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tr__info {
+  grid-area: info;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 14px;
+}
+
+.tr .dl {
+  grid-area: btn;
+  justify-self: end;
+}
+
+/* Fila estrecha (segun el ancho del propio bloque, no de la ventana): el
+   veredicto y la duracion bajan debajo del titulo. */
+@container wide (max-width: 520px) {
+  .tr {
+    grid-template-columns: 26px minmax(0, 1fr) 44px;
+    grid-template-areas:
+      "n main btn"
+      ". info btn";
+    gap: 4px 12px;
+    padding: 10px 0;
+  }
+
+  .tr__info {
+    justify-content: flex-start;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   11. PANTALLA VACIA, SIN RESULTADOS Y SKELETONS
+   ------------------------------------------------------------------------- */
+
+.intro {
+  max-width: 760px;
+  margin: 40px auto 0;
+  padding: 36px 32px 30px;
+  border-radius: var(--r-panel);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  animation: enter-up 400ms var(--ease) 240ms backwards;
+}
+
+.intro__mark {
+  margin-bottom: 14px;
+  color: var(--accent-fg);
+  animation: pop-spring 400ms var(--ease-spring) 480ms backwards;
+}
+
+.intro__h {
+  margin: 0 0 10px;
+  font: 700 clamp(24px, 4.2vw, 30px) / 1.15 var(--font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.intro__p {
+  max-width: 56ch;
+  margin: 0 auto;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.intro__lbl {
+  margin: 26px 0 12px;
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.examples li {
+  animation: enter-up 460ms var(--ease) backwards;
+  animation-delay: calc(420ms + var(--i, 0) * 70ms);
+}
+
+.example {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+}
+
+.example:active {
+  transform: scale(0.97);
+}
+
+.intro__fine {
+  max-width: 60ch;
+  margin: 26px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.none {
+  max-width: 620px;
+  margin: 32px auto 0;
+  padding: 30px 28px;
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  animation: reveal var(--t-enter) var(--ease) both;
+}
+
+.none__h {
+  margin: 0 0 8px;
+  font: 600 20px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.none__p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Esqueleto con la forma real de una tarjeta, nunca un spinner generico. La
+   rejilla de carga no lleva cabecera encima, asi que pone su propio aire. */
+.rows[aria-busy="true"]:not(.is-stale) {
+  margin-top: 44px;
+}
+
+.skel {
+  pointer-events: none;
+}
+
+.skel--pulse {
+  animation: rise var(--t-enter) var(--ease) both, breathe 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 55ms), 0ms;
+}
+
+.skel__art {
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-cover);
+  background: var(--track);
+}
+
+.skel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 0 4px;
+}
+
+.skel__t,
+.skel__m {
+  border-radius: 9px;
+  background: var(--track);
+}
+
+.skel__t {
+  width: 72%;
+  height: 18px;
+  margin-top: 18px;
+}
+
+.skel__m {
+  width: 48%;
+  height: 12px;
+  margin-top: 12px;
+}
+
+.skel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 26px;
+}
+
+.skel__chip {
+  width: 84px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+}
+
+.skel__btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--track);
+}
+

@@ -310,9 +310,10 @@ class MainActivity : Activity() {
         /** YouTube shares "Title https://youtu.be/xyz": the URL is the search. */
         val URL_PATTERN = Regex("""https?://\S+""")
 
-        // Same host rule as YT_URL in frontend/src/main.jsx: a YouTube link is
-        // only searchable as YouTube (iTunes cannot search a URL), and the boot
-        // path in main.jsx does not switch modes on its own.
+        // Same host rule as YT_URL in frontend/src/download/constants.js: a
+        // YouTube link is only searchable as YouTube (iTunes cannot search a
+        // URL), and the boot path in download/DownloadView.jsx does not switch
+        // modes on its own.
         val YOUTUBE_PATTERN = Regex(
             """^https?://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)/\S+$""",
             RegexOption.IGNORE_CASE,
