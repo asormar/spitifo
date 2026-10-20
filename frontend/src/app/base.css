@@ -1,0 +1,107 @@
+/* ---------------------------------------------------------------------------
+   2. BASE
+   El degradado mide 880px y el resto de la pagina es el color final: el fondo
+   no se estira con el contenido. Las dos manchas decorativas son fijas, van
+   detras de todo y no reciben eventos.
+   ------------------------------------------------------------------------- */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: clip;
+}
+
+html {
+  background-color: var(--bg);
+  background-image: linear-gradient(180deg, var(--page-top) 0, var(--page-mid) 420px, var(--bg) 880px);
+  background-repeat: no-repeat;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+::selection {
+  background: rgba(211, 64, 43, 0.22);
+  color: var(--ink);
+}
+
+/* Foco a dos tonos: aro de tinta + separador blanco. Se lee igual sobre el
+   degradado claro, sobre la pista del segmentado y pegado a un boton oscuro
+   o coral. Sin animacion. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ring-gap);
+}
+
+.blob {
+  position: fixed;
+  z-index: -1;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.blob--coral {
+  left: -120px;
+  top: 120px;
+  width: clamp(240px, 33vw, 420px);
+  /* Mancha suave con degradado radial en vez de filter:blur(60px): un blur
+     enorme bajo elementos con backdrop-filter se repinta caro. */
+  background: radial-gradient(closest-side, var(--blob-coral) 35%, transparent 100%);
+  opacity: var(--blob-coral-o);
+}
+
+.blob--sky {
+  right: -100px;
+  top: 340px;
+  width: clamp(260px, 36vw, 460px);
+  background: radial-gradient(closest-side, var(--blob-sky) 35%, transparent 100%);
+  opacity: var(--blob-sky-o);
+}
+
+/* Deriva ambiental: transform puro. Solo si el usuario no pidio menos
+   movimiento. */
+@media (prefers-reduced-motion: no-preference) {
+  .blob {
+    will-change: transform;
+    animation: drift 30s ease-in-out infinite alternate;
+  }
+
+  .blob--sky {
+    animation-duration: 38s;
+    animation-direction: alternate-reverse;
+  }
+}
+
+.app {
+  max-width: 1280px;
+  margin: 0 auto;
+  /* Abajo cabe el toast de progreso (fijo, ~100px) sin tapar la ultima fila. */
+  padding: 24px var(--gutter) 128px;
+}
+
+/* Con el mini-reproductor visible, el final de la lista no puede quedar debajo. */
+body.has-mini .app {
+  padding-bottom: calc(128px + var(--mini-h));
+}
+

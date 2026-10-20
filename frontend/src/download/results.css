@@ -1,0 +1,277 @@
+/* ---------------------------------------------------------------------------
+   9. RESULTADOS: cabecera + rejilla de tarjetas
+   ------------------------------------------------------------------------- */
+
+.results__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 20px;
+  padding: 44px 0 20px;
+}
+
+.results__count {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.results__count b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Nueva busqueda en curso con resultados viejos a la vista: se atenuan (y la
+   cabecera con ellos, que sigue diciendo la consulta anterior) en vez de
+   dejar los esqueletos debajo. */
+.results__head.is-stale,
+.rows.is-stale {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 160ms var(--ease);
+}
+
+/* auto-fill: 4 columnas en escritorio ancho y baja sola a 3 / 2 / 1. */
+.rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 12px 16px;
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  /* `backwards` y no `both`: con `both` el ultimo keyframe (transform: none)
+     se queda aplicado para siempre y le gana al transform del hover. */
+  animation: rise var(--t-enter) var(--ease) backwards;
+  animation-delay: min(400ms, calc(var(--i, 0) * 22ms));
+  transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
+}
+
+.card__art {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-cover);
+  object-fit: cover;
+  background: var(--track);
+}
+
+.card__art--video {
+  aspect-ratio: 16 / 9;
+}
+
+/* Sin portada: baldosa suave con la nota centrada. */
+.card__art--ph {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(200deg, var(--line-strong), var(--track));
+  color: var(--faint);
+}
+
+.card__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.card__title {
+  margin: 14px 0 0;
+  font: 600 18px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.card__sub {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* Procedencia y datos. "ficha" y "archivo" son dos hechos distintos (en modo
+   Música la ficha es de iTunes y el audio de YouTube): van en un renglon
+   propio, separados de la duracion y el peso. */
+.card__prov,
+.card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.card__prov {
+  margin-top: 8px;
+}
+
+.card__prov:empty,
+.card__facts:empty {
+  display: none;
+}
+
+.src {
+  font-weight: 500;
+}
+
+.meta {
+  font-variant-numeric: tabular-nums;
+}
+
+.meta--mute {
+  color: var(--faint);
+}
+
+.sep {
+  flex: none;
+  width: 1px;
+  height: 11px;
+  background: var(--line-strong);
+}
+
+.ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--link-line);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+/* Fila inferior: el estado a la izquierda, la accion a la derecha. */
+/* Destinos de foco programatico (tras pulsar un ejemplo): no son interactivos,
+   asi que no necesitan aro. */
+.results__head:focus,
+.none:focus,
+.msg:focus {
+  outline: none;
+}
+
+.card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+/* --- Chip de estado ------------------------------------------------------ */
+
+/* Etiqueta de estado, diseno "contorno": sin relleno, borde de 1.5 px del
+   tono, icono delante (lo pone StatusChip) y texto del mismo tono. La mas ligera
+   de las opciones: sobre una tarjeta de cristal no compite con la portada ni
+   con el boton de descarga. */
+.st {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 8px;
+  border: 1.5px solid var(--tone-fg);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--tone-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  animation: pop 200ms var(--ease) both;
+}
+
+.st svg {
+  flex: none;
+}
+
+/* Las etiquetas del backend ("coincide", "no coincide") llegan en minuscula.
+   ::first-letter no aplica a un contenedor flex, por eso va en el texto. */
+.st__t::first-letter {
+  text-transform: uppercase;
+}
+
+/* --- Boton de descarga: cuadrado redondeado oscuro ------------------------ */
+
+.dl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: var(--on-ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
+}
+
+.dl:active {
+  transform: scale(0.95);
+}
+
+.dl:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.dl:disabled:active {
+  transform: none;
+}
+
+/* Motivo por el que no hay descarga: texto visible (no depende de tooltip).
+   Va en su propia linea bajo el chip y el icono: compartiendo fila con ellos,
+   la tarjeta estrecha lo dejaba en "De esta f…", que no explica nada. */
+.card__foot {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.nodl {
+  order: 1;
+  flex: 1 0 100%;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.card__foot .st {
+  flex: none;
+}
+
+/* No es un boton: es el icono de "sin descarga completa" (decorativo). */
+.dl--off {
+  background: var(--line);
+  color: var(--icon-dim);
+  cursor: not-allowed;
+}
+
+.dl--off:active {
+  transform: none;
+}
+
+.dl--sm {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+}
+

@@ -1,0 +1,203 @@
+/* =============================================================================
+   SPITIFO, tema "Cristal"
+   Herramienta de una sola vista: buscar, entender, bajar. Tema claro unico:
+   cristal esmerilado sobre un degradado azul cielo, con coral como acento.
+
+   1. TOKENS       colores, forma, tipografia, movimiento
+   2. BASE         reset, fondo, foco
+   3. NAV          pildora flotante + boton de biblioteca
+   4. HERO         titulo y panel de busqueda
+   5. CONTROLES    segmentados (modo, formato, filtro)
+   6. AVISOS       error, ok y aviso de descarga
+   7. PROGRESO     toast fijo abajo
+   8. BIBLIOTECA
+   9. RESULTADOS   cabecera, rejilla de tarjetas, chips, botones
+   10. CONCIERTOS  tarjeta ancha + setlist
+   11. VACIOS      pantalla inicial, sin resultados, skeletons
+   8b. REPRODUCTOR  fila de biblioteca + preview de tarjeta
+   12. HOVER / TACTIL / RESPONSIVE / MOVIMIENTO
+   14. RESOLUCIONES  boton dividido + menu de alturas de YouTube
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1. TOKENS
+
+   TIPOGRAFIA (self-hosted con @fontsource-variable, se importan desde
+   main.jsx, la app funciona sin red):
+     Outfit Variable    marca, h1, titulos de tarjeta y de panel
+     Figtree Variable   todo el texto de UI
+   Cifras tabulares (tabular-nums) en duraciones, pesos y contadores para que
+   las columnas no baileen.
+
+   COLOR: tinta casi negra sobre cristal claro, un solo acento (coral).
+   Verde, ambar y rojo son SEMANTICOS: estado real del archivo, no decoracion.
+   Contraste del texto sobre el fondo claro (>= 4.5:1 en todos los casos):
+     --ink    #14202B  texto principal y botones oscuros
+     --muted  #3C4C5A  texto secundario
+     --faint  #4A5A68  metadatos y placeholders (el mas claro que se permite)
+     --accent #D3402B  blanco sobre coral = 4.6:1
+   Los chips llevan su par fondo/texto (--ok, --warn, --bad, --mute).
+
+   FORMA (una sola escala, aplicada en todo el archivo):
+     12 / 14   controles pequenos: botones de segmento, botones de descarga
+     16 / 18   interior: pista del segmentado, portadas
+     22 / 26   contenedores: campo de busqueda, avisos, tarjetas, biblioteca
+     32        paneles grandes: buscador, pantalla inicial
+     999       pildoras: nav, chips, botones de accion
+   No se inventan radios intermedios: si algo necesita otro, se cambia la
+   escala, no el elemento.
+   ------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --ink: #14202b;
+  --muted: #3c4c5a;
+  --faint: #4a5a68;
+  /* Tinta para iconos inertes (lupa, "sin descarga"): un paso mas claro que
+     --faint porque son glifos, no texto, y no necesitan 4.5:1. */
+  --icon-dim: #6b7b89;
+  --line: #dce7ee;
+  --track: #e4eef4;
+  --bg: #f6f9fb;
+
+  --accent: #d3402b;
+  --accent-hover: #bb3622;
+  --accent-badge: #f0563f;
+  --accent-fill: #ff8a75;
+  /* El coral como TEXTO o icono. Los rellenos (botones) usan --accent, que con
+     texto blanco da 4.6:1; sobre fondo oscuro ese mismo coral como glifo se
+     queda corto, asi que en oscuro este token se aclara. */
+  --accent-fg: #d3402b;
+
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-card: rgba(255, 255, 255, 0.78);
+  --glass-edge: rgba(255, 255, 255, 0.95);
+  --nav-bg: rgba(255, 255, 255, 0.7);
+  --shadow-rgb: 40, 90, 130;
+  --shadow-nav: 0 8px 30px rgba(var(--shadow-rgb), 0.12);
+  --shadow-card: 0 10px 30px rgba(var(--shadow-rgb), 0.1);
+  --shadow-panel: 0 20px 60px rgba(var(--shadow-rgb), 0.16);
+  --shadow-raise: 0 2px 8px rgba(var(--shadow-rgb), 0.16);
+
+  /* Superficies y estados que antes eran #fff / hex sueltos. Con tokens, el
+     tema oscuro solo redefine valores; ningun componente cambia. */
+  --surface: #fff;
+  --surface-hover: #f1f6f9;
+  /* Pastilla activa de los segmentados: debe separarse de su pista. */
+  --seg-on: #fff;
+  --on-ink: #fff;
+  --ink-hover: #2a3d4e;
+  --track-hover: #d7e6ef;
+  --seg-hover: rgba(255, 255, 255, 0.6);
+  --row-hover: rgba(228, 238, 244, 0.55);
+  --line-strong: #b9c8d4;
+  --link-line: #9db2c2;
+  --ring-gap: #fff;
+  --badge-text: #14202b;
+  --toast-bg: rgba(20, 32, 43, 0.94);
+  --toast-edge: transparent;
+  --page-top: #cfe6f5;
+  --page-mid: #e6f1f7;
+  --blob-coral: #ffd6c9;
+  --blob-coral-o: 0.6;
+  --blob-sky: #bfe3f5;
+  --blob-sky-o: 0.7;
+
+  --ok-bg: #d5f1e1;
+  --ok-fg: #0f6b3a;
+  --warn-bg: #fcebc4;
+  --warn-fg: #7a5200;
+  --bad-bg: #fadad5;
+  --bad-fg: #a32a1b;
+
+  --font-display: "Outfit Variable", "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Figtree Variable", "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --r-sm: 12px;
+  --r-md: 14px;
+  --r-inner: 16px;
+  --r-cover: 18px;
+  --r-field: 22px;
+  --r-card: 26px;
+  --r-panel: 32px;
+  --r-pill: 999px;
+
+  --gutter: clamp(16px, 4.4vw, 56px);
+
+  /* Movimiento: una sola curva de entrada, 160ms para presion. Solo se
+     animan transform y opacity. */
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Con un poco de rebote: SOLO para momentos raros y con carga emocional
+     (descarga terminada, contador que sube). Nunca en controles de uso
+     continuo. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Ease-in-out simetrica para superficies grandes que empujan el contenido
+     (la biblioteca): arranca y frena despacio, sin tirón al principio. */
+  --ease-drawer: cubic-bezier(0.65, 0, 0.35, 1);
+  --t-press: 160ms;
+  --t-enter: 260ms;
+}
+
+/* ---------------------------------------------------------------------------
+   TEMA OSCURO
+   Mismo sistema, otros valores. Fondo azul noche, cristal oscuro con borde de
+   luz al 9 %, tinta clara. El boton "oscuro" de la web (biblioteca, descarga)
+   se INVIERTE: pildora clara con texto oscuro, que es lo que hace de primario
+   sobre fondo oscuro. Los tonos semanticos pasan a fondo apagado + texto claro
+   (contraste >= 4.5:1). El coral de relleno no cambia; como texto se aclara.
+   El atributo lo pone un script en index.html antes del primer pintado, para
+   que no haya destello.
+   ------------------------------------------------------------------------- */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: #e8eff5;
+  --muted: #b6c5d1;
+  --faint: #95a8b7;
+  --icon-dim: #71869a;
+  --line: #243648;
+  --track: #1c2b3a;
+  --bg: #0b131a;
+
+  --accent-fg: #ff7a63;
+
+  --glass: rgba(20, 32, 44, 0.72);
+  --glass-card: rgba(22, 34, 47, 0.78);
+  --glass-edge: rgba(255, 255, 255, 0.09);
+  --nav-bg: rgba(20, 32, 44, 0.7);
+  --shadow-rgb: 0, 0, 0;
+  --shadow-nav: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.3);
+  --shadow-panel: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --shadow-raise: 0 2px 8px rgba(0, 0, 0, 0.4);
+
+  --ok-bg: #123a2b;
+  --ok-fg: #7fdda8;
+  --warn-bg: #40330f;
+  --warn-fg: #f3cb6f;
+  --bad-bg: #4a211d;
+  --bad-fg: #ff9c8f;
+
+  --surface: #162331;
+  --surface-hover: #1d2d3d;
+  --seg-on: #30465c;
+  --on-ink: #0b131a;
+  --ink-hover: #ffffff;
+  --track-hover: #27394c;
+  --seg-hover: rgba(255, 255, 255, 0.06);
+  --row-hover: rgba(255, 255, 255, 0.05);
+  --line-strong: #33485c;
+  --link-line: #5b7288;
+  --ring-gap: #0b131a;
+  --toast-bg: rgba(30, 45, 60, 0.96);
+  --toast-edge: rgba(255, 255, 255, 0.1);
+  --page-top: #14293b;
+  --page-mid: #0f1e2b;
+  --blob-coral: #6b2f27;
+  --blob-coral-o: 0.35;
+  --blob-sky: #1d5a80;
+  --blob-sky-o: 0.4;
+}
+

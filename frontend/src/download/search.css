@@ -1,0 +1,244 @@
+/* ---------------------------------------------------------------------------
+   4. HERO + BUSCADOR
+   ------------------------------------------------------------------------- */
+
+.hero {
+  padding-top: clamp(36px, 7vw, 60px);
+  text-align: center;
+}
+
+.hero__title {
+  margin: 0 auto;
+  font: 700 clamp(34px, 7.2vw, 56px) / 1.05 var(--font-display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  animation: enter-up 400ms var(--ease) 60ms backwards;
+}
+
+.finder {
+  max-width: 860px;
+  margin: 32px auto 0;
+  padding: 14px;
+  border-radius: var(--r-panel);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  text-align: left;
+  animation: enter-up 400ms var(--ease) 160ms backwards;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 68px;
+  padding: 0 8px 0 22px;
+  border-radius: var(--r-field);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+/* El campo no dibuja su propio aro: lo dibuja la fila entera, que es lo que
+   se ve como "el buscador". Con :has el aro no salta al pulsar el boton. */
+.search:has(input:focus) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ring-gap);
+}
+
+.search__icon {
+  flex: none;
+  color: var(--icon-dim);
+  transition: color 200ms var(--ease);
+}
+
+.search.is-scanning .search__icon {
+  color: var(--accent-fg);
+  animation: scan 1.2s linear infinite;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 clamp(16px, 4.6vw, 19px) var(--font-body);
+  outline: none;
+  box-shadow: none;
+}
+
+.search input::placeholder {
+  color: var(--faint);
+}
+
+/* type="search": sin el aspecto nativo ni la "x" de Chrome/Safari, que no
+   encaja con el campo. */
+.search input[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search input::-webkit-search-cancel-button,
+.search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  display: none;
+}
+
+.search__go {
+  flex: none;
+  height: 52px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: var(--r-inner);
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
+}
+
+.search__go:active {
+  transform: scale(0.97);
+}
+
+.search__go:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.search__go:disabled:active {
+  transform: none;
+}
+
+/* Segunda fila del panel: modo a la izquierda, formato a la derecha. Si no
+   caben, se apilan. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-top: 12px;
+  padding: 0 4px;
+}
+
+/* Aviso bajo los controles: solo con "original" (lo pinta el componente). Texto
+   secundario, con una entrada corta para que no aparezca de golpe. */
+.finder__hint {
+  margin: 10px 4px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: hint-in 180ms var(--ease) backwards;
+}
+
+@keyframes hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fmts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fmts__lbl {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   5. SEGMENTADOS (modo, formato, filtro de resultados)
+   Pista azul claro con una pastilla blanca elevada para el activo. Un solo
+   componente visual para los tres controles.
+   ------------------------------------------------------------------------- */
+
+.segs {
+  position: relative;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--r-inner);
+  background: var(--track);
+}
+
+/* La pastilla blanca del activo NO es el fondo del boton: es una sola pieza que
+   se desliza hasta la opcion elegida (useSlidingPill publica --ix y --iw).
+   `data-ready` llega un frame despues de medir para que no vuele desde 0 al
+   montar. */
+.segs::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--iw, 0px);
+  transform: translateX(var(--ix, 0px));
+  border-radius: var(--r-sm);
+  background: var(--seg-on);
+  box-shadow: var(--shadow-raise);
+  pointer-events: none;
+}
+
+.segs[data-ready]::before {
+  transition: transform 300ms var(--ease), width 300ms var(--ease);
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), color 200ms var(--ease),
+    background-color 200ms var(--ease);
+}
+
+.seg:active {
+  transform: scale(0.97);
+}
+
+.seg {
+  position: relative;
+  z-index: 1;
+}
+
+.seg.is-on {
+  color: var(--ink);
+}
+
+.seg__n {
+  font-variant-numeric: tabular-nums;
+}
+
+/* YouTube apagado en el servidor: se marca sin deshabilitar (el usuario puede
+   estar reactivandolo desde otra pestana) para que el title explique el 0 de
+   resultados en vez de dejarlo como un fallo. */
+.mode--dead {
+  color: var(--faint);
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+
