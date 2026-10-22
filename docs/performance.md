@@ -169,6 +169,26 @@ build and two of `main`, leaving out its first run, which read the freshly
 seeded files while the antivirus scanned them; both builds were swapped into
 the same install). Taps, mode switches and the library drawer did not change.
 
+On the Pixel (302 local tracks, release APKs built with
+`-Pspitifo.inspectable=true` from `main` before and after the split, installed
+over each other) heat decided the numbers, not the split: the phone reached
+thermal status 1 within the first pair of runs, and the build measured second
+in a pair was always the slower one. With the old build first, the split took
+about 90 ms longer to show the library (320 → 414, 879 → 975 and 808 → 894 ms);
+with the split first, the old build took 358 ms longer (397 → 755 ms) and
+scrolled slower (27 → 20 fps). To take heat out of it, the same comparison ran
+on the PC with the CPU throttled 4× through DevTools and the order alternated
+(A B B A A B): the split opened the library in 752 ms against 777 ms, settled
+in 1,123 against 1,186 ms and scrolled at 12.2 against 11.8 fps. No budget got
+worse.
+
+Lessons for the next comparison on the phone: alternate the order, let it cool
+to thermal status 0 before each run (`adb shell dumpsys thermalservice`), and
+keep in mind that charging over USB keeps the battery around 38 °C. A build
+made from the checkout needs `versionCode` raised to the installed one (300 for
+0.3.0, see `scripts/set_version.py`) or `adb install -r` refuses it as a
+downgrade; never uninstall instead, it wipes the app's data.
+
 The limits count raw bytes: everything runs from disk, so what costs time is
 what the WebView parses, not what crosses a network.
 
