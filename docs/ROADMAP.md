@@ -397,7 +397,34 @@ The plan as written:
   before it is opened.
 - No visible change, and no budget from session 12 gets worse.
 
-### 14. A single playback engine
+### 14. A single playback engine — done
+
+`player/engine.js` owns the only `<audio>`, the current track and a queue;
+library rows, result previews and the mini-player are views of it
+(`useEngine`, a `useSyncExternalStore` hook whose selectors return primitives,
+so only the playing row repaints on `timeupdate`). What changed:
+
+- **One `<audio>` instead of one per row.** The element is created on the first
+  play, outside the DOM; the library drawer renders no media elements.
+- **The queue is the library without videos**, copied when a row starts. Auto
+  advance now skips videos instead of stopping on them, and reloading the list
+  never interrupts what is playing. A preview is a queue of one.
+- **Prefetch moved into the engine** and only fetches the next library track.
+  Measured in the browser against the user's Drive library: a prefetched or
+  cached track is playing 24–50 ms after the tap; an uncached one took 1.0 s,
+  the network time of Drive (unchanged, the backend was not touched).
+- **Previous and next** in the mini-player (previous restarts the track after
+  3 s). Media Session gained previous, next, ±10 s seeks and the position
+  state, so the lock screen and the PC's media keys get the same controls.
+- Opening a video pauses the engine and hides the mini-player while the video
+  is open, as before.
+- One behaviour change: a paused track no longer keeps its position when
+  another one starts.
+- Frontend unit tests (Vitest, 20 tests of the engine with a fake `Audio`) run
+  in the test workflow. All JavaScript is now 2.9% over the session 12
+  baseline (1.0% after session 13), within its budget.
+
+The plan as written:
 
 - Today each library row owns its own `<audio>` and auto-advance looks for the
   neighbouring row's element. Replace that with one engine that owns the only
