@@ -1,9 +1,11 @@
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   CircleNotch,
   Crosshair,
   Pause,
   Play,
+  SkipBack,
+  SkipForward,
   SpeakerHigh,
   SpeakerLow,
   SpeakerSlash,
@@ -11,14 +13,9 @@ import {
 } from "@phosphor-icons/react";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
-import {
-  audioMeta,
-  current,
-  setSharedVolume,
-  shared,
-  toggleSharedMute,
-  watchers,
-} from "./engine.js";
+import { engine } from "./engine.js";
+import { useEngine } from "./useEngine.js";
+import { useVideoHost } from "./videoStore.js";
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR
@@ -26,20 +23,17 @@ import {
    La biblioteca ya no se desmonta al cerrarse (la musica sigue), pero entonces
    la cancion que suena queda sin controles: su fila esta oculta, o fuera de
    pantalla a mitad de scroll. Esta pastilla fija los devuelve. No tiene
-   <audio> propio: se cuelga del elemento `current` y lo gobierna directamente,
-   asi no hay una segunda fuente de verdad que pueda desincronizarse.
+   <audio> propio: es una vista del motor, como las filas, asi que no hay una
+   segunda fuente de verdad que pueda desincronizarse.
 
    Solo se ve cuando hace falta: hay una cancion empezada Y su Player no esta a
    la vista (cajon cerrado o fuera del viewport). Con la fila delante, los
    controles duplicados sobrarian. Si el usuario la cierra, se queda cerrada
-   hasta el siguiente `play`.
+   hasta la siguiente pista o el siguiente play.
    ------------------------------------------------------------------------- */
 
-const MINI_IDLE = { playing: false, buffering: false, time: 0, dur: 0 };
-
 function MiniPlayer({ libOpen, onReveal }) {
-  const [, repaint] = useReducer((n) => n + 1, 0);
-  const [st, setSt] = useState(MINI_IDLE);
+  const st = useEngine();
   const [dismissed, setDismissed] = useState(false);
   /* true hasta que el IntersectionObserver diga lo contrario: mejor tardar un
      fotograma en aparecer que parpadear con la fila aun a la vista. */
@@ -49,64 +43,26 @@ function MiniPlayer({ libOpen, onReveal }) {
   const [badArt, setBadArt] = useState(null);
   const railRef = useRef(null);
   const lastInfo = useRef(null);
+  const vhost = useVideoHost();
 
+  const track = st.track;
+  /* El motor no suelta la pista al terminar la cola, pero se guarda la ultima
+     igual: si algun dia lo hace, el texto no se vacia mientras la pastilla se
+     desvanece. */
+  if (track) lastInfo.current = track;
+  const info = track || lastInfo.current;
+  const srcEl = track ? engine.elementFor(track.key) : null;
+
+  /* Otro destino = otra cancion: la pastilla vuelve a ofrecerse. */
   useEffect(() => {
-    watchers.add(repaint);
-    return () => watchers.delete(repaint);
-  }, []);
-
-  const audio = current;
-  const meta = audio ? audioMeta.get(audio) : null;
-  /* Al desmontarse el Player se pierde su registro; se recuerda el ultimo para
-     que el texto no se vacie mientras la pastilla se desvanece. */
-  if (meta) lastInfo.current = meta;
-  const info = meta || lastInfo.current;
-  const srcEl = meta?.el ?? null;
-
-  /* Espejo del estado del <audio> con sus eventos nativos. Layout effect: al
-     cambiar de cancion el estado viejo no llega a pintarse. */
-  useLayoutEffect(() => {
     setDismissed(false);
     setDrag(null);
-    if (!audio) {
-      setSt(MINI_IDLE);
-      return undefined;
-    }
-    const sync = (buffering) =>
-      setSt((p) => {
-        const n = {
-          playing: !audio.paused,
-          buffering: buffering ?? p.buffering,
-          time: audio.currentTime || 0,
-          dur: Number.isFinite(audio.duration) ? audio.duration : 0,
-        };
-        return n.playing === p.playing &&
-          n.buffering === p.buffering &&
-          n.time === p.time &&
-          n.dur === p.dur
-          ? p
-          : n;
-      });
-    const handlers = {
-      play: () => {
-        setDismissed(false);
-        sync(audio.readyState < 3);
-      },
-      playing: () => sync(false),
-      pause: () => sync(false),
-      ended: () => sync(false),
-      waiting: () => sync(true),
-      emptied: () => sync(false),
-      timeupdate: () => sync(),
-      durationchange: () => sync(),
-      loadedmetadata: () => sync(),
-    };
-    Object.entries(handlers).forEach(([n, h]) => audio.addEventListener(n, h));
-    sync(!audio.paused && audio.readyState < 3);
-    return () => {
-      Object.entries(handlers).forEach(([n, h]) => audio.removeEventListener(n, h));
-    };
-  }, [audio]);
+  }, [track?.key]);
+
+  /* Y reproducir tambien la reabre (reanudar desde la fila). */
+  useEffect(() => {
+    if (st.playing) setDismissed(false);
+  }, [st.playing]);
 
   /* Se observa la caja del Player de origen, no el audio. */
   useLayoutEffect(() => {
@@ -126,7 +82,14 @@ function MiniPlayer({ libOpen, onReveal }) {
      0), pero solo cuando termina de cerrarse. Esto lo adelanta al clic. */
   const inClosedDrawer = !libOpen && !!srcEl?.closest(".drawer");
   const started = st.playing || st.time > 0;
-  const show = !!audio && started && !dismissed && (!srcSeen || inClosedDrawer);
+  /* Con un video abierto el audio ya esta pausado: la pastilla solo estorbaria
+     encima de la ventana del video. */
+  const show =
+    !!track &&
+    started &&
+    !dismissed &&
+    (!srcSeen || inClosedDrawer) &&
+    vhost.mode === "closed";
 
   /* Reserva sitio en la pagina y aparta los avisos de descarga (CSS). */
   useEffect(() => {
@@ -134,79 +97,19 @@ function MiniPlayer({ libOpen, onReveal }) {
     return () => document.body.classList.remove("has-mini");
   }, [show]);
 
-  /* Teclas multimedia, auriculares y pantalla de bloqueo. Progresivo: sin la
-     API no pasa nada. Los try/catch son porque cada navegador soporta un
-     subconjunto de acciones y las que no conoce lanzan en vez de ignorarse. */
-  useEffect(() => {
-    if (!("mediaSession" in navigator) || !audio || !info) return undefined;
-    const ms = navigator.mediaSession;
-    try {
-      if (typeof MediaMetadata !== "undefined") {
-        ms.metadata = new MediaMetadata({
-          title: info.title || "",
-          artist: info.meta || "",
-          /* Solo las filas de resultados traen portada; las de la biblioteca
-             no, y ahi se omite en vez de mandar una lista vacia. */
-          ...(info.artwork ? { artwork: [{ src: info.artwork, sizes: "300x300" }] } : {}),
-        });
-      }
-    } catch {
-      /* los metadatos son opcionales */
-    }
-    const actions = {
-      play: () => audio.play().catch(() => {}),
-      pause: () => audio.pause(),
-      seekto: (d) => {
-        if (typeof d?.seekTime === "number") audio.currentTime = d.seekTime;
-      },
-    };
-    Object.entries(actions).forEach(([n, h]) => {
-      try {
-        ms.setActionHandler(n, h);
-      } catch {
-        /* accion no soportada */
-      }
-    });
-    return () => {
-      Object.keys(actions).forEach((n) => {
-        try {
-          ms.setActionHandler(n, null);
-        } catch {
-          /* idem */
-        }
-      });
-      ms.metadata = null;
-    };
-  }, [audio, info]);
-
-  const dur = st.dur || info?.duration || 0;
+  const dur = st.duration || info?.duration || 0;
   const pct = drag !== null ? drag : dur ? clamp(st.time / dur, 0, 1) : 0;
   const shownTime = drag !== null ? drag * dur : st.time;
   const total = dur ? clock(Math.round(dur)) : "--:--";
   const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
   const label = info?.label || "la canción";
-  /* Leidos de `shared` en cada pintado: los watchers repintan al cambiar. */
-  const quiet = shared.muted || shared.volume === 0;
-  const volPct = Math.round((quiet ? 0 : shared.volume) * 100);
+  const quiet = st.muted || st.volume === 0;
+  const volPct = Math.round((quiet ? 0 : st.volume) * 100);
   const art = info?.artwork && badArt !== info.artwork ? info.artwork : null;
-
-  const toggle = () => {
-    if (!audio) return;
-    if (audio.paused) {
-      audio.volume = shared.volume;
-      audio.muted = shared.muted;
-      setSt((p) => ({ ...p, buffering: true }));
-      /* Igual que en Player: AbortError no es un fallo del audio. */
-      audio.play().catch(() => setSt((p) => ({ ...p, buffering: false })));
-    } else {
-      audio.pause();
-    }
-  };
+  const hasNext = st.index >= 0 && st.index + 1 < st.queue.length;
 
   const seekTo = (t) => {
-    const v = clamp(t, 0, dur || 0);
-    if (audio && dur) audio.currentTime = v;
-    setSt((p) => ({ ...p, time: v }));
+    engine.seek(clamp(t, 0, dur || 0));
   };
 
   const pctAt = (e) => {
@@ -230,7 +133,9 @@ function MiniPlayer({ libOpen, onReveal }) {
     const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
     if (step !== undefined) {
       e.preventDefault();
-      seekTo((audio?.currentTime ?? st.time) + step);
+      /* Del motor: seek() actualiza su foto, asi que las flechas repetidas
+         suman aunque React no haya repintado entre una y otra. */
+      engine.seek(engine.getState().time + step);
     } else if (e.key === "Home") {
       e.preventDefault();
       seekTo(0);
@@ -239,12 +144,12 @@ function MiniPlayer({ libOpen, onReveal }) {
       seekTo(dur - 1);
     } else if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      toggle();
+      engine.toggle();
     }
   };
 
   const close = () => {
-    audio?.pause();
+    engine.pause();
     setDismissed(true);
   };
 
@@ -257,11 +162,22 @@ function MiniPlayer({ libOpen, onReveal }) {
       inert={show ? undefined : ""}
     >
       <div className="mini__row">
+        {/* Anterior y siguiente: la cola es la biblioteca entera, asi que aqui
+            se puede cambiar de tema sin volver al cajon. */}
+        <button
+          type="button"
+          className="mini__btn mini__btn--prev"
+          onClick={() => engine.prev()}
+          aria-label="Anterior"
+          title="Anterior"
+        >
+          <SkipBack size={16} weight="fill" />
+        </button>
         <button
           type="button"
           className="pbtn"
           data-icon={icon}
-          onClick={toggle}
+          onClick={() => engine.toggle()}
           aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${label}`}
         >
           <span className="pbtn__ico pbtn__ico--play">
@@ -273,6 +189,16 @@ function MiniPlayer({ libOpen, onReveal }) {
           <span className="pbtn__ico pbtn__ico--load">
             <CircleNotch size={16} weight="bold" className="spin" />
           </span>
+        </button>
+        <button
+          type="button"
+          className="mini__btn mini__btn--next"
+          onClick={() => engine.next()}
+          disabled={!hasNext}
+          aria-label="Siguiente"
+          title="Siguiente"
+        >
+          <SkipForward size={16} weight="fill" />
         </button>
         {art && (
           <img
@@ -308,12 +234,12 @@ function MiniPlayer({ libOpen, onReveal }) {
           <button
             type="button"
             className="pl__mute"
-            onClick={toggleSharedMute}
+            onClick={() => engine.toggleMute()}
             aria-label={quiet ? "Activar el sonido" : "Silenciar"}
           >
             {quiet ? (
               <SpeakerSlash size={17} />
-            ) : shared.volume < 0.45 ? (
+            ) : st.volume < 0.45 ? (
               <SpeakerLow size={17} />
             ) : (
               <SpeakerHigh size={17} />
@@ -328,7 +254,7 @@ function MiniPlayer({ libOpen, onReveal }) {
             value={volPct}
             aria-label="Volumen"
             style={{ "--v": `${volPct}%` }}
-            onChange={(e) => setSharedVolume(Number(e.target.value) / 100)}
+            onChange={(e) => engine.setVolume(Number(e.target.value) / 100)}
           />
         </div>
         <button

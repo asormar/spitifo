@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CircleNotch,
   Pause,
@@ -9,100 +9,60 @@ import {
 } from "@phosphor-icons/react";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
-import {
-  audioMeta,
-  current,
-  players,
-  setCurrent,
-  setSharedVolume,
-  shared,
-  toggleSharedMute,
-  watchers,
-} from "./engine.js";
-import { pauseVideo } from "./videoStore.js";
+import { engine } from "./engine.js";
+import { useEngine } from "./useEngine.js";
 
-function Player({ src, label, title, meta, duration, artwork, variant = "row", index = 0, registerAudio, onStart, onEnded }) {
-  const audioRef = useRef(null);
+/* ---------------------------------------------------------------------------
+   FILA (biblioteca) Y PREVIEW (tarjeta)
+
+   Vista del motor: no tiene <audio>. Todo lo que suena se lee de ahi y solo se
+   pinta si esta pista es la que suena; las demas muestran su duracion conocida
+   y tiempo 0. Volumen y silencio son compartidos y se pintan en todas, aunque
+   el control solo se abra en la fila activa.
+
+   Dos niveles, igual que antes: "row" (boton, barra, tiempo y volumen) y
+   "compact" (preview de 30 s en una tarjeta de resultados: sin volumen).
+   ------------------------------------------------------------------------- */
+function Player({ track, queue, variant = "row", index = 0 }) {
   const railRef = useRef(null);
   const rootRef = useRef(null);
-  const [playing, setPlaying] = useState(false);
-  const [buffering, setBuffering] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [cur, setCur] = useState(0);
-  const [realDur, setRealDur] = useState(0);
   /* Posicion (0..1) mientras se arrastra la barra. null = no se arrastra. */
   const [drag, setDrag] = useState(null);
-  const [, repaint] = useReducer((n) => n + 1, 0);
 
+  const key = track?.key;
+  const isCurrent = useEngine((s) => s.track?.key === key);
+  /* Booleanos y numeros: un objeto nuevo en cada emision repintaria las 300
+     filas cuatro veces por segundo (ver useEngine.js). */
+  const playing = useEngine((s) => s.track?.key === key && s.playing);
+  const buffering = useEngine((s) => s.track?.key === key && s.buffering);
+  const failed = useEngine((s) => s.track?.key === key && s.failed);
+  const time = useEngine((s) => (s.track?.key === key ? s.time : 0));
+  const realDur = useEngine((s) => (s.track?.key === key ? s.duration : 0));
+  const vol = useEngine((s) => s.volume);
+  const muted = useEngine((s) => s.muted);
+
+  /* La caja de esta fila es lo que el mini-reproductor observa para saber si la
+     cancion esta a la vista. */
   useEffect(() => {
-    const a = audioRef.current;
-    players.add(a);
-    watchers.add(repaint);
-    a.volume = shared.volume;
-    a.muted = shared.muted;
-    return () => {
-      players.delete(a);
-      watchers.delete(repaint);
-      audioMeta.delete(a);
-      if (current === a) setCurrent(null);
-      a.pause();
-    };
-  }, []);
+    engine.registerElement(key, rootRef.current);
+    return () => engine.registerElement(key, null);
+  }, [key]);
 
-  /* El auto-advance de la biblioteca necesita el <audio> de la fila VECINA: el
-     cajon registra cada fila por su indice y reproduce la siguiente al terminar.
-     No se consulta el DOM por selectores: el mapa lo llena cada Player. */
-  useEffect(() => {
-    if (!registerAudio) return undefined;
-    registerAudio(index, audioRef.current);
-    return () => registerAudio(index, null);
-  }, [index, registerAudio]);
-
-  /* Aparte del efecto de montaje: titulo y meta pueden cambiar sin que el
-     elemento se remonte, y el registro tiene que seguirlos. */
-  useEffect(() => {
-    audioMeta.set(audioRef.current, {
-      label,
-      title,
-      meta,
-      duration,
-      artwork,
-      variant,
-      el: rootRef.current,
-    });
-  }, [label, title, meta, duration, artwork, variant]);
-
-  /* Se leen de `shared` en cada pintado: los watchers fuerzan el repintado
-     cuando el volumen cambia desde el mini-reproductor. */
-  const vol = shared.volume;
-  const muted = shared.muted;
-  const dur = realDur || duration || 0;
-  const pct = drag !== null ? drag : dur ? clamp(cur / dur, 0, 1) : 0;
-  const shownTime = drag !== null ? drag * dur : cur;
-  const isCurrent = !!audioRef.current && current === audioRef.current;
-  const active = !failed && isCurrent && (playing || cur > 0 || drag !== null);
+  const dur = realDur || track?.duration || 0;
+  const pct = drag !== null ? drag : dur ? clamp(time / dur, 0, 1) : 0;
+  const shownTime = drag !== null ? drag * dur : time;
+  const active = !failed && isCurrent && (playing || time > 0 || drag !== null);
   const total = dur ? clock(Math.round(dur)) : "--:--";
 
   const toggle = () => {
-    const a = audioRef.current;
-    if (!a || failed) return;
-    if (a.paused) {
-      a.volume = shared.volume;
-      a.muted = shared.muted;
-      setBuffering(true);
-      /* play() rechaza con AbortError si se pausa antes de arrancar: no es un
-         fallo del audio. Los fallos reales llegan por onError. */
-      a.play().catch(() => setBuffering(false));
-    } else {
-      a.pause();
-    }
+    if (failed) return;
+    if (isCurrent) engine.toggle();
+    else engine.play(track, { queue });
   };
 
   const seekTo = (t) => {
-    const a = audioRef.current;
-    const v = clamp(t, 0, dur || 0);
-    if (a && dur) a.currentTime = v;
-    setCur(v);
+    if (!isCurrent || !dur) return;
+    engine.seek(clamp(t, 0, dur));
   };
 
   const pctAt = (e) => {
@@ -111,7 +71,7 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
   };
 
   const onPointerDown = (e) => {
-    if (!dur || failed) return;
+    if (!isCurrent || !dur || failed) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag(pctAt(e));
   };
@@ -125,12 +85,14 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
   };
 
   const onKeyDown = (e) => {
+    if (!isCurrent) return;
     const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
     if (step !== undefined) {
       e.preventDefault();
-      /* Se parte del reloj real del <audio>, no de `cur`: ese estado se
-         refresca ~4 veces por segundo y las flechas repetidas no sumaban. */
-      seekTo((audioRef.current?.currentTime ?? cur) + step);
+      /* Se parte del reloj del motor, no del `time` pintado: seek() ya actualiza
+         la foto, asi que las flechas repetidas suman aunque React no haya
+         repintado entre una y otra. */
+      engine.seek(engine.getState().time + step);
     } else if (e.key === "Home") {
       e.preventDefault();
       seekTo(0);
@@ -143,71 +105,11 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
     }
   };
 
-  const onVolume = (e) => {
-    setSharedVolume(Number(e.target.value) / 100);
-    /* Por si el cambio llega antes de que este <audio> sea `current`. */
-    const a = audioRef.current;
-    a.volume = shared.volume;
-    a.muted = shared.muted;
-  };
-
-  const toggleMute = () => {
-    toggleSharedMute();
-    const a = audioRef.current;
-    a.volume = shared.volume;
-    a.muted = shared.muted;
-  };
-
   const icon = failed ? "play" : buffering ? "load" : playing ? "pause" : "play";
   const verb = playing ? "Pausar" : "Reproducir";
   const small = variant === "compact";
   const iconSize = small ? 13 : 16;
-
-  const audio = (
-    <audio
-      ref={audioRef}
-      src={src}
-      /* Con la duracion ya conocida no hace falta pedir metadatos de cada fila:
-         31 filas eran 31 peticiones al abrir la biblioteca. */
-      preload={duration ? "none" : "metadata"}
-      onLoadedMetadata={(e) => {
-        if (Number.isFinite(e.currentTarget.duration)) setRealDur(e.currentTarget.duration);
-      }}
-      onDurationChange={(e) => {
-        if (Number.isFinite(e.currentTarget.duration)) setRealDur(e.currentTarget.duration);
-      }}
-      onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
-      onPlay={(e) => {
-        players.forEach((o) => {
-          if (o !== e.currentTarget) o.pause();
-        });
-        /* Un solo medio a la vez: si sonaba un video, se para. */
-        pauseVideo();
-        e.currentTarget.volume = shared.volume;
-        e.currentTarget.muted = shared.muted;
-        setCurrent(e.currentTarget);
-        setPlaying(true);
-        onStart?.();
-      }}
-      onPlaying={() => setBuffering(false)}
-      onWaiting={() => setBuffering(true)}
-      onPause={() => {
-        setPlaying(false);
-        setBuffering(false);
-      }}
-      onEnded={(e) => {
-        e.currentTarget.currentTime = 0;
-        setPlaying(false);
-        setCur(0);
-        onEnded?.();
-      }}
-      onError={() => {
-        setFailed(true);
-        setPlaying(false);
-        setBuffering(false);
-      }}
-    />
-  );
+  const label = track?.label || "";
 
   const button = (
     <button
@@ -235,7 +137,9 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
       ref={railRef}
       className={cx("scrub", drag !== null && "is-drag")}
       role="slider"
-      tabIndex={failed ? -1 : 0}
+      /* Inactiva no se puede tabular: moverla no hace nada (solo la pista que
+         suena admite seek). */
+      tabIndex={failed || !isCurrent ? -1 : 0}
       aria-label={`Progreso de ${label}`}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -261,7 +165,6 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
         ref={rootRef}
         className={cx("pv", active && "is-active", playing && "is-playing")}
       >
-        {audio}
         {button}
         {rail}
         <span className="pv__time">{active ? clock(shownTime) : total}</span>
@@ -276,12 +179,11 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
       className={cx("pl", active && "is-active", playing && "is-playing", failed && "is-failed")}
       style={{ "--i": index }}
     >
-      {audio}
       {button}
       <div className="pl__mid">
         <div className="pl__top">
-          <span className="pl__title" title={title}>
-            {title}
+          <span className="pl__title" title={track?.title}>
+            {track?.title}
           </span>
           <span className="eq" aria-hidden="true" data-on={playing && !buffering ? "" : undefined}>
             <i />
@@ -292,8 +194,8 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
             {clock(shownTime)} / {total}
           </span>
         </div>
-        <div className="pl__meta" title={failed ? undefined : meta}>
-          {failed ? "No se pudo reproducir este audio" : meta}
+        <div className="pl__meta" title={failed ? undefined : track?.meta}>
+          {failed ? "No se pudo reproducir este audio" : track?.meta}
         </div>
         <div className="pl__bar">
           {rail}
@@ -305,7 +207,7 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
               type="button"
               className="pl__mute"
               tabIndex={active ? 0 : -1}
-              onClick={toggleMute}
+              onClick={() => engine.toggleMute()}
               aria-label={quiet ? "Activar el sonido" : "Silenciar"}
             >
               {quiet ? (
@@ -326,7 +228,7 @@ function Player({ src, label, title, meta, duration, artwork, variant = "row", i
               tabIndex={active ? 0 : -1}
               aria-label={`Volumen de ${label}`}
               style={{ "--v": `${Math.round((quiet ? 0 : vol) * 100)}%` }}
-              onChange={onVolume}
+              onChange={(e) => engine.setVolume(Number(e.target.value) / 100)}
             />
           </div>
         </div>
