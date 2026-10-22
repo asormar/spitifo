@@ -10,9 +10,9 @@ import { useEffect, useReducer } from "react";
    cambiar la clase de la caja que lo contiene; el archivo no se vuelve a pedir
    y la reproduccion sigue en el mismo segundo.
 
-   El estado vive en un almacen de modulo, como `current`/`watchers` del
-   reproductor de audio: cualquier fila de la biblioteca puede pedir
-   openVideo(...) sin arrastrar callbacks por medio arbol.
+   El estado vive en un almacen de modulo, igual que el del motor de audio:
+   cualquier fila de la biblioteca puede pedir openVideo(...) sin arrastrar
+   callbacks por medio arbol.
 
    Estados: closed | modal | mini
    ------------------------------------------------------------------------- */
@@ -43,8 +43,9 @@ export function useVideoHost() {
   return videoHost;
 }
 
-/* El <video> de verdad. El Player de audio lo pausa en cuanto empieza a sonar
-   algo: una sola cosa suena a la vez, y eso incluye al video. */
+/* El <video> de verdad. El motor de audio lo pausa en cuanto empieza a sonar
+   algo (pauseVideo es su onPlayStart): una sola cosa suena a la vez, y eso
+   incluye al video. */
 let videoEl = null;
 
 /* VideoHost es el dueno de `videoEl`: lo fija al montar y lo suelta al

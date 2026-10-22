@@ -9,7 +9,7 @@ import {
   Play,
   X,
 } from "@phosphor-icons/react";
-import { current, players, setCurrent } from "./engine.js";
+import { engine } from "./engine.js";
 import { setVideoEl, setVideoHost, useVideoHost, videoHost } from "./videoStore.js";
 
 /* Lo que se puede tabular dentro del dialogo, para atrapar el Tab. */
@@ -52,10 +52,10 @@ function VideoHost() {
     if (!v) return undefined;
     setVideoEl(v);
     const onPlay = () => {
-      /* Un solo medio a la vez. `players` es el mismo registro que usa el audio
-         para eso; el mini-reproductor se apaga solo al soltar `current`. */
-      players.forEach((o) => o.pause());
-      if (current) setCurrent(null);
+      /* Un solo medio a la vez: si sonaba una cancion, se para. El motor es el
+         dueno de todo el audio; el mini-reproductor se oculta mientras el
+         VideoHost esta abierto. */
+      engine.pause();
       setFailed(false);
       setPlaying(true);
     };

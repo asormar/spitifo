@@ -240,12 +240,18 @@ export const Track = React.memo(function Track({
         {t.preview_url && (
           <Player
             variant="compact"
-            src={t.preview_url}
-            label={`el preview de ${t.title || "este resultado"}`}
-            title={t.title || "sin título"}
-            meta={`${t.artist || "artista desconocido"} · preview de 30 s`}
-            duration={30}
-            artwork={t.artwork_url}
+            /* Sin cola: el motor la completa con este track. La clave lleva la
+               URL para que dos tarjetas con el mismo preview no choquen. */
+            track={{
+              key: `preview:${t.preview_url}`,
+              src: t.preview_url,
+              title: t.title || "sin título",
+              label: `el preview de ${t.title || "este resultado"}`,
+              meta: `${t.artist || "artista desconocido"} · preview de 30 s`,
+              duration: 30,
+              artwork: t.artwork_url,
+              kind: "preview",
+            }}
           />
         )}
         {t.source === "archive" && <VerifyPanel t={t} query={query} />}

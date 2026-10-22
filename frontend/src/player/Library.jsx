@@ -1,46 +1,36 @@
-import { useCallback, useRef } from "react";
+import { useMemo } from "react";
 import { GoogleDriveLogo, HardDrives, Stack } from "@phosphor-icons/react";
-import { API, keyUrl } from "../shared/api.js";
+import { keyUrl } from "../shared/api.js";
 import { fmtSize } from "../shared/format.js";
 import Player from "./Player.jsx";
 import VideoRow from "./VideoRow.jsx";
 
 export default function Library({ libFiles, libReady, libCount, libErr, libErrCode, health, onOpenStorage, onRetry }) {
-  /* AUTO-ADVANCE Y PREFETCH DE LA BIBLIOTECA
+  /* COLA DE LA BIBLIOTECA
 
-     Las filas del cajon son <Player> independientes y el cajon no se desmonta,
-     asi que "seguir con la de abajo" necesita hablar con la fila VECINA. El
-     mapa indice -> <audio> lo llena cada Player al montarse (`registerAudio`):
-     nada de buscar en el DOM por selectores.
+     La cola es la biblioteca SIN videos, armada aca y pasada a cada fila. El
+     motor la copia cuando una fila arranca, asi que recargar la lista no corta
+     lo que esta sonando, y el avance automatico salta los videos: un video no
+     se reproduce dentro de la lista, se abre en el VideoHost. */
+  const queue = useMemo(
+    () =>
+      libFiles
+        .filter((f) => f.kind !== "video")
+        .map((f) => ({
+          key: f.key,
+          src: keyUrl(f.key),
+          title: f.filename,
+          label: f.filename,
+          meta: `${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`,
+          duration: f.duration_s,
+          kind: "library",
+        })),
+    [libFiles]
+  );
 
-     `startLibTrack` adelanta el SIGUIENTE tema con POST /api/prefetch, sin
-     esperar respuesta (si falla, no pasa nada: al final se bajara igual). El
-     guardia evita repetir la misma clave dos veces seguidas, que es lo que
-     pasa al reanudar una pausa. */
-  const libAudio = useRef(new Map());
-  const prefetched = useRef(null);
-
-  const registerLibAudio = useCallback((n, el) => {
-    if (el) libAudio.current.set(n, el);
-    else libAudio.current.delete(n);
-  }, []);
-
-  const startLibTrack = (n) => {
-    const next = libFiles[n + 1];
-    if (!next || prefetched.current === next.key) return;
-    prefetched.current = next.key;
-    fetch(`${API}/prefetch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: next.key }),
-    }).catch(() => {});
-  };
-
-  const endLibTrack = (n) => {
-    const next = libAudio.current.get(n + 1);
-    /* La ultima fila solo se detiene, como siempre. */
-    if (next) next.play().catch(() => {});
-  };
+  /* Misma identidad de objeto que la cola: el Player la usa para reconocer su
+     pista sin recorrer el arreglo en cada fila. */
+  const trackByKey = useMemo(() => new Map(queue.map((t) => [t.key, t])), [queue]);
 
   return (
           <div className="drawer__in">
@@ -99,20 +89,15 @@ export default function Library({ libFiles, libReady, libCount, libErr, libErrCo
                 {libFiles.map((f, n) =>
                   f.kind === "video" ? (
                     /* Una fila de video no tiene controles de audio: se abre en
-                       el VideoHost. Misma lista y mismo indice que las de audio. */
+                       el VideoHost. Mismo indice (retardo de la cascada) que
+                       las filas de audio. */
                     <VideoRow key={f.key} f={f} index={n} />
                   ) : (
                     <Player
                       key={f.key}
-                      src={keyUrl(f.key)}
-                      label={f.filename}
-                      title={f.filename}
-                      meta={`${f.folder}${f.size_mb != null ? ` · ${fmtSize(f.size_mb)}` : ""}`}
-                      duration={f.duration_s}
+                      track={trackByKey.get(f.key)}
+                      queue={queue}
                       index={n}
-                      registerAudio={registerLibAudio}
-                      onStart={() => startLibTrack(n)}
-                      onEnded={() => endLibTrack(n)}
                     />
                   )
                 )}

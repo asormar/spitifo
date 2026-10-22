@@ -45,6 +45,10 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+      # Node environment: engine.test.js no necesita navegador.
+      - name: Test the frontend
+        working-directory: frontend
+        run: npm test
       - name: Build
         working-directory: frontend
         run: npm run build

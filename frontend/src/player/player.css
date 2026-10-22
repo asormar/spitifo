@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
    8b. REPRODUCTOR
-   El <audio> queda oculto en el DOM (sin `controls` no pinta nada) y esto es la
-   interfaz que se ve. Mismo vocabulario que el resto: pildoras (--r-pill),
+   El <audio> no vive en el DOM: lo crea el motor fuera de la pagina y esto es
+   la interfaz que se ve. Mismo vocabulario que el resto: pildoras (--r-pill),
    coral (--accent) para "suena", cifras tabulares. Solo transform y opacity,
    salvo el ancho del volumen, que se anima una sola vez al activarse la fila.
    Dos niveles: .pl (fila de biblioteca) y .pv (preview discreto de tarjeta).
@@ -564,6 +564,14 @@
   }
 }
 
+/* Anterior y siguiente: comparten la caja de los botones secundarios de la
+   pastilla (.mini__btn: 36 px, hover y atenuado al deshabilitarse). Solo se
+   ajusta el aro de foco, que sobre un icono sin texto queda muy pegado. */
+.mini__btn--prev:focus-visible,
+.mini__btn--next:focus-visible {
+  outline-offset: 1px;
+}
+
 .mini__bar {
   display: flex;
   align-items: center;
@@ -606,6 +614,14 @@
 @media (max-width: 480px) {
   .mini__vol,
   .mini__btn--reveal {
+    display: none;
+  }
+}
+
+/* 360 px: con anterior y siguiente el titulo se quedaria sin sitio. Se esconde
+   solo el de atras; play, siguiente y cerrar siguen en la pastilla. */
+@media (max-width: 380px) {
+  .mini__btn--prev {
     display: none;
   }
 }

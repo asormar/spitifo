@@ -4,6 +4,8 @@ import { API } from "../shared/api.js";
 import { useTheme } from "../shared/theme.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
+import { engine } from "../player/engine.js";
+import { bindMediaSession } from "../player/mediaSession.js";
 
 const loadDownloadView = () => import("../download/DownloadView.jsx");
 const DownloadView = React.lazy(loadDownloadView);
@@ -53,6 +55,11 @@ export default function App() {
       .catch(() => setHealth(null));
   }, []);
   useEffect(loadHealth, [loadHealth]);
+
+  /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez:
+     el motor avisa de cada cambio de pista o de estado y mediaSession solo
+     traduce. Sin la API, bindMediaSession devuelve un no-op. */
+  useEffect(() => bindMediaSession(engine), []);
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
