@@ -383,6 +383,11 @@ tracks):
 - Taps, mode switches, the library drawer and its scroll are unchanged (within
   run-to-run noise). All JavaScript together grew 1.0% (chunk overhead), well
   under its budget.
+- **On the Pixel, heat outweighed the split.** The build measured second in
+  each pair was always slower (thermal throttling), in both orders; with the
+  order alternated and the CPU throttled 4× on the PC, the split opened the
+  library as fast as before or slightly faster. Details and the method in
+  [performance.md](performance.md).
 
 The plan as written:
 
