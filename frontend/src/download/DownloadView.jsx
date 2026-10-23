@@ -17,8 +17,15 @@ import { buildSearchParams, isTerminal, mismatchNotice, pollJob } from "./api.js
 import { ProgressStack } from "./progress.jsx";
 import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
+import { LibraryLink, RecentSection } from "./RecentList.jsx";
 
-export default function DownloadView({ health, onLibraryChanged, onImportCookies, librarySlot }) {
+export default function DownloadView({
+  health,
+  files,
+  onLibraryChanged,
+  onImportCookies,
+  onOpenLibrary,
+}) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -463,6 +470,11 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
       : "Sin resultados"
     : "";
 
+  const recent =
+    !loading && !results.length ? (
+      <RecentSection files={files} onOpen={onOpenLibrary} />
+    ) : null;
+
   return (
     <>
       <p className="sr-only" role="status" aria-live="polite">
@@ -568,10 +580,9 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
         </div>
       )}
 
-      {librarySlot}
-
       {results.length > 0 && (
         <>
+          <LibraryLink count={files.length} onOpen={onOpenLibrary} />
           <div
             ref={resultsRef}
             tabIndex={-1}
@@ -640,6 +651,12 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
         </ul>
       )}
 
+      {/* En la pantalla de inicio la biblioteca reciente va antes que la
+          bienvenida (es lo que mas se vuelve a abrir). Tras una busqueda sin
+          resultados va despues, para no apartar el aviso. Con resultados queda
+          solo el enlace de una linea. */}
+      {!searched && recent}
+
       {!loading && !results.length && !err && !searched && (
         <section className="intro">
           <Sparkle size={26} weight="fill" className="intro__mark" />
@@ -675,6 +692,8 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
           </p>
         </div>
       )}
+
+      {searched && recent}
     </>
   );
 }

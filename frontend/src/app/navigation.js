@@ -70,7 +70,7 @@ export function swipeTarget({ dx = 0, dy = 0, dt = Number.POSITIVE_INFINITY } = 
 }
 
 /* Zonas que ya usan el gesto horizontal para lo suyo (barra de progreso,
-   carruseles, menus, el video o el cajon). El swipe no puede nacer ahi. */
+   carruseles, menus o el video). El swipe no puede nacer ahi. */
 export const NO_SWIPE = Object.freeze([
   "[data-no-swipe]",
   "input",
@@ -78,7 +78,6 @@ export const NO_SWIPE = Object.freeze([
   "select",
   "[role='slider']",
   "[contenteditable]",
-  ".drawer",
   ".mini",
   ".vhost",
   ".resmenu",

@@ -17,16 +17,40 @@ from . import InvalidKey, StoredFile, validate_key
 CHUNK = 64 * 1024
 
 
-def _duration(p: Path) -> float | None:
-    """Duracion real en segundos, leida con mutagen. None si no se puede."""
+def _tag(audio, name: str) -> str | None:
+    """Primer valor de una etiqueta de mutagen (en modo `easy`), o None."""
+    try:
+        value = audio.get(name)
+    except Exception:
+        return None
+    if not value:
+        return None
+    text = str(value[0]).strip()
+    return text or None
+
+
+def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | None]:
+    """Duracion real en segundos y titulo, artista y album, en UNA lectura.
+
+    `list()` ya abria cada archivo con mutagen para la duracion; las etiquetas
+    salen del mismo objeto, asi que no suman otra lectura del disco. `easy`
+    unifica los nombres (ID3, MP4 y Vorbis responden a "artist"). Lo que no se
+    pueda leer queda en None.
+    """
     try:
         from mutagen import File as MFile
-        f = MFile(p)
-        if f is not None and f.info is not None:
-            return round(float(f.info.length), 1)
+        f = MFile(p, easy=True)
+    except Exception:
+        return None, None, None, None
+    if f is None:
+        return None, None, None, None
+    duration = None
+    try:
+        if f.info is not None:
+            duration = round(float(f.info.length), 1)
     except Exception:
         pass
-    return None
+    return duration, _tag(f, "title"), _tag(f, "artist"), _tag(f, "album")
 
 
 class LocalStorage:
@@ -51,12 +75,15 @@ class LocalStorage:
         return p
 
     def _stored(self, p: Path, key: str, *, duration: bool = False) -> StoredFile:
-        # La duracion obliga a parsear el archivo con mutagen: solo la pide
-        # `list()`, que es lo que muestra la UI. `stat()` corre en cada request
+        # La duracion y las etiquetas obligan a parsear el archivo con mutagen:
+        # solo las pide `list()`, que es lo que muestra la UI. `stat()` corre en cada request
         # de `/api/audio` (cada seek) y tiene que ser un stat y nada mas.
         st = p.stat()
+        if not duration:
+            return StoredFile(key=key, size=st.st_size, mtime=st.st_mtime)
+        dur, title, artist, album = _media_info(p)
         return StoredFile(key=key, size=st.st_size, mtime=st.st_mtime,
-                          duration=_duration(p) if duration else None)
+                          duration=dur, title=title, artist=artist, album=album)
 
     # --------------------------------------------------------------- puerto
     def list(self) -> Iterable[StoredFile]:

@@ -1,0 +1,110 @@
+/* ---------------------------------------------------------------------------
+   DESCARGADO HACE POCO
+   Las filas son las de Escuchar (.srow, .art, .lpanel de listen.css); aqui solo
+   el marco, la cabecera y los dos accesos a la biblioteca. Solo se animan
+   transform y opacity; prefers-reduced-motion lo recorta motion.css.
+   ------------------------------------------------------------------------- */
+
+.recent {
+  /* Mismo alto que las filas de Escuchar (.listen lo define para su pantalla). */
+  --row-h: 56px;
+  max-width: 860px;
+  margin: 28px auto 0;
+}
+
+.recent__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  margin: 0 8px 10px;
+  --rise: 6px;
+  animation: rise var(--t-enter) var(--ease) backwards;
+}
+
+.recent__h {
+  margin: 0;
+  font: 700 19px / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.recent__n {
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sin boton de opciones a la derecha, la duracion necesita su propio margen. */
+.recent .srow__main {
+  padding-right: 12px;
+}
+
+.recent__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 2px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-inner);
+  background: none;
+  color: var(--muted);
+  font: 600 14px / 1 var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
+    color var(--t-quick) var(--ease);
+  /* Entra despues de la ultima fila de la cascada. */
+  --rise: 6px;
+  animation: rise var(--t-move) var(--ease) backwards;
+  animation-delay: calc(6 * var(--stagger));
+}
+
+.recent__more:active {
+  transform: scale(0.98);
+}
+
+/* Enlace de una linea para cuando hay resultados de busqueda. */
+.rlink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-height: 44px;
+  margin: 18px 0 0 auto;
+  padding: 0 16px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-pill);
+  background: var(--glass-card);
+  color: var(--muted);
+  font: 600 13px / 1 var(--font-body);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), color var(--t-quick) var(--ease);
+  --rise: 6px;
+  animation: rise var(--t-enter) var(--ease) backwards;
+}
+
+.rlink:active {
+  transform: scale(0.97);
+}
+
+/* Los resultados siguen mandando: la cabecera se acerca al enlace. */
+.rlink + .results__head {
+  padding-top: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .recent__more:hover {
+    background: var(--row-hover);
+    color: var(--ink);
+  }
+
+  .rlink:hover {
+    color: var(--ink);
+  }
+}

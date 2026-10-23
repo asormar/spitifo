@@ -452,7 +452,10 @@ class CloudStorage:
             out.append(StoredFile(key=key, size=entry.size,
                                   mtime=entry.updated_at,
                                   etag=entry.revision or None,
-                                  duration=entry.duration))
+                                  duration=entry.duration,
+                                  title=entry.title or None,
+                                  artist=entry.artist or None,
+                                  album=entry.album or None))
         out.sort(key=lambda f: f.key)
         return out
 

@@ -43,7 +43,7 @@ export function DlButton({ busy, downloaded, title, ariaLabel, onClick }) {
    siguientes, una altura concreta.
 
    El menu vive en un portal a <body>: dentro de la tarjeta lo recortarian el
-   `overflow-x: clip` de la pagina y el cajon de la biblioteca, y su z-index
+   `overflow-x: clip` de la pagina y la propia tarjeta, y su z-index
    quedaria por debajo del reproductor de video. */
 export function VideoSplitDownload({
   t,

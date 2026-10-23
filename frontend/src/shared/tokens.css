@@ -5,12 +5,12 @@
 
    1. TOKENS       colores, forma, tipografia, movimiento
    2. BASE         reset, fondo, foco
-   3. NAV          pildora flotante + boton de biblioteca
+   3. NAV          pildora flotante
    4. HERO         titulo y panel de busqueda
    5. CONTROLES    segmentados (modo, formato, filtro)
    6. AVISOS       error, ok y aviso de descarga
    7. PROGRESO     toast fijo abajo
-   8. BIBLIOTECA
+   8. ESCUCHAR     biblioteca y cola (listen/listen.css)
    9. RESULTADOS   cabecera, rejilla de tarjetas, chips, botones
    10. CONCIERTOS  tarjeta ancha + setlist
    11. VACIOS      pantalla inicial, sin resultados, skeletons
@@ -128,7 +128,7 @@
   /* Movimiento: una sola curva de entrada y una escala corta de duraciones.
      Solo se animan transform y opacity.
        --t-press  presion        --t-quick  color, hover y toda salida
-       --t-enter  entrada        --t-move   indicadores y cajones
+       --t-enter  entrada        --t-move   indicadores y cajas
        --t-scene  escenas largas: la cortina del tema y el meneo de los
                   ejemplos. */
   --t-press: 120ms;
