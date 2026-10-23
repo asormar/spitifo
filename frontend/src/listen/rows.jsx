@@ -22,7 +22,7 @@ export const initial = (name) => ([...String(name || "").trim()][0] || "?").toUp
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /* Ecualizador de la fila actual: quieto mientras no suena (ver listen.css). */
-const Bars = ({ on }) => (
+export const Bars = ({ on }) => (
   <span className="eq" aria-hidden="true" data-on={on ? "" : undefined}>
     <i />
     <i />
@@ -39,8 +39,9 @@ function useRegisterRow(key, ref, enabled = true) {
 }
 
 /* Menu de la fila. Lo abre y lo cierra ListenView (solo hay uno a la vez); aqui
-   solo se coloca y se maneja con flechas. */
-function RowMenu({ onPick }) {
+   solo se coloca y se maneja con flechas. `items`: [clave, texto]; la clave es
+   lo que recibe `onPick`. */
+export function RowMenu({ items, onPick }) {
   const ref = useRef(null);
 
   useLayoutEffect(() => {
@@ -60,15 +61,20 @@ function RowMenu({ onPick }) {
 
   return (
     <div ref={ref} className="rmenu" role="menu" onKeyDown={onKeyDown}>
-      <button type="button" role="menuitem" onClick={() => onPick("next")}>
-        Reproducir a continuación
-      </button>
-      <button type="button" role="menuitem" onClick={() => onPick("end")}>
-        Añadir a la cola
-      </button>
+      {items.map(([kind, text]) => (
+        <button key={kind} type="button" role="menuitem" onClick={() => onPick(kind)}>
+          {text}
+        </button>
+      ))}
     </div>
   );
 }
+
+const SONG_ITEMS = [
+  ["next", "Reproducir a continuación"],
+  ["end", "Añadir a la cola"],
+  ["list", "Añadir a una lista…"],
+];
 
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). */
 export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
@@ -121,13 +127,14 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
           <Icon name="more" size={22} />
         </button>
       )}
-      {menuOpen && <RowMenu onPick={(kind) => onPick(entry, kind)} />}
+      {menuOpen && <RowMenu items={SONG_ITEMS} onPick={(kind) => onPick(entry, kind)} />}
     </div>
   );
 }
 
-/* Artista (circulo) o album (cuadrado). `group.artist` solo existe en albumes. */
-export function GroupRow({ group, album, enter, onOpen }) {
+/* Artista (circulo), album (cuadrado) o lista (cuadrado con una nota).
+   `group.artist` solo existe en albumes. */
+export function GroupRow({ group, album, note, enter, onOpen }) {
   const songs = plural(group.entries.length, "canción", "canciones");
   const meta = album
     ? `${group.artist} · ${songs}`
@@ -146,7 +153,9 @@ export function GroupRow({ group, album, enter, onOpen }) {
         aria-label={`${group.name}, ${meta}`}
         onClick={() => onOpen(group)}
       >
-        <span className={cx("art", !album && "art--round")}>{initial(group.name)}</span>
+        <span className={cx("art", !album && !note && "art--round")}>
+          {note ? <Icon name="note" size={20} /> : initial(group.name)}
+        </span>
         <span className="srow__txt">
           <span className="srow__t">{group.name}</span>
           <span className="srow__m">{meta}</span>

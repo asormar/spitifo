@@ -5,16 +5,28 @@ relativo a `root`, que es exactamente lo que venia haciendo el downloader.
 """
 from __future__ import annotations
 
+import logging
+import os
 import shutil
+import tempfile
+import threading
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..playlists import PlaylistBook, PlaylistFormatError
 from . import InvalidKey, StoredFile, validate_key
+
+log = logging.getLogger(__name__)
 
 #: Tamano de cada lectura de `open_range`. 64 KiB es lo que usa el downloader
 #: para bajar y lo que acostumbra el streaming.
 CHUNK = 64 * 1024
+
+#: Carpeta oculta con el estado propio del dispositivo (playlists). `list()` ya
+#: salta los dot-dirs, asi que nunca aparece como biblioteca.
+STATE_DIR = ".spitifo"
+PLAYLISTS_FILE = "playlists.json"
 
 
 def _tag(audio, name: str) -> str | None:
@@ -59,6 +71,9 @@ class LocalStorage:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        # Lectura-modificacion-escritura de playlists: dos requests a la vez no
+        # pueden perder el cambio de la otra.
+        self._playlists_lock = threading.Lock()
 
     # ------------------------------------------------------------- internos
     def _path(self, key: str) -> Path:
@@ -172,3 +187,65 @@ class LocalStorage:
 
     def describe(self) -> str:
         return str(self.root)
+
+    # ------------------------------------------------------------- playlists
+    def _playlists_path(self) -> Path:
+        return self.root / STATE_DIR / PLAYLISTS_FILE
+
+    def _read_own_playlists(self) -> tuple[PlaylistBook, bool]:
+        """`(libro, ilegible)` desde `.spitifo/playlists.json`.
+
+        Un archivo ausente es un libro vacio (normal). Un archivo que no se
+        puede leer o parsear tambien se devuelve vacio, pero marcado ilegible:
+        guardar encima perderia las playlists del usuario.
+        """
+        path = self._playlists_path()
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            return PlaylistBook(), False
+        except OSError as exc:
+            log.warning("playlists ilegibles %s: %s", path, exc)
+            return PlaylistBook(), True
+        try:
+            return PlaylistBook.from_bytes(data), False
+        except PlaylistFormatError as exc:
+            log.warning("playlists ilegibles %s: %s", path, exc)
+            return PlaylistBook(), True
+
+    def load_playlists(self) -> PlaylistBook:
+        with self._playlists_lock:
+            return self._read_own_playlists()[0]
+
+    def save_playlist(
+            self, change: Callable[[PlaylistBook], None]) -> PlaylistBook:
+        """Aplica `change` al libro propio y lo persiste de forma atomica.
+
+        Si el archivo existe pero no se pudo leer, NO se pisa: se levanta
+        `RuntimeError` (misma regla que el indice propio en la nube).
+        """
+        with self._playlists_lock:
+            book, unreadable = self._read_own_playlists()
+            if unreadable:
+                raise RuntimeError(
+                    f"no se pudieron leer {PLAYLISTS_FILE}: no se sobrescribe")
+            change(book)
+            self._write_playlists(book)
+            return book
+
+    def _write_playlists(self, book: PlaylistBook) -> None:
+        """Temporal en la misma carpeta + `os.replace`: nunca queda a medias."""
+        path = self._playlists_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".playlists-",
+                                   suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(book.to_bytes())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise

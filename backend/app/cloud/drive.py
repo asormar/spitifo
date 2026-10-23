@@ -154,11 +154,11 @@ class DriveStorage(CloudStorage):
         return folder_id
 
     # --------------------------------------------------------------------- indice
-    def _list_index_files(self) -> list[tuple[str, str]]:
-        """`(remote_id, name)` de los `index-*.json` de la carpeta visible."""
+    def _list_small_files(self, prefix: str) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los archivos chicos con `prefix`."""
         root_id = self._folder_id("")
         resp = self._request("GET", DRIVE_FILES, params={
-            "q": (f"name contains 'index-' and '{_q(root_id)}' in parents "
+            "q": (f"name contains '{_q(prefix)}' and '{_q(root_id)}' in parents "
                   f"and trashed=false"),
             "fields": "files(id,name,modifiedTime)"})
         return [(str(entry["id"]), str(entry.get("name", "")))
