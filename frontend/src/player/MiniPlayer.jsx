@@ -26,6 +26,8 @@ import Scrub from "./Scrub.jsx";
    abierta la pastilla se oculta, porque esa vista ya es el reproductor.
    ------------------------------------------------------------------------- */
 
+const NO_ROWS = [];
+
 function MiniPlayer({ onReveal, onOpen, npOpen }) {
   const st = useEngine();
   const [dismissed, setDismissed] = useState(false);
@@ -43,7 +45,7 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
      desvanece. */
   if (track) lastInfo.current = track;
   const info = track || lastInfo.current;
-  const srcEl = track ? engine.elementFor(track.key) : null;
+  const srcEls = track ? engine.elementsFor(track.key) : NO_ROWS;
 
   /* Otro destino = otra cancion: la pastilla vuelve a ofrecerse. */
   useEffect(() => {
@@ -55,20 +57,29 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
     if (st.playing) setDismissed(false);
   }, [st.playing]);
 
-  /* Se observa la caja de la fila de origen, no el audio. Sin fila montada
-     (srcEl null) no esta a la vista. */
+  /* Se observan las cajas de las filas de origen, no el audio: la cancion puede
+     estar en varias pantallas (alguna oculta) y basta con que se vea una. Sin
+     fila montada no esta a la vista. */
   useLayoutEffect(() => {
-    if (!srcEl || typeof IntersectionObserver === "undefined") {
+    if (!srcEls.length || typeof IntersectionObserver === "undefined") {
       setSrcSeen(false);
       return undefined;
     }
     setSrcSeen(true);
-    const io = new IntersectionObserver(([e]) => setSrcSeen(e.isIntersecting), {
-      threshold: 0,
-    });
-    io.observe(srcEl);
+    const seen = new Set();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) seen.add(e.target);
+          else seen.delete(e.target);
+        }
+        setSrcSeen(seen.size > 0);
+      },
+      { threshold: 0 }
+    );
+    srcEls.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [srcEl]);
+  }, [srcEls]);
 
   const started = st.playing || st.time > 0;
   /* Con un video abierto el audio ya esta pausado: la pastilla solo estorbaria

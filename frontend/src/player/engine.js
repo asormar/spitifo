@@ -47,10 +47,14 @@ export function createEngine({
   };
 
   const listeners = new Set();
-  /* key -> caja del Player que muestra esa pista. El mini-reproductor lo usa
-     para saber si la fila esta a la vista (y para saltar a ella). No es parte
-     del estado: cambia con el DOM, no con la reproduccion. */
+  /* key -> cajas que muestran esa pista. El mini-reproductor las usa para saber
+     si alguna fila esta a la vista. No es parte del estado: cambia con el DOM,
+     no con la reproduccion. Pueden ser varias (la misma cancion en Escuchar y
+     en "Descargado hace poco"), asi que cada clave guarda un array inmutable:
+     su identidad solo cambia al registrar o soltar, y el mini-reproductor lo
+     usa como dependencia sin recrear su observador en cada emision. */
   const elements = new Map();
+  const NO_ELEMENTS = Object.freeze([]);
 
   let audio = null;
   /* Ultima clave adelantada. Evita repetir el POST al reanudar una pausa. */
@@ -436,9 +440,19 @@ export function createEngine({
     return () => listeners.delete(listener);
   };
 
+  /* Devuelve quien suelta SU caja: soltar por clave borraria tambien la de la
+     otra pantalla que muestra la misma cancion. */
   const registerElement = (key, el) => {
-    if (el) elements.set(key, el);
-    else elements.delete(key);
+    if (!el) {
+      elements.delete(key);
+      return () => {};
+    }
+    elements.set(key, [...(elements.get(key) || NO_ELEMENTS), el]);
+    return () => {
+      const rest = (elements.get(key) || NO_ELEMENTS).filter((x) => x !== el);
+      if (rest.length) elements.set(key, rest);
+      else elements.delete(key);
+    };
   };
 
   return {
@@ -462,7 +476,7 @@ export function createEngine({
     setVolume,
     toggleMute,
     registerElement,
-    elementFor: (key) => elements.get(key) || null,
+    elementsFor: (key) => elements.get(key) || NO_ELEMENTS,
   };
 }
 

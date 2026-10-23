@@ -33,8 +33,7 @@ export const Bars = ({ on }) => (
 function useRegisterRow(key, ref, enabled = true) {
   useEffect(() => {
     if (!enabled) return undefined;
-    engine.registerElement(key, ref.current);
-    return () => engine.registerElement(key, null);
+    return engine.registerElement(key, ref.current);
   }, [key, ref, enabled]);
 }
 
@@ -76,6 +75,7 @@ const SONG_ITEMS = [
   ["list", "Añadir a una lista…"],
 ];
 
+/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). */
 export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
   const { key, title, artist, album } = entry;
   const rootRef = useRef(null);
@@ -113,7 +113,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
         </span>
         {dur && <span className="srow__d">{dur}</span>}
       </button>
-      {!video && (
+      {!video && onMenu && (
         <button
           type="button"
           className="srow__more"
