@@ -138,6 +138,30 @@ describe("play", () => {
     expect(engine.getState().playing).toBe(true);
   });
 
+  it("restart reloads the same track from 0 with the new queue", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { queue: [A, B] });
+    engine.seek(30);
+    const sets = audio().srcSets;
+    engine.play(A, { queue: [A, C, D], index: 0, restart: true });
+    const s = engine.getState();
+    expect(audio().srcSets).toBe(sets + 1);
+    expect(s.queue).toEqual([A, C, D]);
+    expect(s.index).toBe(0);
+    expect(s.time).toBe(0);
+  });
+
+  it("restart with shuffle on puts the requested track first", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.setShuffle(true);
+    engine.play(C, { queue: [A, B, C] });
+    engine.play(C, { queue: [A, B, C, D], index: 2, restart: true });
+    const s = engine.getState();
+    expect(s.queue[0]).toBe(C);
+    expect(s.index).toBe(0);
+    expect(s.queue).toHaveLength(4);
+  });
+
   it("falls back to a single-track queue when the track is not in it", () => {
     const { engine } = setup();
     engine.play(C, { queue: [A, B] });
