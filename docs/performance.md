@@ -226,7 +226,17 @@ grow and the first script grew 2.2 KB:
 | JavaScript | 349,122 B | 360,473 B (+11,351) | 350,000 B | 361,000 B |
 | CSS | 60,665 B | 65,818 B (+5,153) | 61,000 B | 66,000 B |
 
-Session 20 (the first speed and size review) starts from here.
+The fourth came with playlists (session 19); the first script grew 0.7 KB and
+the rest is in Listen's lazy chunks:
+
+| Bundle | Before | Session 19 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 360,473 B | 373,444 B (+12,971) | 361,000 B | 374,000 B |
+| CSS | 65,818 B | 69,066 B (+3,248) | 66,000 B | 70,000 B |
+
+Session 20 (the first speed and size review) starts from here: Listen, "Ahora
+suena" and playlists added 31 KB of JavaScript and 9 KB of CSS over sessions
+17–19, nearly all of it in lazy chunks.
 
 ### Windows installer: 22,707,225 B
 

@@ -638,7 +638,47 @@ The plan as written:
   continuous animation and shrinks back with a swipe down.
 - Artwork-tinted background, seek bar with drag, and the queue one swipe away.
 
-### 19. Listen: playlists
+### 19. Listen: playlists — done
+
+Playlists can be created, renamed, deleted and reordered, and songs added from
+any song's menu and from "Ahora suena". What changed:
+
+- **Storage, corrected from the plan.** The plan said playlists would use
+  conditional writes "like the index", but the cloud index does not: each
+  device writes only its own `index-<device>.json` and reading merges them all
+  (newest `updated_at` wins per key, deletions are tombstones). Playlists
+  follow the same model: `playlists-<device>.json` next to the index files on
+  Drive, `.spitifo/playlists.json` (atomic write, hidden from the library) on
+  disk. Per playlist the newest edit wins; different playlists never clash. An
+  own file that cannot be read is never overwritten.
+- **API:** `GET /api/playlists`, `PUT /api/playlists/{id}` with the whole
+  playlist (the client makes the UUID, so creating and editing are the same
+  call) and `DELETE /api/playlists/{id}` (tombstone). A save always gets a
+  newer `updated_at` than the merged one, even if the clock went back.
+- **Listen:** a fifth tab, Listas: create inline, open a playlist to play,
+  shuffle, reorder by dragging or with the arrow keys (the queue's drag logic
+  is now one shared hook, `useDragSort`), remove songs, rename or delete from
+  the header menu. Songs whose files are gone stay in the data but are not
+  shown or played.
+- **Add from anywhere:** "Añadir a una lista…" in every song's menu and a
+  button in "Ahora suena" open the same picker, which can also create a list
+  with the song in it.
+- **Optimistic:** changes show at once and are saved behind; writes to one
+  playlist go out in order. A failed save reverts that playlist and says so.
+  Deleting shows "Lista «X» borrada" with Deshacer for 5 s; undo saves it again
+  with a newer date, which beats the tombstone.
+- **PC rail:** the area under the modes lists the playlists; one click opens it
+  in Listen. Phones use the Listas tab and never load the rail list.
+- **Size:** the first script grew 0.7 KB; the rest is in Listen's lazy chunks.
+  In total +12,971 B of JavaScript and +3,248 B of CSS, so the budgets went up
+  to 374,000 B and 70,000 B.
+- Tests: 117 frontend (22 for the playlists store), backend model, both
+  storage adapters (two devices on the fake Drive) and the API. Checked end to
+  end in the browser against the real backend: create, add from the picker,
+  the file on disk, the detail and the rail. Still to do on the Pixel: real
+  touch drag in a playlist.
+
+The plan as written:
 
 - Create, rename, delete and reorder playlists, and add songs from anywhere.
 - Playlists live in the user's storage next to `index.json` (local or Drive),
