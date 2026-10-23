@@ -32,8 +32,7 @@ function Player({ track }) {
   /* La caja de esta fila es lo que el mini-reproductor observa para saber si la
      cancion esta a la vista. */
   useEffect(() => {
-    engine.registerElement(key, rootRef.current);
-    return () => engine.registerElement(key, null);
+    return engine.registerElement(key, rootRef.current);
   }, [key]);
 
   const dur = realDur || track?.duration || 0;
