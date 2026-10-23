@@ -1,4 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Moon, Sun, Waveform } from "@phosphor-icons/react";
 import { API } from "../shared/api.js";
 import { cx } from "../shared/ui.jsx";
@@ -20,7 +21,7 @@ import {
   writeView,
 } from "./navigation.js";
 import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
-import { swapScreens } from "./screenSwap.js";
+import { swapNowPlaying, swapScreens } from "./screenSwap.js";
 import { NavIcon } from "./navIcons.jsx";
 
 /* writeView devuelve "" para Descargar sin otros parametros, y pushState/
@@ -31,6 +32,16 @@ const loadDownloadView = () => import("../download/DownloadView.jsx");
 const loadListenView = () => import("../listen/ListenView.jsx");
 const loadDiscoverView = () => import("../discover/DiscoverView.jsx");
 const loadSettingsView = () => import("../settings/SettingsView.jsx");
+
+/* "Ahora suena" no usa React.lazy: abrirla es una View Transition que pinta la
+   vista dentro de flushSync, y un componente perezoso aun sin resolver
+   suspenderia ese pintado y la foto nueva saldria vacia. Se espera al chunk
+   antes de empezar y se guarda el componente en el modulo. */
+let NowPlaying = null;
+const loadNowPlaying = () =>
+  import("../player/NowPlaying.jsx").then((m) => {
+    NowPlaying = m.default;
+  });
 
 const DownloadView = React.lazy(loadDownloadView);
 const ListenView = React.lazy(loadListenView);
@@ -104,6 +115,19 @@ export default function App() {
   const pendingMode = useRef(null);
   const screensRef = useRef(null);
 
+  /* "Ahora suena" abierta. Como Ajustes, abrirla empuja UNA entrada al
+     historial para que el atras de Android y del navegador la cierren, y
+     cerrarla (con la X, Escape o un arrastre) hace history.back() y deja que
+     popstate cierre de verdad. npEntry: 0 cerrada, 1 abierta, 2 cerrandose
+     (ya se pidio el back; un segundo cierre no puede dar otro). */
+  const [np, setNp] = useState(false);
+  const npEntry = useRef(0);
+  /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
+     arrastre ya la saco de pantalla). */
+  const npMorph = useRef(true);
+  /* Lo que se hace al terminar de cerrarla: cambiar de modo, abrir Ajustes. */
+  const npThen = useRef(null);
+
   const loadHealth = useCallback(() => {
     fetch(`${API}/health`)
       .then((r) => r.json())
@@ -160,9 +184,43 @@ export default function App() {
     setVisited((cur) => (cur.has(id) ? cur : new Set(cur).add(id)));
   }, []);
 
+  /* Cambiar de modo o abrir Ajustes con "Ahora suena" abierta la cierra
+     primero. Devuelve true si se hizo cargo: `then` corre cuando el historial
+     ya volvio a la entrada de debajo, asi no queda una entrada muerta. */
+  const leaveNp = useCallback((then) => {
+    if (!npEntry.current) return false;
+    npThen.current = then;
+    if (npEntry.current === 1) {
+      npEntry.current = 2;
+      window.history.back();
+    }
+    return true;
+  }, []);
+
+  const openNp = useCallback(() => {
+    if (npEntry.current || !engine.getState().track) return;
+    npEntry.current = 1;
+    loadNowPlaying()
+      .then(() => {
+        window.history.pushState({ spitifo: "np" }, "", window.location.href);
+        swapNowPlaying(() => setNp(true), true);
+      })
+      .catch(() => {
+        npEntry.current = 0;
+      });
+  }, []);
+
+  const closeNp = useCallback((morph = true) => {
+    if (npEntry.current !== 1) return;
+    npEntry.current = 2;
+    npMorph.current = morph;
+    window.history.back();
+  }, []);
+
   const goMode = useCallback(
     (m) => {
       if (!MODES.includes(m)) return;
+      if (leaveNp(() => goMode(m))) return;
       rememberScroll();
       const from = activeIdRef.current;
       /* Con Ajustes abierto y entrada propia en el historial, el modo lo aplica
@@ -187,11 +245,12 @@ export default function App() {
         viewUrl({ mode: m, settings: false })
       );
     },
-    [rememberScroll, visit]
+    [rememberScroll, visit, leaveNp]
   );
 
   const openSettings = useCallback(
     (focus = "storage") => {
+      if (leaveNp(() => openSettings(focus))) return;
       rememberScroll();
       swapScreens(() => {
         setSettings({ open: true, focus });
@@ -206,7 +265,7 @@ export default function App() {
         settingsEntry.current = true;
       }
     },
-    [mode, rememberScroll, visit]
+    [mode, rememberScroll, visit, leaveNp]
   );
 
   const closeSettings = useCallback(() => {
@@ -266,6 +325,38 @@ export default function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, [rememberScroll, visit]);
+
+  /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de arriba
+     para que este ya haya sincronizado la URL cuando corre `then`. */
+  useEffect(() => {
+    const onNpPop = () => {
+      if (!npEntry.current) return;
+      npEntry.current = 0;
+      const then = npThen.current;
+      const morph = npMorph.current;
+      npThen.current = null;
+      npMorph.current = true;
+      if (then) {
+        flushSync(() => setNp(false));
+        then();
+      } else if (morph) {
+        swapNowPlaying(() => setNp(false), false);
+      } else {
+        setNp(false);
+      }
+    };
+    window.addEventListener("popstate", onNpPop);
+    return () => window.removeEventListener("popstate", onNpPop);
+  }, []);
+
+  /* Al cerrarla el foco vuelve a la pastilla, de donde se abrio. */
+  const wasNp = useRef(false);
+  useLayoutEffect(() => {
+    if (wasNp.current && !np) {
+      document.querySelector(".mini__txt")?.focus({ preventScroll: true });
+    }
+    wasNp.current = np;
+  }, [np]);
 
   /* Al cambiar de pantalla se guarda el scroll de la que sale (lo hace cada
      transicion, antes de tocar el estado) y se restaura el de la que entra. Va
@@ -341,15 +432,18 @@ export default function App() {
     };
   }, [phoneNav, settings.open, mode, goMode]);
 
-  /* Escape cierra Ajustes. El "/" y el resto de Escape (menu de una fila,
-     detalle de un artista) los maneja cada pantalla con lo suyo. */
+  /* Escape cierra "Ahora suena" y, si no, Ajustes. El "/" y el resto de Escape
+     (menu de una fila, detalle de un artista) los maneja cada pantalla con lo
+     suyo. */
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape" && settings.open) closeSettings();
+      if (e.key !== "Escape") return;
+      if (npEntry.current) closeNp();
+      else if (settings.open) closeSettings();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [settings.open, closeSettings]);
+  }, [settings.open, closeSettings, closeNp]);
 
   /* Adelanto del chunk del modo vecino y de Ajustes cuando la app esta ociosa
      (y no antes, para no competir con la primera pintura). Se repite al cambiar
@@ -357,6 +451,7 @@ export default function App() {
   useEffect(() => {
     const preload = () => {
       loadSettingsView();
+      loadNowPlaying();
       MODE_LOADERS[nextGuess(mode)]?.();
     };
     if (typeof window.requestIdleCallback === "function") {
@@ -378,6 +473,15 @@ export default function App() {
     [settings.open, mode, goMode]
   );
 
+  /* "Ver en Escuchar" de "Ahora suena": primero se cierra la vista y despues
+     se salta a la fila. */
+  const revealFromNp = useCallback(
+    (key) => {
+      leaveNp(() => revealSong(key));
+    },
+    [leaveNp, revealSong]
+  );
+
   /* /api/library se pide al montar y no solo al abrir Escuchar: es una lista de
      archivos locales (no toca red) y asi la pantalla ya la tiene al llegar. */
   useEffect(() => {
@@ -392,7 +496,8 @@ export default function App() {
   const onImportCookies = useCallback(() => openSettings("cookies"), [openSettings]);
 
   return (
-    <main className="app">
+    <>
+    <main className="app" inert={np ? "" : undefined}>
       <div className="blob blob--coral" aria-hidden="true" />
       <div className="blob blob--sky" aria-hidden="true" />
       <header className="top">
@@ -490,7 +595,7 @@ export default function App() {
         )}
       </div>
 
-      <MiniPlayer onReveal={revealSong} />
+      <MiniPlayer onReveal={revealSong} onOpen={openNp} npOpen={np} />
       {/* Montado una sola vez: es el dueno del <video> y por eso la
           reproduccion no se corta al cambiar de modo. */}
       <VideoHost />
@@ -501,5 +606,8 @@ export default function App() {
         <SwipeDots mode={mode} onMode={goMode} />
       )}
     </main>
+    {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
+    {np && NowPlaying && <NowPlaying onClose={closeNp} onReveal={revealFromNp} />}
+    </>
   );
 }

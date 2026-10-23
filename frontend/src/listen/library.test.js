@@ -233,6 +233,14 @@ describe("toQueue", () => {
     });
     expect(tracks[1].meta).toBe("Artista");
   });
+
+  it("points the artwork at the thumbnail sidecar when there is one", () => {
+    const keyUrl = (key) => `/api/media/${key}`;
+    const withThumb = normalizeEntry(file({ key: "a", thumb_key: "x/a.jpg" }));
+    const without = normalizeEntry(file({ key: "b" }));
+    expect(toQueue([withThumb], keyUrl)[0].artwork).toBe("/api/media/x/a.jpg");
+    expect(toQueue([without], keyUrl)[0].artwork).toBeNull();
+  });
 });
 
 describe("visibleRange", () => {

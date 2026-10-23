@@ -22,6 +22,10 @@ import { visibleRange } from "./library.js";
    Cada fila va en una caja con translateY y su contenido dentro: asi la
    animacion de entrada (que tambien usa transform) y el desplazamiento de la
    cola al reordenar no pisan la posicion.
+
+   `scroller` (una ref a un elemento) cambia quien scrollea: la cola de "Ahora
+   suena" vive en su propio contenedor, y entonces se escucha ESE scroll y se
+   mide contra su caja en vez de contra la ventana.
    ------------------------------------------------------------------------- */
 
 /* Alto de cada fila. DEBE coincidir con --row-h de listen.css. */
@@ -33,7 +37,7 @@ const OVERSCAN = 6;
 const INTRO_MS = 700;
 
 const VirtualList = forwardRef(function VirtualList(
-  { count, active, getKey, renderRow, className },
+  { count, active, getKey, renderRow, className, scroller },
   ref
 ) {
   const boxRef = useRef(null);
@@ -43,9 +47,14 @@ const VirtualList = forwardRef(function VirtualList(
   const measure = useCallback(() => {
     const box = boxRef.current;
     if (!box) return;
+    /* La ref del contenedor se engancha tras los layout effects de sus hijos:
+       la primera medida puede caer aun sin el y cae a la ventana; el effect
+       de abajo la repite ya con el. */
+    const sc = scroller?.current;
+    const top = sc ? sc.getBoundingClientRect().top : 0;
     const next = visibleRange({
-      scrollTop: -box.getBoundingClientRect().top,
-      viewport: window.innerHeight,
+      scrollTop: top - box.getBoundingClientRect().top,
+      viewport: sc ? sc.clientHeight : window.innerHeight,
       rowHeight: ROW_H,
       count,
       overscan: OVERSCAN,
@@ -53,7 +62,7 @@ const VirtualList = forwardRef(function VirtualList(
     /* Solo se repinta si cambia la ventana: el scroll dispara decenas de
        eventos por segundo y casi todos caen dentro de la misma ventana. */
     setRange((cur) => (cur.start === next.start && cur.end === next.end ? cur : next));
-  }, [count]);
+  }, [count, scroller]);
 
   /* Oculta (otra pantalla) la caja mide 0: no hay nada que calcular. */
   useLayoutEffect(() => {
@@ -65,13 +74,14 @@ const VirtualList = forwardRef(function VirtualList(
     /* App restaura el scroll de la pantalla en su layout effect, que corre
        DESPUES del de este hijo: se vuelve a medir con el scroll ya puesto. */
     measure();
-    window.addEventListener("scroll", measure, { passive: true });
+    const target = scroller?.current || window;
+    target.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     return () => {
-      window.removeEventListener("scroll", measure);
+      target.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [active, measure]);
+  }, [active, measure, scroller]);
 
   useImperativeHandle(
     ref,
@@ -82,12 +92,14 @@ const VirtualList = forwardRef(function VirtualList(
         const box = boxRef.current;
         if (!box) return;
         const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const top =
-          box.getBoundingClientRect().top + window.scrollY + i * ROW_H + ROW_H / 2 - window.innerHeight / 2;
-        window.scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
+        const sc = scroller?.current;
+        const top = sc
+          ? box.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop + i * ROW_H + ROW_H / 2 - sc.clientHeight / 2
+          : box.getBoundingClientRect().top + window.scrollY + i * ROW_H + ROW_H / 2 - window.innerHeight / 2;
+        (sc || window).scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
       },
     }),
-    []
+    [scroller]
   );
 
   /* El conteo puede bajar entre el render y el layout effect que re-mide. */
