@@ -325,7 +325,9 @@ export default function ListenView({
     if (!queue.length) return;
     /* Con aleatorio se empieza por una al azar, no siempre por la primera. */
     const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
-    engine.play(queue[i], { queue, index: i });
+    /* restart: aunque ya suene esa pista, "Reproducir todo" empieza de cero
+       con la lista nueva. */
+    engine.play(queue[i], { queue, index: i, restart: true });
   };
 
   const onMenu = (key, el) => setMenu((m) => (m && m.key === key ? null : { key, el }));

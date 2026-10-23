@@ -228,8 +228,10 @@ export function createEngine({
   const play = (track, opts = {}) => {
     if (!track) return;
     /* Misma pista: reanudar, no recargar (el src ya esta puesto y volver a
-       asignarlo reiniciaria la reproduccion desde cero). */
-    if (state.track?.key === track.key) {
+       asignarlo reiniciaria la reproduccion desde cero). Con `restart` (el
+       "Reproducir todo") se carga la cola nueva aunque sea la misma pista:
+       si no, la lista pedida no sustituiria a la cola actual. */
+    if (!opts.restart && state.track?.key === track.key) {
       resume();
       return;
     }
