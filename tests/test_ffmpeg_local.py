@@ -156,6 +156,48 @@ def test_download_track_respeta_el_formato(fmt, ext_final, wav_sintetico,
         assert final.read_bytes() == wav_sintetico.read_bytes()
 
 
+def _buscada(**extra) -> Track:
+    """Pista como la devolvio la busqueda (titulo/album de la fuente)."""
+    return Track(source="archive", source_id="1", title="Buscada", artist="Otro",
+                 album="Album Buscado", year="1999", license="CC BY",
+                 audio_url="https://example.org/tono.mp3", extra=extra)
+
+
+def test_download_track_con_swap_escribe_tags_del_nombre(mp3_desde_wav,
+                                                         monkeypatch, biblioteca,
+                                                         storage_temporal):
+    """Identidad en desacuerdo: el archivo se llama como el audio REAL y sus
+    tags deben decir lo mismo, sin el album/anio/licencia de la pista buscada."""
+    storage_temporal(biblioteca)
+    dl = _descarga_local(monkeypatch, mp3_desde_wav)
+    t = _buscada(real_title="Real", real_artist="Verdadero", match="mismatch")
+    res = asyncio.run(dl.download_track(t, "original"))
+
+    assert res["filename"] == "Verdadero - Real.mp3"
+    tags = MFile(biblioteca / res["key"]).tags
+    assert tags["TIT2"].text == ["Real"]
+    assert tags["TPE1"].text == ["Verdadero"]
+    assert "TALB" not in tags
+    assert "TDRC" not in tags
+    assert "TCON" not in tags
+
+
+def test_download_track_sin_swap_escribe_los_tags_buscados(mp3_desde_wav,
+                                                           monkeypatch,
+                                                           biblioteca,
+                                                           storage_temporal):
+    storage_temporal(biblioteca)
+    dl = _descarga_local(monkeypatch, mp3_desde_wav)
+    t = _buscada(real_title="Real", real_artist="Verdadero", match="ok")
+    res = asyncio.run(dl.download_track(t, "original"))
+
+    assert res["filename"] == "Otro - Buscada.mp3"
+    tags = MFile(biblioteca / res["key"]).tags
+    assert tags["TIT2"].text == ["Buscada"]
+    assert tags["TPE1"].text == ["Otro"]
+    assert tags["TALB"].text == ["Album Buscado"]
+
+
 # --------------------------------------------------------------- _write_tags
 def test_write_tags_en_mp3(mp3_desde_wav):
     """El MP3 convertido tiene que quedar con TIT2/TPE1/TALB/TDRC."""
