@@ -313,6 +313,7 @@ export function VideoSplitDownload({
             role="menu"
             aria-label={`Resoluciones de ${title}`}
             tabIndex={-1}
+            data-no-swipe=""
             style={
               pos
                 ? { top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxH }

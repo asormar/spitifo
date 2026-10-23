@@ -158,6 +158,7 @@ function MiniPlayer({ libOpen, onReveal }) {
       className={cx("mini", st.playing && "is-playing")}
       aria-label="Reproductor"
       data-state={show ? "open" : "closed"}
+      data-no-swipe=""
       aria-hidden={show ? undefined : true}
       inert={show ? undefined : ""}
     >

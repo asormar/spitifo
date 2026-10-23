@@ -1,9 +1,8 @@
 /* ---------------------------------------------------------------------------
-   DONDE VIVE LA BIBLIOTECA (modal "Conectar servicio")
-   <dialog> nativo con la misma tarjeta de cristal que el resto. Dos opciones
-   grandes; la elegida lleva el borde coral. La barra de espacio es la de
-   Drive: Spitifo en coral, el resto de la cuenta en coral claro, lo libre es
-   la pista.
+   DONDE VIVE LA BIBLIOTECA (seccion de Ajustes)
+   Ya no es un <dialog>: es el cuerpo de una seccion normal. Dos opciones
+   grandes; la elegida lleva el borde coral. La barra de espacio es la de Drive:
+   Spitifo en coral, el resto de la cuenta en coral claro, lo libre es la pista.
    ------------------------------------------------------------------------- */
 .panel__store {
   display: inline-flex;
@@ -38,57 +37,17 @@
   color: inherit;
 }
 
+/* El cuerpo cabe en la columna de Ajustes; la tarjeta de cristal la pone la
+   seccion que lo envuelve. */
 .store {
-  width: min(520px, calc(100vw - 32px));
-  max-width: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  overflow: visible;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
-.store::backdrop {
-  background: rgba(20, 32, 43, 0.38);
-}
-
-.store__card {
-  padding: 22px;
-  border-radius: var(--r-card);
-  background: var(--surface);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-panel);
-}
-
-.store__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.store__title {
-  margin: 0;
-  font: 600 20px/1.2 var(--font-display);
-  letter-spacing: -0.01em;
-}
-
-.store__x {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--track);
-  color: var(--ink);
-  cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
-}
-
-.store__x:active {
-  transform: scale(0.94);
+.store__lede {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .store__opts {
@@ -224,14 +183,11 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Cookies de YouTube: ultimo recurso del bloque de configuracion. Separado del
-   resto por una linea porque ya no es "donde vive la musica", es una salida
-   manual para el muro de verificacion.
+   Cookies de YouTube: ultimo recurso, ahora en su propia seccion de Ajustes.
+   Ya no lleva linea divisoria porque la tarjeta la separa.
    ------------------------------------------------------------------------- */
 .store__cookies {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  margin-top: 0;
 }
 
 .store__cookies-head {
@@ -303,13 +259,16 @@
 .store__foot {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 18px;
+}
+
+.store__foot:empty {
+  display: none;
 }
 
 .store__link {
-  margin-right: auto;
   padding: 0;
   border: 0;
   background: none;
@@ -324,33 +283,6 @@
 
 .store__note .store__link {
   margin-left: 10px;
-}
-
-.store__done {
-  min-height: 40px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
-}
-
-.store__done:hover {
-  background: var(--accent-hover);
-}
-
-.store__done:active {
-  transform: scale(0.97);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .store[open] .store__card {
-    animation: enter-up var(--t-enter) var(--ease);
-  }
 }
 
 @media (max-width: 480px) {

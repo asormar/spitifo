@@ -379,11 +379,15 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
     [fmt, media, mode, query, setQuery, setJobFor]
   );
 
-  /* El estado vive en la URL: el link se puede compartir y sobrevive al F5. */
+  /* El estado vive en la URL: el link se puede compartir y sobrevive al F5.
+     Se parte de la busqueda actual y solo se tocan `mode` y `q`: `view` (el
+     modo del shell) y cualquier otro parametro siguen donde estaban. */
   const writeUrl = useCallback((m, text) => {
-    const p = new URLSearchParams();
+    const p = new URLSearchParams(window.location.search);
     if (m) p.set("mode", m);
+    else p.delete("mode");
     if (text) p.set("q", text);
+    else p.delete("q");
     const qs = p.toString();
     window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
   }, []);

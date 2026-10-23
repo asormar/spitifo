@@ -15,6 +15,8 @@ import "./download/cards.css";
 import "./shared/motion.css";
 import "./settings/storage.css";
 import "./download/resolution-menu.css";
+/* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
+import "./app/shell.css";
 
 document.title = "Spitifo: descarga contenido libre";
 

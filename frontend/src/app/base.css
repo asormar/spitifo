@@ -96,12 +96,13 @@ button {
 .app {
   max-width: 1280px;
   margin: 0 auto;
-  /* Abajo cabe el toast de progreso (fijo, ~100px) sin tapar la ultima fila. */
-  padding: 24px var(--gutter) 128px;
+  /* Abajo cabe el toast de progreso (fijo, ~100px) sin tapar la ultima fila, y
+     la barra de navegacion del telefono cuando la hay (--nav-h). */
+  padding: 24px var(--gutter) calc(128px + var(--nav-h));
 }
 
 /* Con el mini-reproductor visible, el final de la lista no puede quedar debajo. */
 body.has-mini .app {
-  padding-bottom: calc(128px + var(--mini-h));
+  padding-bottom: calc(128px + var(--mini-h) + var(--nav-h));
 }
 
