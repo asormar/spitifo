@@ -383,10 +383,51 @@ html[data-vt="mode"]::view-transition-new(screen) {
   background: var(--line);
 }
 
-/* Hueco de las listas de reproduccion: vacio a proposito, sin placeholders. */
+/* Las listas de reproduccion: nombres cortos bajo los modos; scrollea si hay
+   muchas. El nombre completo va en el title. */
 .rail__lists {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.rail__list {
+  flex: none;
+  width: 60px;
+  min-height: 36px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: 600 11px / 1.2 var(--font-body);
+  overflow-wrap: anywhere;
+  text-align: center;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
+    color var(--t-quick) var(--ease);
+}
+
+.rail__list:active {
+  transform: scale(0.94);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rail__list:hover {
+    background: var(--surface);
+    color: var(--ink);
+  }
 }
 
 /* --- Ajustes en la cabecera (solo telefono; en escritorio lo lleva el riel) */

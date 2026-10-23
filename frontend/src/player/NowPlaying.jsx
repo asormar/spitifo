@@ -13,6 +13,9 @@ import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { Icon } from "../listen/icons.jsx";
 import QueueList from "../listen/QueueList.jsx";
+import { useNotice } from "../listen/Notice.jsx";
+import PlaylistPicker from "../listen/PlaylistPicker.jsx";
+import { playlists } from "../listen/playlists.js";
 import { initial } from "../listen/rows.jsx";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
@@ -214,8 +217,13 @@ export default function NowPlaying({ onClose, onReveal }) {
   const [page, setPage] = useState(0);
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
   const [badArt, setBadArt] = useState(null);
+  /* Hoja "Añadir a una lista" abierta. Se pinta dentro de esta capa (queda por
+     encima) y el aviso tambien: el de Escuchar esta debajo y no se veria. */
+  const [adding, setAdding] = useState(false);
+  const [noticeNode, show] = useNotice();
 
   const rootRef = useRef(null);
+  const addRef = useRef(null);
   const pagesRef = useRef(null);
   const trackRef = useRef(null);
   const queueRef = useRef(null);
@@ -237,6 +245,8 @@ export default function NowPlaying({ onClose, onReveal }) {
     rootRef.current.querySelector(".np__close").focus({ preventScroll: true });
   }, []);
 
+  useEffect(() => playlists.onError(show), [show]);
+
   /* Abrir un video (que pausa el audio) deja esta vista sobrando. */
   useEffect(() => {
     if (vhost.mode !== "closed") onClose(false);
@@ -245,10 +255,10 @@ export default function NowPlaying({ onClose, onReveal }) {
   /* --- Gestos ------------------------------------------------------------- */
 
   const onPointerDown = (e) => {
-    /* El raton no arrastra (seleccionaria texto); la barra, el volumen y el asa
-       de la cola tienen su propio arrastre. */
+    /* El raton no arrastra (seleccionaria texto); la barra, el volumen, el asa
+       de la cola y la hoja de listas tienen su propio gesto. */
     if (e.pointerType === "mouse" || !e.isPrimary) return;
-    if (e.target.closest(".scrub, input, .qrow__grip")) return;
+    if (e.target.closest(".scrub, input, .qrow__grip, .pick")) return;
     gesture.current = {
       id: e.pointerId,
       x: e.clientX,
@@ -379,14 +389,29 @@ export default function NowPlaying({ onClose, onReveal }) {
           <p className="np__cap" title={caption}>
             {caption}
           </p>
-          <button
-            type="button"
-            className="np__go"
-            disabled={track.kind !== "library"}
-            onClick={() => onReveal(track.key)}
-          >
-            Ver en Escuchar
-          </button>
+          <div className="np__tools">
+            {track.kind === "library" && (
+              <button
+                ref={addRef}
+                type="button"
+                className="np__btn"
+                onClick={() => setAdding(true)}
+                aria-label="Añadir a una lista"
+                aria-haspopup="dialog"
+                title="Añadir a una lista"
+              >
+                <Icon name="plus" size={24} />
+              </button>
+            )}
+            <button
+              type="button"
+              className="np__go"
+              disabled={track.kind !== "library"}
+              onClick={() => onReveal(track.key)}
+            >
+              Ver en Escuchar
+            </button>
+          </div>
         </header>
 
         {!wide && (
@@ -468,6 +493,20 @@ export default function NowPlaying({ onClose, onReveal }) {
           </div>
         </div>
       </div>
+
+      {noticeNode}
+
+      {adding && (
+        <PlaylistPicker
+          songKey={track.key}
+          title={track.title}
+          onNotice={show}
+          onClose={() => {
+            setAdding(false);
+            addRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
     </div>
   );
 }
