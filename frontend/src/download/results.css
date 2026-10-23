@@ -30,7 +30,7 @@
 .rows.is-stale {
   opacity: 0.45;
   pointer-events: none;
-  transition: opacity 160ms var(--ease);
+  transition: opacity var(--t-quick) var(--ease);
 }
 
 /* auto-fill: 4 columnas en escritorio ancho y baja sola a 3 / 2 / 1. */
@@ -55,8 +55,8 @@
   /* `backwards` y no `both`: con `both` el ultimo keyframe (transform: none)
      se queda aplicado para siempre y le gana al transform del hover. */
   animation: rise var(--t-enter) var(--ease) backwards;
-  animation-delay: min(400ms, calc(var(--i, 0) * 22ms));
-  transition: transform 240ms var(--ease), box-shadow 240ms var(--ease);
+  animation-delay: calc(min(var(--i, 0), 8) * var(--stagger));
+  transition: transform var(--t-enter) var(--ease), box-shadow var(--t-enter) var(--ease);
 }
 
 .card__art {
@@ -194,7 +194,7 @@
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
-  animation: pop 200ms var(--ease) both;
+  animation: pop var(--t-quick) var(--ease) both;
 }
 
 .st svg {

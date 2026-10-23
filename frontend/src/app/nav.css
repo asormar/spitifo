@@ -25,7 +25,9 @@
   box-shadow: var(--shadow-nav);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
-  animation: drop-in 460ms var(--ease) backwards;
+  /* Baja desde -14 px: la pildora entra desde el borde de arriba. */
+  --rise: -14px;
+  animation: rise var(--t-move) var(--ease) backwards;
 }
 
 .brand {
@@ -51,20 +53,22 @@
    mascara el borde sube por toda la pantalla, sin arista. 550 ms con
    ease-in-out simetrica: arranca y frena despacio. Sirve igual de claro a oscuro
    que al reves, porque siempre es la foto "nueva" la que se descubre. */
-::view-transition-old(root),
-::view-transition-new(root) {
+/* Solo cuando la transicion la abrio el tema (data-vt): un cambio de modo no
+   debe recibir la cortina. */
+html[data-vt="theme"]::view-transition-old(root),
+html[data-vt="theme"]::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
 }
 
-::view-transition-new(root) {
+html[data-vt="theme"]::view-transition-new(root) {
   -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
   mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
   -webkit-mask-size: 100% 300%;
   mask-size: 100% 300%;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  animation: theme-curtain 550ms cubic-bezier(0.45, 0, 0.55, 1) both;
+  animation: theme-curtain var(--t-scene) cubic-bezier(0.45, 0, 0.55, 1) both;
 }
 
 @keyframes theme-curtain {
@@ -100,7 +104,7 @@
   background: var(--line-strong);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease),
-    background-color 250ms var(--ease-drawer);
+    background-color var(--t-enter) var(--ease-io);
 }
 
 .themesw::after {
@@ -129,8 +133,8 @@
   background: var(--ink);
   color: var(--on-ink);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-  transition: transform 250ms var(--ease-drawer), background-color 250ms var(--ease-drawer),
-    color 250ms var(--ease-drawer);
+  transition: transform var(--t-enter) var(--ease-io),
+    background-color var(--t-enter) var(--ease-io), color var(--t-enter) var(--ease-io);
 }
 
 .themesw[aria-checked="true"] .themesw__knob {
@@ -145,7 +149,7 @@
   place-items: center;
   opacity: 0;
   transform: rotate(-90deg) scale(0.4);
-  transition: opacity 250ms var(--ease), transform 250ms var(--ease);
+  transition: opacity var(--t-enter) var(--ease), transform var(--t-enter) var(--ease);
 }
 
 .themesw[aria-checked="false"] .themesw__ico--moon,
@@ -194,11 +198,14 @@
 .swap {
   display: inline-grid;
   place-items: center;
-  animation: swap-in 200ms var(--ease) both;
+  --pop: 0.85;
+  animation: pop var(--t-quick) var(--ease) both;
 }
 
 .count--bump {
-  animation: bump-spring 360ms var(--ease-spring) both;
+  /* Vuelve a montarse con cada descarga: arrancar casi invisible parpadeaba. */
+  --pop: 0.85;
+  animation: pop var(--t-move) var(--ease-spring) both;
 }
 
 /* La etiqueta no se parte en dos lineas: el boton mantiene su ancho cuando el

@@ -42,15 +42,20 @@
   overflow-wrap: anywhere;
   /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
   scroll-margin-block: 84px 120px;
-  animation: reveal var(--t-enter) var(--ease) both;
+  /* Entra desde arriba y sale por donde entro. */
+  --rise: -4px;
+  --leave: -4px;
+  animation: rise var(--t-enter) var(--ease) both;
 }
 
 /* El aviso de exito se retira solo a los 5 s (JOB_DISMISS_MS, que llega como
-   --dismiss): antes desaparecia de golpe. La salida arranca 240 ms antes de
-   que React lo desmonte. Error y "esto no es lo que buscabas" NO se retiran. */
+   --dismiss): antes desaparecia de golpe. La salida arranca una salida corta
+   antes de que React lo desmonte. Error y "esto no es lo que buscabas" NO se
+   retiran. */
 .msg--ok {
-  animation: reveal var(--t-enter) var(--ease) both,
-    msg-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+  animation: rise var(--t-enter) var(--ease) both,
+    leave var(--t-quick) var(--ease) calc(var(--dismiss, 5000ms) - var(--t-quick))
+      forwards;
 }
 
 .msg svg {
@@ -59,7 +64,8 @@
 }
 
 .msg--ok svg {
-  animation: pop-spring 420ms var(--ease-spring) 120ms both;
+  --pop: 0.5;
+  animation: pop var(--t-move) var(--ease-spring) 120ms both;
 }
 
 .msg__sub {
@@ -94,7 +100,7 @@
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
-  transition: transform 220ms var(--ease);
+  transition: transform var(--t-enter) var(--ease);
 }
 
 /* El mini-reproductor ocupa el centro inferior y los toasts van abajo a la
@@ -124,7 +130,8 @@ body.has-mini .progstack {
   border: 1px solid var(--toast-edge);
   color: #fff;
   box-shadow: 0 20px 50px rgba(20, 32, 43, 0.35);
-  animation: toast-in var(--t-enter) var(--ease) both;
+  --rise: 12px;
+  animation: rise var(--t-enter) var(--ease) both;
 }
 
 .prog__top {
@@ -135,10 +142,11 @@ body.has-mini .progstack {
   font-size: 15px;
 }
 
-/* Toast terminado: sale por donde entro, en los ultimos 240 ms de su vida. */
+/* Toast terminado: sale por donde entro, en el ultimo tramo de su vida. */
 .prog.is-done,
 .prog.is-failed {
-  animation: toast-out 240ms var(--ease) calc(var(--dismiss, 5000ms) - 240ms) forwards;
+  animation: leave var(--t-quick) var(--ease)
+    calc(var(--dismiss, 5000ms) - var(--t-quick)) forwards;
 }
 
 .prog__ico {
@@ -151,7 +159,8 @@ body.has-mini .progstack {
    con rebote, que es el unico momento de celebracion de la app. */
 .prog.is-done .prog__ico svg,
 .prog.is-failed .prog__ico svg {
-  animation: pop-spring 420ms var(--ease-spring) both;
+  --pop: 0.5;
+  animation: pop var(--t-move) var(--ease-spring) both;
 }
 
 .prog.is-done .prog__ico {
@@ -191,7 +200,7 @@ body.has-mini .progstack {
   background: var(--accent-fill);
   transform-origin: left center;
   transform: scaleX(0);
-  transition: transform 260ms var(--ease);
+  transition: transform var(--t-enter) var(--ease);
   position: relative;
   overflow: hidden;
 }

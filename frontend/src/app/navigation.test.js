@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MODES,
   canStartSwipe,
+  modeDirection,
   nextGuess,
   readPhoneNav,
   readView,
@@ -81,6 +82,25 @@ describe("nextGuess", () => {
     expect(nextGuess("download")).toBe("listen");
     expect(nextGuess("listen")).toBe("discover");
     expect(nextGuess("discover")).toBe("listen");
+  });
+});
+
+describe("modeDirection", () => {
+  it("follows the MODES order", () => {
+    expect(modeDirection("download", "listen")).toBe(1);
+    expect(modeDirection("listen", "discover")).toBe(1);
+    expect(modeDirection("listen", "download")).toBe(-1);
+    expect(modeDirection("discover", "download")).toBe(-1);
+  });
+
+  it("stays still on the same mode", () => {
+    expect(modeDirection("download", "download")).toBe(0);
+  });
+
+  it("returns 0 when either side is not a mode", () => {
+    expect(modeDirection("settings", "listen")).toBe(0);
+    expect(modeDirection("listen", "settings")).toBe(0);
+    expect(modeDirection(undefined, "discover")).toBe(0);
   });
 });
 

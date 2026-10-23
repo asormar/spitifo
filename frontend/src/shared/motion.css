@@ -86,8 +86,18 @@
   }
 
   .example:hover svg {
-    animation: wiggle 520ms var(--ease);
+    animation: wiggle var(--t-scene) var(--ease);
   }
+}
+
+/* Feedback al presionar para los botones que no tenian ninguno y que no usan
+   transform para colocarse. Una sola regla agrupada: mismos tiempos para todos. */
+:is(.dots__btn, .mini__txt, .rsvm__item, .store__link) {
+  transition: transform var(--t-press) var(--ease);
+}
+
+:is(.dots__btn, .mini__txt, .rsvm__item, .store__link):active {
+  transform: scale(0.96);
 }
 
 /* Dedo: los botones secundarios tambien llegan a 44px. */
@@ -249,85 +259,48 @@
   }
 }
 
-@keyframes drop-in {
+/* Parametros de rise, pop y leave. Registrados sin herencia: si no, un
+   --rise puesto en un contenedor (la cabecera baja desde -14 px) llegaria a
+   cada hijo que tambien entra con rise. */
+@property --rise {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 8px;
+}
+
+@property --pop {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0.96;
+}
+
+@property --leave {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 12px;
+}
+
+/* Entradas: la distancia la pone cada uso con --rise (por defecto 8 px). */
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(-14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(var(--rise));
   }
 }
 
-@keyframes enter-up {
+/* Entradas con escala: cada uso elige el punto de partida con --pop. */
+@keyframes pop {
   from {
     opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: scale(var(--pop));
   }
 }
 
-@keyframes rise-soft {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes swap-in {
-  from {
-    opacity: 0;
-    transform: scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Como pop-spring pero desde mas cerca: el contador se vuelve a montar con
-   cada descarga y arrancar casi invisible parpadeaba. */
-@keyframes bump-spring {
-  from {
-    opacity: 0;
-    transform: scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes pop-spring {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes toast-out {
+/* Salidas: el recorrido lo pone cada uso con --leave (por defecto 12 px). */
+@keyframes leave {
   to {
     opacity: 0;
-    transform: translateY(12px);
-  }
-}
-
-@keyframes msg-out {
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(var(--leave));
   }
 }
 
@@ -382,50 +355,6 @@
   }
   65% {
     transform: rotate(10deg);
-  }
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-@keyframes reveal {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pop {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
   }
 }
 

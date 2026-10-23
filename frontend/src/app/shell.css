@@ -13,6 +13,11 @@
   /* Alto de la barra inferior. En escritorio no existe; el body lo redefine
      solo por debajo de 720 px y segun la preferencia de navegacion. */
   --nav-h: 0px;
+  /* Recorrido del cambio de pantalla: en el telefono se desliza en X; desde
+     720 px (riel), en Y. Las variables llegan a los pseudo-elementos de la
+     View Transition por herencia desde <html>. */
+  --vt-dx: 24px;
+  --vt-dy: 0px;
 }
 
 @media (max-width: 719.98px) {
@@ -29,6 +34,11 @@
    riel: el ancho extra del .app (rail + 1280) compensa el padding izquierdo,
    asi el bloque mantiene el centro optico y no se pega al riel. */
 @media (min-width: 720px) {
+  :root {
+    --vt-dx: 0px;
+    --vt-dy: 16px;
+  }
+
   .app {
     max-width: calc(1280px + var(--rail-w));
     padding-left: calc(var(--rail-w) + var(--gutter));
@@ -64,6 +74,93 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
 /* `hidden` es display:none: la pantalla sigue montada y conserva su estado. */
 .screen[hidden] {
   display: none;
+}
+
+/* --- Cambio de pantalla (View Transitions) -------------------------------- */
+
+/* Solo hay una pantalla visible a la vez (las demas son display:none), asi que
+   un unico nombre captura la que sale y la que entra. */
+html[data-vt="mode"] .screen:not([hidden]) {
+  view-transition-name: screen;
+}
+
+/* Las capas de la transicion se pintan por encima de la raiz: si solo la
+   pantalla tuviera nombre, taparia la cabecera y la barra mientras entra. Lo
+   que flota sobre la pantalla lleva nombre propio para quedar encima. */
+html[data-vt="mode"] .top {
+  view-transition-name: vt-top;
+}
+
+html[data-vt="mode"] .tabbar {
+  view-transition-name: vt-tabbar;
+}
+
+html[data-vt="mode"] .dots {
+  view-transition-name: vt-dots;
+}
+
+html[data-vt="mode"] .rail {
+  view-transition-name: vt-rail;
+}
+
+html[data-vt="mode"] .mini {
+  view-transition-name: vt-mini;
+}
+
+html[data-vt="mode"] .progstack {
+  view-transition-name: vt-toasts;
+}
+
+html[data-vt="mode"] .vhost {
+  view-transition-name: vt-video;
+}
+
+/* Todo menos la pantalla queda quieto y vivo: sin foto vieja ni animacion,
+   asi los indicadores siguen su propia transicion sin dejar fantasma. */
+html[data-vt="mode"]::view-transition-group(*),
+html[data-vt="mode"]::view-transition-new(*) {
+  animation: none;
+}
+
+html[data-vt="mode"]::view-transition-old(*) {
+  display: none;
+}
+
+/* Cada pantalla guarda su scroll, asi que la vieja y la nueva estan a alturas
+   distintas del documento. El grupo no viaja de una a otra (seria un salto
+   vertical de cientos de px): se queda donde esta la nueva, y la foto vieja
+   se corre --vt-shift (diferencia de scroll, la pone screenSwap.js) para
+   seguir donde se veia. */
+html[data-vt="mode"]::view-transition-old(screen) {
+  display: block;
+  translate: 0 var(--vt-shift, 0px);
+  animation: screen-out var(--t-quick) var(--ease) both;
+}
+
+html[data-vt="mode"]::view-transition-new(screen) {
+  animation: screen-in var(--t-enter) var(--ease) both;
+}
+
+/* La vieja sale hacia el lado contrario al avance y la nueva entra desde el
+   lado del avance. --vt-dir vale -1, 0 o 1 (0 solo funde). */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translate(
+      calc(var(--vt-dir, 0) * var(--vt-dx)),
+      calc(var(--vt-dir, 0) * var(--vt-dy))
+    );
+  }
+}
+
+@keyframes screen-out {
+  to {
+    opacity: 0;
+    transform: translate(
+      calc(var(--vt-dir, 0) * var(--vt-dx) * -1),
+      calc(var(--vt-dir, 0) * var(--vt-dy) * -1)
+    );
+  }
 }
 
 /* --- Navegacion fija ------------------------------------------------------ */
@@ -120,7 +217,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   background: var(--seg-on);
   box-shadow: var(--shadow-raise);
   transform: translateX(calc(var(--i, 0) * 100%));
-  transition: transform 360ms var(--ease-spring);
+  transition: transform var(--t-move) var(--ease-spring);
 }
 
 .tabbar__btn {
@@ -140,7 +237,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 200ms var(--ease), transform var(--t-press) var(--ease);
+  transition: color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
 }
 
 .tabbar__btn:active {
@@ -197,7 +294,8 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   height: 6px;
   border-radius: var(--r-pill);
   background: var(--line-strong);
-  transition: width 240ms var(--ease-spring), background-color 200ms var(--ease);
+  transition: width var(--t-enter) var(--ease-spring),
+    background-color var(--t-quick) var(--ease);
 }
 
 .dots__btn[aria-current="page"] .dots__dot {
@@ -246,8 +344,8 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: background-color 200ms var(--ease), color 200ms var(--ease),
-    transform var(--t-press) var(--ease);
+  transition: background-color var(--t-quick) var(--ease),
+    color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
 }
 
 .rail__btn:active {
@@ -260,18 +358,20 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* Barra coral de 4 px pegada al borde del riel. El boton mide 44 dentro de 72:
-   quedan 14 px a cada lado, de ahi el -14. */
-.rail__btn.is-on::before {
-  content: "";
+/* Barra coral de 4 px pegada al borde del riel. Una sola pieza que viaja con
+   --i: el paso es el boton (44) mas el gap del riel (6). Nace centrada en el
+   primer boton (10 px desde su borde superior). */
+.rail__bar {
   position: absolute;
-  left: -14px;
-  top: 50%;
+  left: 0;
+  top: calc(12px + env(safe-area-inset-top, 0px) + 10px);
   width: 4px;
   height: 24px;
-  margin-top: -12px;
   border-radius: 0 4px 4px 0;
   background: var(--accent);
+  pointer-events: none;
+  transform: translateY(calc(var(--i, 0) * (44px + 6px)));
+  transition: transform var(--t-move) var(--ease-spring);
 }
 
 /* Etiqueta accesible: `title` da el tooltip nativo y `aria-label` el nombre. */
@@ -302,8 +402,8 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease),
-    color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
 }
 
 @media (max-width: 719.98px) {
@@ -383,7 +483,8 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
 }
 
 .settings__back:active {

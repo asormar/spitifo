@@ -20,8 +20,8 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: grid-template-rows 280ms var(--ease), opacity 160ms var(--ease),
-    visibility 0s linear 280ms;
+  transition: grid-template-rows var(--t-quick) var(--ease), opacity var(--t-quick) var(--ease),
+    visibility 0s linear var(--t-quick);
 }
 
 .drawer[data-state="open"] {
@@ -29,7 +29,7 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transition: grid-template-rows 280ms var(--ease), opacity 240ms var(--ease),
+  transition: grid-template-rows var(--t-enter) var(--ease), opacity var(--t-enter) var(--ease),
     visibility 0s;
 }
 
@@ -54,7 +54,7 @@
   box-shadow: var(--shadow-card);
   overflow: hidden;
   transform: translateY(-12px) scale(0.985);
-  transition: box-shadow 360ms var(--ease), transform 280ms var(--ease);
+  transition: box-shadow var(--t-move) var(--ease), transform var(--t-enter) var(--ease);
 }
 
 .drawer[data-state="open"] .panel {

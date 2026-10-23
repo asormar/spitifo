@@ -115,7 +115,8 @@
   background: rgba(8, 14, 20, 0.55);
   color: #fff;
   transform: translate(-50%, -50%);
-  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
 }
 
 .plthumb__dur {
@@ -165,7 +166,7 @@
   inset: 0;
   background: var(--video-scrim);
   opacity: 0;
-  transition: opacity 200ms var(--ease);
+  transition: opacity var(--t-quick) var(--ease);
 }
 
 .vhost[data-mode="modal"] .vhost__scrim {
@@ -206,7 +207,7 @@
   max-height: 100%;
   margin: auto;
   overflow: auto;
-  animation: vhost-in 200ms var(--ease) both;
+  animation: vhost-in var(--t-quick) var(--ease) both;
 }
 
 @keyframes vhost-in {

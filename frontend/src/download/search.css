@@ -13,7 +13,8 @@
   letter-spacing: -0.035em;
   text-wrap: balance;
   overflow-wrap: anywhere;
-  animation: enter-up 400ms var(--ease) 60ms backwards;
+  --rise: 16px;
+  animation: rise var(--t-move) var(--ease) 60ms backwards;
 }
 
 .finder {
@@ -27,7 +28,8 @@
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   text-align: left;
-  animation: enter-up 400ms var(--ease) 160ms backwards;
+  --rise: 16px;
+  animation: rise var(--t-move) var(--ease) 160ms backwards;
 }
 
 .search {
@@ -52,7 +54,7 @@
 .search__icon {
   flex: none;
   color: var(--icon-dim);
-  transition: color 200ms var(--ease);
+  transition: color var(--t-quick) var(--ease);
 }
 
 .search.is-scanning .search__icon {
@@ -134,7 +136,7 @@
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
-  animation: hint-in 180ms var(--ease) backwards;
+  animation: hint-in var(--t-quick) var(--ease) backwards;
 }
 
 @keyframes hint-in {
@@ -193,7 +195,7 @@
 }
 
 .segs[data-ready]::before {
-  transition: transform 300ms var(--ease), width 300ms var(--ease);
+  transition: transform var(--t-enter) var(--ease), width var(--t-enter) var(--ease);
 }
 
 .seg {
@@ -212,8 +214,8 @@
   line-height: 1.2;
   text-align: center;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), color 200ms var(--ease),
-    background-color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease), color var(--t-quick) var(--ease),
+    background-color var(--t-quick) var(--ease);
 }
 
 .seg:active {

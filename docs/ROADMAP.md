@@ -483,7 +483,57 @@ The plan as written:
   horizontal gestures, such as the genre map in Discover.
 - Listen and Discover start as empty screens.
 
-### 16. Motion system
+### 16. Motion system — done
+
+Every animation now comes from one set of tokens, and switching screens
+animates. What changed:
+
+- **Tokens** in `shared/tokens.css`: five durations (`--t-press` 120 ms,
+  `--t-quick` 180 ms for colour, hover and every exit, `--t-enter` 240 ms,
+  `--t-move` 360 ms for indicators and drawers, `--t-scene` 550 ms for the
+  theme curtain), three curves (`--ease`, `--ease-io`, which was
+  `--ease-drawer`, and `--ease-spring`) and `--stagger` (30 ms). The twenty-odd
+  raw durations in the stylesheets now use them; what is left raw is loops,
+  waits such as the toast hold and delays under 100 ms.
+- **Keyframes:** twenty became eleven. `rise`, `pop` and `leave` take their
+  distance or scale from `--rise`, `--pop` and `--leave`, registered with
+  `@property` without inheritance so a value set on a container never reaches
+  its children.
+- **Mode switch:** `app/screenSwap.js` runs every screen change (modes,
+  Settings, the back button, swipes) through a View Transition. Only the
+  screen moves: it slides 24 px on X from the side of the tab you picked on
+  phones and 16 px on Y on the PC rail, while the old one fades out. Settings
+  only fades. The header, the tab bar, the rail, the mini-player, toasts and
+  the video have their own transition names so they stay on top and live,
+  without a ghost of their old position. Each screen keeps its own scroll, so
+  the old snapshot is moved by the scroll difference (`--vt-shift`) instead of
+  sliding hundreds of pixels. A new switch skips the one running; tapping the
+  active mode does nothing. Without the API the new screen fades in; with
+  reduced motion it swaps at once.
+- The theme curtain now only applies while `data-vt="theme"` is set on
+  `<html>`, so mode switches never get it.
+- **Rail:** one coral bar that slides to the active mode with the spring, like
+  the tab bar pill, instead of a bar per button.
+- **Mini-player:** rises 24 px with the spring on `--t-move` and leaves on
+  `--t-quick`.
+- **Presses:** the buttons that had no press feedback (swipe dots, the
+  mini-player title, the resolution menu items, the storage links) scale to
+  0.96.
+- **Lists:** search results, loading placeholders, library rows, setlist
+  tracks and the example searches rise one after another 30 ms apart; only the
+  first eight wait.
+- **Size:** keyframe consolidation saved 882 B of CSS (659 B net); the View
+  Transition rules and `screenSwap.js` still went over, so the budgets went up
+  by that much: JS 340,000 → 341,000 B (340,097 B used), CSS 58,000 →
+  60,000 B (59,710 B used). Details in `docs/performance.md`.
+- Checked in the browser at phone and PC widths: the direction and axis of
+  the slide, the header and bars staying above the moving screen, the scroll
+  shift, Settings and the back button, the theme curtain, the fallback without
+  the API and reduced motion. Still to do on the Pixel: 60 fps during the
+  transitions and the Android "Remove animations" setting, plus the `ui.mjs`
+  mode-switch timing in the installed app carried over from session 15.
+
+The plan as written:
 
 - Shared motion tokens (durations, easing curves, springs) in the stylesheet,
   used by every animation from here on.
