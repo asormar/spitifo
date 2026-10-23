@@ -254,7 +254,7 @@ function VideoHost() {
     .join(" · ");
 
   return (
-    <div className="vhost" data-mode={mode}>
+    <div className="vhost" data-mode={mode} data-no-swipe="">
       <div className="vhost__scrim" aria-hidden="true" onClick={close} />
       <div
         ref={cardRef}

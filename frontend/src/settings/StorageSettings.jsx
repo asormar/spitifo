@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CircleNotch,
-  DeviceMobile,
-  GoogleDriveLogo,
-  Laptop,
-  X,
-} from "@phosphor-icons/react";
+import { CircleNotch, DeviceMobile, GoogleDriveLogo, Laptop } from "@phosphor-icons/react";
 import { API, fetchErr } from "../shared/api.js";
 import QuotaBar from "./QuotaBar.jsx";
-import YouTubeCookies from "./YouTubeCookies.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent);
 /* Los mensajes del flujo vienen del backend en ingles y estables: se traducen
@@ -19,8 +12,11 @@ function connectErrorText(error) {
   if (/timed out/i.test(error)) return "El navegador tardó demasiado. Vuelve a intentarlo.";
   return "No se pudo conectar con Google Drive. Vuelve a intentarlo.";
 }
-export default function StorageDialog({ open, onClose, onChanged, focusCookies }) {
-  const ref = useRef(null);
+
+/* Cuerpo de la seccion Almacenamiento. Era un <dialog>; ahora es una seccion
+   normal de Ajustes, asi que no abre ni cierra nada: solo se carga cuando la
+   pantalla esta activa y deja de sondear cuando se sale. */
+export default function StorageSettings({ active, onChanged }) {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -37,27 +33,21 @@ export default function StorageDialog({ open, onClose, onChanged, focusCookies }
     }
   }, []);
 
-  /* <dialog> nativo: showModal da foco atrapado, Escape y fondo inerte. */
+  /* Al entrar a Ajustes se lee el estado real; no al montar, porque la
+     pantalla se queda montada entre aperturas. */
   useEffect(() => {
-    const d = ref.current;
-    if (!d) return;
-    if (open && !d.open) {
-      d.showModal();
-      load();
-    } else if (!open && d.open) {
-      d.close();
-    }
-  }, [open, load]);
+    if (active) load();
+  }, [active, load]);
 
   /* Mientras el sign-in esta pendiente se sondea; al conectar, la biblioteca
      cambia sola en el backend y la app tiene que recargarla. */
   const pending = info?.connect?.state === "pending";
   const wasPending = useRef(false);
   useEffect(() => {
-    if (!open || !pending) return undefined;
+    if (!active || !pending) return undefined;
     const t = setInterval(load, 1500);
     return () => clearInterval(t);
-  }, [open, pending, load]);
+  }, [active, pending, load]);
   useEffect(() => {
     if (wasPending.current && !pending) {
       setAuthUrl(null);
@@ -97,7 +87,7 @@ export default function StorageDialog({ open, onClose, onChanged, focusCookies }
   );
 
   const google = info?.providers?.find((p) => p.id === "google");
-  const active = info?.active;
+  const activeProvider = info?.active;
   const locked = Boolean(info?.override);
   /* En Android el sign-in lo hace el shell nativo, no el navegador: el backend
      lo dice (`connect_via`) y el puente lo inyecta MainActivity. Si el puente
@@ -107,7 +97,7 @@ export default function StorageDialog({ open, onClose, onChanged, focusCookies }
     typeof window.SpitifoAndroid?.connectDrive === "function";
 
   const pickLocal = async () => {
-    if (active === "local" || locked) return;
+    if (activeProvider === "local" || locked) return;
     if (await post("use", { provider: "local" })) {
       await load();
       onChanged();
@@ -121,7 +111,7 @@ export default function StorageDialog({ open, onClose, onChanged, focusCookies }
        nativo no cuesta nada si el permiso ya existe (silencioso, ~100 ms) y es
        la unica salida de un 503 reconnect_required. */
     if (google.connected && !viaAndroid) {
-      if (active === "google") return;
+      if (activeProvider === "google") return;
       if (await post("use", { provider: "google" })) {
         await load();
         onChanged();
@@ -174,93 +164,72 @@ export default function StorageDialog({ open, onClose, onChanged, focusCookies }
   else driveSub = "Conecta tu cuenta";
 
   return (
-    <dialog
-      ref={ref}
-      className="store"
-      aria-labelledby="store-title"
-      onClose={onClose}
-      onClick={(e) => {
-        /* Click en el fondo (el propio <dialog>, fuera de la tarjeta) cierra. */
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="store__card">
-        <div className="store__head">
-          <h2 id="store-title" className="store__title">¿Dónde guardas tu música?</h2>
-          <button type="button" className="store__x" aria-label="Cerrar" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
+    <div className="store">
+      <p className="store__lede">¿Dónde guardas tu música?</p>
 
-        <div className="store__opts" role="radiogroup" aria-labelledby="store-title">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={active === "local"}
-            className="store__opt"
-            onClick={pickLocal}
-            disabled={busy}
-          >
-            <DeviceIcon size={24} weight="duotone" className="store__icon" aria-hidden="true" />
-            <span className="store__name">Este dispositivo</span>
-            <span className="store__sub">Sin conexión, solo aquí</span>
-          </button>
+      <div className="store__opts" role="radiogroup" aria-label="Dónde guardas tu música">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={activeProvider === "local"}
+          className="store__opt"
+          onClick={pickLocal}
+          disabled={busy}
+        >
+          <DeviceIcon size={24} weight="duotone" className="store__icon" aria-hidden="true" />
+          <span className="store__name">Este dispositivo</span>
+          <span className="store__sub">Sin conexión, solo aquí</span>
+        </button>
 
-          <button
-            type="button"
-            role="radio"
-            aria-checked={active === "google"}
-            aria-disabled={!google?.configured || undefined}
-            className="store__opt"
-            onClick={pickDrive}
-            disabled={busy}
-          >
-            <GoogleDriveLogo size={24} weight="duotone" className="store__icon" aria-hidden="true" />
-            <span className="store__name">Google Drive</span>
-            <span className="store__sub">{driveSub}</span>
-          </button>
-        </div>
-
-        {pending && (
-          <p className="store__note">
-            {viaAndroid
-              ? "Esperando a Google…"
-              : "Termina de iniciar sesión en el navegador."}{" "}
-            {!viaAndroid && authUrl && (
-              <a href={authUrl} target="_blank" rel="noreferrer">
-                Abrir de nuevo
-              </a>
-            )}
-            <button type="button" className="store__link" onClick={cancel}>
-              Cancelar
-            </button>
-          </p>
-        )}
-
-        {active === "google" && <QuotaBar quota={info?.quota} />}
-
-        {locked && (
-          <p className="store__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
-        )}
-        {(err || connectErr) && (
-          <p className="store__err" role="alert">
-            {err || connectErr}
-          </p>
-        )}
-
-        <YouTubeCookies focus={focusCookies} />
-
-        <div className="store__foot">
-          {google?.connected && !locked && (
-            <button type="button" className="store__link" onClick={disconnect} disabled={busy}>
-              Desconectar Google Drive
-            </button>
-          )}
-          <button type="button" className="store__done" onClick={onClose}>
-            Listo
-          </button>
-        </div>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={activeProvider === "google"}
+          aria-disabled={!google?.configured || undefined}
+          className="store__opt"
+          onClick={pickDrive}
+          disabled={busy}
+        >
+          <GoogleDriveLogo size={24} weight="duotone" className="store__icon" aria-hidden="true" />
+          <span className="store__name">Google Drive</span>
+          <span className="store__sub">{driveSub}</span>
+        </button>
       </div>
-    </dialog>
+
+      {pending && (
+        <p className="store__note">
+          {viaAndroid
+            ? "Esperando a Google…"
+            : "Termina de iniciar sesión en el navegador."}{" "}
+          {!viaAndroid && authUrl && (
+            <a href={authUrl} target="_blank" rel="noreferrer">
+              Abrir de nuevo
+            </a>
+          )}
+          <button type="button" className="store__link" onClick={cancel}>
+            Cancelar
+          </button>
+        </p>
+      )}
+
+      {activeProvider === "google" && <QuotaBar quota={info?.quota} />}
+
+      {locked && (
+        <p className="store__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
+      )}
+      {(err || connectErr) && (
+        <p className="store__err" role="alert">
+          {err || connectErr}
+        </p>
+      )}
+
+      {google?.connected && !locked && (
+        <div className="store__foot">
+          <button type="button" className="store__link" onClick={disconnect} disabled={busy}>
+            Desconectar Google Drive
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

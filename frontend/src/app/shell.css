@@ -1,0 +1,451 @@
+/* ---------------------------------------------------------------------------
+   APP SHELL: modos, navegacion fija y pantallas
+
+   Tres modos viven a la vez (Descargar, Escuchar, Descubrir) y Ajustes es una
+   pantalla mas, no un modal. En el telefono manda una barra inferior; desde
+   720 px, un riel a la izquierda. Las dos piezas usan el mismo cristal que la
+   pildora de la cabecera (.top) para que el shell se lea como una sola cosa.
+   ------------------------------------------------------------------------- */
+
+:root {
+  /* Ancho del riel. Lo usan el propio riel y el hueco que deja a su derecha. */
+  --rail-w: 72px;
+  /* Alto de la barra inferior. En escritorio no existe; el body lo redefine
+     solo por debajo de 720 px y segun la preferencia de navegacion. */
+  --nav-h: 0px;
+}
+
+@media (max-width: 719.98px) {
+  body {
+    --nav-h: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.nav-swipe {
+    --nav-h: calc(44px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* En escritorio el contenido se centra en el area que queda a la DERECHA del
+   riel: el ancho extra del .app (rail + 1280) compensa el padding izquierdo,
+   asi el bloque mantiene el centro optico y no se pega al riel. */
+@media (min-width: 720px) {
+  .app {
+    max-width: calc(1280px + var(--rail-w));
+    padding-left: calc(var(--rail-w) + var(--gutter));
+  }
+
+  .mini {
+    left: calc(var(--rail-w) + 16px);
+  }
+}
+
+@media (max-width: 719.98px) {
+  .mini {
+    bottom: calc(var(--nav-h) + 12px);
+  }
+}
+
+/* Los avisos fijos y la ventana mini del video suben con la barra inferior. */
+.progstack,
+.prog {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h));
+}
+
+.vhost[data-mode="mini"] .vhost__card {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h));
+}
+
+body.has-mini .vhost[data-mode="mini"] .vhost__card {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + var(--mini-h) + 12px);
+}
+
+/* --- Pantallas ------------------------------------------------------------ */
+
+/* `hidden` es display:none: la pantalla sigue montada y conserva su estado. */
+.screen[hidden] {
+  display: none;
+}
+
+/* --- Navegacion fija ------------------------------------------------------ */
+
+/* Las tres piezas comparten el cristal de la cabecera. Las de telefono viven
+   abajo y se turnan; el riel vive a la izquierda desde 720 px. */
+.tabbar,
+.dots,
+.rail {
+  position: fixed;
+  z-index: 44;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.tabbar,
+.dots {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: none;
+  padding: 0 0 env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--line);
+}
+
+/* --- Barra inferior (telefono) ------------------------------------------- */
+
+.tabbar {
+  grid-template-columns: repeat(3, 1fr);
+  height: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 719.98px) {
+  .tabbar {
+    display: grid;
+  }
+
+  body.nav-swipe .tabbar {
+    display: none;
+  }
+}
+
+/* Pastilla del activo: una sola pieza que se desliza. Se deja 8 px a cada lado
+   y el paso es el ancho de la propia pastilla (100 %), no el del contenedor. */
+.tabbar__ind {
+  position: absolute;
+  z-index: 0;
+  top: 6px;
+  bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  left: 8px;
+  width: calc((100% - 16px) / 3);
+  border-radius: var(--r-inner);
+  background: var(--seg-on);
+  box-shadow: var(--shadow-raise);
+  transform: translateX(calc(var(--i, 0) * 100%));
+  transition: transform 360ms var(--ease-spring);
+}
+
+.tabbar__btn {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 200ms var(--ease), transform var(--t-press) var(--ease);
+}
+
+.tabbar__btn:active {
+  transform: scale(0.96);
+}
+
+.tabbar__btn[aria-current="page"] {
+  color: var(--accent-fg);
+}
+
+.tabbar__btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Puntos del modo deslizable ------------------------------------------ */
+
+.dots {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: calc(44px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 719.98px) {
+  body.nav-swipe .dots {
+    display: flex;
+  }
+}
+
+.dots__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dots__btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.dots__dot {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  transition: width 240ms var(--ease-spring), background-color 200ms var(--ease);
+}
+
+.dots__btn[aria-current="page"] .dots__dot {
+  width: 20px;
+  background: var(--accent);
+}
+
+.dots__name {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* --- Riel lateral (escritorio) -------------------------------------------- */
+
+.rail {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: var(--rail-w);
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 0
+    calc(12px + env(safe-area-inset-bottom, 0px));
+  border-right: 1px solid var(--line);
+}
+
+@media (min-width: 720px) {
+  .rail {
+    display: flex;
+  }
+}
+
+.rail__btn {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background-color 200ms var(--ease), color 200ms var(--ease),
+    transform var(--t-press) var(--ease);
+}
+
+.rail__btn:active {
+  transform: scale(0.94);
+}
+
+.rail__btn.is-on {
+  background: var(--surface);
+  color: var(--accent-fg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* Barra coral de 4 px pegada al borde del riel. El boton mide 44 dentro de 72:
+   quedan 14 px a cada lado, de ahi el -14. */
+.rail__btn.is-on::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 4px;
+  height: 24px;
+  margin-top: -12px;
+  border-radius: 0 4px 4px 0;
+  background: var(--accent);
+}
+
+/* Etiqueta accesible: `title` da el tooltip nativo y `aria-label` el nombre. */
+.rail__sep {
+  flex: none;
+  width: 24px;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--line);
+}
+
+/* Hueco de las listas de reproduccion: vacio a proposito, sin placeholders. */
+.rail__lists {
+  flex: 1;
+  width: 100%;
+}
+
+/* --- Ajustes en la cabecera (solo telefono; en escritorio lo lleva el riel) */
+
+.top__gear {
+  display: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease),
+    color 200ms var(--ease);
+}
+
+@media (max-width: 719.98px) {
+  .top__gear {
+    display: grid;
+  }
+}
+
+.top__gear:active {
+  transform: scale(0.94);
+}
+
+.top__gear.is-on {
+  background: var(--track);
+  color: var(--accent-fg);
+}
+
+/* --- Pantallas vacias (Escuchar, Descubrir) ------------------------------- */
+
+.empty {
+  max-width: 640px;
+  margin: 48px auto 0;
+  padding: 44px 32px;
+  border-radius: var(--r-panel);
+  background: var(--glass);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.empty__ico {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 16px;
+  border-radius: var(--r-cover);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-fg);
+}
+
+.empty__h {
+  margin: 0 0 8px;
+  font: 700 clamp(24px, 4vw, 30px) / 1.15 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.empty__p {
+  max-width: 48ch;
+  margin: 0 auto;
+  color: var(--muted);
+}
+
+/* --- Ajustes -------------------------------------------------------------- */
+
+.settings {
+  max-width: 760px;
+  margin: 24px auto 0;
+}
+
+.settings__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 18px;
+}
+
+.settings__back {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+}
+
+.settings__back:active {
+  transform: scale(0.94);
+}
+
+.settings__title {
+  margin: 0;
+  font: 600 clamp(22px, 3.4vw, 26px) / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.settings__card {
+  margin: 0 0 16px;
+  padding: 20px;
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  /* La cabecera es sticky: al traer una seccion a la vista, no queda debajo. */
+  scroll-margin-top: 88px;
+}
+
+.settings__h {
+  margin: 0 0 14px;
+  font: 600 18px / 1.2 var(--font-display);
+}
+
+.settings__h:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+.settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings__label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.settings__note {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings__segs {
+  flex: none;
+}
+
+@media (pointer: coarse) {
+  .settings__segs {
+    width: 100%;
+  }
+
+  .settings__segs .seg {
+    flex: 1;
+  }
+}
