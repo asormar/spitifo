@@ -52,7 +52,8 @@
   border-radius: var(--r-inner);
   background: color-mix(in srgb, var(--track) 55%, transparent);
   border: 1px solid var(--line);
-  animation: reveal var(--t-enter) var(--ease) both;
+  --rise: -4px;
+  animation: rise var(--t-enter) var(--ease) both;
 }
 
 .vfbox__head {
@@ -181,7 +182,7 @@
 }
 
 .disclosure__caret {
-  transition: transform 260ms var(--ease);
+  transition: transform var(--t-enter) var(--ease);
 }
 
 .disclosure[aria-expanded="true"] .disclosure__caret {
@@ -195,7 +196,8 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 320ms var(--ease), opacity 220ms var(--ease);
+  transition: grid-template-rows var(--t-move) var(--ease),
+    opacity var(--t-enter) var(--ease);
 }
 
 .fold[data-open] {
@@ -222,8 +224,9 @@
 
 /* Las pistas entran una tras otra cada vez que se abre. */
 .fold[data-open] .tr {
-  animation: rise-soft 300ms var(--ease) backwards;
-  animation-delay: min(260ms, calc(var(--i, 0) * 30ms));
+  --rise: 6px;
+  animation: rise var(--t-enter) var(--ease) backwards;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--stagger));
 }
 
 /* Fila de pista: numero, titulo, veredicto + duracion, descarga. */
@@ -321,13 +324,15 @@
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   text-align: center;
-  animation: enter-up 400ms var(--ease) 240ms backwards;
+  --rise: 16px;
+  animation: rise var(--t-move) var(--ease) 240ms backwards;
 }
 
 .intro__mark {
   margin-bottom: 14px;
   color: var(--accent-fg);
-  animation: pop-spring 400ms var(--ease-spring) 480ms backwards;
+  --pop: 0.5;
+  animation: pop var(--t-move) var(--ease-spring) 480ms backwards;
 }
 
 .intro__h {
@@ -362,8 +367,9 @@
 }
 
 .examples li {
-  animation: enter-up 460ms var(--ease) backwards;
-  animation-delay: calc(420ms + var(--i, 0) * 70ms);
+  --rise: 16px;
+  animation: rise var(--t-move) var(--ease) backwards;
+  animation-delay: calc(420ms + min(var(--i, 0), 8) * var(--stagger));
 }
 
 .example {
@@ -379,7 +385,8 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
 }
 
 .example:active {
@@ -405,7 +412,8 @@
   border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-card);
   text-align: center;
-  animation: reveal var(--t-enter) var(--ease) both;
+  --rise: -4px;
+  animation: rise var(--t-enter) var(--ease) both;
 }
 
 .none__h {
@@ -433,7 +441,7 @@
 
 .skel--pulse {
   animation: rise var(--t-enter) var(--ease) both, breathe 1.6s ease-in-out infinite;
-  animation-delay: calc(var(--i, 0) * 55ms), 0ms;
+  animation-delay: calc(min(var(--i, 0), 8) * var(--stagger)), 0ms;
 }
 
 .skel__art {

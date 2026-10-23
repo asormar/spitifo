@@ -47,6 +47,15 @@ export function nextGuess(mode) {
   return "listen";
 }
 
+/* Direccion del cambio de pantalla para la transicion: 1 avanza en MODES, -1
+   retrocede y 0 cuando alguno de los dos no es un modo (por ejemplo Ajustes). */
+export function modeDirection(from, to) {
+  const a = MODES.indexOf(from);
+  const b = MODES.indexOf(to);
+  if (a < 0 || b < 0) return 0;
+  return Math.sign(b - a);
+}
+
 /* Un swipe horizontal de verdad: suficiente recorrido, mas horizontal que
    vertical y rapido. Devuelve el indice destino o null si no aplica. */
 export function swipeTarget({ dx = 0, dy = 0, dt = Number.POSITIVE_INFINITY } = {}, index, count) {

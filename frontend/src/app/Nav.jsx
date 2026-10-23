@@ -72,8 +72,15 @@ export function SwipeDots({ mode, onMode }) {
    listas de reproduccion (todavia no existen): se reserva el sitio sin pintar
    nada, para que la sesion 19 no tenga que mover la estructura. */
 export function Rail({ mode, settingsOpen, onMode, onSettings }) {
+  /* La barra sigue al modo, no a la pantalla: con Ajustes abierto se queda
+     donde estaba. */
+  const index = Math.max(
+    0,
+    ITEMS.findIndex(({ id }) => id === mode)
+  );
   return (
-    <nav className="rail" aria-label="Modos">
+    <nav className="rail" aria-label="Modos" style={{ "--i": index }}>
+      <span className="rail__bar" aria-hidden="true" />
       {ITEMS.map(({ id, label }) => {
         const active = mode === id;
         return (

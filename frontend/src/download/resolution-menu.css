@@ -23,7 +23,7 @@
 
 .dl__caret {
   flex: none;
-  transition: transform 160ms var(--ease);
+  transition: transform var(--t-quick) var(--ease);
 }
 
 .dl--split[aria-expanded="true"] .dl__caret {
@@ -57,7 +57,7 @@
 }
 
 .rsvm.is-placed {
-  animation: rsvm-in 160ms var(--ease);
+  animation: rsvm-in var(--t-quick) var(--ease);
 }
 
 /* El contenedor solo recibe foco al abrir: no es un control, no lleva aro. */

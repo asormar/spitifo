@@ -10,6 +10,7 @@ import { bindMediaSession } from "../player/mediaSession.js";
 import {
   MODES,
   canStartSwipe,
+  modeDirection,
   nextGuess,
   readPhoneNav,
   readView,
@@ -18,6 +19,7 @@ import {
   writeView,
 } from "./navigation.js";
 import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
+import { swapScreens } from "./screenSwap.js";
 import { NavIcon } from "./navIcons.jsx";
 
 /* writeView devuelve "" para Descargar sin otros parametros, y pushState/
@@ -218,23 +220,31 @@ export default function App() {
     (m) => {
       if (!MODES.includes(m)) return;
       rememberScroll();
-      setSettings({ open: false, focus: null });
-      setMode(m);
-      visit(m);
-      /* El cajon pertenece a Descargar: al salir se cierra para que el boton
-         de la cabecera no quede diciendo "Cerrar" en otro modo. */
-      if (m !== "download" && libOpen) setLibOpen(false);
-      if (activeIdRef.current === "settings" && settingsEntry.current) {
+      const from = activeIdRef.current;
+      /* Con Ajustes abierto y entrada propia en el historial, el modo lo aplica
+         popstate: animar aca y alla dejaria dos transiciones. */
+      if (from === "settings" && settingsEntry.current) {
         settingsEntry.current = false;
         pendingMode.current = m;
         window.history.back();
-      } else {
-        window.history.replaceState(
-          null,
-          "",
-          viewUrl({ mode: m, settings: false })
-        );
+        return;
       }
+      const update = () => {
+        setSettings({ open: false, focus: null });
+        setMode(m);
+        visit(m);
+        /* El cajon pertenece a Descargar: al salir se cierra para que el boton
+           de la cabecera no quede diciendo "Cerrar" en otro modo. */
+        if (m !== "download" && libOpen) setLibOpen(false);
+      };
+      /* Tocar el modo que ya se ve no cambia de pantalla: sin transicion. */
+      if (from === m) update();
+      else swapScreens(update, modeDirection(from, m));
+      window.history.replaceState(
+        null,
+        "",
+        viewUrl({ mode: m, settings: false })
+      );
     },
     [libOpen, rememberScroll, visit]
   );
@@ -242,10 +252,12 @@ export default function App() {
   const openSettings = useCallback(
     (focus = "storage") => {
       rememberScroll();
-      setSettings({ open: true, focus });
-      visit("settings");
-      /* El cajon pertenece a Descargar: Ajustes es otra pantalla. */
-      if (libOpen) setLibOpen(false);
+      swapScreens(() => {
+        setSettings({ open: true, focus });
+        visit("settings");
+        /* El cajon pertenece a Descargar: Ajustes es otra pantalla. */
+        if (libOpen) setLibOpen(false);
+      }, 0);
       if (!settingsEntry.current) {
         window.history.pushState(
           { spitifo: "settings" },
@@ -265,8 +277,10 @@ export default function App() {
       window.history.back();
       return;
     }
-    setSettings({ open: false, focus: null });
-    visit(mode);
+    swapScreens(() => {
+      setSettings({ open: false, focus: null });
+      visit(mode);
+    }, 0);
     window.history.replaceState(
       null,
       "",
@@ -290,12 +304,18 @@ export default function App() {
       pendingMode.current = null;
       settingsEntry.current = pending ? false : view.settings;
       const nextMode = pending || view.mode;
-      setMode(nextMode);
-      setSettings({
-        open: view.settings && !pending,
-        focus: null,
-      });
-      visit(nextMode);
+      const nextSettings = view.settings && !pending;
+      const nextActive = nextSettings ? "settings" : nextMode;
+      const from = activeIdRef.current;
+      const update = () => {
+        setMode(nextMode);
+        setSettings({ open: nextSettings, focus: null });
+        visit(nextMode);
+      };
+      /* Si la pantalla visible no cambia (el modo ya lo aplico goMode), una
+         transicion sobre la misma foto se veria como un doble deslizamiento. */
+      if (nextActive === from) update();
+      else swapScreens(update, pending ? modeDirection(from, nextMode) : 0);
       if (pending) {
         window.history.replaceState(
           null,
@@ -310,8 +330,9 @@ export default function App() {
 
   /* Al cambiar de pantalla se guarda el scroll de la que sale (lo hace cada
      transicion, antes de tocar el estado) y se restaura el de la que entra. Va
-     en layout effect para que no se vea el salto de un fotograma. Las
-     transiciones visuales llegan con el sistema de movimiento (sesion 16). */
+     en layout effect para que no se vea el salto de un fotograma; swapScreens
+     lo corre dentro de flushSync, asi la foto de la View Transition ya sale
+     con el scroll bueno. */
   useLayoutEffect(() => {
     const prev = activeIdRef.current;
     if (prev === activeId) return;

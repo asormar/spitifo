@@ -15,9 +15,10 @@
   align-items: center;
   padding: 12px;
   border-radius: var(--r-inner);
-  transition: background-color 220ms var(--ease);
-  animation: rise-soft 360ms var(--ease) backwards;
-  animation-delay: calc(140ms + min(320ms, calc(var(--i, 0) * 32ms)));
+  transition: background-color var(--t-enter) var(--ease);
+  --rise: 6px;
+  animation: rise var(--t-move) var(--ease) backwards;
+  animation-delay: calc(140ms + min(var(--i, 0), 8) * var(--stagger));
 }
 
 .pl.is-active {
@@ -36,7 +37,7 @@
   border-radius: 0 3px 3px 0;
   background: var(--accent);
   transform: scaleY(0);
-  transition: transform 280ms var(--ease);
+  transition: transform var(--t-enter) var(--ease);
 }
 
 .pl.is-active::before {
@@ -56,8 +57,9 @@
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color 220ms var(--ease),
-    border-color 220ms var(--ease), color 220ms var(--ease), box-shadow 220ms var(--ease);
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-enter) var(--ease), border-color var(--t-enter) var(--ease),
+    color var(--t-enter) var(--ease), box-shadow var(--t-enter) var(--ease);
 }
 
 .pbtn:active {
@@ -80,7 +82,7 @@
   place-items: center;
   opacity: 0;
   transform: scale(0.5) rotate(-60deg);
-  transition: opacity 140ms var(--ease), transform 240ms var(--ease);
+  transition: opacity var(--t-press) var(--ease), transform var(--t-enter) var(--ease);
 }
 
 /* El triangulo de play pesa a la izquierda: se centra opticamente. */
@@ -177,7 +179,7 @@
   opacity: 0;
   transform: scale(0.7);
   transform-origin: left bottom;
-  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
 }
 
 .eq[data-on] {
@@ -254,7 +256,7 @@
   border-radius: inherit;
   background: var(--accent);
   transform-origin: left center;
-  transition: transform 250ms linear, background-color 220ms var(--ease);
+  transition: transform var(--t-enter) linear, background-color var(--t-enter) var(--ease);
 }
 
 .scrub__knob {
@@ -270,7 +272,8 @@
   opacity: 0;
   transform: scale(0.6);
   pointer-events: none;
-  transition: opacity 160ms var(--ease), transform 160ms var(--ease), left 250ms linear;
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease),
+    left var(--t-enter) linear;
 }
 
 .pl.is-active .scrub__knob,
@@ -287,7 +290,7 @@
 
 .scrub.is-drag .scrub__knob {
   transform: scale(1.25);
-  transition: opacity 160ms var(--ease), transform 160ms var(--ease);
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
 }
 
 .scrub.is-drag .scrub__rail {
@@ -306,7 +309,8 @@
   overflow: hidden;
   opacity: 0;
   transform: translateX(-8px);
-  transition: width 280ms var(--ease), opacity 200ms var(--ease), transform 280ms var(--ease);
+  transition: width var(--t-enter) var(--ease), opacity var(--t-quick) var(--ease),
+    transform var(--t-enter) var(--ease);
 }
 
 .pl.is-active .pl__vol {
@@ -328,7 +332,7 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease), color var(--t-quick) var(--ease);
 }
 
 .pl__mute:active {
@@ -408,7 +412,8 @@
 /* --- Mini-reproductor: pastilla de cristal fija abajo al centro. Misma receta
    que .top (fondo --nav-bg, borde --glass-edge, desenfoque). Sin transform para
    centrarla (left/right + margin auto): asi la entrada puede usar transform.
-   Siempre montada; data-state decide si se ve. Entra en 220 ms y sale en 160. */
+   Siempre montada; data-state decide si se ve. Sale rapido y entra con el
+   rebote de la casa. */
 
 :root {
   /* Alto de la pastilla (con borde). Lo usan el hueco de la pagina y la subida
@@ -434,9 +439,9 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(16px);
-  transition: opacity 160ms var(--ease), transform 160ms var(--ease),
-    visibility 0s linear 160ms;
+  transform: translateY(24px);
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease),
+    visibility 0s linear var(--t-quick);
 }
 
 .mini[data-state="open"] {
@@ -444,7 +449,8 @@
   visibility: visible;
   pointer-events: auto;
   transform: none;
-  transition: opacity 220ms var(--ease), transform 220ms var(--ease), visibility 0s;
+  transition: opacity var(--t-enter) var(--ease), transform var(--t-move) var(--ease-spring),
+    visibility 0s;
 }
 
 .mini__row {
@@ -536,8 +542,8 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), color 200ms var(--ease),
-    background-color 200ms var(--ease);
+  transition: transform var(--t-press) var(--ease), color var(--t-quick) var(--ease),
+    background-color var(--t-quick) var(--ease);
 }
 
 .mini__btn:active {

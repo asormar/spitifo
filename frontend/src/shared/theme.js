@@ -32,6 +32,7 @@ export function useTheme() {
         setTheme(t);
       });
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const root = document.documentElement;
     if (document.startViewTransition && !reduce) {
       /* La transicion RECHAZA si el documento queda oculto (el usuario cambia
          de pestana justo al apretar) y tambien si `commit` tira. El rechazo
@@ -40,11 +41,16 @@ export function useTheme() {
          promesas. Sin esto la consola del usuario se llena de
          "InvalidStateError: Transition was aborted". */
       try {
+        /* Marca para que nav.css aplique la cortina solo a esta transicion. */
+        root.dataset.vt = "theme";
         const vt = document.startViewTransition(commit);
         vt.ready.catch(() => {});
-        vt.finished.catch(() => {});
+        vt.finished.catch(() => {}).then(() => {
+          if (root.dataset.vt === "theme") delete root.dataset.vt;
+        });
         vt.updateCallbackDone.catch(() => {});
       } catch (e) {
+        if (root.dataset.vt === "theme") delete root.dataset.vt;
         commit();
       }
     } else {
