@@ -28,8 +28,8 @@ open to DevTools); everything else comes from the published files.
 | Tap feedback: tap to the first frame that shows it | 50 ms | 50 ms | 16 ms ✅ | 18 ms ✅ | `ui.mjs`, by hand |
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 340,000 B | 314,126 B (gzip 88,464 B) | same file | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 58,000 B | 52,787 B (gzip 11,115 B) | same file | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 341,000 B | 314,126 B (gzip 88,464 B) | same file | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 60,000 B | 52,787 B (gzip 11,115 B) | same file | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | CI, `release.yml` |
 
@@ -191,6 +191,20 @@ downgrade; never uninstall instead, it wipes the app's data.
 
 The limits count raw bytes: everything runs from disk, so what costs time is
 what the WebView parses, not what crosses a network.
+
+The first raise came with the motion system (session 16). Session 15 had left
+1.2 KiB of script and 0.3 KiB of stylesheet. The motion system first paid for
+itself where it could: twenty keyframes became eleven (`rise`, `pop` and
+`leave` take their distance or scale from a variable), 1,727 B down to 845 B,
+of which 223 B went back to registering those variables. What was still over
+is the price of the feature: the View Transition rules for the mode switch
+(about 1 KB of CSS) and the code that runs it (about 1.3 KB of JS). The
+limits went up by just that, rounded to the next thousand bytes:
+
+| Bundle | `main` before | Session 16 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 338,767 B | 340,097 B (+1,330) | 340,000 B | 341,000 B |
+| CSS | 57,677 B | 59,710 B (+2,033) | 58,000 B | 60,000 B |
 
 ### Windows installer: 22,707,225 B
 
