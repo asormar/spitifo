@@ -13,6 +13,7 @@ import mimetypes
 import os
 import re
 import threading
+import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -37,6 +38,7 @@ configure_runtime()
 
 from .downloader import download_track, library_scan
 from .models import Track
+from .playlists import Playlist, validate_playlist
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage
@@ -724,6 +726,72 @@ async def library(request: Request):
                          "files": files})
 
 
+# ---------------------------------------------------------------- playlists
+def _playlist_payload(playlist: Playlist) -> dict:
+    """Forma JSON de una playlist (la que consume el frontend)."""
+    return {"id": playlist.id, "name": playlist.name,
+            "keys": list(playlist.keys), "updated_at": playlist.updated_at}
+
+
+def _next_updated_at(old: Playlist | None, now: float) -> float:
+    """`updated_at` nuevo, SIEMPRE mayor que el guardado.
+
+    El reloj del dispositivo puede retroceder (ajuste de hora, cambio de
+    zona): sin esto una edicion nueva perderia el merge contra su propia copia
+    vieja y el cambio no se veria en ningun lado.
+    """
+    if old is None:
+        return now
+    return max(now, old.updated_at + 0.001)
+
+
+async def playlists(request: Request):
+    """GET /api/playlists: solo las vigentes, ordenadas por nombre."""
+    book = await asyncio.to_thread(get_storage().load_playlists)
+    return JSONResponse({"playlists": [_playlist_payload(p)
+                                       for p in book.live()]})
+
+
+async def playlist_save(request: Request):
+    """PUT /api/playlists/{id}: crea o reemplaza (200 con la playlist)."""
+    storage = get_storage()
+    playlist_id = request.path_params["id"]
+    body = await _json_body(request)
+    try:
+        name, keys = validate_playlist(playlist_id, body.get("name"),
+                                       body.get("keys"))
+    except ValueError as exc:
+        raise _invalid(["body"], str(exc))
+
+    def _save() -> Playlist:
+        # `load_playlists()` es la vista MERGEADA: el `updated_at` tiene que
+        # superar al de todos los dispositivos, no solo al del libro propio.
+        book = storage.load_playlists()
+        old = book.playlists.get(playlist_id)
+        playlist = Playlist(id=playlist_id, name=name, keys=keys,
+                            updated_at=_next_updated_at(old, time.time()))
+        storage.save_playlist(lambda b: b.upsert(playlist))
+        return playlist
+
+    playlist = await asyncio.to_thread(_save)
+    return JSONResponse(_playlist_payload(playlist))
+
+
+async def playlist_delete(request: Request):
+    """DELETE /api/playlists/{id}: tombstone (204 tambien si no existia)."""
+    storage = get_storage()
+    playlist_id = request.path_params["id"]
+
+    def _delete() -> None:
+        book = storage.load_playlists()
+        old = book.playlists.get(playlist_id)
+        storage.save_playlist(
+            lambda b: b.remove(playlist_id, _next_updated_at(old, time.time())))
+
+    await asyncio.to_thread(_delete)
+    return Response(status_code=204)
+
+
 # ----------------------------------------------------------------- cookies YT
 # Ultimo recurso para el muro de verificacion de YouTube. El archivo NUNCA se
 # devuelve: la API solo informa estado (configurado, cuando se importo y
@@ -1105,6 +1173,9 @@ routes = [
     Route("/api/download", download, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
+    Route("/api/playlists", playlists),
+    Route("/api/playlists/{id}", playlist_save, methods=["PUT"]),
+    Route("/api/playlists/{id}", playlist_delete, methods=["DELETE"]),
     Route("/api/youtube/cookies", youtube_cookies_info),
     Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),
