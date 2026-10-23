@@ -248,6 +248,11 @@ def library_scan() -> list[dict]:
             "bytes": f.size,
             "size_mb": round(f.size / 1_048_576, 2),
             "duration_s": f.duration,
+            # Etiquetas del archivo (None si no tiene): Escuchar agrupa con
+            # ellas y, si faltan, cae a la carpeta y al nombre.
+            "title": f.title,
+            "artist": f.artist,
+            "album": f.album,
             "modified": f.mtime,
             "kind": "video" if es_video else "audio",
             "thumb_key": sidecar if sidecar in thumbs else None,
