@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleNotch, DeviceMobile, GoogleDriveLogo, Laptop } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { API, fetchErr } from "../shared/api.js";
 import QuotaBar from "./QuotaBar.jsx";
 
@@ -144,14 +144,14 @@ export default function StorageSettings({ active, onChanged }) {
   };
 
   const connectErr = connectErrorText(info?.connect?.error);
-  const DeviceIcon = IS_ANDROID ? DeviceMobile : Laptop;
+  const deviceIcon = IS_ANDROID ? "DeviceMobile" : "Laptop";
 
   let driveSub;
   if (!info) driveSub = " ";
   else if (!google?.configured) driveSub = "No disponible en esta versión";
   else if (pending) driveSub = (
     <span className="store__state">
-      <CircleNotch size={14} className="spin" aria-hidden="true" />
+      <Icon name="CircleNotch" size={14} className="spin" aria-hidden="true" />
       {viaAndroid ? "Esperando a Google…" : "Esperando al navegador…"}
     </span>
   );
@@ -176,7 +176,7 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickLocal}
           disabled={busy}
         >
-          <DeviceIcon size={24} weight="duotone" className="store__icon" aria-hidden="true" />
+          <Icon name={deviceIcon} size={24} weight="duotone" className="store__icon" aria-hidden="true" />
           <span className="store__name">Este dispositivo</span>
           <span className="store__sub">Sin conexión, solo aquí</span>
         </button>
@@ -190,7 +190,7 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickDrive}
           disabled={busy}
         >
-          <GoogleDriveLogo size={24} weight="duotone" className="store__icon" aria-hidden="true" />
+          <Icon name="GoogleDriveLogo" size={24} weight="duotone" className="store__icon" aria-hidden="true" />
           <span className="store__name">Google Drive</span>
           <span className="store__sub">{driveSub}</span>
         </button>

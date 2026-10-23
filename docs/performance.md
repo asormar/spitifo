@@ -114,6 +114,12 @@ is no antivirus in the way. Medians of 5 cold starts (`am force-stop`, then
 
 ## What makes the library slow
 
+> **Session 20:** fixed on disk. Durations and tags are cached in
+> `.spitifo/media-cache.json` (keyed by path, size and mtime) and the folder is
+> walked with `os.scandir`, resolving only symlinks. 300 tracks on the PC,
+> median of 5 launches of `backend_start.py`: `library1_ms` 342 → 36 ms. The
+> numbers below are from before the fix.
+
 With 300 tracks the library drawer takes 400 ms to show its first frame on the
 PC (1.1–1.2 s the first time it opens), 700 ms to settle instead of the 280 ms
 its transition lasts, and scrolls at 25–32 fps. On the Pixel: 260 ms (0.6–0.7 s
@@ -237,6 +243,11 @@ the rest is in Listen's lazy chunks:
 Session 20 (the first speed and size review) starts from here: Listen, "Ahora
 suena" and playlists added 31 KB of JavaScript and 9 KB of CSS over sessions
 17–19, nearly all of it in lazy chunks.
+
+Session 20 then removed the Phosphor components (each one carries all six
+weights) in favour of inline paths: all JavaScript 373,651 → 288,038 B, the
+first script 234,248 → 191,235 B. The JavaScript limit went **down** to
+295,000 B; CSS was unchanged (69,066 B of 70,000 B).
 
 ### Windows installer: 22,707,225 B
 

@@ -35,8 +35,16 @@ a = Analysis(
     pathex=[ROOT],
     datas=datas,
     hiddenimports=hiddenimports,
-    # Test-only and unused heavy modules.
-    excludes=["pytest", "tkinter", "_pytest"],
+    # Test-only and unused heavy modules. Measured in session 20:
+    # - pygments: only the httpx command-line tool imports it.
+    # - sqlite3: yt-dlp uses it only to read cookies from a browser profile;
+    #   the app passes a cookies.txt file instead.
+    # - watchfiles, yaml, websockets, httptools, dotenv: uvicorn[standard]
+    #   extras for --reload, YAML log config, WebSockets, the C HTTP parser and
+    #   .env files. The app uses none of them; uvicorn falls back to h11.
+    excludes=["pytest", "tkinter", "_pytest", "pygments", "sqlite3", "_sqlite3",
+              "watchfiles", "yaml", "_yaml", "websockets", "httptools",
+              "dotenv"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

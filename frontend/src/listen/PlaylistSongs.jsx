@@ -35,7 +35,7 @@ function PlaylistSongRow({ entry, enter, transform, dragging, handleRef, handleP
         aria-label={`Mover ${title}. Usa las flechas para subir o bajar`}
         {...handleProps}
       >
-        <Icon name="grip" size={20} />
+        <Icon name="DotsSixVertical" size={20} />
       </button>
       <button
         type="button"
@@ -56,7 +56,7 @@ function PlaylistSongRow({ entry, enter, transform, dragging, handleRef, handleP
         title="Quitar de la lista"
         onClick={onRemove}
       >
-        <Icon name="close" size={18} />
+        <Icon name="X" size={18} />
       </button>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { CaretLeft } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { useSlidingPill } from "../shared/ui.jsx";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -38,7 +38,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     <div className="settings">
       <header className="settings__head">
         <button type="button" className="settings__back" aria-label="Volver" onClick={onClose}>
-          <CaretLeft size={20} />
+          <Icon name="CaretLeft" size={20} />
         </button>
         <h1 className="settings__title">Ajustes</h1>
       </header>

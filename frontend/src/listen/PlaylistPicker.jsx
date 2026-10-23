@@ -153,7 +153,7 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice }) {
               />
             ) : (
               <button type="button" className="pick__it pick__new" onClick={() => setNaming(true)}>
-                <Icon name="plus" size={18} />
+                <Icon name="Plus" size={18} />
                 Nueva lista
               </button>
             )}
