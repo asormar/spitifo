@@ -206,6 +206,17 @@ limits went up by just that, rounded to the next thousand bytes:
 | JavaScript | 338,767 B | 340,097 B (+1,330) | 340,000 B | 341,000 B |
 | CSS | 57,677 B | 59,710 B (+2,033) | 58,000 B | 60,000 B |
 
+The second raise came with Listen (session 17). Removing the library drawer
+paid for part of it, and the first script shrank from 233 to 231 KB, but the
+screen itself (tabs, search, virtual lists, the editable queue) is a new 22 KB
+lazy chunk. Its icons are inline paths, not Phosphor components, which saved
+about 18 KB:
+
+| Bundle | `main` before | Session 17 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 340,097 B | 349,122 B (+9,025) | 341,000 B | 350,000 B |
+| CSS | 59,710 B | 60,665 B (+955) | 60,000 B | 61,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

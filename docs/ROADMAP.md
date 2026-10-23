@@ -544,7 +544,52 @@ The plan as written:
   the fallback.
 - Checked on the Pixel at 60 frames per second and with reduced motion on.
 
-### 17. Listen: library and queue
+### 17. Listen: library and queue — done
+
+The library left the Download drawer and is now the Listen screen. What
+changed:
+
+- **Tags from the backend.** `/api/library` now returns `title`, `artist` and
+  `album`. On disk they come from the same mutagen read that already gave the
+  duration, so listing costs no extra file read; on Drive they were already in
+  `index.json`. A file without tags falls back to its folder (artist) and its
+  name (`Artist - Title`).
+- **Four tabs:** Canciones, Artistas, Álbumes and Cola. Search filters songs,
+  artists and albums by title, artist and album, ignoring accents and case.
+  An artist or album opens a detail with its songs; Escape or "Volver" goes
+  back, and every tab and detail keeps its own scroll.
+- **Virtual lists** without a dependency: rows are 56 px high, the list scrolls
+  with the window like every other screen, and only the visible rows plus a
+  margin are mounted. With the 266-track test library the DOM never held more
+  than 28 rows. Only the first paint of a list cascades in.
+- **Queue in the engine:** `playAt`, `playNext`, `enqueue`, `move`,
+  `removeAt`, shuffle (the playing track stays first; turning it off restores
+  the order, including tracks added while shuffled) and repeat (off, all, one;
+  repeat one only affects auto-advance). Each row has a menu with "Reproducir a
+  continuación" and "Añadir a la cola"; the Cola tab reorders by dragging the
+  handle (finger or mouse, with auto-scroll at the edges) or with the arrow
+  keys on it, and removes with ✕.
+- Videos show in Canciones with a tag, open in the video viewer and never enter
+  the queue.
+- **The drawer is gone**, with its header button, `Library.jsx`, `VideoRow.jsx`
+  and the row variant of `Player.jsx`. The mini-player's "Ir a la canción"
+  opens Listen and scrolls the virtual list to the row; for a result preview it
+  is disabled.
+- **Size:** the first script got smaller (233 → 231 KB) because the drawer left
+  it; Listen is its own 22 KB lazy chunk. In total the feature costs 9,025 B of
+  JavaScript and 955 B of CSS, so the budgets went up to 350,000 B and
+  61,000 B. The seven icons Listen uses are inline paths: the Phosphor
+  components would have added about 18 KB more.
+- Frontend tests: 79 (engine queue, shuffle and repeat; library helpers and the
+  virtual list window). Backend: the storage contract checks the tags on both
+  adapters.
+- Checked in the browser at phone and PC widths with a seeded library. Still to
+  do: the Pixel (60 fps scrolling Listen, real touch drag) and the items left
+  from session 16. Left for later: Android's back button closing an
+  artist/album detail, and focus returning to the row a detail was opened
+  from.
+
+The plan as written:
 
 - Browse the library by song, artist and album, with search.
 - Long lists are virtualised, so a library of thousands of songs scrolls as
