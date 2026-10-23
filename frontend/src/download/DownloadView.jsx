@@ -17,6 +17,7 @@ import { buildSearchParams, isTerminal, mismatchNotice, pollJob } from "./api.js
 import { ProgressStack } from "./progress.jsx";
 import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
+import { subscribeSearch, takeSearch } from "./searchRequest.js";
 
 export default function DownloadView({ health, onLibraryChanged, onImportCookies, librarySlot }) {
   const [q, setQ] = useState("");
@@ -414,6 +415,23 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
       setQ(text);
       runSearch(text, mm);
     }
+  }, [runSearch]);
+
+  /* Busqueda pedida desde otra pantalla (p. ej. un genero del mapa). Va despues
+     del arranque: si ambos traen texto, el pedido es lo ultimo que hizo el
+     usuario y gana (runSearch descarta la anterior). El modo se lee de un ref
+     para no volver a suscribirse en cada cambio. */
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  useEffect(() => {
+    const take = () => {
+      const text = takeSearch();
+      if (!text) return;
+      setQ(text);
+      runSearch(text, modeRef.current);
+    };
+    take();
+    return subscribeSearch(take);
   }, [runSearch]);
 
   const fullCount = useMemo(

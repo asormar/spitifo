@@ -595,7 +595,39 @@ The plan as written:
 - How much data the genre map needs on the device, against the size budgets.
 - Deliverable: an ADR with the data sources and the recommendation approach.
 
-### 22. Discover: the genre map
+### 22. Discover: the genre map — first version, layout to tune
+
+Discover now opens on a genre map. What changed:
+
+- **Data, from CC0 sources only** (ADR 0003): `scripts/discover/build_genre_map.py`
+  (stdlib only) takes the MusicBrainz genre list and the Wikidata relations
+  between the items that carry a MusicBrainz genre id, adds Wikidata items
+  without an id as hidden layout nodes so sibling genres pull together, lays
+  the graph out with a grid-accelerated Fruchterman–Reingold and groups it in
+  16 colour clusters. 2,216 genres, 4,499 edges; `frontend/public/genre-map.json`
+  is 188,299 B (89,078 B gzipped) and rebuilds in 48 s from its cache. A
+  genre's closest related genre sits on average 4,862 units away against
+  23,239 for random pairs, but on screen the clusters still interleave: the
+  layout needs tuning before this is final.
+- **Discogs' dumps are CC0** at the source (data.discogs.com), which ADR 0003
+  had only second-hand; they can feed co-occurrence edges later.
+- **MusicBrainz coverage of Spanish and Latin artists:** 20 of 20 found, 18
+  with at least one genre (Vetusta Morla and Quevedo have none).
+- **The map:** one canvas scaled by `devicePixelRatio` (capped at 2), dots
+  batched per cluster colour, at most about 200 labels per frame by
+  importance with a collision grid, pan, wheel and pinch zoom, buttons and
+  keys, a grid for hit-testing. Selecting a genre draws its relations and
+  opens a card with related genres (which fly there) and "Buscar en
+  Descargar". An accent-insensitive search flies to a genre. A frame draws in
+  1.7 ms (2,000 genres) to 2.8 ms (6,000) in the browser.
+- "Tus géneros" (a highlight ring) is wired but empty until session 23.
+- Size: Discover is its own chunk; +19,488 B of JavaScript and +5,822 B of CSS
+  over `main`, budgets 360,000 B and 66,000 B on this branch (the icon work of
+  session 20 frees far more once both are merged).
+- Not checked yet: phone layout and touch gestures, the light theme, reduced
+  motion, the Pixel.
+
+The plan as written:
 
 - An interactive genre map in the spirit of
   [Every Noise at Once](https://everynoise.com/engenremap.html), with more to
