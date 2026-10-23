@@ -575,7 +575,19 @@ The plan as written:
 - Size: unused dependencies, fonts and icons; the Python packages that the
   PyInstaller build and the APK carry but never import.
 
-### 21. Discover: research (no code)
+### 21. Discover: research (no code) — done, ADR proposed
+
+[ADR 0003](adr/0003-discover-data.md), pending review. In short: the genre map
+is built at build time from CC0 data only (MusicBrainz genre names, Wikidata,
+Discogs dumps) because Every Noise at Once publishes no licence and Spotify
+closed its related-artists and audio-features APIs to new apps; the user's
+artists get their genres from MusicBrainz and their similarity from the
+device plus ListenBrainz, cached in the user's storage; listening is recorded
+with Last.fm's play rule in per-device files and never leaves the user's
+storage by default; a 3,000-genre map is about 100 KB gzipped and ships with
+the app.
+
+The plan as written:
 
 - Where genre tags and artist similarity come from, what each source costs and
   whether it works offline.
