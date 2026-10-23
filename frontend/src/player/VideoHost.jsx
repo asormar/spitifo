@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowsIn,
-  ArrowsOut,
-  CornersIn,
-  CornersOut,
-  Pause,
-  PictureInPicture,
-  Play,
-  X,
-} from "@phosphor-icons/react";
+import { Icon } from "../shared/icons.jsx";
 import { engine } from "./engine.js";
 import { setVideoEl, setVideoHost, useVideoHost, videoHost } from "./videoStore.js";
 
@@ -292,7 +283,7 @@ function VideoHost() {
                 aria-label={`${playing ? "Pausar" : "Reproducir"}: ${label}`}
                 title={playing ? "Pausar" : "Reproducir"}
               >
-                {playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}
+                {playing ? <Icon name="Pause" size={16} weight="fill" /> : <Icon name="Play" size={16} weight="fill" />}
               </button>
               <button
                 type="button"
@@ -301,7 +292,7 @@ function VideoHost() {
                 aria-label="Ampliar el vídeo"
                 title="Ampliar el vídeo"
               >
-                <CornersOut size={16} />
+                <Icon name="CornersOut" size={16} />
               </button>
               <button
                 type="button"
@@ -310,7 +301,7 @@ function VideoHost() {
                 aria-label="Cerrar el vídeo"
                 title="Cerrar el vídeo"
               >
-                <X size={16} />
+                <Icon name="X" size={16} />
               </button>
             </div>
           )}
@@ -332,7 +323,7 @@ function VideoHost() {
                   onClick={toggleFs}
                   aria-label={fs ? "Salir de pantalla completa" : "Pantalla completa"}
                 >
-                  {fs ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
+                  {fs ? <Icon name="ArrowsIn" size={16} /> : <Icon name="ArrowsOut" size={16} />}
                   <span className="vhost__lbl">{fs ? "Salir" : "Pantalla completa"}</span>
                 </button>
               )}
@@ -344,7 +335,7 @@ function VideoHost() {
                   aria-label="Otra ventana"
                   title={pip ? "Volver a traer la ventana flotante" : "Ver en una ventana flotante"}
                 >
-                  <PictureInPicture size={16} />
+                  <Icon name="PictureInPicture" size={16} />
                   <span className="vhost__lbl">Otra ventana</span>
                 </button>
               )}
@@ -355,11 +346,11 @@ function VideoHost() {
                 aria-label="Minireproductor"
                 title="Ver en el minireproductor"
               >
-                <CornersIn size={16} />
+                <Icon name="CornersIn" size={16} />
                 <span className="vhost__lbl">Minireproductor</span>
               </button>
               <button type="button" className="vhb" onClick={close} aria-label="Cerrar el vídeo">
-                <X size={16} />
+                <Icon name="X" size={16} />
                 <span className="vhost__lbl">Cerrar</span>
               </button>
             </div>

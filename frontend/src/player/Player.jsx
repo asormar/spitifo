@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CircleNotch, Pause, Play } from "@phosphor-icons/react";
+import { Icon } from "../shared/icons.jsx";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
@@ -108,13 +108,13 @@ function Player({ track }) {
       aria-label={`${verb} ${label}`}
     >
       <span className="pbtn__ico pbtn__ico--play">
-        <Play size={iconSize} weight="fill" />
+        <Icon name="Play" size={iconSize} weight="fill" />
       </span>
       <span className="pbtn__ico pbtn__ico--pause">
-        <Pause size={iconSize} weight="fill" />
+        <Icon name="Pause" size={iconSize} weight="fill" />
       </span>
       <span className="pbtn__ico pbtn__ico--load">
-        <CircleNotch size={iconSize} weight="bold" className="spin" />
+        <Icon name="CircleNotch" size={iconSize} weight="bold" className="spin" />
       </span>
     </button>
   );

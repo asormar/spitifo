@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { X } from "@phosphor-icons/react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "../player/engine.js";
@@ -124,7 +123,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
           aria-expanded={menuOpen}
           onClick={(e) => onMenu(key, e.currentTarget)}
         >
-          <Icon name="more" size={22} />
+          <Icon name="DotsThree" weight="bold" size={22} />
         </button>
       )}
       {menuOpen && <RowMenu items={SONG_ITEMS} onPick={(kind) => onPick(entry, kind)} />}
@@ -154,13 +153,13 @@ export function GroupRow({ group, album, note, enter, onOpen }) {
         onClick={() => onOpen(group)}
       >
         <span className={cx("art", !album && !note && "art--round")}>
-          {note ? <Icon name="note" size={20} /> : initial(group.name)}
+          {note ? <Icon name="MusicNote" size={20} /> : initial(group.name)}
         </span>
         <span className="srow__txt">
           <span className="srow__t">{group.name}</span>
           <span className="srow__m">{meta}</span>
         </span>
-        <Icon name="next" className="srow__go" />
+        <Icon name="CaretRight" size={16} className="srow__go" />
       </button>
     </div>
   );
@@ -206,7 +205,7 @@ export function QueueRow({
           aria-label={`Mover ${track.title}. Usa las flechas para subir o bajar`}
           {...handleProps}
         >
-          <Icon name="grip" size={20} />
+          <Icon name="DotsSixVertical" size={20} />
         </button>
       )}
       <button
@@ -233,7 +232,7 @@ export function QueueRow({
           title="Quitar de la cola"
           onClick={() => engine.removeAt(pos)}
         >
-          <X size={18} />
+          <Icon name="X" size={18} />
         </button>
       )}
     </div>

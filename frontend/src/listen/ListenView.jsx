@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { GoogleDriveLogo, HardDrives, MagnifyingGlass, Play } from "@phosphor-icons/react";
 import { keyUrl } from "../shared/api.js";
 import { cx, useSlidingPill } from "../shared/ui.jsx";
 import { engine } from "../player/engine.js";
@@ -51,9 +50,9 @@ const TABS = [
 ];
 
 const REPEAT = {
-  off: ["Repetir: no", "repeat"],
-  all: ["Repetir: todo", "repeat"],
-  one: ["Repetir: una", "repeatOnce"],
+  off: ["Repetir: no", "Repeat"],
+  all: ["Repetir: todo", "Repeat"],
+  one: ["Repetir: una", "RepeatOnce"],
 };
 
 const LIST_ITEMS = [
@@ -523,7 +522,7 @@ export default function ListenView({
           </div>
           {tab !== "queue" && !(tab === "lists" && detail) && (
             <div className="lsearch">
-              <MagnifyingGlass size={18} aria-hidden="true" />
+              <Icon name="MagnifyingGlass" size={18} aria-hidden="true" />
               <input
                 ref={searchRef}
                 type="search"
@@ -540,7 +539,7 @@ export default function ListenView({
         {detail && (
           <div className="ldetail">
             <button ref={backRef} type="button" className="lbtn" onClick={() => go(tab)}>
-              <Icon name="back" />
+              <Icon name="ArrowLeft" size={16} />
               Volver
             </button>
             {naming === "rename" && pl ? (
@@ -567,7 +566,7 @@ export default function ListenView({
                 aria-expanded={menu?.key === pl.id}
                 onClick={(e) => onMenu(pl.id, e.currentTarget)}
               >
-                <Icon name="more" size={22} />
+                <Icon name="DotsThree" weight="bold" size={22} />
               </button>
             )}
             {pl && menu?.key === pl.id && <RowMenu items={LIST_ITEMS} onPick={pickList} />}
@@ -588,7 +587,7 @@ export default function ListenView({
               />
             ) : (
               <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming("new")}>
-                <Icon name="plus" />
+                <Icon name="Plus" size={16} />
                 Nueva lista
               </button>
             )
@@ -600,7 +599,7 @@ export default function ListenView({
                 disabled={!playable.length}
                 onClick={playAll}
               >
-                <Play size={16} weight="fill" aria-hidden="true" />
+                <Icon name="Play" size={16} weight="fill" aria-hidden="true" />
                 Reproducir todo
               </button>
             )
@@ -611,7 +610,7 @@ export default function ListenView({
             aria-pressed={shuffle}
             onClick={() => engine.setShuffle(!shuffle)}
           >
-            <Icon name="shuffle" />
+            <Icon name="Shuffle" size={16} />
             Aleatorio
           </button>
           <button
@@ -619,7 +618,7 @@ export default function ListenView({
             className={cx("lbtn", repeat !== "off" && "is-on")}
             onClick={() => engine.cycleRepeat()}
           >
-            <Icon name={repeatIcon} />
+            <Icon name={repeatIcon} size={16} />
             {repeatLabel}
           </button>
         </div>
@@ -646,9 +645,9 @@ export default function ListenView({
             title="Cambiar dónde se guarda tu música"
           >
             {/^Google Drive/.test(health.library) ? (
-              <GoogleDriveLogo size={15} aria-hidden="true" />
+              <Icon name="GoogleDriveLogo" size={15} aria-hidden="true" />
             ) : (
-              <HardDrives size={15} aria-hidden="true" />
+              <Icon name="HardDrives" size={15} aria-hidden="true" />
             )}
             <span className="panel__path">{health.library}</span>
           </button>

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ArrowUpRight, CircleNotch, Sparkle, WarningCircle } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 import { fmtSize, fmtTime } from "../shared/format.js";
 import { ExtLink } from "../shared/ui.jsx";
@@ -31,7 +31,7 @@ export function VerifyPanel({ t, query }) {
   if (state === "idle") {
     return (
       <button className="vf" onClick={verify}>
-        <Sparkle size={14} />
+        <Icon name="Sparkle" size={14} />
         ¿Es esta la canción?
       </button>
     );
@@ -39,7 +39,7 @@ export function VerifyPanel({ t, query }) {
   if (state === "loading") {
     return (
       <button className="vf" onClick={verify} disabled aria-live="polite">
-        <CircleNotch size={14} className="spin" />
+        <Icon name="CircleNotch" size={14} className="spin" />
         leyendo las etiquetas del audio
       </button>
     );
@@ -47,7 +47,7 @@ export function VerifyPanel({ t, query }) {
   if (state === "error") {
     return (
       <button type="button" className="vf vf--retry" onClick={verify}>
-        <WarningCircle size={14} />
+        <Icon name="WarningCircle" size={14} />
         no pude verificar: {data?.error}. Reintentar
       </button>
     );
@@ -111,7 +111,7 @@ export function VerifyPanel({ t, query }) {
       )}
       {m.item_url && (
         <ExtLink className="ext vfbox__link" url={m.item_url}>
-          ver en Internet Archive <ArrowUpRight size={12} />
+          ver en Internet Archive <Icon name="ArrowUpRight" size={12} />
         </ExtLink>
       )}
     </section>

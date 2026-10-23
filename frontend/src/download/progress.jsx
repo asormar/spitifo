@@ -1,4 +1,4 @@
-import { CheckCircle, CircleNotch, WarningCircle } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
 
 /* Un toast por descarga en curso. Con dos a la vez se apilan en columna: el
@@ -35,11 +35,11 @@ export function ProgressBar({ job }) {
       <div className="prog__top">
         <span className="prog__ico">
           {failed || halted ? (
-            <WarningCircle size={19} weight="fill" />
+            <Icon name="WarningCircle" size={19} weight="fill" />
           ) : done ? (
-            <CheckCircle size={19} weight="fill" />
+            <Icon name="CheckCircle" size={19} weight="fill" />
           ) : (
-            <CircleNotch size={19} className="spin" />
+            <Icon name="CircleNotch" size={19} className="spin" />
           )}
         </span>
         <span className="prog__title">{job.title}</span>

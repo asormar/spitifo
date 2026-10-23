@@ -1,6 +1,6 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { Moon, Sun, Waveform } from "@phosphor-icons/react";
+import { Icon } from "../shared/icons.jsx";
 import { API } from "../shared/api.js";
 import { cx } from "../shared/ui.jsx";
 import { useTheme } from "../shared/theme.js";
@@ -27,6 +27,27 @@ import { NavIcon } from "./navIcons.jsx";
 /* writeView devuelve "" para Descargar sin otros parametros, y pushState/
    replaceState con "" no cambian la URL: se cae al pathname. */
 const viewUrl = (view) => writeView(window.location.search, view) || window.location.pathname;
+
+/* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
+   Con Drive la lista tarda segundos en llegar (es red): mientras tanto
+   Escuchar pinta la de la vez anterior y la real la reemplaza al llegar. Si el
+   almacenamiento no deja leer o escribir, se sigue sin ella. */
+const LIB_CACHE = "spitifo:library";
+const readLibCache = () => {
+  try {
+    const files = JSON.parse(localStorage.getItem(LIB_CACHE));
+    return Array.isArray(files) ? files : null;
+  } catch {
+    return null;
+  }
+};
+const writeLibCache = (files) => {
+  try {
+    localStorage.setItem(LIB_CACHE, JSON.stringify(files));
+  } catch {
+    /* lleno o bloqueado: la proxima apertura espera a la red, como antes */
+  }
+};
 
 const loadDownloadView = () => import("../download/DownloadView.jsx");
 const loadListenView = () => import("../listen/ListenView.jsx");
@@ -81,7 +102,7 @@ export default function App() {
   /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
      Escuchar pinta esqueletos mientras llega y "Todavia no has descargado
      nada" solo cuando de verdad esta vacia. */
-  const [lib, setLib] = useState(null);
+  const [lib, setLib] = useState(readLibCache);
   /* true = /api/library fallo y todavia no hay lista que mostrar. */
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
@@ -156,6 +177,7 @@ export default function App() {
       }
       const d = await r.json();
       setLib(d.files || []);
+      writeLibCache(d.files || []);
       setLibErr(false);
       setLibErrCode(null);
     } catch (e) {
@@ -511,7 +533,7 @@ export default function App() {
       <div className="blob blob--sky" aria-hidden="true" />
       <header className="top">
         <div className="brand">
-          <Waveform size={24} weight="bold" className="brand__mark" />
+          <Icon name="Waveform" size={24} weight="bold" className="brand__mark" />
           <span className="brand__name">spitifo</span>
         </div>
         <div className="top__actions">
@@ -530,10 +552,10 @@ export default function App() {
           >
             <span className="themesw__knob">
               <span className="themesw__ico themesw__ico--moon">
-                <Moon size={12} weight="fill" />
+                <Icon name="Moon" size={12} weight="fill" />
               </span>
               <span className="themesw__ico themesw__ico--sun">
-                <Sun size={12} weight="fill" />
+                <Icon name="Sun" size={12} weight="fill" />
               </span>
             </span>
           </button>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle, MagnifyingGlass, Sparkle, WarningCircle, Waveform } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr, rowKey } from "../shared/api.js";
 import { fmtSize } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
@@ -481,7 +481,7 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
               if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
             }}
           >
-            <MagnifyingGlass size={22} className="search__icon" />
+            <Icon name="MagnifyingGlass" size={22} className="search__icon" />
             <input
               ref={inputRef}
               type="search"
@@ -516,7 +516,7 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
 
       {err && (
         <div className="msg msg--err" role="alert" ref={msgRef} tabIndex={-1}>
-          <WarningCircle size={17} weight="fill" />
+          <Icon name="WarningCircle" size={17} weight="fill" />
           <span>
             {err}
             {botCheck && (
@@ -534,7 +534,7 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
       <ProgressStack jobs={jobs} />
       {matchedDead && (
         <div className="msg msg--warn" role="status">
-          <WarningCircle size={17} weight="fill" />
+          <Icon name="WarningCircle" size={17} weight="fill" />
           <span>
             YouTube está apagado en el servidor, y es de ahí de donde sale el
             audio completo. Por eso estos {results.length} resultados no se
@@ -551,9 +551,9 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
           ref={msgRef}
         >
           {done.warning ? (
-            <WarningCircle size={17} weight="fill" />
+            <Icon name="WarningCircle" size={17} weight="fill" />
           ) : (
-            <CheckCircle size={17} weight="fill" />
+            <Icon name="CheckCircle" size={17} weight="fill" />
           )}
           <span>
             {done.warning
@@ -640,7 +640,7 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
 
       {!loading && !results.length && !err && !searched && (
         <section className="intro">
-          <Sparkle size={26} weight="fill" className="intro__mark" />
+          <Icon name="Sparkle" size={26} weight="fill" className="intro__mark" />
           <h2 className="intro__h">Escribe un tema y descárgalo completo</h2>
           <p className="intro__p">
             Spitifo busca a la vez en varias fuentes de música libre y te dice, resultado
@@ -651,7 +651,7 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
             {EXAMPLES.map((ex, i) => (
               <li key={ex} style={{ "--i": i }}>
                 <button type="button" className="example" onClick={() => runExample(ex)}>
-                  <Waveform size={13} />
+                  <Icon name="Waveform" size={13} />
                   {ex}
                 </button>
               </li>
