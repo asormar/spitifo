@@ -11,11 +11,12 @@ import {
   SpeakerSlash,
   X,
 } from "@phosphor-icons/react";
-import { cx, clamp } from "../shared/ui.jsx";
+import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 import { useVideoHost } from "./videoStore.js";
+import Scrub from "./Scrub.jsx";
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR
@@ -31,20 +32,21 @@ import { useVideoHost } from "./videoStore.js";
    oculta). Con la fila delante, los controles duplicados sobrarian. Si el
    usuario la cierra, se queda cerrada hasta la siguiente pista o el siguiente
    play.
+
+   Tocar el titulo o la portada abre "Ahora suena" (onOpen); mientras esta
+   abierta la pastilla se oculta, porque esa vista ya es el reproductor.
    ------------------------------------------------------------------------- */
 
 const NO_ROWS = [];
 
-function MiniPlayer({ onReveal }) {
+function MiniPlayer({ onReveal, onOpen, npOpen }) {
   const st = useEngine();
   const [dismissed, setDismissed] = useState(false);
   /* true hasta que el IntersectionObserver diga lo contrario: mejor tardar un
      fotograma en aparecer que parpadear con la fila aun a la vista. */
   const [srcSeen, setSrcSeen] = useState(true);
-  const [drag, setDrag] = useState(null);
   /* Portada que ya fallo al cargar: no se vuelve a pintar (icono roto). */
   const [badArt, setBadArt] = useState(null);
-  const railRef = useRef(null);
   const lastInfo = useRef(null);
   const vhost = useVideoHost();
 
@@ -59,7 +61,6 @@ function MiniPlayer({ onReveal }) {
   /* Otro destino = otra cancion: la pastilla vuelve a ofrecerse. */
   useEffect(() => {
     setDismissed(false);
-    setDrag(null);
   }, [track?.key]);
 
   /* Y reproducir tambien la reabre (reanudar desde la fila). */
@@ -99,6 +100,7 @@ function MiniPlayer({ onReveal }) {
     started &&
     !dismissed &&
     !srcSeen &&
+    !npOpen &&
     vhost.mode === "closed";
 
   /* Reserva sitio en la pagina y aparta los avisos de descarga (CSS). */
@@ -108,9 +110,6 @@ function MiniPlayer({ onReveal }) {
   }, [show]);
 
   const dur = st.duration || info?.duration || 0;
-  const pct = drag !== null ? drag : dur ? clamp(st.time / dur, 0, 1) : 0;
-  const shownTime = drag !== null ? drag * dur : st.time;
-  const total = dur ? clock(Math.round(dur)) : "--:--";
   const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
   const label = info?.label || "la canción";
   const quiet = st.muted || st.volume === 0;
@@ -120,46 +119,6 @@ function MiniPlayer({ onReveal }) {
   /* "Ir a la cancion" abre Escuchar: un preview de una tarjeta no esta en la
      biblioteca y no habria fila a la que llevar. */
   const inLibrary = track?.kind === "library";
-
-  const seekTo = (t) => {
-    engine.seek(clamp(t, 0, dur || 0));
-  };
-
-  const pctAt = (e) => {
-    const r = railRef.current.getBoundingClientRect();
-    return clamp((e.clientX - r.left) / r.width, 0, 1);
-  };
-  const onPointerDown = (e) => {
-    if (!dur) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag(pctAt(e));
-  };
-  const onPointerMove = (e) => {
-    if (drag !== null) setDrag(pctAt(e));
-  };
-  const onPointerUp = (e) => {
-    if (drag === null) return;
-    seekTo(pctAt(e) * dur);
-    setDrag(null);
-  };
-  const onKeyDown = (e) => {
-    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
-    if (step !== undefined) {
-      e.preventDefault();
-      /* Del motor: seek() actualiza su foto, asi que las flechas repetidas
-         suman aunque React no haya repintado entre una y otra. */
-      engine.seek(engine.getState().time + step);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      seekTo(0);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      seekTo(dur - 1);
-    } else if (e.key === " " || e.key === "Enter") {
-      e.preventDefault();
-      engine.toggle();
-    }
-  };
 
   const close = () => {
     engine.pause();
@@ -219,20 +178,19 @@ function MiniPlayer({ onReveal }) {
             src={art}
             alt=""
             loading="lazy"
+            onClick={onOpen}
             onError={() => setBadArt(art)}
           />
         )}
-        {/* Tocar el titulo lleva a la cancion, como en cualquier app de musica.
-            En movil es el UNICO camino (el boton de la mira se oculta para que
-            el titulo quepa); fuera del orden de tabulacion porque con teclado
-            ya esta ese boton. */}
+        {/* Tocar el titulo (o la portada) abre "Ahora suena", como en cualquier
+            app de musica. Ir a la fila de la biblioteca es el boton de la mira;
+            en movil se oculta para que el titulo quepa y ese salto vive en
+            "Ahora suena". */}
         <button
           type="button"
           className="mini__txt"
-          tabIndex={-1}
-          onClick={() => onReveal(track.key)}
-          disabled={!inLibrary}
-          aria-label={`Ir a la canción: ${info?.title ?? ""}`}
+          onClick={onOpen}
+          aria-label={`Abrir el reproductor: ${info?.title ?? ""}`}
         >
           <span className="mini__title" title={info?.title}>
             {info?.title}
@@ -291,30 +249,13 @@ function MiniPlayer({ onReveal }) {
         </button>
       </div>
       <div className="mini__bar">
-        <div
-          ref={railRef}
-          className={cx("scrub", drag !== null && "is-drag")}
-          role="slider"
-          tabIndex={0}
-          aria-label={`Progreso de ${label}`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(pct * 100)}
-          aria-valuetext={`${clock(shownTime)} de ${total}`}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={() => setDrag(null)}
-          onKeyDown={onKeyDown}
-        >
-          <span className="scrub__rail">
-            <span className="scrub__fill" style={{ transform: `scaleX(${pct})` }} />
-          </span>
-          <span className="scrub__knob" style={{ left: `${pct * 100}%` }} />
-        </div>
-        <span className="mini__time">
-          {clock(shownTime)} / {total}
-        </span>
+        <Scrub key={info?.key} duration={dur} label={label}>
+          {(shown, total) => (
+            <span className="mini__time">
+              {clock(shown)} / {total}
+            </span>
+          )}
+        </Scrub>
       </div>
     </section>
   );

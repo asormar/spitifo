@@ -217,6 +217,17 @@ about 18 KB:
 | JavaScript | 340,097 B | 349,122 B (+9,025) | 341,000 B | 350,000 B |
 | CSS | 59,710 B | 60,665 B (+955) | 60,000 B | 61,000 B |
 
+The third came with "Ahora suena" (session 18). The view and its stylesheet are
+a lazy chunk preloaded when the app is idle, so the first stylesheet did not
+grow and the first script grew 2.2 KB:
+
+| Bundle | Before | Session 18 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 349,122 B | 360,473 B (+11,351) | 350,000 B | 361,000 B |
+| CSS | 60,665 B | 65,818 B (+5,153) | 61,000 B | 66,000 B |
+
+Session 20 (the first speed and size review) starts from here.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

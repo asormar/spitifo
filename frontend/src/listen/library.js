@@ -111,7 +111,9 @@ export function groupAlbums(entries) {
 }
 
 /* `keyUrl` se recibe para no fijar aqui el prefijo de la API: el motor solo
-   necesita una URL de audio ya resuelta. */
+   necesita una URL de audio ya resuelta. La portada es el .jpg que el backend
+   deja junto a la pista (`thumb_key`) y se pide por el mismo endpoint; sin
+   miniatura no hay portada y la vista dibuja su propia ficha. */
 export function toTrack(entry, keyUrl) {
   const meta = entry.album ? `${entry.artist} · ${entry.album}` : entry.artist;
   return {
@@ -120,7 +122,7 @@ export function toTrack(entry, keyUrl) {
     title: entry.title,
     meta,
     duration: entry.duration,
-    artwork: null,
+    artwork: entry.thumbKey ? keyUrl(entry.thumbKey) : null,
     kind: "library",
     label: `${entry.title}, ${entry.artist}`,
   };

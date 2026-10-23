@@ -1,0 +1,388 @@
+/* ---------------------------------------------------------------------------
+   8d. AHORA SUENA
+
+   Capa fija a pantalla completa, siempre oscura (el fondo es el color de la
+   portada oscurecido hasta que el blanco se lee, ver tint.js). Se carga junto
+   con la vista, que es su propio chunk. Solo transform y opacity.
+   ------------------------------------------------------------------------- */
+
+.np {
+  /* Alto de fila de la cola: DEBE coincidir con ROW_H de VirtualList.jsx (en
+     Escuchar lo define .listen). */
+  --row-h: 56px;
+  --ink: #fff;
+  --muted: rgba(255, 255, 255, 0.9);
+  --faint: rgba(255, 255, 255, 0.85);
+  --icon-dim: rgba(255, 255, 255, 0.62);
+  --line: rgba(255, 255, 255, 0.22);
+  --track: rgba(255, 255, 255, 0.22);
+  --surface: #202a35;
+  --accent: #fff;
+  --accent-fg: #fff;
+  --row-hover: rgba(255, 255, 255, 0.08);
+  --ring-gap: rgba(0, 0, 0, 0.5);
+  position: fixed;
+  /* Por encima de la barra, el mini-reproductor y los avisos (44-50), por
+     debajo del video (60). */
+  z-index: 55;
+  inset: 0;
+  overflow: hidden;
+  background: #0b0f14;
+  color: #fff;
+}
+
+/* Capas de color: la nueva se funde encima de la anterior (opacity) y esta se
+   retira al terminar. `rise` sin recorrido es un fundido. */
+.np__bg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(165deg, var(--tint), color-mix(in srgb, var(--tint) 45%, #0b0f14));
+}
+
+.np__bg--in {
+  --rise: 0px;
+  animation: rise var(--t-scene) var(--ease) backwards;
+}
+
+.np__ui {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: max(8px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+/* --- Barra superior -------------------------------------------------------- */
+
+.np__top {
+  display: grid;
+  flex: none;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  touch-action: none;
+}
+
+.np__close,
+.np__btn {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+}
+
+.np__close:active,
+.np__btn:active,
+.np__go:active,
+.np__tab:active {
+  transform: scale(0.94);
+}
+
+.np__cap {
+  margin: 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np__go {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.24);
+  color: #fff;
+  font: 600 13px var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.np__go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.np__go:disabled:active {
+  transform: none;
+}
+
+/* --- Pastillas de pagina (solo telefono) ------------------------------------ */
+
+.np__tabs {
+  display: flex;
+  flex: none;
+  align-self: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.24);
+  touch-action: none;
+}
+
+.np__tab {
+  min-height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--faint);
+  font: 600 14px var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
+    color var(--t-quick) var(--ease);
+}
+
+.np__tab.is-on {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* --- Paginas ---------------------------------------------------------------- */
+
+/* Dos paginas en una banda del doble de ancho; se desplaza media banda. El
+   arrastre lo escribe JS en linea mientras dura y al soltar se limpia. */
+.np__pages {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.np__track {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  transition: transform var(--t-move) var(--ease);
+}
+
+.np__pages[data-page="1"] .np__track {
+  transform: translateX(-50%);
+}
+
+.np__now,
+.np__q {
+  flex: none;
+  width: 50%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.np__now {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 0;
+}
+
+.np__artbox {
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  min-height: 0;
+  container-type: size;
+}
+
+.np__art {
+  width: min(100%, 420px);
+  width: min(100cqw, 100cqh, 420px);
+  aspect-ratio: 1;
+  border-radius: var(--r-card);
+  object-fit: cover;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* Sin portada: la inicial del artista sobre el color de fondo. */
+.np__art--ph {
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  font: 700 clamp(64px, 22cqmin, 140px) / 1 var(--font-display);
+}
+
+.np__meta {
+  margin-top: 20px;
+}
+
+.np__title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font: 700 clamp(22px, 6vw, 28px) / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.np__sub {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np__seek {
+  margin-top: 12px;
+}
+
+.np__times {
+  display: flex;
+  justify-content: space-between;
+  color: var(--faint);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.np__ctl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 420px;
+  margin: 8px auto 12px;
+}
+
+.np__btn {
+  width: 48px;
+  height: 48px;
+}
+
+.np__btn.is-on {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.np__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.np__btn:disabled:active {
+  transform: none;
+}
+
+.np__play {
+  width: 68px;
+  height: 68px;
+  border-color: #fff;
+  background: #fff;
+  color: #0b0f14;
+}
+
+.np__vol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.np__vol .vol {
+  width: 140px;
+}
+
+/* --- Cola ------------------------------------------------------------------- */
+
+.np__q {
+  display: flex;
+  flex-direction: column;
+}
+
+.np__qs {
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* --- Escritorio: las dos paginas lado a lado --------------------------------- */
+
+@media (min-width: 960px) {
+  .np__ui {
+    padding-inline: max(40px, env(safe-area-inset-left));
+  }
+
+  .np__track {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 56px;
+    width: 100%;
+  }
+
+  .np__now,
+  .np__q {
+    width: auto;
+  }
+
+  .np__now {
+    justify-self: center;
+    width: 100%;
+    max-width: 520px;
+  }
+}
+
+/* --- Transicion desde la pastilla (View Transitions) -------------------------- */
+
+/* La pastilla y la vista son el mismo elemento para el navegador: la que esta
+   en pantalla lleva el nombre y la otra no. El nombre solo existe mientras dura
+   la transicion (App pone data-vt="np"). */
+html[data-vt="np"] .np,
+html[data-vt="np"] .mini[data-state="open"] {
+  view-transition-name: vt-mini;
+}
+
+/* Si las dos tienen portada, la imagen viaja por su cuenta de una a otra. */
+html[data-vt="np"] img.np__art,
+html[data-vt="np"] .mini[data-state="open"] .mini__art {
+  view-transition-name: vt-np-art;
+}
+
+/* Sin la subida del mini-reproductor: la foto nueva tiene que salir ya en su
+   sitio. */
+html[data-vt="np"] .mini {
+  transition: none;
+}
+
+html[data-vt="np"]::view-transition-group(vt-mini),
+html[data-vt="np"]::view-transition-group(vt-np-art) {
+  animation-duration: var(--t-move);
+  animation-timing-function: var(--ease-io);
+}
+
+/* Las dos fotos conservan su tamano y la caja se abre sobre ellas, en vez de
+   estirar la pastilla hasta cubrir la pantalla. */
+html[data-vt="np"]::view-transition-old(vt-mini),
+html[data-vt="np"]::view-transition-new(vt-mini) {
+  height: 100%;
+  object-fit: none;
+  object-position: top left;
+}
+
+/* Lo demas no se mueve: la pagina de debajo es la misma antes y despues. */
+html[data-vt="np"]::view-transition-group(root) {
+  animation: none;
+}
+
+html[data-vt="np"]::view-transition-old(root) {
+  display: none;
+}
+
+html[data-vt="np"]::view-transition-new(root) {
+  animation: none;
+}
