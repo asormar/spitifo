@@ -239,7 +239,6 @@ export const Track = React.memo(function Track({
         </div>
         {t.preview_url && (
           <Player
-            variant="compact"
             /* Sin cola: el motor la completa con este track. La clave lleva la
                URL para que dos tarjetas con el mismo preview no choquen. */
             track={{

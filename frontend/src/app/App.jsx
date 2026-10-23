@@ -1,11 +1,12 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Moon, Stack, Sun, Waveform, X } from "@phosphor-icons/react";
+import { Moon, Sun, Waveform } from "@phosphor-icons/react";
 import { API } from "../shared/api.js";
 import { cx } from "../shared/ui.jsx";
 import { useTheme } from "../shared/theme.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
+import { requestReveal } from "../listen/reveal.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import {
   MODES,
@@ -60,13 +61,6 @@ const MODE_LOADERS = {
 };
 loadDownloadView();
 
-/* La biblioteca NO usa React.lazy: se guarda el componente ya resuelto para
-   montarlo en el mismo commit en que se abre. Una primera suspension romperia
-   la transicion del cajon. */
-let LibraryComponent = null;
-const loadLibrary = () =>
-  import("../player/Library.jsx").then((m) => (LibraryComponent = m.default));
-
 export default function App() {
   /* La URL manda en el arranque: ?view=listen abre Escuchar y ?view=settings
      abre Ajustes. El resto de la app no cambia de modo sin pasar por aca. */
@@ -74,18 +68,13 @@ export default function App() {
 
   const [health, setHealth] = useState(null);
   /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
-     sin esto el boton arrancaria atenuado y el contador no apareceria hasta
-     abrir el panel, que es justo cuando ya no hace falta. */
+     Escuchar pinta esqueletos mientras llega y "Todavia no has descargado
+     nada" solo cuando de verdad esta vacia. */
   const [lib, setLib] = useState(null);
-  const [libOpen, setLibOpen] = useState(false);
-  const drawerRef = useRef(null);
-  const libBtnRef = useRef(null);
   /* true = /api/library fallo y todavia no hay lista que mostrar. */
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
-  /* Componente de la biblioteca ya cargado (ver loadLibrary). */
-  const [LibraryView, setLibraryView] = useState(null);
 
   const [theme, chooseTheme] = useTheme();
   const dark = theme === "dark";
@@ -113,7 +102,6 @@ export default function App() {
   /* Modo pedido mientras se cerraba Ajustes con history.back(): popstate lo
      aplica cuando la entrada vieja ya esta activa. */
   const pendingMode = useRef(null);
-  const pendingLib = useRef(null);
   const screensRef = useRef(null);
 
   const loadHealth = useCallback(() => {
@@ -162,50 +150,6 @@ export default function App() {
     loadLib();
   }, [loadHealth, loadLib]);
 
-  /* Abre la biblioteca. Con el chunk ya cargado, en el mismo evento; si no,
-     cuando llegue. `then` recibe la funcion para que la llamada siga siendo
-     sincrona en el caso normal. */
-  const openLibrary = useCallback((then) => {
-    const show = (C) => {
-      setLibraryView(() => C);
-      setLibOpen(true);
-      then?.();
-    };
-    if (LibraryComponent) show(LibraryComponent);
-    else loadLibrary().then(show);
-  }, []);
-
-  /* El cajon se monta la primera vez que se abre y ya no se desmonta: sus
-     Player siguen vivos al cerrarlo y la musica no se corta. Abrir/cerrar es
-     solo `data-state` + una transicion CSS (interrumpible, a diferencia de un
-     keyframe).
-     - libEver: ya se abrio alguna vez (monta el cajon).
-     - libShow: el estado visual. Va un fotograma por detras de libOpen al abrir
-       para que el cajon se pinte primero cerrado y la transicion tenga desde
-       donde arrancar; al cerrar va a la par.
-     - libSettled: la apertura termino. Hasta entonces recorta su contenido,
-       despues lo libera para que la sombra del panel no quede cortada. */
-  const [libEver, setLibEver] = useState(false);
-  const [libShow, setLibShow] = useState(false);
-  const [libSettled, setLibSettled] = useState(false);
-  /* Layout effect y no requestAnimationFrame: con la pestana en segundo plano
-     rAF no se dispara y el cajon se quedaba cerrado para siempre. */
-  useLayoutEffect(() => {
-    if (!libOpen) {
-      setLibShow(false);
-      setLibSettled(false);
-      return;
-    }
-    if (!libEver) {
-      setLibEver(true);
-      return;
-    }
-    /* Leer una medida fuerza el calculo de estilo del estado cerrado antes de
-       pasar a abierto; sin esto el navegador fusiona los dos y no anima. */
-    void drawerRef.current?.offsetHeight;
-    setLibShow(true);
-  }, [libOpen, libEver]);
-
   /* --- Shell: modos, Ajustes e historial ---------------------------------- */
 
   const rememberScroll = useCallback(() => {
@@ -233,9 +177,6 @@ export default function App() {
         setSettings({ open: false, focus: null });
         setMode(m);
         visit(m);
-        /* El cajon pertenece a Descargar: al salir se cierra para que el boton
-           de la cabecera no quede diciendo "Cerrar" en otro modo. */
-        if (m !== "download" && libOpen) setLibOpen(false);
       };
       /* Tocar el modo que ya se ve no cambia de pantalla: sin transicion. */
       if (from === m) update();
@@ -246,7 +187,7 @@ export default function App() {
         viewUrl({ mode: m, settings: false })
       );
     },
-    [libOpen, rememberScroll, visit]
+    [rememberScroll, visit]
   );
 
   const openSettings = useCallback(
@@ -255,8 +196,6 @@ export default function App() {
       swapScreens(() => {
         setSettings({ open: true, focus });
         visit("settings");
-        /* El cajon pertenece a Descargar: Ajustes es otra pantalla. */
-        if (libOpen) setLibOpen(false);
       }, 0);
       if (!settingsEntry.current) {
         window.history.pushState(
@@ -267,7 +206,7 @@ export default function App() {
         settingsEntry.current = true;
       }
     },
-    [mode, libOpen, rememberScroll, visit]
+    [mode, rememberScroll, visit]
   );
 
   const closeSettings = useCallback(() => {
@@ -354,7 +293,7 @@ export default function App() {
 
   /* Swipe entre modos: solo en telefono, con la barra de puntos y Ajustes
      cerrado. El gesto no puede nacer en una zona con su propio arrastre
-     horizontal (progreso, video, menus, cajon). */
+     horizontal (progreso, video, menus). */
   useEffect(() => {
     if (phoneNav !== "swipe" || settings.open) return undefined;
     const root = screensRef.current;
@@ -402,32 +341,21 @@ export default function App() {
     };
   }, [phoneNav, settings.open, mode, goMode]);
 
-  /* Escape cierra Ajustes antes que la biblioteca; el "/" lo maneja
-     DownloadView. */
+  /* Escape cierra Ajustes. El "/" y el resto de Escape (menu de una fila,
+     detalle de un artista) los maneja cada pantalla con lo suyo. */
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      if (settings.open) {
-        closeSettings();
-        return;
-      }
-      if (libOpen) {
-        /* El foco se mueve ANTES de cerrar: el cajon cerrado es `inert` y, con
-           el foco dentro, se perderia en el <body>. */
-        if (drawerRef.current?.contains(document.activeElement)) libBtnRef.current?.focus();
-        setLibOpen(false);
-      }
+      if (e.key === "Escape" && settings.open) closeSettings();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [settings.open, closeSettings, libOpen]);
+  }, [settings.open, closeSettings]);
 
   /* Adelanto del chunk del modo vecino y de Ajustes cuando la app esta ociosa
      (y no antes, para no competir con la primera pintura). Se repite al cambiar
      de modo: la siguiente pantalla probable cambia. */
   useEffect(() => {
     const preload = () => {
-      loadLibrary();
       loadSettingsView();
       MODE_LOADERS[nextGuess(mode)]?.();
     };
@@ -439,119 +367,29 @@ export default function App() {
     return () => clearTimeout(id);
   }, [mode]);
 
-  /* La biblioteca vive en Descargar. Si se pide desde otro modo (o con Ajustes
-     abierto), primero se cambia de pantalla y este efecto la abre cuando ya se
-     ve: abrirla antes mediria un cajon que aun esta oculto. */
-  useEffect(() => {
-    if (activeId !== "download") return;
-    const pending = pendingLib.current;
-    if (!pending) return;
-    pendingLib.current = null;
-    openLibrary(typeof pending === "function" ? pending : undefined);
-  }, [activeId, openLibrary]);
-
-  const requestLibrary = useCallback(
-    (then) => {
-      if (settings.open || mode !== "download") {
-        pendingLib.current = then ?? true;
-        goMode("download");
-        return;
-      }
-      openLibrary(then);
-    },
-    [settings.open, mode, goMode, openLibrary]
-  );
-
-  const toggleLib = useCallback(() => {
-    if (libOpen) {
-      setLibOpen(false);
-      return;
-    }
-    requestLibrary();
-  }, [libOpen, requestLibrary]);
-
-  /* Saltar a una cancion desde el mini-reproductor. Si la fila vive en otro
-     modo o en la biblioteca cerrada, primero se abre la pantalla y el cajon, y
-     el scroll espera a que exista la altura. */
+  /* Saltar a una cancion desde el mini-reproductor. La lista vive en Escuchar:
+     si estamos en otro modo (o con Ajustes abierto) primero se cambia de
+     pantalla, y ListenView recoge la peticion cuando ya esta a la vista. */
   const revealSong = useCallback(
-    (el) => {
-      if (!el) return;
-      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const go = () =>
-        el.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
-      const wait = el.closest(".drawer") && !libOpen ? 320 : 0;
-      if (settings.open || mode !== "download") {
-        pendingLib.current = () => setTimeout(go, wait);
-        goMode("download");
-        return;
-      }
-      if (el.closest(".drawer") && !libOpen) {
-        openLibrary(() => setTimeout(go, 320));
-      } else {
-        go();
-      }
+    (key) => {
+      if (settings.open || mode !== "listen") goMode("listen");
+      requestReveal(key);
     },
-    [settings.open, mode, libOpen, openLibrary, goMode]
+    [settings.open, mode, goMode]
   );
 
-  /* El contador del boton tiene que ser real desde el primer render, asi que
-     /api/library se pide al montar y no solo al abrir el panel. Es una lista
-     de archivos locales: no toca red. */
+  /* /api/library se pide al montar y no solo al abrir Escuchar: es una lista de
+     archivos locales (no toca red) y asi la pantalla ya la tiene al llegar. */
   useEffect(() => {
     loadLib();
   }, [loadLib]);
 
-  /* null = la consulta sigue en vuelo. Sin esta distincion el boton
-     arrancaria atenuado como si la biblioteca estuviera vacia. */
+  /* null = la consulta sigue en vuelo. Sin esta distincion Escuchar mostraria
+     "vacia" mientras todavia pregunta. */
   const libFiles = lib || [];
   const libReady = lib !== null;
-  const libCount = libFiles.length;
-
-  const libTitle = libOpen
-    ? "Ocultar la biblioteca"
-    : libCount > 0
-      ? `Abrir la biblioteca (${libCount} ${libCount === 1 ? "tema" : "temas"})`
-      : "Biblioteca vacía: todavía no has descargado nada";
-  const libAria = libOpen
-    ? "Cerrar la biblioteca"
-    : libCount > 0
-      ? `Biblioteca, ${libCount} ${libCount === 1 ? "tema" : "temas"}`
-      : "Biblioteca, vacía";
 
   const onImportCookies = useCallback(() => openSettings("cookies"), [openSettings]);
-
-  const librarySlot = libEver ? (
-    <div
-      ref={drawerRef}
-      className="drawer"
-      data-state={libShow ? "open" : "closed"}
-      data-settled={libSettled && libShow ? "" : undefined}
-      aria-hidden={libShow ? undefined : true}
-      inert={libShow ? undefined : ""}
-      onTransitionEnd={(e) => {
-        if (
-          e.target === e.currentTarget &&
-          e.propertyName === "grid-template-rows" &&
-          libShow
-        ) {
-          setLibSettled(true);
-        }
-      }}
-    >
-      {LibraryView && (
-        <LibraryView
-          libFiles={libFiles}
-          libReady={libReady}
-          libCount={libCount}
-          libErr={libErr}
-          libErrCode={libErrCode}
-          health={health}
-          onOpenStorage={() => openSettings("storage")}
-          onRetry={loadLib}
-        />
-      )}
-    </div>
-  ) : null;
 
   return (
     <main className="app">
@@ -595,32 +433,6 @@ export default function App() {
           >
             <NavIcon name="settings" filled={settings.open} size={19} />
           </button>
-          <button
-            ref={libBtnRef}
-            className={[
-              "libbtn",
-              libOpen ? "is-on" : "",
-              libReady && libCount === 0 ? "is-empty" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onClick={toggleLib}
-            onPointerEnter={loadLibrary}
-            onFocus={loadLibrary}
-            aria-expanded={libOpen}
-            aria-label={libAria}
-            title={libTitle}
-          >
-            <span className="swap" key={libOpen ? "x" : "stack"}>
-              {libOpen ? <X size={17} /> : <Stack size={17} />}
-            </span>
-            <span className="libbtn__lbl">{libOpen ? "Cerrar" : "Biblioteca"}</span>
-            {!libOpen && libCount > 0 && (
-              <span className="count count--bump" key={libCount}>
-                {libCount}
-              </span>
-            )}
-          </button>
         </div>
       </header>
 
@@ -638,14 +450,23 @@ export default function App() {
               health={health}
               onLibraryChanged={loadLib}
               onImportCookies={onImportCookies}
-              librarySlot={librarySlot}
             />
           </Screen>
         )}
 
         {visited.has("listen") && (
           <Screen id="listen" active={activeId === "listen"}>
-            <ListenView />
+            <ListenView
+              files={libFiles}
+              ready={libReady}
+              error={libErr}
+              errorCode={libErrCode}
+              health={health}
+              active={activeId === "listen"}
+              onOpenStorage={() => openSettings("storage")}
+              onRetry={loadLib}
+              onGoDownload={() => goMode("download")}
+            />
           </Screen>
         )}
 
@@ -669,7 +490,7 @@ export default function App() {
         )}
       </div>
 
-      <MiniPlayer libOpen={libOpen} onReveal={revealSong} />
+      <MiniPlayer onReveal={revealSong} />
       {/* Montado una sola vez: es el dueno del <video> y por eso la
           reproduccion no se corta al cambiar de modo. */}
       <VideoHost />

@@ -5,20 +5,8 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .libbtn:hover {
-    background: var(--ink-hover);
-  }
-
   .themesw:hover {
     filter: brightness(1.06);
-  }
-
-  .libbtn.is-on:hover {
-    background: var(--surface-hover);
-  }
-
-  .libbtn.is-empty:hover {
-    background: var(--track-hover);
   }
 
   .search__go:not(:disabled):hover {
@@ -48,25 +36,16 @@
     text-decoration-color: var(--accent-fg);
   }
 
-  .pl:not(.is-active):hover {
-    background: var(--row-hover);
-  }
-
-  .pl:hover .scrub__knob {
-    opacity: 1;
-    transform: scale(1);
-  }
-
   .scrub:hover .scrub__rail {
     transform: scaleY(1.5);
   }
 
-  :is(.pl, .pv):not(.is-playing) .pbtn:not(:disabled):hover {
+  .pv:not(.is-playing) .pbtn:not(:disabled):hover {
     border-color: var(--accent-fill);
     color: var(--accent-fg);
   }
 
-  :is(.pl, .pv).is-playing .pbtn:hover {
+  .pv.is-playing .pbtn:hover {
     background: var(--accent-hover);
   }
 
@@ -130,18 +109,9 @@
   }
 }
 
-/* Pantallas muy estrechas: el boton de biblioteca queda en icono + contador
-   (lleva aria-label) para que la barra no se desborde a 360 px. */
+/* Pantallas muy estrechas: la cabecera pierde margen para no desbordar a
+   360 px. */
 @media (max-width: 420px) {
-  .libbtn__lbl {
-    display: none;
-  }
-
-  .libbtn {
-    gap: 6px;
-    padding: 0 12px;
-  }
-
   .top {
     padding-left: 16px;
   }
@@ -228,11 +198,6 @@
 
   .card--wide .card__art {
     width: min(100%, 260px);
-  }
-
-  /* El volumen no tiene sentido en movil: el sistema manda. */
-  .pl__vol {
-    display: none;
   }
 
   .panel__path {
@@ -412,9 +377,8 @@
     transform: scaleY(0.6);
   }
 
-  /* Cajon y mini-reproductor: solo fundido, sin desplazamiento. */
-  .mini,
-  .panel {
+  /* Mini-reproductor: solo fundido, sin desplazamiento. */
+  .mini {
     transform: none !important;
   }
 }

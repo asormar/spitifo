@@ -18,7 +18,7 @@ import { ProgressStack } from "./progress.jsx";
 import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
 
-export default function DownloadView({ health, onLibraryChanged, onImportCookies, librarySlot }) {
+export default function DownloadView({ health, onLibraryChanged, onImportCookies }) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -567,8 +567,6 @@ export default function DownloadView({ health, onLibraryChanged, onImportCookies
           </span>
         </div>
       )}
-
-      {librarySlot}
 
       {results.length > 0 && (
         <>

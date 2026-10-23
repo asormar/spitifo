@@ -20,19 +20,20 @@ import { useVideoHost } from "./videoStore.js";
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR
 
-   La biblioteca ya no se desmonta al cerrarse (la musica sigue), pero entonces
-   la cancion que suena queda sin controles: su fila esta oculta, o fuera de
-   pantalla a mitad de scroll. Esta pastilla fija los devuelve. No tiene
-   <audio> propio: es una vista del motor, como las filas, asi que no hay una
-   segunda fuente de verdad que pueda desincronizarse.
+   La musica sigue sonando al cambiar de pantalla o al hacer scroll, pero
+   entonces la cancion que suena queda sin controles: su fila esta en otro modo
+   o fuera de pantalla. Esta pastilla fija los devuelve. No tiene <audio>
+   propio: es una vista del motor, como las filas, asi que no hay una segunda
+   fuente de verdad que pueda desincronizarse.
 
-   Solo se ve cuando hace falta: hay una cancion empezada Y su Player no esta a
-   la vista (cajon cerrado o fuera del viewport). Con la fila delante, los
-   controles duplicados sobrarian. Si el usuario la cierra, se queda cerrada
-   hasta la siguiente pista o el siguiente play.
+   Solo se ve cuando hace falta: hay una cancion empezada Y su fila no esta a
+   la vista (no esta montada, esta fuera del viewport o su pantalla esta
+   oculta). Con la fila delante, los controles duplicados sobrarian. Si el
+   usuario la cierra, se queda cerrada hasta la siguiente pista o el siguiente
+   play.
    ------------------------------------------------------------------------- */
 
-function MiniPlayer({ libOpen, onReveal }) {
+function MiniPlayer({ onReveal }) {
   const st = useEngine();
   const [dismissed, setDismissed] = useState(false);
   /* true hasta que el IntersectionObserver diga lo contrario: mejor tardar un
@@ -64,7 +65,8 @@ function MiniPlayer({ libOpen, onReveal }) {
     if (st.playing) setDismissed(false);
   }, [st.playing]);
 
-  /* Se observa la caja del Player de origen, no el audio. */
+  /* Se observa la caja de la fila de origen, no el audio. Sin fila montada
+     (srcEl null) no esta a la vista. */
   useLayoutEffect(() => {
     if (!srcEl || typeof IntersectionObserver === "undefined") {
       setSrcSeen(false);
@@ -78,9 +80,6 @@ function MiniPlayer({ libOpen, onReveal }) {
     return () => io.disconnect();
   }, [srcEl]);
 
-  /* Con el cajon cerrado el IO tambien lo detecta (el recorte deja la fila en
-     0), pero solo cuando termina de cerrarse. Esto lo adelanta al clic. */
-  const inClosedDrawer = !libOpen && !!srcEl?.closest(".drawer");
   const started = st.playing || st.time > 0;
   /* Con un video abierto el audio ya esta pausado: la pastilla solo estorbaria
      encima de la ventana del video. */
@@ -88,7 +87,7 @@ function MiniPlayer({ libOpen, onReveal }) {
     !!track &&
     started &&
     !dismissed &&
-    (!srcSeen || inClosedDrawer) &&
+    !srcSeen &&
     vhost.mode === "closed";
 
   /* Reserva sitio en la pagina y aparta los avisos de descarga (CSS). */
@@ -107,6 +106,9 @@ function MiniPlayer({ libOpen, onReveal }) {
   const volPct = Math.round((quiet ? 0 : st.volume) * 100);
   const art = info?.artwork && badArt !== info.artwork ? info.artwork : null;
   const hasNext = st.index >= 0 && st.index + 1 < st.queue.length;
+  /* "Ir a la cancion" abre Escuchar: un preview de una tarjeta no esta en la
+     biblioteca y no habria fila a la que llevar. */
+  const inLibrary = track?.kind === "library";
 
   const seekTo = (t) => {
     engine.seek(clamp(t, 0, dur || 0));
@@ -163,8 +165,7 @@ function MiniPlayer({ libOpen, onReveal }) {
       inert={show ? undefined : ""}
     >
       <div className="mini__row">
-        {/* Anterior y siguiente: la cola es la biblioteca entera, asi que aqui
-            se puede cambiar de tema sin volver al cajon. */}
+        {/* Anterior y siguiente: se puede cambiar de tema sin volver a la lista. */}
         <button
           type="button"
           className="mini__btn mini__btn--prev"
@@ -218,8 +219,8 @@ function MiniPlayer({ libOpen, onReveal }) {
           type="button"
           className="mini__txt"
           tabIndex={-1}
-          onClick={() => onReveal(srcEl)}
-          disabled={!srcEl}
+          onClick={() => onReveal(track.key)}
+          disabled={!inLibrary}
           aria-label={`Ir a la canción: ${info?.title ?? ""}`}
         >
           <span className="mini__title" title={info?.title}>
@@ -261,8 +262,8 @@ function MiniPlayer({ libOpen, onReveal }) {
         <button
           type="button"
           className="mini__btn mini__btn--reveal"
-          onClick={() => onReveal(srcEl)}
-          disabled={!srcEl}
+          onClick={() => onReveal(track.key)}
+          disabled={!inLibrary}
           aria-label="Ir a la canción"
           title="Ir a la canción"
         >

@@ -1,29 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  CircleNotch,
-  Pause,
-  Play,
-  SpeakerHigh,
-  SpeakerLow,
-  SpeakerSlash,
-} from "@phosphor-icons/react";
+import { CircleNotch, Pause, Play } from "@phosphor-icons/react";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 
 /* ---------------------------------------------------------------------------
-   FILA (biblioteca) Y PREVIEW (tarjeta)
+   PREVIEW (tarjeta)
 
    Vista del motor: no tiene <audio>. Todo lo que suena se lee de ahi y solo se
    pinta si esta pista es la que suena; las demas muestran su duracion conocida
-   y tiempo 0. Volumen y silencio son compartidos y se pintan en todas, aunque
-   el control solo se abra en la fila activa.
-
-   Dos niveles, igual que antes: "row" (boton, barra, tiempo y volumen) y
-   "compact" (preview de 30 s en una tarjeta de resultados: sin volumen).
+   y tiempo 0. Es el preview de 30 s de una tarjeta de resultados: sin volumen
+   (lo lleva el mini-reproductor). Las filas de la biblioteca viven en listen/.
    ------------------------------------------------------------------------- */
-function Player({ track, queue, variant = "row", index = 0 }) {
+function Player({ track }) {
   const railRef = useRef(null);
   const rootRef = useRef(null);
   /* Posicion (0..1) mientras se arrastra la barra. null = no se arrastra. */
@@ -38,8 +28,6 @@ function Player({ track, queue, variant = "row", index = 0 }) {
   const failed = useEngine((s) => s.track?.key === key && s.failed);
   const time = useEngine((s) => (s.track?.key === key ? s.time : 0));
   const realDur = useEngine((s) => (s.track?.key === key ? s.duration : 0));
-  const vol = useEngine((s) => s.volume);
-  const muted = useEngine((s) => s.muted);
 
   /* La caja de esta fila es lo que el mini-reproductor observa para saber si la
      cancion esta a la vista. */
@@ -57,7 +45,7 @@ function Player({ track, queue, variant = "row", index = 0 }) {
   const toggle = () => {
     if (failed) return;
     if (isCurrent) engine.toggle();
-    else engine.play(track, { queue });
+    else engine.play(track);
   };
 
   const seekTo = (t) => {
@@ -107,8 +95,7 @@ function Player({ track, queue, variant = "row", index = 0 }) {
 
   const icon = failed ? "play" : buffering ? "load" : playing ? "pause" : "play";
   const verb = playing ? "Pausar" : "Reproducir";
-  const small = variant === "compact";
-  const iconSize = small ? 13 : 16;
+  const iconSize = 13;
   const label = track?.label || "";
 
   const button = (
@@ -159,80 +146,14 @@ function Player({ track, queue, variant = "row", index = 0 }) {
     </div>
   );
 
-  if (small) {
-    return (
-      <div
-        ref={rootRef}
-        className={cx("pv", active && "is-active", playing && "is-playing")}
-      >
-        {button}
-        {rail}
-        <span className="pv__time">{active ? clock(shownTime) : total}</span>
-      </div>
-    );
-  }
-
-  const quiet = muted || vol === 0;
   return (
     <div
       ref={rootRef}
-      className={cx("pl", active && "is-active", playing && "is-playing", failed && "is-failed")}
-      style={{ "--i": index }}
+      className={cx("pv", active && "is-active", playing && "is-playing")}
     >
       {button}
-      <div className="pl__mid">
-        <div className="pl__top">
-          <span className="pl__title" title={track?.title}>
-            {track?.title}
-          </span>
-          <span className="eq" aria-hidden="true" data-on={playing && !buffering ? "" : undefined}>
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="pl__time">
-            {clock(shownTime)} / {total}
-          </span>
-        </div>
-        <div className="pl__meta" title={failed ? undefined : track?.meta}>
-          {failed ? "No se pudo reproducir este audio" : track?.meta}
-        </div>
-        <div className="pl__bar">
-          {rail}
-          {/* El volumen solo existe en la fila activa: 31 filas con 31
-              deslizadores serian ruido. Vive en la fila de la barra para que su
-              aparicion no mueva el titulo. */}
-          <div className="pl__vol" aria-hidden={!active}>
-            <button
-              type="button"
-              className="pl__mute"
-              tabIndex={active ? 0 : -1}
-              onClick={() => engine.toggleMute()}
-              aria-label={quiet ? "Activar el sonido" : "Silenciar"}
-            >
-              {quiet ? (
-                <SpeakerSlash size={17} />
-              ) : vol < 0.45 ? (
-                <SpeakerLow size={17} />
-              ) : (
-                <SpeakerHigh size={17} />
-              )}
-            </button>
-            <input
-              type="range"
-              className="vol"
-              min={0}
-              max={100}
-              step={1}
-              value={Math.round((quiet ? 0 : vol) * 100)}
-              tabIndex={active ? 0 : -1}
-              aria-label={`Volumen de ${label}`}
-              style={{ "--v": `${Math.round((quiet ? 0 : vol) * 100)}%` }}
-              onChange={(e) => engine.setVolume(Number(e.target.value) / 100)}
-            />
-          </div>
-        </div>
-      </div>
+      {rail}
+      <span className="pv__time">{active ? clock(shownTime) : total}</span>
     </div>
   );
 }

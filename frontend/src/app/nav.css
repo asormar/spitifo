@@ -158,60 +158,13 @@ html[data-vt="theme"]::view-transition-new(root) {
   transform: none;
 }
 
-/* Boton de biblioteca: pildora oscura, es la accion de la cabecera. Abierto
-   se invierte (claro) y vacio se apaga, pero sigue siendo pulsable para que
-   el title explique por que. */
-.libbtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  min-height: 44px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--ink);
-  color: var(--on-ink);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
-}
-
-.libbtn:active {
-  transform: scale(0.97);
-}
-
-.libbtn.is-on {
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-
-.libbtn.is-empty {
-  background: var(--track);
-  color: var(--muted);
-}
-
-/* Icono (Stack <-> X) y contador: entran con un pequeno giro de escala cada
-   vez que cambian, por eso llevan `key` en el JSX. */
+/* Icono de los botones de descarga: entra con un pequeno giro de escala cada
+   vez que cambia, por eso lleva `key` en el JSX. */
 .swap {
   display: inline-grid;
   place-items: center;
   --pop: 0.85;
   animation: pop var(--t-quick) var(--ease) both;
-}
-
-.count--bump {
-  /* Vuelve a montarse con cada descarga: arrancar casi invisible parpadeaba. */
-  --pop: 0.85;
-  animation: pop var(--t-move) var(--ease-spring) both;
-}
-
-/* La etiqueta no se parte en dos lineas: el boton mantiene su ancho cuando el
-   contador aparece o desaparece. */
-.libbtn__lbl {
-  white-space: nowrap;
 }
 
 /* Contador. Sobre coral va texto de tinta (4.8:1); el blanco daria 3.4:1. */
