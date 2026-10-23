@@ -437,7 +437,40 @@ The plan as written:
 - Media Session API, so the phone's lock screen and the PC's media keys control
   playback.
 
-### 15. App shell: mode switcher and Settings
+### 15. App shell: mode switcher and Settings — done
+
+The app now has three modes, Download, Listen and Discover, plus a Settings
+screen. What changed:
+
+- **Navigation:** a bottom tab bar under 720 px and an icon rail on the left
+  from 720 px. Settings opens from a gear in the phone header and at the
+  bottom of the rail. The rail keeps an empty area under the modes for the
+  playlists of session 19.
+- **Instant switching:** a mode mounts the first time it opens and is then only
+  hidden (`hidden` + `inert`), so search results, the library drawer and the
+  player survive; each screen keeps its own window scroll position. Every mode
+  is its own chunk, and the next likely mode and Settings preload when the app
+  is idle. A switch costs under 3 ms of script and layout in the browser.
+- **URL and back button:** the mode lives in `?view=` (replaced, so switching
+  modes adds no history). Settings pushes one entry, so Android's back button
+  closes it; Escape does too. Search keeps using `?mode=` and `?q=`.
+- **Settings** replaces the storage dialog: Storage, YouTube cookies and an
+  Interface section whose first option switches phones from the tab bar to
+  swipeable pages (stored on the device). A swipe never starts in an area with
+  its own horizontal gesture (`data-no-swipe`, sliders, the drawer, the
+  mini-player, the video).
+- The library drawer stays in Download until session 17: its button and the
+  mini-player's reveal button switch to Download first. The mini-player stays
+  above the tab bar on phones and centred right of the rail on the PC.
+- Listen and Discover are empty screens that say what is coming.
+- The navigation icons are inline SVGs with the two weights they use: the
+  Phosphor components carry all six weights (GearSix alone is 9 KB) and would
+  have pushed the first script over its budget. The first script grew from
+  221 to 233 KB; all JavaScript is 330.8 KiB of its 332 KiB budget and CSS
+  56.3 of 56.6 KiB, so session 16 starts with almost no room.
+- Mode switch timing with `ui.mjs` in the installed app is still to be taken.
+
+The plan as written:
 
 - Bottom tab bar on phones, icon rail on the PC; the rail leaves room for
   playlists below the icons. The mini-player stays visible across modes.
