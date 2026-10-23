@@ -504,3 +504,25 @@ describe("repeat", () => {
     expect(engine.getState().repeat).toBe("off");
   });
 });
+
+describe("row registration", () => {
+  it("keeps one box per screen for the same song and releases only its own", () => {
+    const { engine } = setup();
+    const listen = {};
+    const download = {};
+    const offListen = engine.registerElement("k", listen);
+    const offDownload = engine.registerElement("k", download);
+    expect(engine.elementsFor("k")).toEqual([listen, download]);
+    offDownload();
+    expect(engine.elementsFor("k")).toEqual([listen]);
+    offListen();
+    expect(engine.elementsFor("k")).toEqual([]);
+  });
+
+  it("keeps the same array between changes so observers are not recreated", () => {
+    const { engine } = setup();
+    const off = engine.registerElement("k", {});
+    expect(engine.elementsFor("k")).toBe(engine.elementsFor("k"));
+    off();
+  });
+});

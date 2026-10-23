@@ -563,8 +563,10 @@ export default function App() {
           <Screen id="download" active={activeId === "download"}>
             <DownloadView
               health={health}
+              files={libFiles}
               onLibraryChanged={loadLib}
               onImportCookies={onImportCookies}
+              onOpenLibrary={() => goMode("listen")}
             />
           </Screen>
         )}
