@@ -65,6 +65,13 @@
   touch-action: none;
 }
 
+/* El boton de listas y "Ver en Escuchar" comparten la tercera columna. */
+.np__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .np__close,
 .np__btn {
   display: grid;
@@ -97,6 +104,11 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* El aviso de "Ahora suena" no tiene barra ni mini-reproductor debajo. */
+.np .lnotice {
+  bottom: max(24px, env(safe-area-inset-bottom));
 }
 
 .np__go {

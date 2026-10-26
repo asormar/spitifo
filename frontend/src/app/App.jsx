@@ -7,7 +7,7 @@ import { useTheme } from "../shared/theme.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
-import { requestReveal } from "../listen/reveal.js";
+import { requestPlaylist, requestReveal } from "../listen/reveal.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import {
   MODES,
@@ -473,6 +473,15 @@ export default function App() {
     [settings.open, mode, goMode]
   );
 
+  /* Abrir una lista desde el riel: mismo camino que ir a una cancion. */
+  const openPlaylist = useCallback(
+    (id) => {
+      if (settings.open || mode !== "listen") goMode("listen");
+      requestPlaylist(id);
+    },
+    [settings.open, mode, goMode]
+  );
+
   /* "Ver en Escuchar" de "Ahora suena": primero se cierra la vista y despues
      se salta a la fila. */
   const revealFromNp = useCallback(
@@ -546,6 +555,7 @@ export default function App() {
         settingsOpen={settings.open}
         onMode={goMode}
         onSettings={toggleSettings}
+        onPlaylist={openPlaylist}
       />
 
       <div className="screens" ref={screensRef}>
