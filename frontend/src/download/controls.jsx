@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  ArrowClockwise,
-  CaretDown,
-  Check,
-  CircleNotch,
-  DownloadSimple,
-  WarningCircle,
-} from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { fetchErr, rowKey } from "../shared/api.js";
 import { fmtApproxSize } from "../shared/format.js";
 import { cx, clamp } from "../shared/ui.jsx";
@@ -21,15 +14,15 @@ export function DlButton({ busy, downloaded, title, ariaLabel, onClick }) {
     <button className="dl" disabled={busy} onClick={onClick} title={title} aria-label={ariaLabel}>
       {busy ? (
         <span className="swap" key="busy">
-          <CircleNotch size={19} className="spin" />
+          <Icon name="CircleNotch" size={19} className="spin" />
         </span>
       ) : downloaded ? (
         <span className="swap" key="done">
-          <Check size={19} weight="bold" />
+          <Icon name="Check" size={19} weight="bold" />
         </span>
       ) : (
         <span className="swap" key="idle">
-          <DownloadSimple size={19} weight="bold" />
+          <Icon name="DownloadSimple" size={19} weight="bold" />
         </span>
       )}
     </button>
@@ -293,15 +286,15 @@ export function VideoSplitDownload({
       >
         <span className="swap" key={busy ? "busy" : downloaded ? "done" : "idle"}>
           {busy ? (
-            <CircleNotch size={17} className="spin" />
+            <Icon name="CircleNotch" size={17} className="spin" />
           ) : downloaded ? (
-            <Check size={17} weight="bold" />
+            <Icon name="Check" size={17} weight="bold" />
           ) : (
-            <DownloadSimple size={17} weight="bold" />
+            <Icon name="DownloadSimple" size={17} weight="bold" />
           )}
         </span>
         <span className="dl__lbl">Descargar</span>
-        {!busy && <CaretDown size={13} weight="bold" className="dl__caret" aria-hidden="true" />}
+        {!busy && <Icon name="CaretDown" size={13} weight="bold" className="dl__caret" aria-hidden="true" />}
       </button>
 
       {open &&
@@ -323,7 +316,7 @@ export function VideoSplitDownload({
           >
             {phase === "loading" && (
               <p className="rsvm__msg" aria-live="polite">
-                <CircleNotch size={15} className="spin" aria-hidden="true" />
+                <Icon name="CircleNotch" size={15} className="spin" aria-hidden="true" />
                 Buscando resoluciones…
               </p>
             )}
@@ -331,7 +324,7 @@ export function VideoSplitDownload({
             {phase === "error" && (
               <div className="rsvm__err" role="alert">
                 <p className="rsvm__msg rsvm__msg--err">
-                  <WarningCircle size={15} weight="fill" aria-hidden="true" />
+                  <Icon name="WarningCircle" size={15} weight="fill" aria-hidden="true" />
                   {error}
                 </p>
                 <button
@@ -340,7 +333,7 @@ export function VideoSplitDownload({
                   className="rsvm__item rsvm__item--retry"
                   onClick={load}
                 >
-                  <ArrowClockwise size={15} aria-hidden="true" />
+                  <Icon name="ArrowClockwise" size={15} aria-hidden="true" />
                   Reintentar
                 </button>
               </div>

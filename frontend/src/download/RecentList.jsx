@@ -28,7 +28,7 @@ export function LibraryLink({ count, onOpen }) {
   return (
     <button type="button" className="rlink" onClick={onOpen}>
       Tu biblioteca · {temas(count)}
-      <Icon name="next" size={14} />
+      <Icon name="CaretRight" size={14} />
     </button>
   );
 }
@@ -71,7 +71,7 @@ export function RecentSection({ files, onOpen }) {
         ))}
         <button type="button" className="recent__more" onClick={onOpen}>
           {total > RECENT ? "Ver más" : "Abrir en Escuchar"}
-          <Icon name="next" size={14} />
+          <Icon name="CaretRight" size={14} />
         </button>
       </div>
     </section>

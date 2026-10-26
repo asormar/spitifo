@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Cookie, Trash, UploadSimple } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 
 /* ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export default function YouTubeCookies({ focus }) {
     >
       <div className="store__cookies-head">
         <h3 id="ytcookies-title" className="store__cookies-title">
-          <Cookie size={16} weight="duotone" aria-hidden="true" />
+          <Icon name="Cookie" size={16} weight="duotone" aria-hidden="true" />
           Cookies de YouTube
         </h3>
         <span className="store__cookies-state">{state}</span>
@@ -126,12 +126,12 @@ export default function YouTubeCookies({ focus }) {
           onClick={() => fileRef.current?.click()}
           disabled={busy}
         >
-          <UploadSimple size={15} aria-hidden="true" />
+          <Icon name="UploadSimple" size={15} aria-hidden="true" />
           {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
         </button>
         {configured && (
           <button type="button" className="vf" onClick={remove} disabled={busy}>
-            <Trash size={15} aria-hidden="true" />
+            <Icon name="Trash" size={15} aria-hidden="true" />
             Quitar
           </button>
         )}

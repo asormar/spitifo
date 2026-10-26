@@ -686,7 +686,35 @@ The plan as written:
 - Optimistic updates: the UI changes at once and the write happens in the
   background, undone with a notice if it fails.
 
-### 20. Speed and size review 1
+### 20. Speed and size review 1 — done on the PC; Pixel pending
+
+What could be measured and fixed without the Pixel. What changed:
+
+- **The library listing.** `/api/library` on disk re-read every file with
+  mutagen and resolved every path on every call. Durations and tags now live
+  in `.spitifo/media-cache.json`, keyed by path, size and mtime, and the folder
+  is walked with `os.scandir`, resolving only real symlinks. With 300 tracks on
+  the PC: 342 → 36 ms per call (median of 5 launches); the first listing after
+  a restart that has to build the cache took 258 ms against 2.4 s.
+- **The last library is shown at once.** The app keeps the last answer of
+  `/api/library` on the device and Listen paints it while the real one loads,
+  which hides Drive's seconds-long listing.
+- **Icons.** All 51 Phosphor icons became inline SVG paths with only the weight
+  each place uses (copied from the package and compared against the
+  components), split so the first script carries only the shell's. The package
+  is gone. All JavaScript: 373,651 → 288,038 B (−85.6 KB, −17 KB gzip); first
+  script 234 → 191 KB. The JavaScript budget went down to 295,000 B.
+- **The Windows sidecar** leaves out pygments, sqlite3, watchfiles, yaml,
+  websockets, httptools and dotenv, which nothing in the app imports (uvicorn
+  falls back to h11). A local build went from 37.8 to 32.7 MB installed; it
+  started, listed the library, served ranges, imported cookies, saved a
+  playlist and searched YouTube through yt-dlp. The APK needed no change: it
+  only installs what it uses.
+- Still to do: the Pixel (start-up, library open and scroll, 60 fps in Listen,
+  "Ahora suena" and drags), the installed app's mode-switch timing, and the
+  installer's size from the release build.
+
+The plan as written:
 
 - Measure every budget again and fix whatever regressed since session 12.
 - Start-up: whatever session 12 found slowest, such as lazy Python imports or a

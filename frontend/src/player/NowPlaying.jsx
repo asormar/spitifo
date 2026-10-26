@@ -1,14 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CircleNotch,
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  SpeakerHigh,
-  SpeakerLow,
-  SpeakerSlash,
-} from "@phosphor-icons/react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { Icon } from "../listen/icons.jsx";
@@ -40,9 +30,9 @@ import "./nowplaying.css";
    ------------------------------------------------------------------------- */
 
 const REPEAT = {
-  off: ["Repetir: no", "repeat"],
-  all: ["Repetir: todo", "repeat"],
-  one: ["Repetir: una", "repeatOnce"],
+  off: ["Repetir: no", "Repeat"],
+  all: ["Repetir: todo", "Repeat"],
+  one: ["Repetir: una", "RepeatOnce"],
 };
 
 const PAGES = ["Ahora suena", "Cola"];
@@ -119,7 +109,7 @@ function Controls() {
         title="Aleatorio"
         onClick={() => engine.setShuffle(!st.shuffle)}
       >
-        <Icon name="shuffle" size={24} />
+        <Icon name="Shuffle" size={24} />
       </button>
       <button
         type="button"
@@ -128,7 +118,7 @@ function Controls() {
         aria-label="Anterior"
         title="Anterior"
       >
-        <SkipBack size={28} weight="fill" />
+        <Icon name="SkipBack" size={28} weight="fill" />
       </button>
       <button
         type="button"
@@ -138,13 +128,13 @@ function Controls() {
         aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${st.track?.label ?? ""}`}
       >
         <span className="pbtn__ico pbtn__ico--play">
-          <Play size={30} weight="fill" />
+          <Icon name="Play" size={30} weight="fill" />
         </span>
         <span className="pbtn__ico pbtn__ico--pause">
-          <Pause size={30} weight="fill" />
+          <Icon name="Pause" size={30} weight="fill" />
         </span>
         <span className="pbtn__ico pbtn__ico--load">
-          <CircleNotch size={30} weight="bold" className="spin" />
+          <Icon name="CircleNotch" size={30} weight="bold" className="spin" />
         </span>
       </button>
       <button
@@ -155,7 +145,7 @@ function Controls() {
         aria-label="Siguiente"
         title="Siguiente"
       >
-        <SkipForward size={28} weight="fill" />
+        <Icon name="SkipForward" size={28} weight="fill" />
       </button>
       <button
         type="button"
@@ -187,11 +177,11 @@ function Volume() {
         aria-label={quiet ? "Activar el sonido" : "Silenciar"}
       >
         {quiet ? (
-          <SpeakerSlash size={20} />
+          <Icon name="SpeakerSlash" size={20} />
         ) : volume < 0.45 ? (
-          <SpeakerLow size={20} />
+          <Icon name="SpeakerLow" size={20} />
         ) : (
-          <SpeakerHigh size={20} />
+          <Icon name="SpeakerHigh" size={20} />
         )}
       </button>
       <input
@@ -384,7 +374,7 @@ export default function NowPlaying({ onClose, onReveal }) {
             aria-label="Cerrar"
             title="Cerrar"
           >
-            <Icon name="down" size={26} />
+            <Icon name="CaretDown" size={26} />
           </button>
           <p className="np__cap" title={caption}>
             {caption}
@@ -400,7 +390,7 @@ export default function NowPlaying({ onClose, onReveal }) {
                 aria-haspopup="dialog"
                 title="Añadir a una lista"
               >
-                <Icon name="plus" size={24} />
+                <Icon name="Plus" size={24} />
               </button>
             )}
             <button

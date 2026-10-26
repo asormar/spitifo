@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Headphones, Question, Waveform, X } from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { SOURCE_LABEL } from "./constants.js";
 
@@ -8,17 +8,17 @@ import { SOURCE_LABEL } from "./constants.js";
    solo del color. El `key` lo pone quien la usa: al cambiar de estado se
    remonta y repite su entrada. */
 const CHIP_ICON = {
-  ok: Check,
-  warn: Headphones,
-  bad: X,
-  mute: Question,
+  ok: "Check",
+  warn: "Headphones",
+  bad: "X",
+  mute: "Question",
 };
 
 export function StatusChip({ tone, children }) {
-  const Icon = CHIP_ICON[tone] || Question;
+  const name = CHIP_ICON[tone] || "Question";
   return (
     <span className={`st st--${tone}`}>
-      <Icon size={13} weight="bold" aria-hidden="true" />
+      <Icon name={name} size={13} weight="bold" aria-hidden="true" />
       <span className="st__t">{children}</span>
     </span>
   );
@@ -35,7 +35,7 @@ export function Artwork({ t }) {
   if (!t.artwork_url || broken) {
     return (
       <div className={cx("card__art card__art--ph", video && "card__art--video")} aria-hidden="true">
-        <Waveform size={26} />
+        <Icon name="Waveform" size={26} />
       </div>
     );
   }

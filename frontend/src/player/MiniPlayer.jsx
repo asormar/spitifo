@@ -1,16 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  CircleNotch,
-  Crosshair,
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  SpeakerHigh,
-  SpeakerLow,
-  SpeakerSlash,
-  X,
-} from "@phosphor-icons/react";
+import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
@@ -143,7 +132,7 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
           aria-label="Anterior"
           title="Anterior"
         >
-          <SkipBack size={16} weight="fill" />
+          <Icon name="SkipBack" size={16} weight="fill" />
         </button>
         <button
           type="button"
@@ -153,13 +142,13 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
           aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${label}`}
         >
           <span className="pbtn__ico pbtn__ico--play">
-            <Play size={16} weight="fill" />
+            <Icon name="Play" size={16} weight="fill" />
           </span>
           <span className="pbtn__ico pbtn__ico--pause">
-            <Pause size={16} weight="fill" />
+            <Icon name="Pause" size={16} weight="fill" />
           </span>
           <span className="pbtn__ico pbtn__ico--load">
-            <CircleNotch size={16} weight="bold" className="spin" />
+            <Icon name="CircleNotch" size={16} weight="bold" className="spin" />
           </span>
         </button>
         <button
@@ -170,7 +159,7 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
           aria-label="Siguiente"
           title="Siguiente"
         >
-          <SkipForward size={16} weight="fill" />
+          <Icon name="SkipForward" size={16} weight="fill" />
         </button>
         {art && (
           <img
@@ -209,11 +198,11 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
             aria-label={quiet ? "Activar el sonido" : "Silenciar"}
           >
             {quiet ? (
-              <SpeakerSlash size={17} />
+              <Icon name="SpeakerSlash" size={17} />
             ) : st.volume < 0.45 ? (
-              <SpeakerLow size={17} />
+              <Icon name="SpeakerLow" size={17} />
             ) : (
-              <SpeakerHigh size={17} />
+              <Icon name="SpeakerHigh" size={17} />
             )}
           </button>
           <input
@@ -236,7 +225,7 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
           aria-label="Ir a la canción"
           title="Ir a la canción"
         >
-          <Crosshair size={18} />
+          <Icon name="Crosshair" size={18} />
         </button>
         <button
           type="button"
@@ -245,7 +234,7 @@ function MiniPlayer({ onReveal, onOpen, npOpen }) {
           aria-label="Cerrar reproductor"
           title="Cerrar reproductor"
         >
-          <X size={18} />
+          <Icon name="X" size={18} />
         </button>
       </div>
       <div className="mini__bar">
