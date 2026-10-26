@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
+import { engine } from "../player/engine.js";
 import GenreMap from "./GenreMap.jsx";
 import { decodeMap } from "./map.js";
+import { fetchSamples } from "./samples.js";
 import "./discover.css";
 
 /* El mapa se pide una vez por sesion (el archivo viaja con la app, ver ADR
@@ -60,11 +62,24 @@ export default function DiscoverView({ onOpenDownload }) {
     [onOpenDownload]
   );
 
+  /* La muestra suena en el reproductor de siempre: cola de previews, el
+     mini-reproductor la muestra y siguiente/anterior pasan de una a otra. */
+  const playSample = useCallback(async (name) => {
+    const tracks = await fetchSamples(name);
+    if (tracks.length) engine.play(tracks[0], { queue: tracks, index: 0, restart: true });
+    return tracks.length;
+  }, []);
+
   return (
     <>
       <h1 className="sr-only">Descubrir</h1>
       {state.status === "ready" ? (
-        <GenreMap data={state.data} highlight={NO_USER_GENRES} onSearchGenre={searchGenre} />
+        <GenreMap
+          data={state.data}
+          highlight={NO_USER_GENRES}
+          onSearchGenre={searchGenre}
+          onPlaySample={playSample}
+        />
       ) : state.status === "error" ? (
         <div className="gmap gmap--state" role="alert">
           <div>

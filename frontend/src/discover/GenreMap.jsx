@@ -14,6 +14,7 @@ const PATH = {
   fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   close: "M6 6l12 12M18 6L6 18",
   lupa: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.35-4.35",
+  play: "M8 5.5v13l11-6.5z",
 };
 
 function Icon({ name, size = 18, className }) {
@@ -38,8 +39,10 @@ function Icon({ name, size = 18, className }) {
 /* El mapa: lienzo + buscador + zoom + tarjeta del genero elegido.
    - `highlight`: Set de indices de genero a resaltar con un anillo. Es el punto
      de enganche de "Tus generos" (sesion 23): vacio hasta que haya historial.
-   - `onSearchGenre(nombre)`: lleva el genero a Descargar. */
-export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre }) {
+   - `onSearchGenre(nombre)`: lleva el genero a Descargar.
+   - `onPlaySample(nombre)`: hace sonar una muestra; devuelve una promesa con
+     cuantas pistas puso en la cola (0 = no habia previews). */
+export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre, onPlaySample }) {
   const rootRef = useRef(null);
   const viewRef = useRef(null);
   const canvasRef = useRef(null);
@@ -56,6 +59,8 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  /* Estado de la muestra del genero elegido: idle | loading | empty | error. */
+  const [sample, setSample] = useState({ name: "", status: "idle" });
   const listId = useId();
 
   const results = useMemo(() => searchGenres(data, query, 8), [data, query]);
@@ -140,6 +145,18 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
 
   const name = sel >= 0 ? data.names[sel] : "";
   const rel = sel >= 0 ? Array.from(related(data, sel)) : [];
+  /* El estado guardado es de otro genero: para este todavia no se pidio nada. */
+  const sampleStatus = sample.name === name ? sample.status : "idle";
+
+  const playSample = () => {
+    if (!onPlaySample || sampleStatus === "loading") return;
+    const asked = name;
+    setSample({ name: asked, status: "loading" });
+    Promise.resolve(onPlaySample(asked)).then(
+      (count) => setSample((s) => (s.name === asked ? { name: asked, status: count > 0 ? "idle" : "empty" } : s)),
+      () => setSample((s) => (s.name === asked ? { name: asked, status: "error" } : s))
+    );
+  };
 
   const goTo = (i) => {
     choose(i, "fly");
@@ -300,9 +317,29 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
                 </ul>
               </>
             )}
-            <button type="button" className="gmap__go" onClick={() => onSearchGenre?.(name)}>
-              Buscar en Descargar
-            </button>
+            <div className="gmap__acts">
+              {onPlaySample && (
+                <button
+                  type="button"
+                  className="gmap__go gmap__sample"
+                  onClick={playSample}
+                  disabled={sampleStatus === "loading" || sampleStatus === "empty"}
+                  aria-busy={sampleStatus === "loading"}
+                >
+                  <Icon name="play" size={16} />
+                  {sampleStatus === "loading"
+                    ? "Buscando…"
+                    : sampleStatus === "empty"
+                      ? "Sin muestras"
+                      : sampleStatus === "error"
+                        ? "Reintentar muestra"
+                        : "Escuchar muestra"}
+                </button>
+              )}
+              <button type="button" className="gmap__go gmap__go--quiet" onClick={() => onSearchGenre?.(name)}>
+                Buscar en Descargar
+              </button>
+            </div>
           </div>
         </div>
       )}
