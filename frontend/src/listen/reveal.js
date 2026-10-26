@@ -1,8 +1,8 @@
 /* ---------------------------------------------------------------------------
    PETICION DE "IR A..." EN ESCUCHAR
 
-   El mini-reproductor (ir a una cancion) y el riel (abrir una lista) viven
-   fuera de Escuchar y la pantalla puede no estar montada ni a la vista cuando
+   El mini-reproductor (ir a una cancion), el riel (abrir una lista) y
+   Descargar ("Ver más": abrir la biblioteca) viven fuera de Escuchar y la pantalla puede no estar montada ni a la vista cuando
    se pide. En vez de acoplarlos con callbacks, la peticion queda aqui hasta que
    ListenView este activo y la recoja: sin React, para que App y ListenView
    compartan el mismo modulo sin pasarse props.
@@ -10,6 +10,7 @@
 
 let pending = null;
 let pendingList = null;
+let pendingLibrary = null;
 const listeners = new Set();
 
 export function requestReveal(key) {
@@ -33,6 +34,18 @@ export function takePlaylist() {
   const id = pendingList;
   pendingList = null;
   return id;
+}
+
+/* Abre "Explorar la biblioteca" con el orden pedido ("recent", "az"...). */
+export function requestLibrary(sort) {
+  pendingLibrary = sort;
+  listeners.forEach((fn) => fn());
+}
+
+export function takeLibrary() {
+  const sort = pendingLibrary;
+  pendingLibrary = null;
+  return sort;
 }
 
 export function subscribeReveal(fn) {

@@ -249,6 +249,18 @@ weights) in favour of inline paths: all JavaScript 373,651 → 288,038 B, the
 first script 234,248 → 191,235 B. The JavaScript limit went **down** to
 295,000 B; CSS was unchanged (69,066 B of 70,000 B).
 
+The Listen home (search with grouped results, the home sections, the pages
+and their history stack) raised both limits. Almost all of it is the lazy
+Listen chunk (11.9 → 32.8 KB of script, a 16.0 KB stylesheet loaded with it);
+the first script grew 0.8 KB (the history tracker and `play(track, {at})`) and
+the first stylesheet shrank 1.3 KB (the old tabs and search bar). The queue
+code now only loads with "Ahora suena":
+
+| Bundle | Before | Listen home | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | about 294,600 B | 316,058 B (+21,400) | 295,000 B | 317,000 B |
+| CSS | about 70,750 B | 85,232 B (+14,500) | 71,000 B | 86,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

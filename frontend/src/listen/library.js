@@ -14,7 +14,7 @@ const UNKNOWN_ARTIST = "Artista desconocido";
 
 /* Sensibilidad base ignora mayusculas y tildes al ordenar; numeric mantiene
    "Pista 2" antes que "Pista 10". */
-const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+export const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
 
 export function fold(value) {
   return (value == null ? "" : String(value))
@@ -52,6 +52,8 @@ export function normalizeEntry(file) {
     folder: f.folder,
     sizeMb: f.size_mb ?? null,
     thumbKey: f.thumb_key ?? null,
+    /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
+    added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),
     /* Precalcular el texto evita normalizar cada fila en cada tecla. */
     search: fold(`${title} ${artist} ${album}`),

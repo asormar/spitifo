@@ -1,16 +1,17 @@
 /* ---------------------------------------------------------------------------
-   8. ESCUCHAR: biblioteca y cola
+   8. ESCUCHAR: filas, menu y aviso
 
-   Una pantalla con la pagina como unico scroll: cabecera, barra pegajosa con
-   las pestanas y el buscador, y una lista virtual dentro de una tarjeta de
-   cristal. Solo se animan transform y opacity.
+   Lo comun de Escuchar: la fila de cancion, su menu, la cola y el aviso. El
+   inicio, las tarjetas y las paginas estan en home.css. Solo se animan
+   transform y opacity.
    ------------------------------------------------------------------------- */
 
 .listen {
   /* Alto de cada fila. DEBE coincidir con ROW_H de VirtualList.jsx: la lista
      virtual coloca la fila i en i * ROW_H sin medir. */
   --row-h: 56px;
-  max-width: 860px;
+  /* El inicio usa todo el ancho; las paginas se estrechan (home.css). */
+  max-width: 1200px;
   margin: 24px auto 0;
 }
 
@@ -45,79 +46,7 @@
   text-align: left;
 }
 
-/* --- Barra pegajosa -------------------------------------------------------- */
-
-/* 80 px = la pildora de la cabecera (12 de margen + 60 de alto) y 8 de aire. El
-   cristal tapa las filas que pasan por debajo. */
-.ltool {
-  position: sticky;
-  top: 80px;
-  z-index: 30;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding: 8px;
-  border-radius: var(--r-field);
-  background: var(--nav-bg);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-nav);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-}
-
-.ltool .segs {
-  flex: none;
-}
-
-.lsearch {
-  display: flex;
-  flex: 1 1 200px;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: var(--r-inner);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  color: var(--icon-dim);
-}
-
-/* Como el buscador de Descargar: el aro lo dibuja el contenedor. */
-.lsearch:has(input:focus) {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--ring-gap);
-}
-
-/* 16 px: por debajo, iOS hace zoom al enfocar el campo. */
-.lsearch input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: 500 16px var(--font-body);
-  outline: none;
-  box-shadow: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.lsearch input::placeholder {
-  color: var(--faint);
-}
-
-/* --- Acciones -------------------------------------------------------------- */
-
-.lacts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+/* --- Botones ---------------------------------------------------------------- */
 
 .lbtn {
   display: inline-flex;
@@ -154,23 +83,6 @@
   background: color-mix(in srgb, var(--accent) 9%, var(--surface));
   border-color: var(--accent-fill);
   color: var(--accent-fg);
-}
-
-.ldetail {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 12px;
-}
-
-.ldetail__h {
-  min-width: 0;
-  margin: 0;
-  font: 600 clamp(20px, 3vw, 24px) / 1.2 var(--font-display);
-  letter-spacing: -0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* --- Tarjeta y lista -------------------------------------------------------- */
@@ -416,9 +328,9 @@
   z-index: 5;
   top: calc(100% - 6px);
   right: 8px;
-  min-width: 220px;
+  width: 228px;
   padding: 6px;
-  border-radius: var(--r-md);
+  border-radius: var(--r-cover);
   background: var(--surface);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-panel);
@@ -436,13 +348,13 @@
 .rmenu button {
   display: block;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
   color: var(--ink);
-  font: 600 14px var(--font-body);
+  font: 500 14.5px var(--font-body);
   text-align: left;
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
@@ -533,18 +445,4 @@ body.has-mini .lnotice {
 .ltoast.is-out {
   --leave: 12px;
   animation: leave var(--t-quick) var(--ease) forwards;
-}
-
-/* --- Telefono ---------------------------------------------------------------- */
-
-@media (max-width: 720px) {
-  .ltool .segs {
-    display: flex;
-    width: 100%;
-  }
-
-  .ltool .seg {
-    flex: 1;
-    padding: 0 6px;
-  }
 }

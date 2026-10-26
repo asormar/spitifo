@@ -7,60 +7,44 @@ import {
   useState,
 } from "react";
 import { keyUrl } from "../shared/api.js";
-import { cx, useSlidingPill } from "../shared/ui.jsx";
 import { engine } from "../player/engine.js";
-import { useEngine } from "../player/useEngine.js";
 import { openVideo } from "../player/videoStore.js";
+import { normalizeLibrary, toQueue, toTrack } from "./library.js";
+import { buildIndex, searchLibrary, sortEntries } from "./home.js";
+import { history, useHistory } from "./history.js";
 import {
-  filterEntries,
-  fold,
-  groupAlbums,
-  groupArtists,
-  normalizeLibrary,
-  toQueue,
-  toTrack,
-} from "./library.js";
-import { subscribeReveal, takePlaylist, takeReveal } from "./reveal.js";
+  subscribeReveal,
+  takeLibrary,
+  takePlaylist,
+  takeReveal,
+} from "./reveal.js";
 import { playlists, usePlaylists } from "./playlists.js";
 import { useNotice } from "./Notice.jsx";
-import PlaylistPicker, { NameField } from "./PlaylistPicker.jsx";
-import PlaylistSongs from "./PlaylistSongs.jsx";
-import QueueList from "./QueueList.jsx";
-import VirtualList from "./VirtualList.jsx";
+import PlaylistPicker from "./PlaylistPicker.jsx";
+import useViewStack from "./useViewStack.js";
+import HomeFeed from "./HomeFeed.jsx";
+import SearchResults from "./SearchResults.jsx";
+import { AllPage, DetailPage, LibraryPage } from "./Pages.jsx";
 import { Icon } from "./icons.jsx";
-import { GroupRow, RowMenu, SongRow } from "./rows.jsx";
+import { SongRow } from "./rows.jsx";
+import "./home.css";
 
 /* ---------------------------------------------------------------------------
    ESCUCHAR
 
-   La biblioteca (canciones, artistas, albumes), las listas de reproduccion y
-   la cola en una sola pantalla. ListenView es dueno de lo que se comparte
-   entre pestanas: la busqueda, el menu de fila abierto, el aviso, el scroll de
-   cada vista y las peticiones de "ir a" del mini-reproductor (una cancion) y
-   del riel (una lista). Las listas son virtuales y scrollean con la ventana,
-   igual que el resto de pantallas.
+   Un inicio con buscador grande (seguir escuchando, lo ultimo que llego, lo mas
+   escuchado, artistas, albumes, listas) y, encima, una pila de paginas: "Ver
+   todo", Explorar la biblioteca, y la ficha de un album, un artista o una
+   lista. La cola vive en "Ahora suena".
+
+   ListenView es dueno de lo que se comparte: la busqueda, el menu de fila
+   abierto, el aviso, el scroll de cada vista y las peticiones de "ir a" del
+   mini-reproductor (una cancion), del riel (una lista) y de Descargar (la
+   biblioteca). Las paginas se apilan con useViewStack, que lleva el historial
+   del navegador: el atras de Android las cierra una a una.
    ------------------------------------------------------------------------- */
 
-const TABS = [
-  ["songs", "Canciones"],
-  ["artists", "Artistas"],
-  ["albums", "Álbumes"],
-  ["lists", "Listas"],
-  ["queue", "Cola"],
-];
-
-const REPEAT = {
-  off: ["Repetir: no", "Repeat"],
-  all: ["Repetir: todo", "Repeat"],
-  one: ["Repetir: una", "RepeatOnce"],
-};
-
-const LIST_ITEMS = [
-  ["rename", "Renombrar"],
-  ["delete", "Borrar lista"],
-];
-
-/* Filas de esqueleto mientras llega una lista. */
+/* Filas de esqueleto mientras llega la biblioteca. */
 const skeleton = (n) =>
   Array.from({ length: n }, (_, i) => (
     <div key={i} className="lskel skel skel--pulse" style={{ "--i": i }} aria-hidden="true">
@@ -68,6 +52,9 @@ const skeleton = (n) =>
       <span className="lskel__t" />
     </div>
   ));
+
+const keyOf = (view) =>
+  view ? `${view.type}:${view.what ?? view.id ?? ""}` : "home";
 
 export default function ListenView({
   files,
@@ -80,88 +67,62 @@ export default function ListenView({
   onRetry,
   onGoDownload,
 }) {
-  const [tab, setTab] = useState("songs");
-  /* { id, name } del artista, album o lista abierto dentro de su pestana. */
-  const [detail, setDetail] = useState(null);
+  const nav = useViewStack();
+  const { stack } = nav;
   const [q, setQ] = useState("");
-  /* Escribir no tiene que esperar a que se filtre y se pinte la lista. */
+  /* Escribir no tiene que esperar a que se filtre y se pinte. */
   const dq = useDeferredValue(q);
+  /* Orden de Explorar la biblioteca; Descargar lo pide en "recent". */
+  const [sort, setSort] = useState("recent");
   /* { key, el }: la fila con el menu abierto y su boton. Solo hay uno. */
   const [menu, setMenu] = useState(null);
-  /* { key, title, el }: la cancion para la que esta abierta la hoja "Añadir a
-     una lista" y el boton al que vuelve el foco. */
+  /* { key, title, el }: la cancion de la hoja "Añadir a una lista". */
   const [picker, setPicker] = useState(null);
-  /* Campo de nombre abierto: "new" (crear) o "rename" (el detalle). */
-  const [naming, setNaming] = useState(null);
   const [noticeNode, show] = useNotice();
   const [revealTick, setRevealTick] = useState(0);
 
-  const shuffle = useEngine((s) => s.shuffle);
-  const repeat = useEngine((s) => s.repeat);
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
-  const listsError = usePlaylists((s) => s.error);
-  const listsCode = usePlaylists((s) => s.errorCode);
+  const hist = useHistory();
 
   const searchRef = useRef(null);
-  const segsRef = useRef(null);
-  const backRef = useRef(null);
-  const newRef = useRef(null);
-  const listRef = useRef(null);
+  const libRef = useRef(null);
   const scrolls = useRef(new Map());
   const wanted = useRef(null);
   const revealRef = useRef(null);
   const firstView = useRef(true);
 
-  useSlidingPill(segsRef, ready ? tab : null);
-
   const entries = useMemo(() => normalizeLibrary(files), [files]);
-  const filtered = useMemo(() => filterEntries(entries, dq), [entries, dq]);
-  const groups = useMemo(
-    () =>
-      tab === "artists"
-        ? groupArtists(filtered)
-        : tab === "albums"
-          ? groupAlbums(filtered)
-          : null,
-    [tab, filtered]
-  );
-  const group = detail && groups ? groups.find((g) => g.id === detail.id) : null;
-
-  /* Listas. Las claves que ya no estan en la biblioteca se conservan en los
-     datos pero ni se cuentan ni se ven. */
+  const index = useMemo(() => buildIndex(entries), [entries]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
-  const shownLists = useMemo(() => {
-    const term = fold(dq);
-    return term ? lists.filter((p) => fold(p.name).includes(term)) : lists;
-  }, [lists, dq]);
-  const pl = tab === "lists" && detail ? lists.find((p) => p.id === detail.id) : null;
-  const avail = useMemo(
-    () => (pl ? pl.keys.map((k) => byKey.get(k)).filter(Boolean) : null),
-    [pl, byKey]
+  const plays = useMemo(
+    () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
+    [hist.tracks]
   );
 
-  const showGroups = Boolean(groups) && !detail;
-  /* Las canciones que se ven: todas, o las del artista/album/lista abierto. */
-  const songs =
-    tab === "songs" ? filtered : tab === "lists" ? avail : detail ? (group ? group.entries : []) : null;
-  /* Lo que "Reproducir todo" pone en cola desde la vista actual. */
-  const playable = songs || filtered;
+  const top = stack[stack.length - 1];
+  const page = top && top.type !== "search" ? top : null;
+  const searching = dq.trim() !== "";
+  const results = useMemo(
+    () => (searching ? searchLibrary(index, dq, { lists, plays }) : null),
+    [searching, index, dq, lists, plays]
+  );
 
-  /* --- Scroll por vista --------------------------------------------------- */
+  /* --- Pila, scroll y busqueda -------------------------------------------- */
 
-  /* Cada vista (pestana, o detalle dentro de una pestana) recuerda su scroll:
-     volver a una pestana o salir de un detalle la deja donde estaba, y un
-     detalle nuevo empieza por arriba. */
-  const viewKey = `${tab}|${detail ? detail.id : ""}`;
+  /* Cada vista (el inicio o una pagina) recuerda su scroll: volver la deja
+     donde estaba y una pagina nueva empieza por arriba. */
+  const viewKey = keyOf(page);
 
-  const go = (nextTab, nextDetail = null) => {
+  const open = (view) => {
     scrolls.current.set(viewKey, window.scrollY);
-    if (nextDetail) scrolls.current.delete(`${nextTab}|${nextDetail.id}`);
+    scrolls.current.delete(keyOf(view));
     setMenu(null);
-    setNaming(null);
-    setTab(nextTab);
-    setDetail(nextDetail);
+    nav.push(view);
+  };
+  const back = () => {
+    setMenu(null);
+    nav.pop();
   };
 
   useLayoutEffect(() => {
@@ -172,28 +133,51 @@ export default function ListenView({
     window.scrollTo(0, scrolls.current.get(viewKey) ?? 0);
   }, [viewKey]);
 
+  /* Un atras del navegador cierra tambien el menu abierto. */
+  useEffect(() => setMenu(null), [stack]);
+
+  /* La busqueda activa es una entrada de la pila (debajo de las paginas): el
+     atras la cierra, y al cerrarse la consulta se vacia. */
+  const hasSearch = stack.some((v) => v.type === "search");
   useEffect(() => {
-    if (detail) backRef.current?.focus({ preventScroll: true });
-  }, [detail?.id]);
+    if (!hasSearch) setQ((cur) => (cur ? "" : cur));
+  }, [hasSearch]);
 
-  /* --- Ir a la cancion (mini-reproductor) --------------------------------- */
+  const onSearch = (value) => {
+    setQ(value);
+    setMenu(null);
+    const has = nav.getStack().some((v) => v.type === "search");
+    if (value.trim() && !has) nav.push({ type: "search" });
+    else if (!value.trim() && has) nav.pop();
+  };
 
-  /* La peticion se atiende solo con la pantalla a la vista. Si la cancion no
-     esta en el filtro se limpia la busqueda; el scroll espera a que la lista
-     la contenga (el filtro diferido puede llegar un render despues). Abrir una
-     lista (desde el riel) es lo mismo con otro destino. */
+  const clearSearch = () => {
+    onSearch("");
+    searchRef.current?.focus({ preventScroll: true });
+  };
+
+  /* --- Ir a... (mini-reproductor, riel, Descargar) ------------------------- */
+
+  /* La peticion se atiende solo con la pantalla a la vista. Una lista se abre
+     como pagina; la biblioteca, con el orden pedido; una cancion, en la
+     biblioteca y centrada en su fila. Cada una sustituye a las paginas que
+     hubiera abiertas. */
   revealRef.current = () => {
     const list = takePlaylist();
     if (list !== null) {
-      setQ("");
-      go("lists", { id: list, name: lists.find((p) => p.id === list)?.name ?? "" });
+      nav.reset({ type: "list", id: list });
+      return;
+    }
+    const sortWanted = takeLibrary();
+    if (sortWanted !== null) {
+      setSort(sortWanted);
+      nav.reset({ type: "library" });
       return;
     }
     const key = takeReveal();
-    if (key === null || !entries.some((e) => e.key === key)) return;
-    if (!filtered.some((e) => e.key === key)) setQ("");
-    if (tab !== "songs" || detail) go("songs");
+    if (key === null || !byKey.has(key)) return;
     wanted.current = key;
+    nav.reset({ type: "library" });
     setRevealTick((n) => n + 1);
   };
 
@@ -204,16 +188,19 @@ export default function ListenView({
     return subscribeReveal(run);
   }, [active]);
 
-  useLayoutEffect(() => {
+  /* Con la biblioteca ya pintada, la fila pedida se centra. Se espera un
+     momento: si la peticion llego al cerrar "Ahora suena" (un atras del
+     historial), el navegador restaura despues el scroll de la entrada y
+     pisaria este. */
+  useEffect(() => {
     const key = wanted.current;
-    if (key === null || tab !== "songs" || detail) return;
-    const i = filtered.findIndex((e) => e.key === key);
-    if (i < 0) return;
+    if (key === null || page?.type !== "library") return;
+    const i = sortEntries(index.entries, sort).findIndex((e) => e.key === key);
     wanted.current = null;
-    listRef.current?.scrollToIndex(i);
-  }, [revealTick, tab, detail, filtered]);
+    if (i >= 0) setTimeout(() => libRef.current?.scrollToIndex(i), 120);
+  }, [revealTick, page, index, sort]);
 
-  /* --- Menu de fila y aviso ----------------------------------------------- */
+  /* --- Menu de fila y aviso ------------------------------------------------ */
 
   /* Con teclado el foco vuelve al boton que abrio el menu. */
   const closeMenu = (refocus) => {
@@ -237,12 +224,16 @@ export default function ListenView({
     };
   }, [menu]);
 
-  /* Las listas se piden al montar Escuchar, una vez; los fallos de escritura
-     (que ya deshizo el almacen) se dicen en el aviso de esta pantalla. */
+  /* Las listas y el historial se piden al montar Escuchar, una vez; los fallos
+     de escritura de las listas (que ya deshizo el almacen) se dicen en el
+     aviso de esta pantalla. */
   useEffect(() => {
     playlists.load();
+    history.load();
     return playlists.onError(show);
   }, [show]);
+
+  const onMenu = (key, el) => setMenu((m) => (m && m.key === key ? null : { key, el }));
 
   const pick = (entry, kind) => {
     if (kind === "list") {
@@ -267,22 +258,39 @@ export default function ListenView({
     );
   };
 
-  /* --- Teclado ------------------------------------------------------------ */
+  const closePicker = () => {
+    if (picker?.el?.isConnected) picker.el.focus({ preventScroll: true });
+    setPicker(null);
+  };
 
-  /* "/" lleva el foco al buscador, pero solo con Escuchar a la vista: las
-     pantallas ocultas siguen montadas y escuchando el documento. No se mira
-     defaultPrevented porque Descargar (siempre montada) ya lo consume. */
+  /* Borrar es inmediato y se puede deshacer unos segundos: la lista vuelve con
+     el mismo id, nombre y canciones. */
+  const deleteList = (pl) => {
+    setMenu(null);
+    playlists.remove(pl.id);
+    nav.pop();
+    show(`Lista «${pl.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(pl) });
+  };
+
+  /* --- Teclado -------------------------------------------------------------- */
+
+  /* "/" lleva el foco al buscador (solo en el inicio) y Escape cierra, de lo
+     mas pequeno a lo mas grande: el menu, la pagina, la busqueda. Solo con
+     Escuchar a la vista: las pantallas ocultas siguen montadas y escuchando el
+     documento. */
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e) => {
-      if (e.key === "/" && tab !== "queue" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === "/" && !page && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const a = document.activeElement;
         if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+        if (!searchRef.current) return;
         e.preventDefault();
-        searchRef.current?.focus();
+        searchRef.current.focus();
       } else if (e.key === "Escape") {
         if (menu) closeMenu(true);
-        else if (detail) go(tab);
+        else if (page) back();
+        else if (q) clearSearch();
       } else if (e.key === "Tab" && menu) {
         setMenu(null);
       }
@@ -291,18 +299,7 @@ export default function ListenView({
     return () => document.removeEventListener("keydown", onKey);
   });
 
-  const onTabKey = (e) => {
-    const at = TABS.findIndex(([id]) => id === tab);
-    const to =
-      e.key === "ArrowRight" ? at + 1 : e.key === "ArrowLeft" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : null;
-    if (to === null) return;
-    e.preventDefault();
-    const n = (to + TABS.length) % TABS.length;
-    go(TABS[n][0]);
-    e.currentTarget.children[n].focus();
-  };
-
-  /* --- Reproduccion ------------------------------------------------------- */
+  /* --- Reproduccion ---------------------------------------------------------- */
 
   const play = (entry, el, list) => {
     if (entry.kind === "video") {
@@ -320,45 +317,60 @@ export default function ListenView({
     });
   };
 
-  const playAll = () => {
-    const queue = toQueue(playable, keyUrl);
+  /* Pulsar la que suena la pausa o la reanuda; otra, la pone. */
+  const tap = (entry, el, list) => {
+    if (engine.getState().track?.key === entry.key) engine.toggle();
+    else play(entry, el, list);
+  };
+
+  /* "Reproducir" / "Aleatorio" de un grupo. Con aleatorio se empieza por una al
+     azar, no siempre por la primera; restart: aunque ya suene esa pista, el
+     grupo nuevo sustituye a la cola. */
+  const playGroup = (group, shuffle = false) => {
+    const queue = toQueue(group, keyUrl);
     if (!queue.length) return;
-    /* Con aleatorio se empieza por una al azar, no siempre por la primera. */
+    if (shuffle) engine.setShuffle(true);
     const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
-    /* restart: aunque ya suene esa pista, "Reproducir todo" empieza de cero
-       con la lista nueva. */
     engine.play(queue[i], { queue, index: i, restart: true });
   };
 
-  const onMenu = (key, el) => setMenu((m) => (m && m.key === key ? null : { key, el }));
-
-  /* --- Listas ------------------------------------------------------------- */
-
-  /* Al cerrar un campo de nombre el foco vuelve al boton que lo abrio (el campo
-     era el elemento enfocado y desaparece). */
-  const endNaming = () => {
-    setNaming(null);
-    requestAnimationFrame(() => (detail ? backRef : newRef).current?.focus({ preventScroll: true }));
+  /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
+     donde se quedo. */
+  const resume = (item, items) => {
+    const queue = toQueue(
+      items.map((i) => i.entry),
+      keyUrl
+    );
+    const at = queue.findIndex((t) => t.key === item.entry.key);
+    engine.play(queue[at], { queue, index: at, at: item.at });
   };
 
-  const closePicker = () => {
-    if (picker?.el?.isConnected) picker.el.focus({ preventScroll: true });
-    setPicker(null);
+  /* Lo que reciben las vistas. Se rehace en cada render: lleva el menu abierto. */
+  const ctx = {
+    menu,
+    onMenu,
+    closeMenu,
+    play,
+    tap,
+    playGroup,
+    resume,
+    open,
+    back,
+    deleteList,
+    song: (entry, list, extra) => (
+      <SongRow
+        key={entry.key}
+        entry={entry}
+        menuOpen={menu?.key === entry.key}
+        onPlay={(e, el) => play(e, el, list)}
+        onMenu={onMenu}
+        onPick={pick}
+        {...extra}
+      />
+    ),
   };
 
-  /* Borrar es inmediato y se puede deshacer unos segundos: la lista vuelve con
-     el mismo id, nombre y canciones. */
-  const pickList = (kind) => {
-    setMenu(null);
-    if (kind === "rename") {
-      setNaming("rename");
-      return;
-    }
-    const gone = pl;
-    playlists.remove(gone.id);
-    go("lists");
-    show(`Lista «${gone.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(gone) });
-  };
+  /* --- Pintado ---------------------------------------------------------------- */
 
   /* Cargas que fallaron: reconectar si caduco la sesion, reintentar si no. */
   const failure = (text, code, retry) => (
@@ -383,109 +395,7 @@ export default function ListenView({
     </p>
   );
 
-  /* --- Pintado ------------------------------------------------------------ */
-
-  const [repeatLabel, repeatIcon] = REPEAT[repeat];
-  const search = q.trim();
-
-  let list;
-  if (tab === "queue") {
-    list = <QueueList active={active} />;
-  } else if (tab === "lists") {
-    if (!listsReady) {
-      list = listsError
-        ? failure("No se pudieron cargar las listas.", listsCode, () => playlists.load(true))
-        : skeleton(4);
-    } else if (detail) {
-      list = !pl ? (
-        <p className="lnote">Esta lista ya no existe.</p>
-      ) : !avail.length ? (
-        <p className="lnote">
-          {pl.keys.length
-            ? "Ninguna canción de esta lista sigue en tu biblioteca."
-            : "Esta lista está vacía. Añade canciones desde el menú ⋯ de cualquier canción."}
-        </p>
-      ) : (
-        <PlaylistSongs key={viewKey} playlist={pl} rows={avail} active={active} onPlay={play} />
-      );
-    } else if (!shownLists.length) {
-      list = (
-        <p className="lnote">
-          {lists.length ? `Nada coincide con «${search}».` : "Todavía no tienes listas."}
-        </p>
-      );
-    } else {
-      list = (
-        <VirtualList
-          key={viewKey}
-          active={active}
-          count={shownLists.length}
-          getKey={(i) => shownLists[i].id}
-          renderRow={(i, enter) => {
-            const p = shownLists[i];
-            return (
-              <GroupRow
-                group={{ id: p.id, name: p.name, entries: p.keys.filter((k) => byKey.has(k)) }}
-                note
-                enter={enter}
-                onOpen={() => go("lists", { id: p.id, name: p.name })}
-              />
-            );
-          }}
-        />
-      );
-    }
-  } else if (!entries.length) {
-    list = (
-      <p className="lnote">
-        Todavía no has descargado nada.
-        <br />
-        <button type="button" className="vf" onClick={onGoDownload}>
-          Ir a Descargar
-        </button>
-      </p>
-    );
-  } else if (!(showGroups ? groups : songs).length) {
-    list = <p className="lnote">Nada coincide con «{search}».</p>;
-  } else if (showGroups) {
-    list = (
-      <VirtualList
-        key={viewKey}
-        active={active}
-        count={groups.length}
-        getKey={(i) => groups[i].id}
-        renderRow={(i, enter) => (
-          <GroupRow
-            group={groups[i]}
-            album={tab === "albums"}
-            enter={enter}
-            onOpen={(g) => go(tab, { id: g.id, name: g.name })}
-          />
-        )}
-      />
-    );
-  } else {
-    list = (
-      <VirtualList
-        key={viewKey}
-        ref={listRef}
-        active={active}
-        count={songs.length}
-        getKey={(i) => songs[i].key}
-        renderRow={(i, enter) => (
-          <SongRow
-            entry={songs[i]}
-            enter={enter}
-            menuOpen={menu?.key === songs[i].key}
-            onPlay={(entry, el) => play(entry, el, songs)}
-            onMenu={onMenu}
-            onPick={pick}
-          />
-        )}
-      />
-    );
-  }
-
+  const common = { index, byKey, lists, listsReady, active, ctx };
   let body;
   if (!ready) {
     body = error ? (
@@ -495,168 +405,89 @@ export default function ListenView({
         {skeleton(8)}
       </div>
     );
+  } else if (!entries.length) {
+    body = (
+      <p className="lnote">
+        Todavía no has descargado nada.
+        <br />
+        <button type="button" className="vf" onClick={onGoDownload}>
+          Ir a Descargar
+        </button>
+      </p>
+    );
   } else {
     body = (
       <>
-        <div className="ltool">
-          <div
-            ref={segsRef}
-            className="segs"
-            role="tablist"
-            aria-label="Biblioteca"
-            onKeyDown={onTabKey}
-          >
-            {TABS.map(([id, label]) => (
-              <button
-                key={id}
-                id={`ltab-${id}`}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                aria-controls="lpanel"
-                tabIndex={tab === id ? 0 : -1}
-                className={cx("seg", tab === id && "is-on")}
-                onClick={() => go(id)}
-              >
-                {label}
+        <div className="hsearch">
+          <div className="hsearch__box">
+            <Icon name="MagnifyingGlass" size={22} aria-hidden="true" />
+            <input
+              ref={searchRef}
+              type="text"
+              inputMode="search"
+              enterKeyHint="search"
+              value={q}
+              placeholder="¿Qué quieres escuchar?"
+              aria-label="Buscar en tu biblioteca"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => onSearch(e.target.value)}
+            />
+            {q && (
+              <button type="button" className="hsearch__clear" aria-label="Borrar búsqueda" onClick={clearSearch}>
+                <Icon name="X" size={16} />
               </button>
-            ))}
+            )}
           </div>
-          {tab !== "queue" && !(tab === "lists" && detail) && (
-            <div className="lsearch">
-              <Icon name="MagnifyingGlass" size={18} aria-hidden="true" />
-              <input
-                ref={searchRef}
-                type="search"
-                value={q}
-                placeholder={tab === "lists" ? "Buscar en tus listas" : "Buscar en tu biblioteca"}
-                aria-label={tab === "lists" ? "Buscar en tus listas" : "Buscar en tu biblioteca"}
-                autoComplete="off"
-                onChange={(e) => setQ(e.target.value)}
-              />
-            </div>
-          )}
         </div>
-
-        {detail && (
-          <div className="ldetail">
-            <button ref={backRef} type="button" className="lbtn" onClick={() => go(tab)}>
-              <Icon name="ArrowLeft" size={16} />
-              Volver
-            </button>
-            {naming === "rename" && pl ? (
-              <NameField
-                value={pl.name}
-                label="Nuevo nombre de la lista"
-                submit="Guardar"
-                onSubmit={(name) => {
-                  playlists.rename(pl.id, name);
-                  endNaming();
-                }}
-                onCancel={endNaming}
-              />
-            ) : (
-              <h2 className="ldetail__h">{pl ? pl.name : detail.name}</h2>
-            )}
-            {pl && naming !== "rename" && (
-              <button
-                type="button"
-                className="srow__more ldetail__more"
-                aria-label={`Más opciones de ${pl.name}`}
-                title="Más opciones"
-                aria-haspopup="menu"
-                aria-expanded={menu?.key === pl.id}
-                onClick={(e) => onMenu(pl.id, e.currentTarget)}
-              >
-                <Icon name="DotsThree" weight="bold" size={22} />
-              </button>
-            )}
-            {pl && menu?.key === pl.id && <RowMenu items={LIST_ITEMS} onPick={pickList} />}
-          </div>
+        {searching ? (
+          <SearchResults r={results} query={dq} byKey={byKey} ctx={ctx} />
+        ) : (
+          <HomeFeed index={index} byKey={byKey} lists={lists} listsReady={listsReady} ctx={ctx} />
         )}
-
-        <div className="lacts">
-          {tab === "lists" && !detail ? (
-            naming === "new" ? (
-              <NameField
-                label="Nombre de la nueva lista"
-                submit="Crear"
-                onSubmit={(name) => {
-                  playlists.create(name);
-                  endNaming();
-                }}
-                onCancel={endNaming}
-              />
-            ) : (
-              <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming("new")}>
-                <Icon name="Plus" size={16} />
-                Nueva lista
-              </button>
-            )
-          ) : (
-            tab !== "queue" && (
-              <button
-                type="button"
-                className="lbtn lbtn--go"
-                disabled={!playable.length}
-                onClick={playAll}
-              >
-                <Icon name="Play" size={16} weight="fill" aria-hidden="true" />
-                Reproducir todo
-              </button>
-            )
-          )}
-          <button
-            type="button"
-            className={cx("lbtn", shuffle && "is-on")}
-            aria-pressed={shuffle}
-            onClick={() => engine.setShuffle(!shuffle)}
-          >
-            <Icon name="Shuffle" size={16} />
-            Aleatorio
-          </button>
-          <button
-            type="button"
-            className={cx("lbtn", repeat !== "off" && "is-on")}
-            onClick={() => engine.cycleRepeat()}
-          >
-            <Icon name={repeatIcon} size={16} />
-            {repeatLabel}
-          </button>
-        </div>
-
-        <div className="lpanel" role="tabpanel" id="lpanel" aria-labelledby={`ltab-${tab}`}>
-          {list}
-        </div>
       </>
     );
   }
 
-  return (
-    <section className="listen" aria-labelledby="listen-title">
-      <header className="lhead">
-        <h1 className="lhead__h" id="listen-title">
-          Escuchar
-          {ready && files.length > 0 && <span className="count">{files.length}</span>}
-        </h1>
-        {health?.library && (
-          <button
-            type="button"
-            className="panel__store"
-            onClick={() => onOpenStorage()}
-            title="Cambiar dónde se guarda tu música"
-          >
-            {/^Google Drive/.test(health.library) ? (
-              <Icon name="GoogleDriveLogo" size={15} aria-hidden="true" />
-            ) : (
-              <Icon name="HardDrives" size={15} aria-hidden="true" />
-            )}
-            <span className="panel__path">{health.library}</span>
-          </button>
-        )}
-      </header>
+  let pageEl = null;
+  if (page && ready) {
+    if (page.type === "all") {
+      pageEl = <AllPage key={viewKey} view={page} r={results || EMPTY_RESULTS} {...common} />;
+    } else if (page.type === "library") {
+      pageEl = <LibraryPage key={viewKey} ref={libRef} index={index} sort={sort} onSort={setSort} active={active} ctx={ctx} />;
+    } else {
+      pageEl = <DetailPage key={viewKey} view={page} {...common} />;
+    }
+  }
 
-      {body}
+  return (
+    <section className="listen" aria-label="Escuchar">
+      {pageEl || (
+        <>
+          <header className="lhead">
+            <h1 className="lhead__h" id="listen-title">
+              Escuchar
+              {ready && files.length > 0 && <span className="count">{files.length}</span>}
+            </h1>
+            {health?.library && (
+              <button
+                type="button"
+                className="panel__store"
+                onClick={() => onOpenStorage()}
+                title="Cambiar dónde se guarda tu música"
+              >
+                {/^Google Drive/.test(health.library) ? (
+                  <Icon name="GoogleDriveLogo" size={15} aria-hidden="true" />
+                ) : (
+                  <Icon name="HardDrives" size={15} aria-hidden="true" />
+                )}
+                <span className="panel__path">{health.library}</span>
+              </button>
+            )}
+          </header>
+          {body}
+        </>
+      )}
 
       {noticeNode}
 
@@ -671,3 +502,7 @@ export default function ListenView({
     </section>
   );
 }
+
+/* Las paginas de "Ver todo" de resultados solo existen con consulta; sin ella
+   (la busqueda ya se cerro) no hay nada que listar. */
+const EMPTY_RESULTS = { songs: [], artists: [], albums: [], lists: [] };

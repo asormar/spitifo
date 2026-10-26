@@ -18,8 +18,6 @@ import { Icon } from "./icons.jsx";
 /* No hay portada por pista en la biblioteca: la inicial hace de portada. */
 export const initial = (name) => ([...String(name || "").trim()][0] || "?").toUpperCase();
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-
 /* Ecualizador de la fila actual: quieto mientras no suena (ver listen.css). */
 export const Bars = ({ on }) => (
   <span className="eq" aria-hidden="true" data-on={on ? "" : undefined}>
@@ -75,8 +73,10 @@ const SONG_ITEMS = [
   ["list", "Añadir a una lista…"],
 ];
 
-/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). */
-export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
+/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). `rank`
+   pone el numero de puesto delante (los rankings) y `sub` cambia la segunda
+   linea (por defecto artista y album). */
+export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub }) {
   const { key, title, artist, album } = entry;
   const rootRef = useRef(null);
   const isCurrent = useEngine((s) => s.track?.key === key);
@@ -84,7 +84,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
   const video = entry.kind === "video";
   useRegisterRow(key, rootRef);
 
-  const meta = album ? `${artist} · ${album}` : artist;
+  const meta = sub ?? (album ? `${artist} · ${album}` : artist);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
 
   return (
@@ -103,6 +103,11 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
         }
         onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget))}
       >
+        {rank != null && (
+          <span className={cx("srow__rank", rank <= 3 && "is-top")} aria-hidden="true">
+            {rank}
+          </span>
+        )}
         <span className="art">{isCurrent ? <Bars on={playing} /> : initial(artist)}</span>
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
@@ -131,16 +136,9 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick }) {
   );
 }
 
-/* Artista (circulo), album (cuadrado) o lista (cuadrado con una nota).
-   `group.artist` solo existe en albumes. */
-export function GroupRow({ group, album, note, enter, onOpen }) {
-  const songs = plural(group.entries.length, "canción", "canciones");
-  const meta = album
-    ? `${group.artist} · ${songs}`
-    : group.albumCount > 0
-      ? `${songs} · ${plural(group.albumCount, "álbum", "álbumes")}`
-      : songs;
-
+/* Artista, album o lista en una fila de "Ver todo". La portada (`art`) la pinta
+   quien llama: aqui solo se coloca. */
+export function GroupRow({ title, meta, art, enter, onOpen }) {
   return (
     <div
       className={cx("srow", enter != null && "is-in")}
@@ -149,14 +147,12 @@ export function GroupRow({ group, album, note, enter, onOpen }) {
       <button
         type="button"
         className="srow__main"
-        aria-label={`${group.name}, ${meta}`}
-        onClick={() => onOpen(group)}
+        aria-label={`${title}, ${meta}`}
+        onClick={onOpen}
       >
-        <span className={cx("art", !album && !note && "art--round")}>
-          {note ? <Icon name="MusicNote" size={20} /> : initial(group.name)}
-        </span>
+        {art}
         <span className="srow__txt">
-          <span className="srow__t">{group.name}</span>
+          <span className="srow__t">{title}</span>
           <span className="srow__m">{meta}</span>
         </span>
         <Icon name="CaretRight" size={16} className="srow__go" />
