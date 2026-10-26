@@ -114,6 +114,12 @@ is no antivirus in the way. Medians of 5 cold starts (`am force-stop`, then
 
 ## What makes the library slow
 
+> **Session 20:** fixed on disk. Durations and tags are cached in
+> `.spitifo/media-cache.json` (keyed by path, size and mtime) and the folder is
+> walked with `os.scandir`, resolving only symlinks. 300 tracks on the PC,
+> median of 5 launches of `backend_start.py`: `library1_ms` 342 → 36 ms. The
+> numbers below are from before the fix.
+
 With 300 tracks the library drawer takes 400 ms to show its first frame on the
 PC (1.1–1.2 s the first time it opens), 700 ms to settle instead of the 280 ms
 its transition lasts, and scrolls at 25–32 fps. On the Pixel: 260 ms (0.6–0.7 s
@@ -205,6 +211,43 @@ limits went up by just that, rounded to the next thousand bytes:
 | --- | --- | --- | --- | --- |
 | JavaScript | 338,767 B | 340,097 B (+1,330) | 340,000 B | 341,000 B |
 | CSS | 57,677 B | 59,710 B (+2,033) | 58,000 B | 60,000 B |
+
+The second raise came with Listen (session 17). Removing the library drawer
+paid for part of it, and the first script shrank from 233 to 231 KB, but the
+screen itself (tabs, search, virtual lists, the editable queue) is a new 22 KB
+lazy chunk. Its icons are inline paths, not Phosphor components, which saved
+about 18 KB:
+
+| Bundle | `main` before | Session 17 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 340,097 B | 349,122 B (+9,025) | 341,000 B | 350,000 B |
+| CSS | 59,710 B | 60,665 B (+955) | 60,000 B | 61,000 B |
+
+The third came with "Ahora suena" (session 18). The view and its stylesheet are
+a lazy chunk preloaded when the app is idle, so the first stylesheet did not
+grow and the first script grew 2.2 KB:
+
+| Bundle | Before | Session 18 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 349,122 B | 360,473 B (+11,351) | 350,000 B | 361,000 B |
+| CSS | 60,665 B | 65,818 B (+5,153) | 61,000 B | 66,000 B |
+
+The fourth came with playlists (session 19); the first script grew 0.7 KB and
+the rest is in Listen's lazy chunks:
+
+| Bundle | Before | Session 19 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 360,473 B | 373,444 B (+12,971) | 361,000 B | 374,000 B |
+| CSS | 65,818 B | 69,066 B (+3,248) | 66,000 B | 70,000 B |
+
+Session 20 (the first speed and size review) starts from here: Listen, "Ahora
+suena" and playlists added 31 KB of JavaScript and 9 KB of CSS over sessions
+17–19, nearly all of it in lazy chunks.
+
+Session 20 then removed the Phosphor components (each one carries all six
+weights) in favour of inline paths: all JavaScript 373,651 → 288,038 B, the
+first script 234,248 → 191,235 B. The JavaScript limit went **down** to
+295,000 B; CSS was unchanged (69,066 B of 70,000 B).
 
 ### Windows installer: 22,707,225 B
 

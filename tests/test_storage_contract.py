@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from backend.app.playlists import Playlist
 from backend.app.storage import InvalidKey, StoredFile, validate_key
 from backend.app.storage.local import LocalStorage
 
@@ -40,6 +41,15 @@ def _drive_storage(tmp_path: Path):
     client = httpx.Client(transport=httpx.MockTransport(FakeDrive()))
     cache = AudioCache(tmp_path / "cache", budget_bytes=256 * 1024 * 1024)
     return DriveStorage(_FakeTokens(), client, "contract", cache=cache,
+                        sleep=lambda _s: None)
+
+
+def _drive_device(fake, device_id: str, clock):
+    """Otro dispositivo sobre el MISMO Drive falso (el mismo `FakeDrive`)."""
+    from backend.app.cloud.drive import DriveStorage
+
+    client = httpx.Client(transport=httpx.MockTransport(fake))
+    return DriveStorage(_FakeTokens(), client, device_id, clock=clock,
                         sleep=lambda _s: None)
 
 
@@ -295,3 +305,144 @@ def test_stat_no_lee_la_duracion(storage, tmp_path):
     """stat corre en cada seek de /api/audio: no puede parsear el archivo."""
     key = _poner(storage, tmp_path, "A/A - T.mp3", b"no es un mp3 real")
     assert storage.stat(key).duration is None
+
+
+# ------------------------------------------------------------------ etiquetas
+def _mp3_etiquetado(mp3: Path, dest: Path, **tags: str) -> Path:
+    """Copia del MP3 sintetico con etiquetas ID3 escritas por mutagen."""
+    from mutagen.easyid3 import EasyID3
+    from mutagen.id3 import ID3NoHeaderError
+
+    dest.write_bytes(mp3.read_bytes())
+    try:
+        audio = EasyID3(str(dest))
+    except ID3NoHeaderError:
+        audio = EasyID3()
+    for k, v in tags.items():
+        audio[k] = v
+    audio.save(str(dest))
+    return dest
+
+
+def test_list_trae_titulo_artista_y_album(storage, tmp_path, mp3_desde_wav):
+    """Escuchar agrupa por artista y album: `list()` trae las etiquetas.
+
+    En disco salen de la misma lectura de mutagen que la duracion; en la nube,
+    del indice que se escribio al subir el archivo.
+    """
+    src = _mp3_etiquetado(mp3_desde_wav, tmp_path / "origen-tags.mp3",
+                          title="Canción", artist="Ñandú", album="Primero")
+    storage.put_file("Ñandú/Ñandú - Canción.mp3", src)
+
+    (f,) = list(storage.list())
+    assert (f.title, f.artist, f.album) == ("Canción", "Ñandú", "Primero")
+    assert f.duration and f.duration > 2
+
+
+def test_list_sin_etiquetas_las_deja_vacias(storage, tmp_path, mp3_desde_wav):
+    """Un archivo sin etiquetas no inventa nada: la UI cae al nombre."""
+    from mutagen.id3 import ID3NoHeaderError, delete
+
+    src = tmp_path / "origen-sin-tags.mp3"
+    src.write_bytes(mp3_desde_wav.read_bytes())
+    # El MP3 de la sesion es compartido y otros tests le escriben etiquetas.
+    try:
+        delete(str(src))
+    except ID3NoHeaderError:
+        pass
+    storage.put_file("A/A - T.mp3", src)
+
+    (f,) = list(storage.list())
+    assert not f.title and not f.artist and not f.album
+
+
+# ------------------------------------------------------------------ playlists
+def test_playlists_arrancan_vacias(storage):
+    assert storage.load_playlists().live() == []
+
+
+def test_guardar_y_leer_una_playlist(storage):
+    storage.save_playlist(lambda b: b.upsert(
+        Playlist(id="p1", name="Viaje", keys=["A/a.mp3"], updated_at=1.0)))
+
+    (guardada,) = storage.load_playlists().live()
+    assert (guardada.id, guardada.name, guardada.keys) == (
+        "p1", "Viaje", ["A/a.mp3"])
+
+
+def test_dos_guardados_conservan_las_dos_playlists(storage):
+    storage.save_playlist(lambda b: b.upsert(Playlist("p1", "Una", [], 1.0)))
+    storage.save_playlist(lambda b: b.upsert(Playlist("p2", "Otra", [], 2.0)))
+
+    book = storage.load_playlists()
+    assert set(book.playlists) == {"p1", "p2"}
+    assert [p.name for p in book.live()] == ["Otra", "Una"]
+
+
+def test_remove_saca_la_playlist_de_live(storage):
+    storage.save_playlist(lambda b: b.upsert(
+        Playlist("p1", "Viaje", ["A/a.mp3"], 1.0)))
+
+    book = storage.save_playlist(lambda b: b.remove("p1", 2.0))
+
+    assert book.live() == []
+    assert book.playlists["p1"].deleted is True
+    assert book.playlists["p1"].name == "Viaje"
+    assert storage.load_playlists().live() == []
+
+
+def test_playlists_locales_viven_en_una_carpeta_oculta(tmp_path):
+    """`.spitifo/` no puede aparecer como biblioteca en `list()`."""
+    root = tmp_path / "root"
+    storage = LocalStorage(root)
+    storage.save_playlist(lambda b: b.upsert(
+        Playlist("p1", "Viaje", ["A/a.mp3"], 1.0)))
+
+    assert (root / ".spitifo" / "playlists.json").is_file()
+    assert list(storage.list()) == []
+
+
+def test_playlists_locales_ilegibles_no_se_pisan(tmp_path):
+    root = tmp_path / "root"
+    storage = LocalStorage(root)
+    path = root / ".spitifo" / "playlists.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"{roto")
+
+    # Leer devuelve un libro vacio, pero guardar NO pisa lo que no entendio.
+    assert storage.load_playlists().live() == []
+    with pytest.raises(RuntimeError):
+        storage.save_playlist(lambda b: b.upsert(Playlist("p1", "X", [], 1.0)))
+    assert path.read_bytes() == b"{roto"
+
+
+def test_dos_dispositivos_mezclan_sus_playlists(tmp_path):
+    """Cada equipo escribe su archivo; la vista es el merge de todos."""
+    from backend.app.cloud.base import INDEX_TTL
+    from fake_drive import FakeDrive
+
+    fake = FakeDrive()
+    now = [1000.0]
+    a = _drive_device(fake, "A", lambda: now[0])
+    b = _drive_device(fake, "B", lambda: now[0])
+
+    a.save_playlist(lambda bk: bk.upsert(
+        Playlist("p1", "De A", ["A/a.mp3"], 10.0)))
+    now[0] += INDEX_TTL + 1
+    assert [p.name for p in b.load_playlists().live()] == ["De A"]
+
+    b.save_playlist(lambda bk: bk.upsert(Playlist("p2", "De B", [], 15.0)))
+    now[0] += INDEX_TTL + 1
+    assert {p.id for p in a.load_playlists().live()} == {"p1", "p2"}
+
+    # Misma id: gana el `updated_at` mas nuevo.
+    a.save_playlist(lambda bk: bk.upsert(
+        Playlist("p1", "De A nueva", [], 20.0)))
+    now[0] += INDEX_TTL + 1
+    merged = b.load_playlists()
+    assert merged.playlists["p1"].name == "De A nueva"
+    assert {p.id for p in merged.live()} == {"p1", "p2"}
+
+    nombres = sorted(f["name"] for f in fake.files.values()
+                     if f["name"].startswith("playlists-"))
+    assert nombres == ["playlists-A.json", "playlists-B.json"]

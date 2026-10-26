@@ -1,14 +1,5 @@
 import React, { useCallback, useState } from "react";
-import {
-  ArrowUpRight,
-  CaretRight,
-  Check,
-  CircleNotch,
-  DownloadSimple,
-  ListBullets,
-  MusicNotes,
-  Prohibit,
-} from "@phosphor-icons/react";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, rowKey } from "../shared/api.js";
 import { fmtSize, fmtTime } from "../shared/format.js";
 import { ExtLink } from "../shared/ui.jsx";
@@ -65,7 +56,7 @@ export const ShowGroup = React.memo(function ShowGroup({ t, query, onDownload, b
         <Artwork t={t} />
       ) : (
         <div className="card__art card__art--ph">
-          <MusicNotes size={52} />
+          <Icon name="MusicNotes" size={52} />
         </div>
       )}
       <div className="card__body">
@@ -84,12 +75,12 @@ export const ShowGroup = React.memo(function ShowGroup({ t, query, onDownload, b
           </span>
           <span className="src">{prov.archivo}</span>
           <ExtLink className="ext" url={t.extra?.item_url}>
-            procedencia <ArrowUpRight size={12} />
+            procedencia <Icon name="ArrowUpRight" size={12} />
           </ExtLink>
         </div>
         <button className="disclosure" onClick={toggle} aria-expanded={open}>
-          <CaretRight size={13} className="disclosure__caret" />
-          <ListBullets size={13} />
+          <Icon name="CaretRight" size={13} className="disclosure__caret" />
+          <Icon name="ListBullets" size={13} />
           {open ? "ocultar las canciones" : "ver qué canciones hay"}
         </button>
 
@@ -155,15 +146,15 @@ export const ShowGroup = React.memo(function ShowGroup({ t, query, onDownload, b
                       >
                         {busyIds.has(rowKey(s)) ? (
                           <span className="swap" key="busy">
-                            <CircleNotch size={16} className="spin" />
+                            <Icon name="CircleNotch" size={16} className="spin" />
                           </span>
                         ) : downloadedIds.has(rowKey(s)) ? (
                           <span className="swap" key="done">
-                            <Check size={16} weight="bold" />
+                            <Icon name="Check" size={16} weight="bold" />
                           </span>
                         ) : (
                           <span className="swap" key="idle">
-                            <DownloadSimple size={16} weight="bold" />
+                            <Icon name="DownloadSimple" size={16} weight="bold" />
                           </span>
                         )}
                       </button>
@@ -204,7 +195,7 @@ export const Track = React.memo(function Track({
         <Artwork t={t} />
       ) : (
         <div className="card__art card__art--ph">
-          <MusicNotes size={44} />
+          <Icon name="MusicNotes" size={44} />
         </div>
       )}
       <div className="card__body">
@@ -231,15 +222,14 @@ export const Track = React.memo(function Track({
           {size && <span className="meta">{size}</span>}
           {t.extra?.format && <span className="meta">{t.extra.format}</span>}
           <ExtLink className="ext" url={web}>
-            vídeo <ArrowUpRight size={12} />
+            vídeo <Icon name="ArrowUpRight" size={12} />
           </ExtLink>
           <ExtLink className="ext" url={t.extra?.item_url}>
-            procedencia <ArrowUpRight size={12} />
+            procedencia <Icon name="ArrowUpRight" size={12} />
           </ExtLink>
         </div>
         {t.preview_url && (
           <Player
-            variant="compact"
             /* Sin cola: el motor la completa con este track. La clave lleva la
                URL para que dos tarjetas con el mismo preview no choquen. */
             track={{
@@ -296,7 +286,7 @@ export const Track = React.memo(function Track({
                 {NODL_TITLE[st]}
               </span>
               <span className="dl dl--off" aria-hidden="true">
-                <Prohibit size={19} />
+                <Icon name="Prohibit" size={19} />
               </span>
             </>
           )}

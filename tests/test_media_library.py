@@ -86,6 +86,9 @@ def test_library_scan_muestra_kind_y_thumb_en_la_api(api, tmp_path):
     assert por_key["A/A - Clip.mp4"]["kind"] == "video"
     assert por_key["A/A - Clip.mp4"]["thumb_key"] == "A/A - Clip.jpg"
     assert "A/A - Clip.jpg" not in por_key  # el sidecar no es un tema
+    # Escuchar agrupa con las etiquetas; un archivo sin ellas las trae en None
+    clip = por_key["A/A - Clip.mp4"]
+    assert (clip["title"], clip["artist"], clip["album"]) == (None, None, None)
 
 
 # ------------------------------------------------------------------- serving
