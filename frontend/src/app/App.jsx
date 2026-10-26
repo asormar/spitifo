@@ -7,6 +7,7 @@ import { useTheme } from "../shared/theme.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
+import { createListenTracker } from "../player/listens.js";
 import { requestPlaylist, requestReveal } from "../listen/reveal.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import {
@@ -161,6 +162,13 @@ export default function App() {
      el motor avisa de cada cambio de pista o de estado y mediaSession solo
      traduce. Sin la API, bindMediaSession devuelve un no-op. */
   useEffect(() => bindMediaSession(engine), []);
+
+  /* Historial de escucha: UNA vez por app. El tracker vive mientras App este
+     montada y cierra la sesion abierta con "close" al desmontarse. */
+  useEffect(() => {
+    const tracker = createListenTracker(engine);
+    return () => tracker.stop();
+  }, []);
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
