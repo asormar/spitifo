@@ -62,9 +62,15 @@ describe("normalizeEntry", () => {
       folder: "Folder",
       sizeMb: 3.5,
       thumbKey: "thumb-1",
+      added: 0,
       hasAudio: true,
       search: "song artist album",
     });
+  });
+
+  it("keeps the modification time as the added date", () => {
+    expect(normalizeEntry(file({ modified: 1760000000.5 })).added).toBe(1760000000.5);
+    expect(normalizeEntry(file({ modified: undefined })).added).toBe(0);
   });
 
   it("falls back to the folder and the Artist - Title filename", () => {

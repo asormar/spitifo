@@ -24,7 +24,9 @@ const DEFAULT_VOLUME = 0.8;
 /* `track`: { key, src, title, meta, duration, artwork, kind, label }
    - key identifica la pista en la cola (es lo que mueve prev/next).
    - kind es "library" o "preview"; solo las de biblioteca se prefetchean.
-   - label es el nombre accesible que usan los botones ("Reproducir X"). */
+   - label es el nombre accesible que usan los botones ("Reproducir X").
+   `play(track, { queue, index, restart, at })`: `at` son los segundos desde los
+   que se retoma ("Seguir escuchando"). */
 export function createEngine({
   createAudio = () => new Audio(),
   fetchFn = (...a) => fetch(...a),
@@ -47,6 +49,9 @@ export function createEngine({
   };
 
   const listeners = new Set();
+  /* Avisos de cierre/cambio de pista: el historial de escucha necesita saber
+     POR QUE se cerro la sesion, cosa que el estado (una foto) no dice. */
+  const trackEvents = new Set();
   /* key -> cajas que muestran esa pista. El mini-reproductor las usa para saber
      si alguna fila esta a la vista. No es parte del estado: cambia con el DOM,
      no con la reproduccion. Pueden ser varias (la misma cancion en Escuchar y
@@ -111,6 +116,10 @@ export function createEngine({
     if (!changed) return;
     state = { ...state, ...patch };
     listeners.forEach((l) => l());
+  };
+
+  const notifyTrack = (event) => {
+    trackEvents.forEach((fn) => fn(event));
   };
 
   const durationNow = () =>
@@ -181,11 +190,15 @@ export function createEngine({
       /* repeat one repite sin recargar el src: asignarlo de nuevo haria un
          viaje al backend y cortaria el buffer ya descargado. */
       if (state.repeat === "one") {
+        notifyTrack({ type: "end", track: state.track, repeatOne: true });
         seek(0);
         start();
         return;
       }
-      if (next()) return;
+      /* El `ended` que avanza de pista cierra la sesion con motivo "end"; si
+         no hay siguiente, el tema se cierra igual y la pista se detiene. */
+      if (next("end")) return;
+      notifyTrack({ type: "end", track: state.track, repeatOne: false });
       /* La ultima pista solo se detiene, como siempre. */
       emit({ playing: false, time: 0 });
       a.currentTime = 0;
@@ -203,15 +216,20 @@ export function createEngine({
 
   /* Cargar una pista SIEMPRE pasa por aqui: es el unico sitio que escribe
      `src`, asi que la cola y el indice no pueden quedar desfasados del audio. */
-  const load = (track, queue, index) => {
+  const load = (track, queue, index, reason = "change", at = 0) => {
     const q = queue && queue.length ? queue : [track];
     const i = index >= 0 && index < q.length ? index : 0;
     const a = ensureAudio();
+    /* Se avisa ANTES de reemplazar la foto: quien escucha (el historial)
+       todavia puede leer la pista y la posicion que se estan cerrando. */
+    if (state.track) {
+      notifyTrack({ type: "change", reason, track, previous: state.track });
+    }
     emit({
       track,
       queue: q,
       index: i,
-      time: 0,
+      time: at,
       /* La duracion conocida evita pedir metadatos de cada fila al abrir la
          biblioteca; el evento loadedmetadata la corrige si hace falta. */
       duration: track.duration || 0,
@@ -220,6 +238,9 @@ export function createEngine({
       playing: false,
     });
     a.src = track.src;
+    /* Retomar: con el src recien puesto el navegador guarda la posicion y la
+       aplica al cargar los metadatos. */
+    if (at > 0) a.currentTime = at;
     a.volume = state.volume;
     a.muted = state.muted;
     start();
@@ -248,7 +269,12 @@ export function createEngine({
       queue = shuffledFrom(track, original);
       index = 0;
     }
-    load(track, queue, index);
+    /* `at` (segundos) retoma la pista donde se quedo; una posicion fuera de la
+       pista (o a menos de un segundo del final) se ignora. */
+    const at = Number(opts.at);
+    const from =
+      at > 0 && (!track.duration || at < track.duration - 1) ? at : 0;
+    load(track, queue, index, "change", from);
   };
 
   const resume = () => {
@@ -281,16 +307,17 @@ export function createEngine({
     emit({ time: t });
   };
 
-  /* Carga la siguiente SIN tocar la cola: el resto de la lista sigue igual. */
-  const next = () => {
+  /* Carga la siguiente SIN tocar la cola: el resto de la lista sigue igual.
+     `reason` distingue el boton (next) del final natural (end). */
+  const next = (reason = "next") => {
     if (state.index >= 0 && state.index + 1 < state.queue.length) {
-      load(state.queue[state.index + 1], state.queue, state.index + 1);
+      load(state.queue[state.index + 1], state.queue, state.index + 1, reason);
       return true;
     }
     /* repeat all da la vuelta tambien con una cola de una sola pista; repeat
        one no interviene aqui: el boton manual siempre avanza. */
     if (state.repeat === "all" && state.queue.length) {
-      load(state.queue[0], state.queue, 0);
+      load(state.queue[0], state.queue, 0, reason);
       return true;
     }
     return false;
@@ -301,7 +328,8 @@ export function createEngine({
   const prev = () => {
     if (state.index < 0) return;
     if (state.time > 3 || state.index <= 0) seek(0);
-    else load(state.queue[state.index - 1], state.queue, state.index - 1);
+    else load(state.queue[state.index - 1], state.queue, state.index - 1,
+              "prev");
   };
 
   /* Saltar a una posicion de la cola tal como esta (la vista Cola). play()
@@ -312,7 +340,7 @@ export function createEngine({
       resume();
       return true;
     }
-    load(state.queue[i], state.queue, i);
+    load(state.queue[i], state.queue, i, "change");
     return true;
   };
 
@@ -457,8 +485,14 @@ export function createEngine({
     };
   };
 
+  const onTrackEvent = (fn) => {
+    trackEvents.add(fn);
+    return () => trackEvents.delete(fn);
+  };
+
   return {
     subscribe,
+    onTrackEvent,
     getState: () => state,
     play,
     resume,

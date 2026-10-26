@@ -168,6 +168,34 @@ describe("play", () => {
     expect(engine.getState().queue).toEqual([C]);
     expect(engine.getState().index).toBe(0);
   });
+
+  it("resumes from `at` seconds after setting the src", () => {
+    const { engine, audio } = setup();
+    engine.play(B, { queue: [A, B, C], index: 1, at: 42 });
+    expect(audio().src).toBe(B.src);
+    expect(audio().currentTime).toBe(42);
+    expect(engine.getState().time).toBe(42);
+    expect(engine.getState().index).toBe(1);
+  });
+
+  it("ignores an `at` that is not inside the track", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { at: 179.5 });
+    expect(audio().currentTime).toBe(0);
+    expect(engine.getState().time).toBe(0);
+    engine.play(B, { at: -5 });
+    expect(audio().currentTime).toBe(0);
+    engine.play(C, { at: "nope" });
+    expect(audio().currentTime).toBe(0);
+  });
+
+  it("starts from 0 when no `at` is given", () => {
+    const { engine } = setup();
+    engine.play(A, { at: 30 });
+    expect(engine.getState().time).toBe(30);
+    engine.play(B);
+    expect(engine.getState().time).toBe(0);
+  });
 });
 
 describe("ended", () => {

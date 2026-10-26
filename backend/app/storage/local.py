@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import shutil
 import tempfile
 import threading
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from . import InvalidKey, StoredFile, validate_key
 
@@ -28,9 +30,37 @@ CHUNK = 64 * 1024
 #: salta los dot-dirs, asi que nunca aparece como biblioteca.
 STATE_DIR = ".spitifo"
 PLAYLISTS_FILE = "playlists.json"
+#: Id estable de este dispositivo. Se usa en los nombres de los archivos de
+#: escucha, igual que el `device_id` del conector de nube.
+DEVICE_ID_FILE = "device-id"
 #: Duracion y etiquetas ya leidas, por clave. Ver `LocalStorage._media`.
 MEDIA_CACHE_FILE = "media-cache.json"
 MEDIA_CACHE_VERSION = 1
+
+
+def _device_id(directory: Path) -> str:
+    """Id aleatorio persistido una sola vez en `directory/device-id`."""
+    path = directory / DEVICE_ID_FILE
+    try:
+        value = path.read_text("utf-8").strip()
+        if value:
+            return value
+    except OSError:
+        pass
+    value = secrets.token_hex(8)
+    directory.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".device-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(value)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return value
 
 
 def _tag(audio, name: str) -> str | None:
@@ -69,12 +99,13 @@ def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | No
     return duration, _tag(f, "title"), _tag(f, "artist"), _tag(f, "album")
 
 
-class LocalStorage:
+class LocalStorage(ListensStorageMixin):
     """`Storage` sobre una carpeta del disco (la biblioteca publica en Android)."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, device_id: str | None = None) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self._device_id = device_id
         # Lectura-modificacion-escritura de playlists: dos requests a la vez no
         # pueden perder el cambio de la otra.
         self._playlists_lock = threading.Lock()
@@ -372,3 +403,60 @@ class LocalStorage:
             except OSError:
                 pass
             raise
+
+    # --------------------------------------------------------------- listens
+    @property
+    def device_id(self) -> str:
+        """Id estable de este dispositivo (se crea la primera vez que hace falta)."""
+        if not self._device_id:
+            self._device_id = _device_id(self.root / STATE_DIR)
+        return self._device_id
+
+    def _listens_device(self) -> str:
+        return self.device_id
+
+    def _listens_list(self) -> list[tuple[str, str]]:
+        """`(nombre, nombre)` de los archivos de escucha de `.spitifo/`."""
+        state = self.root / STATE_DIR
+        try:
+            entries = list(os.scandir(state))
+        except OSError:
+            return []
+        out: list[tuple[str, str]] = []
+        for entry in entries:
+            name = entry.name
+            if not name.endswith(".json"):
+                continue
+            if not (name.startswith("listens-")
+                    or name.startswith("listenagg-")):
+                continue
+            if entry.is_file():
+                out.append((name, name))
+        return out
+
+    def _listens_read(self, ref: str) -> bytes:
+        return (self.root / STATE_DIR / ref).read_bytes()
+
+    def _listens_write(self, name: str, data: bytes,
+                       ref: str | None = None) -> str:
+        path = self.root / STATE_DIR / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".listens-",
+                                   suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return name
+
+    def _listens_delete(self, ref: str) -> None:
+        try:
+            (self.root / STATE_DIR / ref).unlink()
+        except FileNotFoundError:
+            pass

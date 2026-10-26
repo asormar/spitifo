@@ -29,6 +29,7 @@ from typing import Callable, ContextManager, Iterator
 import httpx
 
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
@@ -226,7 +227,7 @@ def upload_ranges(total: int, chunk: int) -> list[tuple[int, int]]:
 
 
 # ------------------------------------------------------------------- adapter
-class CloudStorage:
+class CloudStorage(ListensStorageMixin):
     """`Storage` sobre una nube. El proveedor concreto implementa los hooks.
 
     Esta clase tiene todo lo que NO depende del proveedor: reintentos, el indice
@@ -523,6 +524,29 @@ class CloudStorage:
             self._playlists = own.merge(self._playlists or PlaylistBook())
             self._playlists_at = self._clock()
             return self._playlists
+
+    # ------------------------------------------------------------------ listens
+    def _listens_device(self) -> str:
+        return self.device_id
+
+    def _listens_list(self) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los mensuales y agregados de escucha."""
+        return (self._list_small_files("listens-")
+                + self._list_small_files("listenagg-"))
+
+    def _listens_read(self, ref: str) -> bytes:
+        return self._read_file(ref)
+
+    def _listens_write(self, name: str, data: bytes,
+                       ref: str | None = None) -> str:
+        if ref:
+            self._replace_file(ref, data)
+            return ref
+        created = self._create_file(name, data)
+        return str(created["id"])
+
+    def _listens_delete(self, ref: str) -> None:
+        self._trash(ref)
 
     # ---------------------------------------------------------------------- puerto
     def list(self) -> list[StoredFile]:
