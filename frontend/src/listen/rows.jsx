@@ -17,7 +17,7 @@ import { Icon } from "./icons.jsx";
    ------------------------------------------------------------------------- */
 
 /* No hay portada por pista en la biblioteca: la inicial hace de portada. */
-const initial = (name) => ([...String(name || "").trim()][0] || "?").toUpperCase();
+export const initial = (name) => ([...String(name || "").trim()][0] || "?").toUpperCase();
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -159,11 +159,13 @@ export function GroupRow({ group, album, enter, onOpen }) {
 
 /* Fila de la cola. `now` = la que suena (sin asa ni quitar). `pos` es su
    posicion en la cola del motor, no en la lista visible. `transform` lo pone
-   QueueList mientras se arrastra. */
+   QueueList mientras se arrastra. `reg` = false la deja fuera del registro del
+   mini-reproductor: la cola de "Ahora suena" no es la fila de la biblioteca. */
 export function QueueRow({
   track,
   pos,
   now,
+  reg = true,
   enter,
   transform,
   dragging,
@@ -173,7 +175,7 @@ export function QueueRow({
   const rootRef = useRef(null);
   const playing = useEngine((s) => now && s.playing);
   /* Solo la que suena puede ser "la fila a la vista" de su pista. */
-  useRegisterRow(track.key, rootRef, now);
+  useRegisterRow(track.key, rootRef, now && reg);
 
   return (
     <div

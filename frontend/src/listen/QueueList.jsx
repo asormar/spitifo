@@ -17,12 +17,16 @@ import { QueueRow } from "./rows.jsx";
    las filas de en medio se corren una fila para abrir hueco donde va a caer.
    El motor solo se toca al soltar (engine.move una vez): mientras se arrastra
    la cola real no cambia, asi que cancelar es soltar y ya.
+
+   Dentro de Escuchar la pagina es quien scrollea; en "Ahora suena" lo hace su
+   propio contenedor, que llega como `scroller` (una ref). Todo lo que mira el
+   scroll (el arrastre y su desplazamiento automatico) pasa por `scrollEl`.
    ------------------------------------------------------------------------- */
 
 /* Franja del borde del viewport donde el arrastre desplaza la pagina. */
 const EDGE = 56;
 
-export default function QueueList({ active }) {
+export default function QueueList({ active, scroller }) {
   const queue = useEngine((s) => s.queue);
   const index = useEngine((s) => s.index);
   const track = useEngine((s) => s.track);
@@ -42,11 +46,14 @@ export default function QueueList({ active }) {
   const handles = useRef(new Map());
   const refocus = useRef(null);
 
+  const scrollEl = () => scroller?.current || window;
+  const scrolled = () => scroller?.current?.scrollTop ?? window.scrollY;
+
   const setDragged = (next) => {
     dragRef.current = next;
     setDrag(next);
   };
-  const travelled = () => pointer.current.y - pointer.current.y0 + (window.scrollY - pointer.current.s0);
+  const travelled = () => pointer.current.y - pointer.current.y0 + (scrolled() - pointer.current.s0);
   const landing = (d) => clamp(d.from + Math.round(d.dy / ROW_H), first, last);
 
   const dragging = drag !== null;
@@ -61,10 +68,10 @@ export default function QueueList({ active }) {
       const d = dragRef.current;
       if (p && d) {
         const top = p.inset + EDGE;
-        const bottom = window.innerHeight - EDGE;
+        const bottom = p.bottom - EDGE;
         const speed = p.y < top ? (p.y - top) / EDGE : p.y > bottom ? (p.y - bottom) / EDGE : 0;
         if (speed) {
-          window.scrollBy(0, Math.round(clamp(speed, -1, 1) * 18));
+          scrollEl().scrollBy(0, Math.round(clamp(speed, -1, 1) * 18));
           setDragged({ ...d, dy: travelled() });
         }
       }
@@ -89,11 +96,13 @@ export default function QueueList({ active }) {
     onPointerDown(e) {
       if (e.button > 0) return;
       e.currentTarget.setPointerCapture(e.pointerId);
+      const sc = scroller?.current;
       pointer.current = {
         y0: e.clientY,
         y: e.clientY,
-        s0: window.scrollY,
-        inset: document.querySelector(".ltool")?.getBoundingClientRect().bottom ?? 0,
+        s0: scrolled(),
+        inset: sc ? sc.getBoundingClientRect().top : document.querySelector(".ltool")?.getBoundingClientRect().bottom ?? 0,
+        bottom: sc ? sc.getBoundingClientRect().bottom : window.innerHeight,
       };
       setDragged({ from: pos, dy: 0 });
     },
@@ -134,12 +143,13 @@ export default function QueueList({ active }) {
     <>
       <h2 className="llabel">Sonando</h2>
       <div className="qnow">
-        <QueueRow track={track} pos={index} now />
+        <QueueRow track={track} pos={index} now reg={!scroller} />
       </div>
       <h2 className="llabel">A continuación</h2>
       {upcoming.length ? (
         <VirtualList
           active={active}
+          scroller={scroller}
           count={upcoming.length}
           className={dragging ? "is-sorting" : undefined}
           getKey={(i) => upcoming[i].key}

@@ -597,7 +597,42 @@ The plan as written:
 - Queue controls: play next, add to the queue, reorder by dragging, remove;
   shuffle and repeat.
 
-### 18. Listen: now playing
+### 18. Listen: now playing — done
+
+Tapping the mini-player's title or artwork opens a full-screen "Ahora suena".
+What changed:
+
+- **One movement.** The mini-player and the view share a View Transition name
+  (`vt-mini`, with `data-vt="np"`), so the pill grows into the full screen and
+  its artwork grows with it; closing runs the same morph backwards. Without the
+  API the view slides up and down; with reduced motion it switches at once.
+- **Closing:** the chevron, Escape, Android's back button (opening pushes one
+  history entry, like Settings) or a swipe down. The swipe follows the finger
+  and closes past a quarter of the height or on a fast flick (> 0.6 px/ms),
+  otherwise it springs back. Switching mode, opening Settings, opening a video
+  or "Ver en Escuchar" close it first without leaving a dead history entry.
+- **Artwork and tint.** Library tracks now carry their `.jpg` sidecar as
+  artwork. The background is the artwork's average colour (a 24×24 canvas),
+  darkened until white text reaches 6:1; without artwork, a hue from the
+  artist's name. Track changes crossfade two layers, never `background-color`.
+- **Controls:** a draggable seek bar shared with the mini-player (`Scrub.jsx`,
+  one implementation), times, shuffle, previous, play/pause, next, repeat, and
+  volume from 960 px.
+- **The queue is one swipe away:** on phones two pages, "Ahora suena" and
+  "Cola", switched with the pills or a horizontal swipe; from 960 px side by
+  side. The queue reuses session 17's virtual list, which can now measure
+  against its own scroll container.
+- **Size:** the view is its own lazy chunk (8.2 KB of JS, 5.1 KB of CSS) that
+  preloads when the app is idle; the queue, list and rows moved to a 12.9 KB
+  chunk shared with Listen. The first script grew 2.2 KB (history handling,
+  the transition helper and the shared seek bar). Budgets went up to
+  361,000 B of JavaScript and 66,000 B of CSS.
+- Frontend tests: 95 (tint helpers added). Checked in the browser at phone and
+  PC widths: morph, back button, focus return, queue page, tint. Still to do on
+  the Pixel: 60 fps during the morph and the swipes, real touch. Not tested: a
+  video closing the view (the test library has no videos).
+
+The plan as written:
 
 - A full-screen "now playing" view that grows out of the mini-player as one
   continuous animation and shrinks back with a swipe down.

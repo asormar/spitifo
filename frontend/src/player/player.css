@@ -150,6 +150,7 @@
 
 .pv.is-active .scrub__knob,
 .mini .scrub__knob,
+.np .scrub__knob,
 .scrub:focus-visible .scrub__knob {
   opacity: 1;
   transform: scale(1);
@@ -355,6 +356,7 @@
   height: 36px;
   border-radius: var(--r-sm);
   object-fit: cover;
+  cursor: pointer;
 }
 
 /* Silencio siempre visible; el deslizador solo donde hay raton y sitio. */
