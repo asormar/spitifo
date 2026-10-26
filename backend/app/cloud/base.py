@@ -29,6 +29,7 @@ from typing import Callable, ContextManager, Iterator
 import httpx
 
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
 from .cache import AudioCache
@@ -39,6 +40,12 @@ log = logging.getLogger(__name__)
 
 #: Carpeta visible que crea la app en el proveedor (ADR 0002, seccion 1).
 FOLDER_NAME = "Spitifo"
+
+#: Prefijo de los archivos chicos por dispositivo. Uno para el indice y otro
+#: para las playlists; cada dispositivo escribe SOLO el suyo y la vista es el
+#: merge de todos.
+INDEX_PREFIX = "index-"
+PLAYLIST_PREFIX = "playlists-"
 
 #: Tamano de cada lectura de `open_range`, igual que el adapter local.
 CHUNK = 64 * 1024
@@ -249,6 +256,13 @@ class CloudStorage:
         # True si el indice PROPIO existe pero no se pudo leer: escribirlo asi
         # lo pisaria con una copia casi vacia y se perderia la biblioteca.
         self._own_unreadable = False
+        # Mismo esquema para las playlists: libro mergeado en memoria, libro
+        # propio, id del archivo propio y si ese archivo estaba ilegible.
+        self._playlists: PlaylistBook | None = None
+        self._playlists_at = float("-inf")
+        self._own_playlists = PlaylistBook()
+        self._own_playlists_id: str | None = None
+        self._own_playlists_unreadable = False
         self._quota_cache: dict | None = None
         self._quota_cache_at = float("-inf")
         # Prefetch del proximo tema: el par (remote_id, revision) que YA se esta
@@ -368,8 +382,8 @@ class CloudStorage:
             own = LibraryIndex()
             own_id: str | None = None
             own_unreadable = False
-            for remote_id, name in self._list_index_files():
-                if not name.startswith("index-"):
+            for remote_id, name in self._list_small_files(INDEX_PREFIX):
+                if not name.startswith(INDEX_PREFIX):
                     continue
                 try:
                     parsed = LibraryIndex.from_bytes(self._read_file(remote_id))
@@ -439,6 +453,77 @@ class CloudStorage:
             return None
         return entry
 
+    # ---------------------------------------------------------------- playlists
+    def _own_playlists_name(self) -> str:
+        return f"{PLAYLIST_PREFIX}{self.device_id}.json"
+
+    def load_playlists(self, force: bool = False) -> PlaylistBook:
+        """Merge de todos los `playlists-*.json`, con el mismo TTL del indice.
+
+        Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
+        PROPIO: escribir encima perderia las playlists del usuario.
+        """
+        with self._lock:
+            if (not force and self._playlists is not None
+                    and (self._clock() - self._playlists_at) < INDEX_TTL):
+                return self._playlists
+            merged = PlaylistBook()
+            own = PlaylistBook()
+            own_id: str | None = None
+            own_unreadable = False
+            for remote_id, name in self._list_small_files(PLAYLIST_PREFIX):
+                if not name.startswith(PLAYLIST_PREFIX):
+                    continue
+                try:
+                    parsed = PlaylistBook.from_bytes(self._read_file(remote_id))
+                except (httpx.HTTPError, PlaylistFormatError) as exc:
+                    log.warning("playlists ilegibles %s: %s", name, exc)
+                    if name == self._own_playlists_name():
+                        own_id = remote_id
+                        own_unreadable = True
+                    continue
+                merged = merged.merge(parsed)
+                if name == self._own_playlists_name():
+                    own_id = remote_id
+                    own = parsed
+            self._playlists = merged
+            self._playlists_at = self._clock()
+            self._own_playlists_id = own_id
+            self._own_playlists = own
+            self._own_playlists_unreadable = own_unreadable
+            return merged
+
+    def save_playlist(
+            self, change: Callable[[PlaylistBook], None]) -> PlaylistBook:
+        """Aplica `change` al archivo PROPIO y lo sube (crear o reemplazar).
+
+        Un solo escritor por archivo, como el indice: no hace falta escritura
+        condicional. Despues mergea el resultado en la vista en memoria.
+        """
+        with self._lock:
+            self.load_playlists()
+            if self._own_playlists_unreadable:
+                # Un corte de red pasajero: se reintenta una vez antes de rendirse.
+                self.load_playlists(force=True)
+            if self._own_playlists_unreadable:
+                raise RuntimeError(
+                    f"no se pudieron leer {self._own_playlists_name()}: "
+                    "no se sobrescribe")
+            own = PlaylistBook(playlists=dict(self._own_playlists.playlists))
+            change(own)
+            body = own.to_bytes()
+            if self._own_playlists_id:
+                self._replace_file(self._own_playlists_id, body)
+            else:
+                created = self._create_file(self._own_playlists_name(), body)
+                self._own_playlists_id = str(created["id"])
+            self._own_playlists = own
+            # Igual que con el indice: lo recien escrito gana los empates de
+            # `updated_at` contra la copia que ya estaba en memoria.
+            self._playlists = own.merge(self._playlists or PlaylistBook())
+            self._playlists_at = self._clock()
+            return self._playlists
+
     # ---------------------------------------------------------------------- puerto
     def list(self) -> list[StoredFile]:
         exts = {e.lower() for e in (*AUDIO_EXTS, *VIDEO_EXTS, *IMAGE_EXTS)}
@@ -452,7 +537,10 @@ class CloudStorage:
             out.append(StoredFile(key=key, size=entry.size,
                                   mtime=entry.updated_at,
                                   etag=entry.revision or None,
-                                  duration=entry.duration))
+                                  duration=entry.duration,
+                                  title=entry.title or None,
+                                  artist=entry.artist or None,
+                                  album=entry.album or None))
         out.sort(key=lambda f: f.key)
         return out
 
@@ -620,6 +708,10 @@ class CloudStorage:
 
     def _list_index_files(self) -> list[tuple[str, str]]:
         """`(remote_id, name)` de los `index-*.json` de la carpeta biblioteca."""
+        return self._list_small_files(INDEX_PREFIX)
+
+    def _list_small_files(self, prefix: str) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los archivos chicos con `prefix`."""
         raise NotImplementedError
 
     def _read_file(self, remote_id: str) -> bytes:

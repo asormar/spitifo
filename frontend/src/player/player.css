@@ -1,48 +1,11 @@
 /* ---------------------------------------------------------------------------
    8b. REPRODUCTOR
    El <audio> no vive en el DOM: lo crea el motor fuera de la pagina y esto es
-   la interfaz que se ve. Mismo vocabulario que el resto: pildoras (--r-pill),
-   coral (--accent) para "suena", cifras tabulares. Solo transform y opacity,
-   salvo el ancho del volumen, que se anima una sola vez al activarse la fila.
-   Dos niveles: .pl (fila de biblioteca) y .pv (preview discreto de tarjeta).
+   la interfaz que se ve (las filas de la biblioteca viven en listen/). Mismo
+   vocabulario que el resto: pildoras (--r-pill), coral (--accent) para
+   "suena", cifras tabulares. Solo transform y opacity.
+   Dos piezas: .pv (preview discreto de tarjeta) y .mini (pastilla fija).
    ------------------------------------------------------------------------- */
-
-.pl {
-  position: relative;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 14px;
-  align-items: center;
-  padding: 12px;
-  border-radius: var(--r-inner);
-  transition: background-color var(--t-enter) var(--ease);
-  --rise: 6px;
-  animation: rise var(--t-move) var(--ease) backwards;
-  animation-delay: calc(140ms + min(var(--i, 0), 8) * var(--stagger));
-}
-
-.pl.is-active {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-}
-
-/* Filo coral a la izquierda: con 31 filas, saber cual es la activa no puede
-   depender de mirar la barra. Crece desde el centro. */
-.pl::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 14px;
-  bottom: 14px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  transform: scaleY(0);
-  transition: transform var(--t-enter) var(--ease);
-}
-
-.pl.is-active::before {
-  transform: scaleY(1);
-}
 
 /* Boton de reproducir: los tres iconos (play, pausa, cargando) viven apilados y
    se intercambian con escala + giro, no con un salto. */
@@ -97,14 +60,12 @@
   transform: none;
 }
 
-.pl.is-active .pbtn,
 .pv.is-active .pbtn,
 .mini .pbtn {
   border-color: var(--accent-fill);
   color: var(--accent-fg);
 }
 
-.pl.is-playing .pbtn,
 .pv.is-playing .pbtn,
 .mini.is-playing .pbtn {
   background: var(--accent);
@@ -114,7 +75,6 @@
 }
 
 /* Onda que sale del boton mientras suena. */
-.pl.is-playing .pbtn::after,
 .pv.is-playing .pbtn::after,
 .mini.is-playing .pbtn::after {
   content: "";
@@ -124,94 +84,6 @@
   border-radius: inherit;
   pointer-events: none;
   animation: ring 1.9s var(--ease) infinite;
-}
-
-.pl__mid {
-  min-width: 0;
-}
-
-.pl__top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pl__title {
-  min-width: 0;
-  font-size: 15px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pl__time {
-  flex: none;
-  margin-left: auto;
-  color: var(--faint);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.pl__meta {
-  margin-top: 1px;
-  color: var(--faint);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pl.is-failed .pl__meta {
-  color: var(--bad-fg);
-}
-
-/* Ecualizador: tres barras que escalan desde la base. Solo se mueven mientras
-   suena de verdad (no mientras carga). */
-.eq {
-  display: flex;
-  flex: none;
-  align-items: flex-end;
-  gap: 2px;
-  height: 12px;
-  opacity: 0;
-  transform: scale(0.7);
-  transform-origin: left bottom;
-  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
-}
-
-.eq[data-on] {
-  opacity: 1;
-  transform: none;
-}
-
-.eq i {
-  width: 3px;
-  height: 12px;
-  border-radius: 1.5px;
-  background: var(--accent);
-  transform: scaleY(0.3);
-  transform-origin: bottom;
-}
-
-.eq[data-on] i {
-  animation: eq 900ms ease-in-out infinite;
-}
-
-.eq[data-on] i:nth-child(2) {
-  animation-delay: 180ms;
-}
-
-.eq[data-on] i:nth-child(3) {
-  animation-delay: 360ms;
-}
-
-.pl__bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 /* Barra de progreso. La zona de toque mide 20 px; el trazo visible, 5. El
@@ -276,9 +148,9 @@
     left var(--t-enter) linear;
 }
 
-.pl.is-active .scrub__knob,
 .pv.is-active .scrub__knob,
 .mini .scrub__knob,
+.np .scrub__knob,
 .scrub:focus-visible .scrub__knob {
   opacity: 1;
   transform: scale(1);
@@ -297,29 +169,7 @@
   transform: scaleY(1.5);
 }
 
-/* Volumen: solo en la fila activa. Se abre de 0 a un ancho fijo; el input
-   necesita flex:none o el navegador lo colapsa a 0 dentro del contenedor que
-   se esta animando. */
-.pl__vol {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition: width var(--t-enter) var(--ease), opacity var(--t-quick) var(--ease),
-    transform var(--t-enter) var(--ease);
-}
-
-.pl.is-active .pl__vol {
-  width: 132px;
-  margin-left: 10px;
-  opacity: 1;
-  transform: none;
-}
-
+/* Silencio del mini-reproductor y deslizador de volumen. */
 .pl__mute {
   display: grid;
   flex: none;
@@ -506,6 +356,7 @@
   height: 36px;
   border-radius: var(--r-sm);
   object-fit: cover;
+  cursor: pointer;
 }
 
 /* Silencio siempre visible; el deslizador solo donde hay raton y sitio. */

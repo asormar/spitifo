@@ -1,3 +1,4 @@
+import { Suspense, lazy, useSyncExternalStore } from "react";
 import { cx } from "../shared/ui.jsx";
 import { MODES } from "./navigation.js";
 import { NavIcon } from "./navIcons.jsx";
@@ -11,6 +12,17 @@ const ITEMS = [
 ];
 
 const indexOf = (mode) => Math.max(0, MODES.indexOf(mode));
+
+/* La lista de listas del riel se carga aparte (pide /api/playlists) y solo
+   donde hay riel: en telefono no se monta ni se descarga. */
+const RailLists = lazy(() => import("../listen/RailLists.jsx"));
+const DESKTOP = "(min-width: 720px)";
+const watchDesktop = (cb) => {
+  const mq = window.matchMedia(DESKTOP);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+};
+const isDesktop = () => window.matchMedia(DESKTOP).matches;
 
 export function TabBar({ mode, onMode }) {
   const index = indexOf(mode);
@@ -69,9 +81,9 @@ export function SwipeDots({ mode, onMode }) {
 }
 
 /* Riel del escritorio. El hueco flexible de abajo de los modos es para las
-   listas de reproduccion (todavia no existen): se reserva el sitio sin pintar
-   nada, para que la sesion 19 no tenga que mover la estructura. */
-export function Rail({ mode, settingsOpen, onMode, onSettings }) {
+   listas de reproduccion: scrollea si hay muchas. */
+export function Rail({ mode, settingsOpen, onMode, onSettings, onPlaylist }) {
+  const desktop = useSyncExternalStore(watchDesktop, isDesktop);
   /* La barra sigue al modo, no a la pantalla: con Ajustes abierto se queda
      donde estaba. */
   const index = Math.max(
@@ -98,7 +110,13 @@ export function Rail({ mode, settingsOpen, onMode, onSettings }) {
         );
       })}
       <span className="rail__sep" aria-hidden="true" />
-      <div className="rail__lists" aria-hidden="true" />
+      <div className="rail__lists" role="group" aria-label="Listas">
+        {desktop && (
+          <Suspense fallback={null}>
+            <RailLists onOpen={onPlaylist} />
+          </Suspense>
+        )}
+      </div>
       <button
         type="button"
         className={cx("rail__btn", settingsOpen && "is-on")}

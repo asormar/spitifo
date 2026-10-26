@@ -1,11 +1,10 @@
 /* ---------------------------------------------------------------------------
-   8c. VIDEO: fila de la biblioteca + VideoHost
+   8c. VIDEO: VideoHost
 
-   Un archivo de video no se reproduce dentro de la lista, se abre: la fila solo
-   lleva los titulos y una miniatura 16:9 que es el boton. El video en si vive
-   en el VideoHost, UNA sola ventana que va de centrada (modal) a
-   minireproductor (mini) moviendo la misma caja. El <video> es el mismo nodo,
-   asi que el cambio de modo no recarga nada.
+   Un archivo de video no se reproduce dentro de la lista, se abre (la fila vive
+   en listen/). El video en si vive en el VideoHost, UNA sola ventana que va
+   de centrada (modal) a minireproductor (mini) moviendo la misma caja. El
+   <video> es el mismo nodo, asi que el cambio de modo no recarga nada.
 
    Superficie oscura en los DOS temas (--video-bg): un marco claro alrededor de
    un video oscuro se lee como un fallo de carga. El resto va con los tokens de
@@ -25,123 +24,6 @@
   --video-bg: #0d151d;
   --video-ink: #b9c9d6;
   --video-scrim: rgba(0, 0, 0, 0.62);
-}
-
-/* --- Fila de video: mismos margenes que la de audio, sin controles --------- */
-
-.pl--video {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.pl__tag {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 7px;
-  border-radius: var(--r-pill);
-  background: var(--track);
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.pl__tag svg {
-  color: var(--icon-dim);
-}
-
-.pl__meta--row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pl__dim {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.plthumb {
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-thumb);
-  background: none;
-  cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
-}
-
-.plthumb:active {
-  transform: scale(0.97);
-}
-
-.plthumb__box {
-  position: relative;
-  display: block;
-  width: 96px;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-thumb);
-  background: var(--video-bg);
-}
-
-.plthumb__img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.plthumb__ph {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: var(--video-ink);
-}
-
-.plthumb__play {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding-left: 2px;
-  border-radius: var(--r-pill);
-  background: rgba(8, 14, 20, 0.55);
-  color: #fff;
-  transform: translate(-50%, -50%);
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
-}
-
-.plthumb__dur {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  padding: 0 5px;
-  border-radius: 6px;
-  background: rgba(8, 14, 20, 0.72);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.6;
-}
-
-@media (hover: hover) {
-  .plthumb:hover .plthumb__play {
-    background: var(--accent);
-    transform: translate(-50%, -50%) scale(1.12);
-  }
-}
-
-.plthumb:focus-visible .plthumb__play {
-  background: var(--accent);
 }
 
 /* --- VideoHost ------------------------------------------------------------ */

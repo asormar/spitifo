@@ -1,47 +1,41 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  CircleNotch,
-  Crosshair,
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  SpeakerHigh,
-  SpeakerLow,
-  SpeakerSlash,
-  X,
-} from "@phosphor-icons/react";
-import { cx, clamp } from "../shared/ui.jsx";
+import { Icon } from "../shared/icons.jsx";
+import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 import { useVideoHost } from "./videoStore.js";
+import Scrub from "./Scrub.jsx";
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR
 
-   La biblioteca ya no se desmonta al cerrarse (la musica sigue), pero entonces
-   la cancion que suena queda sin controles: su fila esta oculta, o fuera de
-   pantalla a mitad de scroll. Esta pastilla fija los devuelve. No tiene
-   <audio> propio: es una vista del motor, como las filas, asi que no hay una
-   segunda fuente de verdad que pueda desincronizarse.
+   La musica sigue sonando al cambiar de pantalla o al hacer scroll, pero
+   entonces la cancion que suena queda sin controles: su fila esta en otro modo
+   o fuera de pantalla. Esta pastilla fija los devuelve. No tiene <audio>
+   propio: es una vista del motor, como las filas, asi que no hay una segunda
+   fuente de verdad que pueda desincronizarse.
 
-   Solo se ve cuando hace falta: hay una cancion empezada Y su Player no esta a
-   la vista (cajon cerrado o fuera del viewport). Con la fila delante, los
-   controles duplicados sobrarian. Si el usuario la cierra, se queda cerrada
-   hasta la siguiente pista o el siguiente play.
+   Solo se ve cuando hace falta: hay una cancion empezada Y su fila no esta a
+   la vista (no esta montada, esta fuera del viewport o su pantalla esta
+   oculta). Con la fila delante, los controles duplicados sobrarian. Si el
+   usuario la cierra, se queda cerrada hasta la siguiente pista o el siguiente
+   play.
+
+   Tocar el titulo o la portada abre "Ahora suena" (onOpen); mientras esta
+   abierta la pastilla se oculta, porque esa vista ya es el reproductor.
    ------------------------------------------------------------------------- */
 
-function MiniPlayer({ libOpen, onReveal }) {
+const NO_ROWS = [];
+
+function MiniPlayer({ onReveal, onOpen, npOpen }) {
   const st = useEngine();
   const [dismissed, setDismissed] = useState(false);
   /* true hasta que el IntersectionObserver diga lo contrario: mejor tardar un
      fotograma en aparecer que parpadear con la fila aun a la vista. */
   const [srcSeen, setSrcSeen] = useState(true);
-  const [drag, setDrag] = useState(null);
   /* Portada que ya fallo al cargar: no se vuelve a pintar (icono roto). */
   const [badArt, setBadArt] = useState(null);
-  const railRef = useRef(null);
   const lastInfo = useRef(null);
   const vhost = useVideoHost();
 
@@ -51,12 +45,11 @@ function MiniPlayer({ libOpen, onReveal }) {
      desvanece. */
   if (track) lastInfo.current = track;
   const info = track || lastInfo.current;
-  const srcEl = track ? engine.elementFor(track.key) : null;
+  const srcEls = track ? engine.elementsFor(track.key) : NO_ROWS;
 
   /* Otro destino = otra cancion: la pastilla vuelve a ofrecerse. */
   useEffect(() => {
     setDismissed(false);
-    setDrag(null);
   }, [track?.key]);
 
   /* Y reproducir tambien la reabre (reanudar desde la fila). */
@@ -64,23 +57,30 @@ function MiniPlayer({ libOpen, onReveal }) {
     if (st.playing) setDismissed(false);
   }, [st.playing]);
 
-  /* Se observa la caja del Player de origen, no el audio. */
+  /* Se observan las cajas de las filas de origen, no el audio: la cancion puede
+     estar en varias pantallas (alguna oculta) y basta con que se vea una. Sin
+     fila montada no esta a la vista. */
   useLayoutEffect(() => {
-    if (!srcEl || typeof IntersectionObserver === "undefined") {
+    if (!srcEls.length || typeof IntersectionObserver === "undefined") {
       setSrcSeen(false);
       return undefined;
     }
     setSrcSeen(true);
-    const io = new IntersectionObserver(([e]) => setSrcSeen(e.isIntersecting), {
-      threshold: 0,
-    });
-    io.observe(srcEl);
+    const seen = new Set();
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) seen.add(e.target);
+          else seen.delete(e.target);
+        }
+        setSrcSeen(seen.size > 0);
+      },
+      { threshold: 0 }
+    );
+    srcEls.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, [srcEl]);
+  }, [srcEls]);
 
-  /* Con el cajon cerrado el IO tambien lo detecta (el recorte deja la fila en
-     0), pero solo cuando termina de cerrarse. Esto lo adelanta al clic. */
-  const inClosedDrawer = !libOpen && !!srcEl?.closest(".drawer");
   const started = st.playing || st.time > 0;
   /* Con un video abierto el audio ya esta pausado: la pastilla solo estorbaria
      encima de la ventana del video. */
@@ -88,7 +88,8 @@ function MiniPlayer({ libOpen, onReveal }) {
     !!track &&
     started &&
     !dismissed &&
-    (!srcSeen || inClosedDrawer) &&
+    !srcSeen &&
+    !npOpen &&
     vhost.mode === "closed";
 
   /* Reserva sitio en la pagina y aparta los avisos de descarga (CSS). */
@@ -98,55 +99,15 @@ function MiniPlayer({ libOpen, onReveal }) {
   }, [show]);
 
   const dur = st.duration || info?.duration || 0;
-  const pct = drag !== null ? drag : dur ? clamp(st.time / dur, 0, 1) : 0;
-  const shownTime = drag !== null ? drag * dur : st.time;
-  const total = dur ? clock(Math.round(dur)) : "--:--";
   const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
   const label = info?.label || "la canción";
   const quiet = st.muted || st.volume === 0;
   const volPct = Math.round((quiet ? 0 : st.volume) * 100);
   const art = info?.artwork && badArt !== info.artwork ? info.artwork : null;
   const hasNext = st.index >= 0 && st.index + 1 < st.queue.length;
-
-  const seekTo = (t) => {
-    engine.seek(clamp(t, 0, dur || 0));
-  };
-
-  const pctAt = (e) => {
-    const r = railRef.current.getBoundingClientRect();
-    return clamp((e.clientX - r.left) / r.width, 0, 1);
-  };
-  const onPointerDown = (e) => {
-    if (!dur) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag(pctAt(e));
-  };
-  const onPointerMove = (e) => {
-    if (drag !== null) setDrag(pctAt(e));
-  };
-  const onPointerUp = (e) => {
-    if (drag === null) return;
-    seekTo(pctAt(e) * dur);
-    setDrag(null);
-  };
-  const onKeyDown = (e) => {
-    const step = { ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5 }[e.key];
-    if (step !== undefined) {
-      e.preventDefault();
-      /* Del motor: seek() actualiza su foto, asi que las flechas repetidas
-         suman aunque React no haya repintado entre una y otra. */
-      engine.seek(engine.getState().time + step);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      seekTo(0);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      seekTo(dur - 1);
-    } else if (e.key === " " || e.key === "Enter") {
-      e.preventDefault();
-      engine.toggle();
-    }
-  };
+  /* "Ir a la cancion" abre Escuchar: un preview de una tarjeta no esta en la
+     biblioteca y no habria fila a la que llevar. */
+  const inLibrary = track?.kind === "library";
 
   const close = () => {
     engine.pause();
@@ -163,8 +124,7 @@ function MiniPlayer({ libOpen, onReveal }) {
       inert={show ? undefined : ""}
     >
       <div className="mini__row">
-        {/* Anterior y siguiente: la cola es la biblioteca entera, asi que aqui
-            se puede cambiar de tema sin volver al cajon. */}
+        {/* Anterior y siguiente: se puede cambiar de tema sin volver a la lista. */}
         <button
           type="button"
           className="mini__btn mini__btn--prev"
@@ -172,7 +132,7 @@ function MiniPlayer({ libOpen, onReveal }) {
           aria-label="Anterior"
           title="Anterior"
         >
-          <SkipBack size={16} weight="fill" />
+          <Icon name="SkipBack" size={16} weight="fill" />
         </button>
         <button
           type="button"
@@ -182,13 +142,13 @@ function MiniPlayer({ libOpen, onReveal }) {
           aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${label}`}
         >
           <span className="pbtn__ico pbtn__ico--play">
-            <Play size={16} weight="fill" />
+            <Icon name="Play" size={16} weight="fill" />
           </span>
           <span className="pbtn__ico pbtn__ico--pause">
-            <Pause size={16} weight="fill" />
+            <Icon name="Pause" size={16} weight="fill" />
           </span>
           <span className="pbtn__ico pbtn__ico--load">
-            <CircleNotch size={16} weight="bold" className="spin" />
+            <Icon name="CircleNotch" size={16} weight="bold" className="spin" />
           </span>
         </button>
         <button
@@ -199,7 +159,7 @@ function MiniPlayer({ libOpen, onReveal }) {
           aria-label="Siguiente"
           title="Siguiente"
         >
-          <SkipForward size={16} weight="fill" />
+          <Icon name="SkipForward" size={16} weight="fill" />
         </button>
         {art && (
           <img
@@ -207,20 +167,19 @@ function MiniPlayer({ libOpen, onReveal }) {
             src={art}
             alt=""
             loading="lazy"
+            onClick={onOpen}
             onError={() => setBadArt(art)}
           />
         )}
-        {/* Tocar el titulo lleva a la cancion, como en cualquier app de musica.
-            En movil es el UNICO camino (el boton de la mira se oculta para que
-            el titulo quepa); fuera del orden de tabulacion porque con teclado
-            ya esta ese boton. */}
+        {/* Tocar el titulo (o la portada) abre "Ahora suena", como en cualquier
+            app de musica. Ir a la fila de la biblioteca es el boton de la mira;
+            en movil se oculta para que el titulo quepa y ese salto vive en
+            "Ahora suena". */}
         <button
           type="button"
           className="mini__txt"
-          tabIndex={-1}
-          onClick={() => onReveal(srcEl)}
-          disabled={!srcEl}
-          aria-label={`Ir a la canción: ${info?.title ?? ""}`}
+          onClick={onOpen}
+          aria-label={`Abrir el reproductor: ${info?.title ?? ""}`}
         >
           <span className="mini__title" title={info?.title}>
             {info?.title}
@@ -239,11 +198,11 @@ function MiniPlayer({ libOpen, onReveal }) {
             aria-label={quiet ? "Activar el sonido" : "Silenciar"}
           >
             {quiet ? (
-              <SpeakerSlash size={17} />
+              <Icon name="SpeakerSlash" size={17} />
             ) : st.volume < 0.45 ? (
-              <SpeakerLow size={17} />
+              <Icon name="SpeakerLow" size={17} />
             ) : (
-              <SpeakerHigh size={17} />
+              <Icon name="SpeakerHigh" size={17} />
             )}
           </button>
           <input
@@ -261,12 +220,12 @@ function MiniPlayer({ libOpen, onReveal }) {
         <button
           type="button"
           className="mini__btn mini__btn--reveal"
-          onClick={() => onReveal(srcEl)}
-          disabled={!srcEl}
+          onClick={() => onReveal(track.key)}
+          disabled={!inLibrary}
           aria-label="Ir a la canción"
           title="Ir a la canción"
         >
-          <Crosshair size={18} />
+          <Icon name="Crosshair" size={18} />
         </button>
         <button
           type="button"
@@ -275,34 +234,17 @@ function MiniPlayer({ libOpen, onReveal }) {
           aria-label="Cerrar reproductor"
           title="Cerrar reproductor"
         >
-          <X size={18} />
+          <Icon name="X" size={18} />
         </button>
       </div>
       <div className="mini__bar">
-        <div
-          ref={railRef}
-          className={cx("scrub", drag !== null && "is-drag")}
-          role="slider"
-          tabIndex={0}
-          aria-label={`Progreso de ${label}`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(pct * 100)}
-          aria-valuetext={`${clock(shownTime)} de ${total}`}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={() => setDrag(null)}
-          onKeyDown={onKeyDown}
-        >
-          <span className="scrub__rail">
-            <span className="scrub__fill" style={{ transform: `scaleX(${pct})` }} />
-          </span>
-          <span className="scrub__knob" style={{ left: `${pct * 100}%` }} />
-        </div>
-        <span className="mini__time">
-          {clock(shownTime)} / {total}
-        </span>
+        <Scrub key={info?.key} duration={dur} label={label}>
+          {(shown, total) => (
+            <span className="mini__time">
+              {clock(shown)} / {total}
+            </span>
+          )}
+        </Scrub>
       </div>
     </section>
   );

@@ -52,9 +52,10 @@ const track = (key, kind = "library") => ({
 const A = track("a");
 const B = track("b");
 const C = track("c");
+const D = track("d");
 const PREVIEW = track("preview", "preview");
 
-function setup() {
+function setup({ random } = {}) {
   const audios = [];
   const fetches = [];
   let started = 0;
@@ -71,6 +72,7 @@ function setup() {
     onPlayStart: () => {
       started += 1;
     },
+    ...(random ? { random } : {}),
   });
   return { engine, audios, fetches, audio: () => audios[0], started: () => started };
 }
@@ -134,6 +136,30 @@ describe("play", () => {
     engine.play(A);
     expect(audio().srcSets).toBe(sets);
     expect(engine.getState().playing).toBe(true);
+  });
+
+  it("restart reloads the same track from 0 with the new queue", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { queue: [A, B] });
+    engine.seek(30);
+    const sets = audio().srcSets;
+    engine.play(A, { queue: [A, C, D], index: 0, restart: true });
+    const s = engine.getState();
+    expect(audio().srcSets).toBe(sets + 1);
+    expect(s.queue).toEqual([A, C, D]);
+    expect(s.index).toBe(0);
+    expect(s.time).toBe(0);
+  });
+
+  it("restart with shuffle on puts the requested track first", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.setShuffle(true);
+    engine.play(C, { queue: [A, B, C] });
+    engine.play(C, { queue: [A, B, C, D], index: 2, restart: true });
+    const s = engine.getState();
+    expect(s.queue[0]).toBe(C);
+    expect(s.index).toBe(0);
+    expect(s.queue).toHaveLength(4);
   });
 
   it("falls back to a single-track queue when the track is not in it", () => {
@@ -300,5 +326,227 @@ describe("subscribe", () => {
     off();
     engine.setVolume(0.7);
     expect(n).toBe(2);
+  });
+});
+
+describe("queue edits", () => {
+  it("playNext inserts after the current track and removes a later duplicate", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B, C] });
+    expect(engine.playNext(A)).toBe(false);
+    expect(engine.playNext(C)).toBe(true);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "c", "b"]);
+    expect(engine.getState().index).toBe(0);
+  });
+
+  it("playNext and enqueue start playback when nothing is loaded", () => {
+    const first = setup();
+    expect(first.engine.playNext(A)).toBe(true);
+    expect(first.engine.getState().track).toBe(A);
+    expect(first.audio().src).toBe(A.src);
+
+    const second = setup();
+    expect(second.engine.enqueue(B)).toBe(true);
+    expect(second.engine.getState().track).toBe(B);
+    expect(second.audio().src).toBe(B.src);
+  });
+
+  it("enqueue appends and refuses the current or an upcoming track", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B] });
+    expect(engine.enqueue(B)).toBe(false);
+    expect(engine.enqueue(A)).toBe(false);
+    expect(engine.enqueue(C)).toBe(true);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "b", "c"]);
+    expect(engine.enqueue(C)).toBe(false);
+  });
+
+  it("move reorders only the upcoming part", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B, C] });
+    expect(engine.move(1, 2)).toBe(true);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "c", "b"]);
+    /* Ni la actual ni una posicion fuera de la cola se pueden mover. */
+    expect(engine.move(0, 2)).toBe(false);
+    expect(engine.move(1, 0)).toBe(false);
+    expect(engine.move(1, 3)).toBe(false);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "c", "b"]);
+  });
+
+  it("removeAt before the current track keeps it and fixes the index", () => {
+    const { engine } = setup();
+    engine.play(C, { queue: [A, B, C] });
+    expect(engine.removeAt(1)).toBe(true);
+    expect(engine.getState().track).toBe(C);
+    expect(engine.getState().index).toBe(1);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "c"]);
+    expect(engine.removeAt(1)).toBe(false);
+    expect(engine.removeAt(9)).toBe(false);
+  });
+});
+
+describe("shuffle", () => {
+  it("keeps the current track first and every other track once", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.play(B, { queue: [A, B, C, D] });
+    expect(engine.setShuffle(true)).toBe(true);
+    const s = engine.getState();
+    expect(s.shuffle).toBe(true);
+    expect(s.index).toBe(0);
+    expect(s.queue[0]).toBe(B);
+    expect(s.queue).toHaveLength(4);
+    expect(new Set(s.queue.map((t) => t.key))).toEqual(
+      new Set(["a", "b", "c", "d"])
+    );
+    expect(engine.setShuffle(true)).toBe(false);
+  });
+
+  it("restores the user order, including tracks enqueued while shuffled", () => {
+    const { engine } = setup({ random: () => 0.5 });
+    engine.play(A, { queue: [A, B, C] });
+    engine.setShuffle(true);
+    engine.enqueue(D);
+    expect(engine.getState().queue).toHaveLength(4);
+    expect(engine.setShuffle(false)).toBe(true);
+    const s = engine.getState();
+    expect(s.shuffle).toBe(false);
+    expect(s.queue.map((t) => t.key)).toEqual(["a", "b", "c", "d"]);
+    expect(s.index).toBe(0);
+  });
+
+  it("restores the index of the current track when unshuffling", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.play(B, { queue: [A, B, C] });
+    engine.setShuffle(true);
+    expect(engine.getState().index).toBe(0);
+    engine.setShuffle(false);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "b", "c"]);
+    expect(engine.getState().index).toBe(1);
+  });
+
+  it("playAt jumps inside the shuffled queue without reshuffling it", () => {
+    const { engine, audio } = setup({ random: () => 0 });
+    engine.play(A, { queue: [A, B, C, D] });
+    engine.setShuffle(true);
+    const before = engine.getState().queue;
+    expect(engine.playAt(2)).toBe(true);
+    const s = engine.getState();
+    expect(s.queue).toBe(before);
+    expect(s.index).toBe(2);
+    expect(s.track).toBe(before[2]);
+    expect(audio().src).toBe(before[2].src);
+    expect(engine.playAt(9)).toBe(false);
+    engine.setShuffle(false);
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("plays a new queue shuffled with the requested track first", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.setShuffle(true);
+    engine.play(C, { queue: [A, B, C, D] });
+    const s = engine.getState();
+    expect(s.queue[0]).toBe(C);
+    expect(s.index).toBe(0);
+    expect(new Set(s.queue.map((t) => t.key))).toEqual(
+      new Set(["a", "b", "c", "d"])
+    );
+  });
+});
+
+describe("repeat", () => {
+  it("replays the current track on ended without reloading the src", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { queue: [A, B] });
+    expect(engine.setRepeat("one")).toBe(true);
+    const sets = audio().srcSets;
+    audio().currentTime = 179;
+    audio().dispatchEvent(new Event("ended"));
+    const s = engine.getState();
+    expect(s.track).toBe(A);
+    expect(s.playing).toBe(true);
+    expect(audio().currentTime).toBe(0);
+    expect(audio().srcSets).toBe(sets);
+  });
+
+  it("wraps to the first track on ended with repeat all", () => {
+    const { engine, audio } = setup();
+    engine.play(C, { queue: [A, B, C], index: 2 });
+    engine.setRepeat("all");
+    audio().dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(A);
+    expect(engine.getState().index).toBe(0);
+    expect(audio().src).toBe(A.src);
+  });
+
+  it("wraps a one-track queue on ended with repeat all", () => {
+    const { engine, audio } = setup();
+    engine.play(A);
+    engine.setRepeat("all");
+    const sets = audio().srcSets;
+    audio().dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(A);
+    expect(audio().srcSets).toBe(sets + 1);
+  });
+
+  it("wraps on a manual next with repeat all", () => {
+    const { engine } = setup();
+    engine.play(B, { queue: [A, B], index: 1 });
+    engine.setRepeat("all");
+    expect(engine.next()).toBe(true);
+    expect(engine.getState().track).toBe(A);
+    expect(engine.getState().index).toBe(0);
+  });
+
+  it("manual next still advances with repeat one", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B] });
+    engine.setRepeat("one");
+    expect(engine.next()).toBe(true);
+    expect(engine.getState().track).toBe(B);
+  });
+
+  it("stops at the end with repeat off", () => {
+    const { engine, audio } = setup();
+    engine.play(B, { queue: [A, B], index: 1 });
+    engine.setRepeat("all");
+    engine.setRepeat("off");
+    audio().dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(B);
+    expect(engine.getState().playing).toBe(false);
+  });
+
+  it("cycles off, all, one and rejects unknown modes", () => {
+    const { engine } = setup();
+    expect(engine.getState().repeat).toBe("off");
+    expect(engine.cycleRepeat()).toBe(true);
+    expect(engine.getState().repeat).toBe("all");
+    expect(engine.cycleRepeat()).toBe(true);
+    expect(engine.getState().repeat).toBe("one");
+    expect(engine.cycleRepeat()).toBe(true);
+    expect(engine.getState().repeat).toBe("off");
+    expect(engine.setRepeat("sometimes")).toBe(false);
+    expect(engine.getState().repeat).toBe("off");
+  });
+});
+
+describe("row registration", () => {
+  it("keeps one box per screen for the same song and releases only its own", () => {
+    const { engine } = setup();
+    const listen = {};
+    const download = {};
+    const offListen = engine.registerElement("k", listen);
+    const offDownload = engine.registerElement("k", download);
+    expect(engine.elementsFor("k")).toEqual([listen, download]);
+    offDownload();
+    expect(engine.elementsFor("k")).toEqual([listen]);
+    offListen();
+    expect(engine.elementsFor("k")).toEqual([]);
+  });
+
+  it("keeps the same array between changes so observers are not recreated", () => {
+    const { engine } = setup();
+    const off = engine.registerElement("k", {});
+    expect(engine.elementsFor("k")).toBe(engine.elementsFor("k"));
+    off();
   });
 });

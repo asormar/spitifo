@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -194,7 +195,12 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
             terminado = tmp_conv
         else:
             terminado = tmp
-        _write_tags(terminado, t)
+        # Los tags tienen que coincidir con el nombre del archivo. Si se uso el
+        # titulo/artista REAL, el album, el anio y la licencia describen la pista
+        # buscada (otra cosa): se omiten para no meter la cancion en un album ajeno.
+        tags_t = (replace(t, title=base_title, artist=base_artist, album=None,
+                          year=None, license=None) if swapped else t)
+        _write_tags(terminado, tags_t)
 
         filename = f"{stem}{target_ext}"
         key = f"{folder}/{filename}"
@@ -248,6 +254,11 @@ def library_scan() -> list[dict]:
             "bytes": f.size,
             "size_mb": round(f.size / 1_048_576, 2),
             "duration_s": f.duration,
+            # Etiquetas del archivo (None si no tiene): Escuchar agrupa con
+            # ellas y, si faltan, cae a la carpeta y al nombre.
+            "title": f.title,
+            "artist": f.artist,
+            "album": f.album,
             "modified": f.mtime,
             "kind": "video" if es_video else "audio",
             "thumb_key": sidecar if sidecar in thumbs else None,

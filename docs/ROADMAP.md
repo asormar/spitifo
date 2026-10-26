@@ -544,7 +544,52 @@ The plan as written:
   the fallback.
 - Checked on the Pixel at 60 frames per second and with reduced motion on.
 
-### 17. Listen: library and queue
+### 17. Listen: library and queue — done
+
+The library left the Download drawer and is now the Listen screen. What
+changed:
+
+- **Tags from the backend.** `/api/library` now returns `title`, `artist` and
+  `album`. On disk they come from the same mutagen read that already gave the
+  duration, so listing costs no extra file read; on Drive they were already in
+  `index.json`. A file without tags falls back to its folder (artist) and its
+  name (`Artist - Title`).
+- **Four tabs:** Canciones, Artistas, Álbumes and Cola. Search filters songs,
+  artists and albums by title, artist and album, ignoring accents and case.
+  An artist or album opens a detail with its songs; Escape or "Volver" goes
+  back, and every tab and detail keeps its own scroll.
+- **Virtual lists** without a dependency: rows are 56 px high, the list scrolls
+  with the window like every other screen, and only the visible rows plus a
+  margin are mounted. With the 266-track test library the DOM never held more
+  than 28 rows. Only the first paint of a list cascades in.
+- **Queue in the engine:** `playAt`, `playNext`, `enqueue`, `move`,
+  `removeAt`, shuffle (the playing track stays first; turning it off restores
+  the order, including tracks added while shuffled) and repeat (off, all, one;
+  repeat one only affects auto-advance). Each row has a menu with "Reproducir a
+  continuación" and "Añadir a la cola"; the Cola tab reorders by dragging the
+  handle (finger or mouse, with auto-scroll at the edges) or with the arrow
+  keys on it, and removes with ✕.
+- Videos show in Canciones with a tag, open in the video viewer and never enter
+  the queue.
+- **The drawer is gone**, with its header button, `Library.jsx`, `VideoRow.jsx`
+  and the row variant of `Player.jsx`. The mini-player's "Ir a la canción"
+  opens Listen and scrolls the virtual list to the row; for a result preview it
+  is disabled.
+- **Size:** the first script got smaller (233 → 231 KB) because the drawer left
+  it; Listen is its own 22 KB lazy chunk. In total the feature costs 9,025 B of
+  JavaScript and 955 B of CSS, so the budgets went up to 350,000 B and
+  61,000 B. The seven icons Listen uses are inline paths: the Phosphor
+  components would have added about 18 KB more.
+- Frontend tests: 79 (engine queue, shuffle and repeat; library helpers and the
+  virtual list window). Backend: the storage contract checks the tags on both
+  adapters.
+- Checked in the browser at phone and PC widths with a seeded library. Still to
+  do: the Pixel (60 fps scrolling Listen, real touch drag) and the items left
+  from session 16. Left for later: Android's back button closing an
+  artist/album detail, and focus returning to the row a detail was opened
+  from.
+
+The plan as written:
 
 - Browse the library by song, artist and album, with search.
 - Long lists are virtualised, so a library of thousands of songs scrolls as
@@ -552,13 +597,88 @@ The plan as written:
 - Queue controls: play next, add to the queue, reorder by dragging, remove;
   shuffle and repeat.
 
-### 18. Listen: now playing
+### 18. Listen: now playing — done
+
+Tapping the mini-player's title or artwork opens a full-screen "Ahora suena".
+What changed:
+
+- **One movement.** The mini-player and the view share a View Transition name
+  (`vt-mini`, with `data-vt="np"`), so the pill grows into the full screen and
+  its artwork grows with it; closing runs the same morph backwards. Without the
+  API the view slides up and down; with reduced motion it switches at once.
+- **Closing:** the chevron, Escape, Android's back button (opening pushes one
+  history entry, like Settings) or a swipe down. The swipe follows the finger
+  and closes past a quarter of the height or on a fast flick (> 0.6 px/ms),
+  otherwise it springs back. Switching mode, opening Settings, opening a video
+  or "Ver en Escuchar" close it first without leaving a dead history entry.
+- **Artwork and tint.** Library tracks now carry their `.jpg` sidecar as
+  artwork. The background is the artwork's average colour (a 24×24 canvas),
+  darkened until white text reaches 6:1; without artwork, a hue from the
+  artist's name. Track changes crossfade two layers, never `background-color`.
+- **Controls:** a draggable seek bar shared with the mini-player (`Scrub.jsx`,
+  one implementation), times, shuffle, previous, play/pause, next, repeat, and
+  volume from 960 px.
+- **The queue is one swipe away:** on phones two pages, "Ahora suena" and
+  "Cola", switched with the pills or a horizontal swipe; from 960 px side by
+  side. The queue reuses session 17's virtual list, which can now measure
+  against its own scroll container.
+- **Size:** the view is its own lazy chunk (8.2 KB of JS, 5.1 KB of CSS) that
+  preloads when the app is idle; the queue, list and rows moved to a 12.9 KB
+  chunk shared with Listen. The first script grew 2.2 KB (history handling,
+  the transition helper and the shared seek bar). Budgets went up to
+  361,000 B of JavaScript and 66,000 B of CSS.
+- Frontend tests: 95 (tint helpers added). Checked in the browser at phone and
+  PC widths: morph, back button, focus return, queue page, tint. Still to do on
+  the Pixel: 60 fps during the morph and the swipes, real touch. Not tested: a
+  video closing the view (the test library has no videos).
+
+The plan as written:
 
 - A full-screen "now playing" view that grows out of the mini-player as one
   continuous animation and shrinks back with a swipe down.
 - Artwork-tinted background, seek bar with drag, and the queue one swipe away.
 
-### 19. Listen: playlists
+### 19. Listen: playlists — done
+
+Playlists can be created, renamed, deleted and reordered, and songs added from
+any song's menu and from "Ahora suena". What changed:
+
+- **Storage, corrected from the plan.** The plan said playlists would use
+  conditional writes "like the index", but the cloud index does not: each
+  device writes only its own `index-<device>.json` and reading merges them all
+  (newest `updated_at` wins per key, deletions are tombstones). Playlists
+  follow the same model: `playlists-<device>.json` next to the index files on
+  Drive, `.spitifo/playlists.json` (atomic write, hidden from the library) on
+  disk. Per playlist the newest edit wins; different playlists never clash. An
+  own file that cannot be read is never overwritten.
+- **API:** `GET /api/playlists`, `PUT /api/playlists/{id}` with the whole
+  playlist (the client makes the UUID, so creating and editing are the same
+  call) and `DELETE /api/playlists/{id}` (tombstone). A save always gets a
+  newer `updated_at` than the merged one, even if the clock went back.
+- **Listen:** a fifth tab, Listas: create inline, open a playlist to play,
+  shuffle, reorder by dragging or with the arrow keys (the queue's drag logic
+  is now one shared hook, `useDragSort`), remove songs, rename or delete from
+  the header menu. Songs whose files are gone stay in the data but are not
+  shown or played.
+- **Add from anywhere:** "Añadir a una lista…" in every song's menu and a
+  button in "Ahora suena" open the same picker, which can also create a list
+  with the song in it.
+- **Optimistic:** changes show at once and are saved behind; writes to one
+  playlist go out in order. A failed save reverts that playlist and says so.
+  Deleting shows "Lista «X» borrada" with Deshacer for 5 s; undo saves it again
+  with a newer date, which beats the tombstone.
+- **PC rail:** the area under the modes lists the playlists; one click opens it
+  in Listen. Phones use the Listas tab and never load the rail list.
+- **Size:** the first script grew 0.7 KB; the rest is in Listen's lazy chunks.
+  In total +12,971 B of JavaScript and +3,248 B of CSS, so the budgets went up
+  to 374,000 B and 70,000 B.
+- Tests: 117 frontend (22 for the playlists store), backend model, both
+  storage adapters (two devices on the fake Drive) and the API. Checked end to
+  end in the browser against the real backend: create, add from the picker,
+  the file on disk, the detail and the rail. Still to do on the Pixel: real
+  touch drag in a playlist.
+
+The plan as written:
 
 - Create, rename, delete and reorder playlists, and add songs from anywhere.
 - Playlists live in the user's storage next to `index.json` (local or Drive),
@@ -566,7 +686,35 @@ The plan as written:
 - Optimistic updates: the UI changes at once and the write happens in the
   background, undone with a notice if it fails.
 
-### 20. Speed and size review 1
+### 20. Speed and size review 1 — done on the PC; Pixel pending
+
+What could be measured and fixed without the Pixel. What changed:
+
+- **The library listing.** `/api/library` on disk re-read every file with
+  mutagen and resolved every path on every call. Durations and tags now live
+  in `.spitifo/media-cache.json`, keyed by path, size and mtime, and the folder
+  is walked with `os.scandir`, resolving only real symlinks. With 300 tracks on
+  the PC: 342 → 36 ms per call (median of 5 launches); the first listing after
+  a restart that has to build the cache took 258 ms against 2.4 s.
+- **The last library is shown at once.** The app keeps the last answer of
+  `/api/library` on the device and Listen paints it while the real one loads,
+  which hides Drive's seconds-long listing.
+- **Icons.** All 51 Phosphor icons became inline SVG paths with only the weight
+  each place uses (copied from the package and compared against the
+  components), split so the first script carries only the shell's. The package
+  is gone. All JavaScript: 373,651 → 288,038 B (−85.6 KB, −17 KB gzip); first
+  script 234 → 191 KB. The JavaScript budget went down to 295,000 B.
+- **The Windows sidecar** leaves out pygments, sqlite3, watchfiles, yaml,
+  websockets, httptools and dotenv, which nothing in the app imports (uvicorn
+  falls back to h11). A local build went from 37.8 to 32.7 MB installed; it
+  started, listed the library, served ranges, imported cookies, saved a
+  playlist and searched YouTube through yt-dlp. The APK needed no change: it
+  only installs what it uses.
+- Still to do: the Pixel (start-up, library open and scroll, 60 fps in Listen,
+  "Ahora suena" and drags), the installed app's mode-switch timing, and the
+  installer's size from the release build.
+
+The plan as written:
 
 - Measure every budget again and fix whatever regressed since session 12.
 - Start-up: whatever session 12 found slowest, such as lazy Python imports or a

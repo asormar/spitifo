@@ -15,7 +15,10 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Protocol
+
+if TYPE_CHECKING:  # solo para las anotaciones: `playlists` importa de aca
+    from ..playlists import PlaylistBook
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +39,12 @@ class StoredFile:
     # muestra la duracion. `list()` la trae; `stat()` puede dejarla en None
     # (el adapter local la lee con mutagen y eso es caro para cada seek).
     duration: float | None = None
+    # Etiquetas para que Escuchar agrupe por artista y album. Como la
+    # duracion, las trae `list()`; vacias o None si el archivo no las tiene
+    # (la UI cae a la carpeta y al nombre del archivo).
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
 
 
 class InvalidKey(ValueError):
@@ -95,6 +104,13 @@ class Storage(Protocol):
     def put_file(self, key: str, src: Path) -> StoredFile: ...
 
     def delete(self, key: str) -> None: ...
+
+    # Playlists: puerto chico y SEPARADO del de archivos. Lo implementan los
+    # dos adapters; la API lo usa desde un thread para no frenar el loop.
+    def load_playlists(self) -> "PlaylistBook": ...
+
+    def save_playlist(
+            self, change: Callable[["PlaylistBook"], None]) -> "PlaylistBook": ...
 
     def describe(self) -> str:
         """Etiqueta humana de donde vive la biblioteca (la muestra la UI)."""
