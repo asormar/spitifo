@@ -37,6 +37,7 @@ from .runtime import configure_runtime, ytdlp_version
 configure_runtime()
 
 from .downloader import download_track, library_scan
+from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
 from .security import TokenAuthMiddleware
@@ -792,6 +793,29 @@ async def playlist_delete(request: Request):
     return Response(status_code=204)
 
 
+# ------------------------------------------------------------------ listens
+async def listens_append(request: Request):
+    """POST /api/listens: agrega eventos de ESTE dispositivo.
+
+    El `dev` lo pone el storage, no el cliente. Devuelve cuantos se aceptaron
+    para que el frontend sepa que puede soltar su lote.
+    """
+    body = await _json_body(request)
+    try:
+        events = validate_events(body.get("events"))
+    except ValueError as exc:
+        raise _invalid(["body", "events"], str(exc))
+
+    accepted = await asyncio.to_thread(get_storage().append_listens, events)
+    return JSONResponse({"ok": True, "accepted": accepted})
+
+
+async def listens_summary(request: Request):
+    """GET /api/listens/summary: merge de todos los dispositivos."""
+    data = await asyncio.to_thread(get_storage().load_listens_summary)
+    return JSONResponse(data)
+
+
 # ----------------------------------------------------------------- cookies YT
 # Ultimo recurso para el muro de verificacion de YouTube. El archivo NUNCA se
 # devuelve: la API solo informa estado (configurado, cuando se importo y
@@ -1176,6 +1200,8 @@ routes = [
     Route("/api/playlists", playlists),
     Route("/api/playlists/{id}", playlist_save, methods=["PUT"]),
     Route("/api/playlists/{id}", playlist_delete, methods=["DELETE"]),
+    Route("/api/listens", listens_append, methods=["POST"]),
+    Route("/api/listens/summary", listens_summary),
     Route("/api/youtube/cookies", youtube_cookies_info),
     Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),

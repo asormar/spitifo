@@ -1,0 +1,1410 @@
+/* ---------------------------------------------------------------------------
+   8b. ESCUCHAR: INICIO, RESULTADOS Y PAGINAS
+
+   El buscador grande, las secciones del inicio, los resultados agrupados y las
+   paginas (Ver todo, Explorar, ficha de album/artista/lista). Las filas, el
+   menu y el aviso son de listen.css. Se carga con el chunk de Escuchar. El
+   telefono es la base; desde 960 px el inicio pasa a dos columnas. Solo se
+   animan transform y opacity.
+   ------------------------------------------------------------------------- */
+
+/* --- Portada y mosaico ------------------------------------------------------ */
+
+/* --h es el tono (0-359) que pone el JSX; --s, el lado. Sin imagen, degradado. */
+.cv {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--s, 40px);
+  height: var(--s, 40px);
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: linear-gradient(135deg, hsl(var(--h) 70% 62%), hsl(calc(var(--h) + 40) 60% 42%));
+  color: rgba(255, 255, 255, 0.92);
+  font: 700 calc(var(--s, 40px) * 0.4) / 1 var(--font-display);
+}
+
+.cv.cv--round {
+  border-radius: 50%;
+}
+
+.cv__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cv__now {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cv__now .eq {
+  width: 12px;
+  height: 12px;
+}
+
+.mos {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: var(--r-inner);
+}
+
+.mos .cv {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+.mos--empty {
+  grid-template: none;
+  place-items: center;
+  background: var(--track);
+  color: var(--icon-dim);
+}
+
+.mos--row {
+  width: 40px;
+  height: 40px;
+  gap: 1px;
+  border-radius: var(--r-sm);
+}
+
+.mos--big {
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+  border-radius: 0;
+}
+
+/* --- Buscador ----------------------------------------------------------------- */
+
+/* Pegajoso bajo la pildora de la cabecera (72 px) con un velo que difumina lo que
+   pasa por debajo. */
+.hsearch {
+  position: sticky;
+  top: 72px;
+  z-index: 30;
+  margin: 0 -10px;
+  padding: 8px 10px 10px;
+}
+
+.hsearch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  -webkit-mask-image: linear-gradient(180deg, #000 74%, transparent);
+  mask-image: linear-gradient(180deg, #000 74%, transparent);
+  pointer-events: none;
+}
+
+.hsearch__box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 6px 0 18px;
+  border-radius: var(--r-field);
+  background: var(--glass-card);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--shadow-card);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  color: var(--icon-dim);
+}
+
+/* El aro lo dibuja el contenedor, como en Descargar. */
+.hsearch__box:focus-within {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ring-gap), var(--shadow-card);
+}
+
+/* 17 px: por debajo de 16, iOS hace zoom al enfocar el campo. */
+.hsearch__box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 17px var(--font-body);
+  outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.hsearch__box input::placeholder {
+  color: var(--faint);
+}
+
+.hsearch__clear {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--track);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* --- Secciones ------------------------------------------------------------------- */
+
+.hsec {
+  position: relative;
+  margin-top: 10px;
+  --rise: 10px;
+  animation: rise var(--t-move) var(--ease) backwards;
+}
+
+/* La seccion con el menu de una fila abierto queda por encima de las siguientes. */
+.hsec:has(.rmenu) {
+  z-index: 6;
+}
+
+.hsec__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin: 0 4px;
+}
+
+.hsec__h {
+  margin: 0;
+  font: 700 20px / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.hsec__h--solo {
+  margin: 0 4px 10px;
+}
+
+.hsec__all {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: none;
+  color: var(--accent-fg);
+  font: 600 14px var(--font-body);
+  cursor: pointer;
+}
+
+/* Carrusel horizontal a sangre: el relleno deja sitio a sombras y aros de foco. */
+.hs {
+  display: flex;
+  gap: 12px;
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 6px var(--gutter) 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 var(--gutter);
+  scrollbar-width: none;
+}
+
+.hs::-webkit-scrollbar {
+  display: none;
+}
+
+.hs > * {
+  scroll-snap-align: start;
+}
+
+/* Boton con aspecto de tarjeta de cristal. */
+.hcard {
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-field);
+  background: var(--glass-card);
+  box-shadow: var(--shadow-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Todos los botones del inicio comparten la presion de 120 ms. */
+:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it) {
+  transition: transform var(--t-press) var(--ease);
+}
+
+:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it):active {
+  transform: scale(0.96);
+}
+
+/* --- Disposicion del inicio ------------------------------------------------------- */
+
+/* Telefono: una columna; las dos .hcol desaparecen y `order` fija el orden. */
+.hfeed {
+  display: flex;
+  flex-direction: column;
+}
+
+.hcol {
+  display: contents;
+}
+
+.hsec--cont {
+  order: 1;
+  margin-top: 2px;
+}
+.hsec--added {
+  order: 2;
+}
+.hsec--top {
+  order: 3;
+}
+.hsec--artists {
+  order: 4;
+}
+.hsec--albums {
+  order: 5;
+}
+.hsec--lists {
+  order: 6;
+}
+.xcard {
+  order: 7;
+}
+
+/* --- Seguir escuchando --------------------------------------------------------------- */
+
+.ccard {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  width: 292px;
+  padding: 12px;
+}
+
+.ccard__top {
+  display: contents;
+}
+
+.ccard__cv {
+  --s: 60px;
+  border-radius: var(--r-inner);
+  box-shadow: 0 6px 16px rgba(var(--shadow-rgb), 0.16);
+}
+
+.ccard__go {
+  display: grid;
+  flex: none;
+  order: 3;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--accent-fill);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent-fg);
+  transition: background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+}
+
+.ccard__go.is-on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.ccard__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  order: 2;
+  min-width: 0;
+}
+
+.ccard__t,
+.ccard__a,
+.acard__t,
+.acard__a,
+.alb__t,
+.alb__a,
+.art-c__t,
+.lcard__t,
+.lres__t {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ccard__t {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ccard.is-current .ccard__t,
+.acard__t.is-current {
+  color: var(--accent-fg);
+}
+
+.ccard__a,
+.acard__a,
+.alb__a {
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.ccard__prog {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ccard__bar {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--track);
+}
+
+.ccard__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.ccard__left {
+  color: var(--faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Añadido hace poco -------------------------------------------------------------------- */
+
+.acard {
+  flex: none;
+  width: 136px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acard__cv {
+  --s: 136px;
+  border-radius: var(--r-cover);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+}
+
+.acard__t {
+  margin-top: 8px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Telefono: ocho de los diez. */
+@media (max-width: 959.98px) {
+  .acard:nth-child(n + 9) {
+    display: none;
+  }
+}
+
+/* --- Albumes -------------------------------------------------------------------------------- */
+
+.agrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 14px;
+  padding: 2px 0 8px;
+}
+
+.alb {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.alb__cv {
+  --s: 130px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--r-cover);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+}
+
+.alb__t {
+  margin-top: 8px;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Telefono: seis de los ocho. */
+@media (max-width: 959.98px) {
+  .hsec--albums .agrid > :nth-child(n + 7) {
+    display: none;
+  }
+}
+
+/* --- Artistas --------------------------------------------------------------------------------- */
+
+.artists {
+  gap: 14px;
+}
+
+.art-c {
+  flex: none;
+  width: 88px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.art-c__cv {
+  --s: 88px;
+  margin: 0 auto;
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+}
+
+.art-c__t {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* --- Listas ------------------------------------------------------------------------------------- */
+
+.lcard {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 158px;
+  padding: 12px;
+  border-radius: var(--r-card);
+}
+
+.lcard__mos {
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.lcard__txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.lcard__t {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.lcard__c {
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.lcta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 56px;
+  margin-top: 2px;
+  color: var(--accent-fg);
+  font: 600 15px var(--font-body);
+}
+
+/* --- Explorar la biblioteca ---------------------------------------------------------------------- */
+
+.xcard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: var(--r-card);
+}
+
+.xcard__ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  background: var(--track);
+  color: var(--muted);
+}
+
+.xcard__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.xcard__t {
+  font: 600 17px / 1.25 var(--font-display);
+}
+
+.xcard__s {
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.xcard__go {
+  flex: none;
+  color: var(--icon-dim);
+}
+
+/* --- Rankings ----------------------------------------------------------------------------------------- */
+
+.srow__rank {
+  flex: none;
+  width: 24px;
+  color: var(--faint);
+  font: 700 17px / 1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.srow__rank.is-top {
+  color: var(--accent-fg);
+}
+
+/* --- Resultados --------------------------------------------------------------------------------------- */
+
+.hres {
+  margin-top: 2px;
+}
+
+.hnone {
+  max-width: 560px;
+  margin: 20px auto 0;
+  padding: 32px 24px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background: var(--glass);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.hnone__t {
+  margin: 0;
+  font: 600 18px / 1.3 var(--font-display);
+}
+
+.hnone__s {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.best {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.best__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.best__cv {
+  --s: 88px;
+  border-radius: 20px;
+  box-shadow: 0 6px 16px rgba(var(--shadow-rgb), 0.16);
+}
+
+.best__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.best__name {
+  max-width: 100%;
+  overflow: hidden;
+  font: 700 20px / 1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.best__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.best__type {
+  flex: none;
+  padding: 1px 9px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.best__sub {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.best__play {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(211, 64, 43, 0.28);
+  cursor: pointer;
+}
+
+.artists--sm .art-c {
+  width: 84px;
+}
+
+.artists--sm .art-c__cv {
+  --s: 72px;
+}
+
+/* Albumes de un resultado: carrusel en telefono, rejilla de seis en escritorio. */
+.agrid--res {
+  display: flex;
+  gap: 12px;
+  padding: 6px var(--gutter) 8px;
+}
+
+.agrid--res .alb {
+  flex: none;
+  width: 132px;
+}
+
+.lres {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lres__it {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 14px 8px 8px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-cover);
+  background: var(--glass-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lres__mos {
+  width: 44px;
+  height: 44px;
+  gap: 1px;
+  border-radius: var(--r-md);
+}
+
+.lres__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lres__t {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.lres__s {
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+/* --- Paginas -------------------------------------------------------------------------------------------- */
+
+.lpage {
+  max-width: 860px;
+  margin: 0 auto;
+  --rise: 10px;
+  animation: rise var(--t-move) var(--ease) backwards;
+}
+
+.lpage--detail {
+  max-width: 1000px;
+}
+
+.phead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+
+.phead__act {
+  margin-bottom: 12px;
+}
+
+.hback {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--glass);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.phead__h,
+.libhead__h {
+  min-width: 0;
+  margin: 0;
+  font: 700 26px / 1.15 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.phead__h {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vback {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 4px 0 2px -6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--ink);
+  font: 600 15px var(--font-body);
+  cursor: pointer;
+}
+
+.libhead__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.libhead__n {
+  margin: 2px 0 12px;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+.libhead__sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.libhead__lbl {
+  display: none;
+  color: var(--faint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* --- Ficha de album, artista o lista --------------------------------------------------------------------- */
+
+.dhead {
+  position: relative;
+  padding: 8px 16px 18px;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-panel);
+  background: linear-gradient(
+    160deg,
+    hsl(var(--h) 78% 74%),
+    hsl(calc(var(--h) + 40) 70% 88%) 72%,
+    rgba(255, 255, 255, 0.7)
+  );
+  box-shadow: var(--shadow-panel);
+  text-align: center;
+}
+
+:root[data-theme="dark"] .dhead {
+  background: linear-gradient(
+    160deg,
+    hsl(var(--h) 38% 26%),
+    hsl(calc(var(--h) + 40) 32% 17%) 72%,
+    rgba(22, 34, 47, 0.7)
+  );
+}
+
+.dhead__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 14px 0 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+  font: 600 14px var(--font-body);
+  cursor: pointer;
+}
+
+.dhead__tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.dhead__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.dhead__art {
+  display: block;
+  width: 164px;
+  height: 164px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  box-shadow: 0 18px 40px rgba(var(--shadow-rgb), 0.28);
+}
+
+.dhead__art:has(.cv--round) {
+  border-radius: 50%;
+}
+
+.dhead__cv {
+  --s: 164px;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.dhead__info {
+  width: 100%;
+  min-width: 0;
+}
+
+.dhead__kind {
+  display: none;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dhead__h {
+  margin: 14px 0 2px;
+  font: 700 28px / 1.12 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.dhead__meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.dhead__info .nfield {
+  margin-top: 14px;
+}
+
+.dhead__acts {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.dhead__acts .lbtn {
+  flex: 1;
+  justify-content: center;
+  min-height: 48px;
+  font-size: 15px;
+}
+
+.dalbums {
+  margin-top: 18px;
+}
+
+.alb--det {
+  flex: none;
+  width: 120px;
+}
+
+.alb--det .alb__cv {
+  --s: 120px;
+  width: var(--s);
+  height: var(--s);
+}
+
+.dlist {
+  margin-top: 14px;
+}
+
+/* --- Escritorio: dos columnas ------------------------------------------------------------------------------- */
+
+@media (min-width: 960px) {
+  .hsec__h {
+    font-size: 22px;
+  }
+
+  .hsec__all {
+    padding: 0 8px 0 14px;
+  }
+
+  .hfeed {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 0 40px;
+    align-items: start;
+  }
+
+  .hcol {
+    display: block;
+    min-width: 0;
+  }
+
+  .hsec--cont {
+    margin-top: 0;
+  }
+
+  .hsec--artists,
+  .xcard {
+    grid-column: 1 / -1;
+  }
+
+  .hs {
+    margin-inline: 0;
+    padding-inline: 0;
+  }
+
+  /* Seguir escuchando: tres tarjetas verticales. */
+  .ccards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    overflow: visible;
+    padding-block: 2px;
+  }
+
+  .ccard {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: auto;
+    padding: 14px;
+  }
+
+  .ccard:nth-child(n + 4) {
+    display: none;
+  }
+
+  .ccard__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ccard__cv {
+    --s: 56px;
+  }
+
+  .ccard__txt {
+    order: 0;
+  }
+
+  .ccard__a {
+    font-size: 13px;
+  }
+
+  .ccard__prog {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .ccard__bar {
+    flex: 1;
+  }
+
+  .ccard__left {
+    font-size: 12px;
+  }
+
+  .acards {
+    gap: 16px;
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
+
+  .acard {
+    width: 148px;
+  }
+
+  .acard__cv {
+    --s: 148px;
+  }
+
+  .acard__t {
+    margin-top: 10px;
+    font-size: 15px;
+  }
+
+  .acard__a,
+  .alb__a {
+    font-size: 13px;
+  }
+
+  .agrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 22px 18px;
+    padding: 6px 0 10px;
+  }
+
+  .alb__t {
+    margin-top: 10px;
+    font-size: 15px;
+  }
+
+  .artists {
+    gap: 24px;
+    margin-inline: calc(var(--gutter) * -1);
+    padding-inline: var(--gutter);
+    padding-bottom: 14px;
+  }
+
+  .art-c {
+    width: 116px;
+  }
+
+  .art-c__cv {
+    --s: 116px;
+  }
+
+  .art-c__t {
+    margin-top: 10px;
+    font-size: 14px;
+  }
+
+  .lcards {
+    flex-direction: column;
+    gap: 10px;
+    overflow: visible;
+    padding-block: 6px 10px;
+  }
+
+  .lcard {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    width: auto;
+    padding: 10px;
+    border-radius: var(--r-field);
+  }
+
+  .lcard__mos {
+    width: 72px;
+    height: 72px;
+    aspect-ratio: auto;
+    border-radius: var(--r-md);
+    gap: 2px;
+  }
+
+  .lcard__txt {
+    margin-top: 0;
+  }
+
+  .lcard__t {
+    font: 600 18px / 1.25 var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  .lcard__c {
+    font-size: 13px;
+  }
+
+  .xcard {
+    gap: 16px;
+    padding: 16px 20px;
+  }
+
+  .xcard__ico {
+    width: 48px;
+    height: 48px;
+  }
+
+  .xcard__t {
+    font-size: 18px;
+  }
+
+  /* Resultados: el mejor resultado a la izquierda, las canciones a la derecha. */
+  .rgrid {
+    display: grid;
+    grid-template-columns: 380px minmax(0, 1fr);
+    gap: 0 44px;
+    align-items: start;
+  }
+
+  .best {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 22px;
+  }
+
+  .best__main {
+    flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .best__cv {
+    --s: 112px;
+  }
+
+  .best__name {
+    font-size: 28px;
+    line-height: 1.15;
+  }
+
+  .best__row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .best__type {
+    padding: 1px 10px;
+    font-size: 12px;
+  }
+
+  .best__sub {
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  .best__play {
+    width: 56px;
+    height: 56px;
+    margin-top: 18px;
+  }
+
+  .artists--sm {
+    flex-wrap: wrap;
+    gap: 16px 22px;
+    margin-inline: 0;
+    padding: 6px 0 8px;
+    overflow: visible;
+  }
+
+  .artists--sm .art-c {
+    width: 104px;
+  }
+
+  .artists--sm .art-c__cv {
+    --s: 88px;
+  }
+
+  .agrid--res {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
+    padding: 6px 0 8px;
+    overflow: visible;
+  }
+
+  .agrid--res .alb {
+    width: auto;
+  }
+
+  .lres {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  /* Paginas. */
+  .phead__h,
+  .libhead__h {
+    font-size: 34px;
+    line-height: 1.1;
+  }
+
+  .libhead__lbl {
+    display: inline;
+  }
+
+  .dhead {
+    padding: 14px 32px 32px;
+    text-align: left;
+  }
+
+  .dhead__body {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 32px;
+    margin-top: 10px;
+  }
+
+  .dhead__art {
+    flex: none;
+    width: 216px;
+    height: 216px;
+    margin-top: 0;
+  }
+
+  .dhead__cv {
+    --s: 216px;
+  }
+
+  .dhead__kind {
+    display: block;
+  }
+
+  .dhead__h {
+    margin: 0 0 6px;
+    font-size: 52px;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+
+  .dhead__meta {
+    font-size: 15px;
+  }
+
+  .dhead__acts {
+    margin-top: 20px;
+  }
+
+  .dhead__acts .lbtn {
+    flex: none;
+    padding: 0 26px;
+  }
+
+  .alb--det {
+    width: 140px;
+  }
+
+  .alb--det .alb__cv {
+    --s: 140px;
+  }
+
+  .dalbums .hs {
+    padding-inline: 6px;
+    margin-inline: 0;
+    gap: 16px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hcard:hover {
+    transform: translateY(-2px);
+  }
+
+  .hcard:active {
+    transform: scale(0.96);
+  }
+
+  .hsec__all:hover,
+  .hback:hover,
+  .vback:hover {
+    background: var(--surface-hover);
+  }
+}
