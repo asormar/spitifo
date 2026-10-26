@@ -255,8 +255,8 @@ of these bundles:
 
 | Bundle | `main` before | Session 22 | Old limit | New limit |
 | --- | --- | --- | --- | --- |
-| JavaScript | 289,879 B | 309,361 B (+19,482) | 295,000 B | 310,000 B |
-| CSS | 70,720 B | 76,542 B (+5,822) | 71,000 B | 77,000 B |
+| JavaScript | 289,879 B | 311,200 B (+21,321) | 295,000 B | 312,000 B |
+| CSS | 70,720 B | 77,254 B (+6,534) | 71,000 B | 78,000 B |
 
 ### Windows installer: 22,707,225 B
 
