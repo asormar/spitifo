@@ -295,3 +295,52 @@ def test_stat_no_lee_la_duracion(storage, tmp_path):
     """stat corre en cada seek de /api/audio: no puede parsear el archivo."""
     key = _poner(storage, tmp_path, "A/A - T.mp3", b"no es un mp3 real")
     assert storage.stat(key).duration is None
+
+
+# ------------------------------------------------------------------ etiquetas
+def _mp3_etiquetado(mp3: Path, dest: Path, **tags: str) -> Path:
+    """Copia del MP3 sintetico con etiquetas ID3 escritas por mutagen."""
+    from mutagen.easyid3 import EasyID3
+    from mutagen.id3 import ID3NoHeaderError
+
+    dest.write_bytes(mp3.read_bytes())
+    try:
+        audio = EasyID3(str(dest))
+    except ID3NoHeaderError:
+        audio = EasyID3()
+    for k, v in tags.items():
+        audio[k] = v
+    audio.save(str(dest))
+    return dest
+
+
+def test_list_trae_titulo_artista_y_album(storage, tmp_path, mp3_desde_wav):
+    """Escuchar agrupa por artista y album: `list()` trae las etiquetas.
+
+    En disco salen de la misma lectura de mutagen que la duracion; en la nube,
+    del indice que se escribio al subir el archivo.
+    """
+    src = _mp3_etiquetado(mp3_desde_wav, tmp_path / "origen-tags.mp3",
+                          title="Canción", artist="Ñandú", album="Primero")
+    storage.put_file("Ñandú/Ñandú - Canción.mp3", src)
+
+    (f,) = list(storage.list())
+    assert (f.title, f.artist, f.album) == ("Canción", "Ñandú", "Primero")
+    assert f.duration and f.duration > 2
+
+
+def test_list_sin_etiquetas_las_deja_vacias(storage, tmp_path, mp3_desde_wav):
+    """Un archivo sin etiquetas no inventa nada: la UI cae al nombre."""
+    from mutagen.id3 import ID3NoHeaderError, delete
+
+    src = tmp_path / "origen-sin-tags.mp3"
+    src.write_bytes(mp3_desde_wav.read_bytes())
+    # El MP3 de la sesion es compartido y otros tests le escriben etiquetas.
+    try:
+        delete(str(src))
+    except ID3NoHeaderError:
+        pass
+    storage.put_file("A/A - T.mp3", src)
+
+    (f,) = list(storage.list())
+    assert not f.title and not f.artist and not f.album

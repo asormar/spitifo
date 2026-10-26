@@ -36,6 +36,12 @@ class StoredFile:
     # muestra la duracion. `list()` la trae; `stat()` puede dejarla en None
     # (el adapter local la lee con mutagen y eso es caro para cada seek).
     duration: float | None = None
+    # Etiquetas para que Escuchar agrupe por artista y album. Como la
+    # duracion, las trae `list()`; vacias o None si el archivo no las tiene
+    # (la UI cae a la carpeta y al nombre del archivo).
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
 
 
 class InvalidKey(ValueError):
