@@ -795,10 +795,56 @@ The plan as written:
 - Drawn on a canvas so thousands of genres pan and zoom at 60 frames per
   second.
 
-### 23. Discover: recommendations
+### 23. Discover: recommendations — done
 
-- Recommendations from what the user listens to and the artists, songs and
-  genres they like, built on session 21's ADR.
+Discover keeps the genre map as its screen and adds a "Para ti" layer on it
+(design B, chosen over a feed-first design A): a bottom sheet on the phone, a
+360 px panel on the PC. What changed:
+
+- **What the device knows about each artist:** `backend/app/artistinfo.py`
+  looks every library artist up in MusicBrainz (genres with votes) and
+  ListenBrainz Labs (similar artists), at 1 request per second with a
+  descriptive User-Agent, in a background thread. Only artist names are sent;
+  the listening history never leaves the device. Results are kept per device
+  in `artistinfo-<device>.json` next to the other per-device files (newest
+  lookup wins in the merge) and refreshed after 30 days, errors after a day.
+- **Matching is strict:** a MusicBrainz candidate is accepted only when its
+  name (or an alias) equals the artist's, ignoring accents and case. A looser
+  first rule matched a talk show in the library to a drum and bass artist and
+  made it the user's top genre; records carry the rule's version so the bad
+  ones are looked up again. Collaborations ("Bizarrap & Milo j") count for
+  each artist; videos and artists whose tracks are all over 20 minutes are
+  skipped.
+- **Recommendations** (`backend/app/recommend.py`, pure): each library artist
+  weighs `log1p(tracks) + listen score`; the user's genres are the weighted
+  sum of their artists' genre votes; candidates are similar artists not in the
+  library, scored by the weights that point at them, then re-ranked so one
+  cluster of seeds cannot fill the list (each extra pick from the same seed
+  counts 0.6x). With the owner's library: rock seeds give System of a Down,
+  Deftones and Rammstein, and Don Omar, Bizarrap and Los del Río now bring Bad
+  Bunny, Daddy Yankee, Lou Bega, Jennifer Lopez and Shakira.
+- **"No me interesa"** is stored per device in `discover-<device>.json`
+  (newest change per artist wins), with undo.
+- **API:** `GET /api/discover` (status of the lookups, genres, artists) answers
+  from memory in a few ms and does not restart the lookups for 10 minutes after
+  they finish; `POST /api/discover/dismiss`.
+- **The panel:** "Artistas" (reason "Porque escuchas X y Y", sample of that
+  artist, ⋯ with "Buscar en Descargar" and "No me interesa") and "Géneros"
+  (the user's genres with their share, and close genres never heard, each
+  with a sample). The user's genres are ringed on the map; selecting an
+  artist rings its genres and flies there, hovering previews them. The camera
+  treats the panel as an obstacle, so fitting and flying centre on the part
+  of the map that is visible.
+- **Fingers and mouse, not only buttons** (the owner's request): the sheet
+  drags to three heights with a fling, the PC panel collapses by dragging its
+  edge, and a row swiped left is dismissed (with undo); all with Pointer
+  Events, so touch and mouse share one path. The gesture maths is pure and
+  tested (`frontend/src/discover/gestures.js`).
+- Settings gains "Acerca de los datos" crediting MusicBrainz, Wikidata and
+  ListenBrainz.
+- Size: see `docs/performance.md`; the Discover chunk more than doubled.
+- Checked in the browser with the owner's library on Drive, desktop and phone
+  size (mouse drags). Not checked: real touch on a phone, the Pixel.
 
 ### 24. Speed and size review 2
 
