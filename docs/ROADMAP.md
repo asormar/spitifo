@@ -743,7 +743,50 @@ The plan as written:
 - How much data the genre map needs on the device, against the size budgets.
 - Deliverable: an ADR with the data sources and the recommendation approach.
 
-### 22. Discover: the genre map
+### 22. Discover: the genre map — done
+
+Discover now opens on a genre map. What changed:
+
+- **Data, from CC0 sources only** (ADR 0003): `scripts/discover/build_genre_map.py`
+  (stdlib only) takes the MusicBrainz genre list and the Wikidata relations
+  between the items that carry a MusicBrainz genre id, and adds Wikidata items
+  without an id as hidden layout nodes so sibling genres pull together. 2,216
+  genres, 4,525 edges; `frontend/public/genre-map.json` is 189,468 B (89,431 B
+  gzipped) and rebuilds in about a minute from its cache.
+- **Layout:** groups first, then genres. Louvain finds up to 16 groups on the
+  graph alone (links through hub genres discounted), a small force layout
+  places the groups, and Fruchterman–Reingold places the genres with a pull
+  to their group's centre. Without that pull the hubs blurred the middle into
+  one soup (reggaeton sat next to dark ambient). Measured by the script:
+  related genres at 0.107 of the distance of a random pair (0.144 before) and
+  47.7 % of a genre's 10 nearest in its own group (39.6 % before); only 30
+  genres have no relation (83 before). The odd neighbours left (bebop near
+  punk) come from Wikidata's relations, not from the layout.
+- **Discogs' dumps are CC0** at the source (data.discogs.com), which ADR 0003
+  had only second-hand; they can feed co-occurrence edges later.
+- **MusicBrainz coverage of Spanish and Latin artists:** 20 of 20 found, 18
+  with at least one genre (Vetusta Morla and Quevedo have none).
+- **The map:** one canvas scaled by `devicePixelRatio` (capped at 2), dots
+  batched per group colour, at most about 200 labels per frame by importance
+  with a collision grid, pan, wheel and pinch zoom, buttons and keys, a grid
+  for hit-testing. Selecting a genre draws its relations and opens a card
+  with related genres (which fly there), **"Escuchar muestra"** and "Buscar
+  en Descargar". An accent-insensitive search flies to a genre. A frame draws
+  in 1.7 ms (2,000 genres) to 2.8 ms (6,000) in the browser.
+- **The sample** comes from the iTunes search Download already uses: up to 10
+  previews of 30 s, one per artist first, played as a queue in the usual
+  player (previews never count as listens). It is a text search, so an odd
+  genre name brings songs titled like it.
+- On the phone the card is a bottom sheet whose actions stay pinned while the
+  related genres scroll. Checked on phone and desktop size, light and dark;
+  reduced motion turns flights into jumps and switches inertia off.
+- "Tus géneros" (a highlight ring) is wired but empty until session 23, which
+  brings the genres of the user's artists.
+- Size: Discover is its own lazy chunk; +21,321 B of JavaScript and +6,534 B
+  of CSS over `main` (see `docs/performance.md`).
+- Not checked yet: the Pixel.
+
+The plan as written:
 
 - An interactive genre map in the spirit of
   [Every Noise at Once](https://everynoise.com/engenremap.html), with more to

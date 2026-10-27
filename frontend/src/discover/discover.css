@@ -1,0 +1,486 @@
+/* ---------------------------------------------------------------------------
+   DESCUBRIR: el mapa de generos
+
+   El mapa ocupa lo que queda de la pantalla bajo la cabecera, sin scroll de
+   pagina: el alto resta la cabecera (96 px con su aire) y la barra inferior
+   del telefono (--nav-h), y un margen negativo anula el relleno inferior de
+   .app para que el documento no crezca por encima de la ventana. Con el
+   mini-reproductor visible el mapa se acorta lo que este mide.
+   Los controles flotan sobre el lienzo; el lienzo dibuja solo (ver
+   mapCanvas.js). Aca solo se animan transform y opacity.
+   ------------------------------------------------------------------------- */
+
+.gmap {
+  /* Paleta de los 16 grupos. El lienzo la lee con getComputedStyle (los
+     colores de un <canvas> no pueden ser var()), asi que claro y oscuro viven
+     solo aca. Tonos medios que se leen sobre --surface en los dos temas. */
+  --genre-0: #b03927;
+  --genre-1: #27b028;
+  --genre-2: #2e41d1;
+  --genre-3: #d12e55;
+  --genre-4: #59b027;
+  --genre-5: #276ab0;
+  --genre-6: #d12e93;
+  --genre-7: #a7d12e;
+  --genre-8: #279db0;
+  --genre-9: #b027af;
+  --genre-10: #d1be2e;
+  --genre-11: #2ed1aa;
+  --genre-12: #7d27b0;
+  --genre-13: #b06c27;
+  --genre-14: #2ed16c;
+  --genre-15: #582ed1;
+
+  --gmap-below: 12px;
+  --gmap-pad: 128px;
+
+  position: relative;
+  height: calc(100dvh - 96px - var(--nav-h) - var(--gmap-below));
+  min-height: 300px;
+  margin: 12px 0 calc(var(--gmap-below) - var(--gmap-pad) - 1px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+:root[data-theme="dark"] .gmap {
+  --genre-0: #e86854;
+  --genre-1: #54e856;
+  --genre-2: #7886ed;
+  --genre-3: #ed7894;
+  --genre-4: #8ae854;
+  --genre-5: #549de8;
+  --genre-6: #ed78c0;
+  --genre-7: #cfed78;
+  --genre-8: #54d4e8;
+  --genre-9: #e854e7;
+  --genre-10: #eddf78;
+  --genre-11: #78edd1;
+  --genre-12: #b254e8;
+  --genre-13: #e89f54;
+  --genre-14: #78eda5;
+  --genre-15: #9678ed;
+}
+
+body.has-mini .gmap {
+  --gmap-below: calc(var(--mini-h) + 24px);
+  --gmap-pad: calc(128px + var(--mini-h));
+}
+
+/* --- Lienzo ---------------------------------------------------------------- */
+
+.gmap__view {
+  position: absolute;
+  inset: 0;
+}
+
+.gmap__view:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -4px;
+  border-radius: var(--r-card);
+}
+
+.gmap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  /* El dedo mueve el mapa, no la pagina; el swipe entre modos no nace aca
+     (data-no-swipe). */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Controles sobre el mapa ---------------------------------------------- */
+
+.gmap__search {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  width: min(320px, calc(100% - 88px));
+}
+
+.gmap__input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-raise);
+  color: var(--ink);
+  font: inherit;
+  /* 16 px: por debajo, iOS hace zoom al enfocar. */
+  font-size: 16px;
+}
+
+.gmap__input::placeholder {
+  color: var(--faint);
+}
+
+.gmap__input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.gmap__lupa {
+  position: absolute;
+  top: 13px;
+  left: 14px;
+  color: var(--icon-dim);
+  pointer-events: none;
+}
+
+.gmap__sugs {
+  position: absolute;
+  top: 50px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.gmap__sug {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.gmap__sug[aria-selected="true"] {
+  background: var(--surface-hover);
+}
+
+.gmap__zoom {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.gmap__btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-raise);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
+}
+
+.gmap__btn:active {
+  transform: scale(0.94);
+}
+
+.gmap__note {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  bottom: 12px;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+/* --- Tarjeta del genero ---------------------------------------------------- */
+
+/* La posiciona el lienzo con transform (ver GenreMap.jsx); la entrada es del
+   hijo para que los dos transform no se pisen. */
+.gmap__card {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  width: min(272px, calc(100% - 16px));
+}
+
+.gmap__cardin {
+  padding: 14px 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  --pop: 0.96;
+  animation: pop var(--t-enter) var(--ease) both;
+}
+
+/* Telefono: hoja fija abajo. Sigue sin tapar el punto (el lienzo lo sube). */
+.gmap__card.is-sheet {
+  top: auto;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  width: auto;
+  max-height: calc(42% - 8px);
+}
+
+/* En la hoja inferior la altura es lo que falta: las dos acciones van lado a
+   lado en vez de una encima de la otra. */
+.gmap__card.is-sheet .gmap__acts {
+  /* Pegadas al pie: si hay muchos generos cercanos, se desplazan los chips y
+     las acciones siguen a la vista. */
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 0 14px;
+  background: var(--surface);
+}
+
+.gmap__card.is-sheet .gmap__acts .gmap__go {
+  margin-top: 0;
+  padding: 0 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.gmap__card.is-sheet .gmap__sample {
+  gap: 6px;
+}
+
+.gmap__card.is-sheet .gmap__cardin {
+  flex: 1;
+  /* Sin relleno abajo: lo pone la barra de acciones, que se pega al borde. */
+  padding-bottom: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.gmap__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.gmap__dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.gmap__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 600 18px / 1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.gmap__name::first-letter {
+  text-transform: uppercase;
+}
+
+.gmap__close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-color: transparent;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+}
+
+.gmap__sub {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.gmap__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.gmap__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
+}
+
+.gmap__chip:active {
+  transform: scale(0.96);
+}
+
+.gmap__chip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.gmap__go {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on-ink);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease),
+    background-color var(--t-quick) var(--ease);
+}
+
+.gmap__go:active {
+  transform: scale(0.97);
+}
+
+/* La muestra es la accion principal de la tarjeta; Descargar queda segunda. */
+.gmap__sample {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.gmap__sample svg {
+  fill: currentColor;
+}
+
+.gmap__go:disabled {
+  cursor: default;
+  opacity: 0.6;
+  transform: none;
+}
+
+.gmap__go--quiet {
+  margin-top: 8px;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+
+.gmap__btn:focus-visible,
+.gmap__chip:focus-visible,
+.gmap__go:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .gmap__btn:hover {
+    background: var(--surface-hover);
+  }
+
+  .gmap__chip:hover {
+    background: var(--track-hover);
+  }
+
+  .gmap__go:hover:not(:disabled) {
+    background: var(--ink-hover);
+  }
+
+  .gmap__go--quiet:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  .gmap__sug:hover {
+    background: var(--surface-hover);
+  }
+}
+
+@media (pointer: coarse) {
+  .gmap__btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .gmap__close {
+    width: 44px;
+    height: 44px;
+    margin: -6px -8px -6px 0;
+  }
+
+  .gmap__chip {
+    min-height: 40px;
+  }
+
+  .gmap__sug {
+    min-height: 44px;
+  }
+
+  .gmap__search {
+    width: min(320px, calc(100% - 92px));
+  }
+}
+
+/* --- Carga y error ---------------------------------------------------------- */
+
+.gmap--state {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.gmap__msg {
+  max-width: 34ch;
+  margin: 0 auto 14px;
+  color: var(--muted);
+}
+
+.gmap__pulse {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--accent-fill), transparent);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+.gmap__retry {
+  width: auto;
+  padding: 0 24px;
+}

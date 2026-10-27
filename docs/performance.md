@@ -261,6 +261,15 @@ code now only loads with "Ahora suena":
 | JavaScript | about 294,600 B | 316,058 B (+21,400) | 295,000 B | 317,000 B |
 | CSS | about 70,750 B | 85,232 B (+14,500) | 71,000 B | 86,000 B |
 
+The genre map (session 22) is a lazy Discover chunk; its data file
+(`genre-map.json`, 89 KB gzip) is fetched when Discover opens and is not part
+of these bundles:
+
+| Bundle | `main` before | Session 22 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 316,465 B | 337,786 B (+21,321) | 317,000 B | 339,000 B |
+| CSS | 85,232 B | 91,766 B (+6,534) | 86,000 B | 93,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

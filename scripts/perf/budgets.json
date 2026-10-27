@@ -1,8 +1,8 @@
 {
   "_comment": "Size budgets in bytes, checked by scripts/perf/check_size.mjs in CI. Baselines measured on v0.3.0 (docs/performance.md). Raising a budget is a deliberate, reviewed change: say why in the pull request.",
   "bundle": {
-    "js": { "budget": 317000, "baseline": 314126 },
-    "css": { "budget": 86000, "baseline": 52787 }
+    "js": { "budget": 339000, "baseline": 314126 },
+    "css": { "budget": 93000, "baseline": 52787 }
   },
   "installer": { "budget": 24000000, "baseline": 22707225 },
   "apk": { "budget": 31000000, "baseline": 29451010 }
