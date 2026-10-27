@@ -28,7 +28,9 @@ from typing import Callable, ContextManager, Iterator
 
 import httpx
 
+from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
 from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
@@ -227,7 +229,8 @@ def upload_ranges(total: int, chunk: int) -> list[tuple[int, int]]:
 
 
 # ------------------------------------------------------------------- adapter
-class CloudStorage(ListensStorageMixin):
+class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
+                   DiscoverStorageMixin):
     """`Storage` sobre una nube. El proveedor concreto implementa los hooks.
 
     Esta clase tiene todo lo que NO depende del proveedor: reintentos, el indice
@@ -547,6 +550,45 @@ class CloudStorage(ListensStorageMixin):
 
     def _listens_delete(self, ref: str) -> None:
         self._trash(ref)
+
+    # --------------------------------------------------------------- artistinfo
+    def _artistinfo_device(self) -> str:
+        return self.device_id
+
+    def _artistinfo_list(self) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de las fichas de todos los dispositivos."""
+        return self._list_small_files(ARTISTINFO_PREFIX)
+
+    def _artistinfo_read(self, ref: str) -> bytes:
+        return self._read_file(ref)
+
+    def _artistinfo_write(self, name: str, data: bytes,
+                          ref: str | None = None) -> str:
+        return self._write_small(name, data, ref)
+
+    # ----------------------------------------------------------------- discover
+    def _discover_device(self) -> str:
+        return self.device_id
+
+    def _discover_list(self) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los descartes de todos los dispositivos."""
+        return self._list_small_files(DISCOVER_PREFIX)
+
+    def _discover_read(self, ref: str) -> bytes:
+        return self._read_file(ref)
+
+    def _discover_write(self, name: str, data: bytes,
+                        ref: str | None = None) -> str:
+        return self._write_small(name, data, ref)
+
+    def _write_small(self, name: str, data: bytes,
+                     ref: str | None = None) -> str:
+        """Crea o reemplaza un archivo chico y devuelve su ref."""
+        if ref:
+            self._replace_file(ref, data)
+            return ref
+        created = self._create_file(name, data)
+        return str(created["id"])
 
     # ---------------------------------------------------------------------- puerto
     def list(self) -> list[StoredFile]:

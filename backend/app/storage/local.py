@@ -15,7 +15,9 @@ import threading
 from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
+from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
 from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from . import InvalidKey, StoredFile, validate_key
@@ -99,7 +101,8 @@ def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | No
     return duration, _tag(f, "title"), _tag(f, "artist"), _tag(f, "album")
 
 
-class LocalStorage(ListensStorageMixin):
+class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
+                   DiscoverStorageMixin):
     """`Storage` sobre una carpeta del disco (la biblioteca publica en Android)."""
 
     def __init__(self, root: Path, device_id: str | None = None) -> None:
@@ -460,3 +463,61 @@ class LocalStorage(ListensStorageMixin):
             (self.root / STATE_DIR / ref).unlink()
         except FileNotFoundError:
             pass
+
+    # -------------------------------------------------------- estado por dispositivo
+    def _state_files(self, *prefixes: str) -> list[tuple[str, str]]:
+        """`(nombre, nombre)` de los JSON de `.spitifo/` con esos prefijos."""
+        state = self.root / STATE_DIR
+        try:
+            entries = list(os.scandir(state))
+        except OSError:
+            return []
+        return [(entry.name, entry.name) for entry in entries
+                if entry.is_file() and entry.name.endswith(".json")
+                and entry.name.startswith(prefixes)]
+
+    def _write_state(self, name: str, data: bytes, tag: str) -> str:
+        """Temporal en la misma carpeta + `os.replace`: nunca queda a medias."""
+        path = self.root / STATE_DIR / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{tag}-",
+                                   suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return name
+
+    # ----------------------------------------------------------- artistinfo
+    def _artistinfo_device(self) -> str:
+        return self.device_id
+
+    def _artistinfo_list(self) -> list[tuple[str, str]]:
+        return self._state_files(ARTISTINFO_PREFIX)
+
+    def _artistinfo_read(self, ref: str) -> bytes:
+        return (self.root / STATE_DIR / ref).read_bytes()
+
+    def _artistinfo_write(self, name: str, data: bytes,
+                          ref: str | None = None) -> str:
+        return self._write_state(name, data, "artistinfo")
+
+    # ------------------------------------------------------------- discover
+    def _discover_device(self) -> str:
+        return self.device_id
+
+    def _discover_list(self) -> list[tuple[str, str]]:
+        return self._state_files(DISCOVER_PREFIX)
+
+    def _discover_read(self, ref: str) -> bytes:
+        return (self.root / STATE_DIR / ref).read_bytes()
+
+    def _discover_write(self, name: str, data: bytes,
+                        ref: str | None = None) -> str:
+        return self._write_state(name, data, "discover")
