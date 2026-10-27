@@ -381,4 +381,8 @@ def test_setup_ytdlp_dir_es_idempotente(tmp_path, monkeypatch):
     assert setup_ytdlp_dir() is False
     assert sys.path.count(str(tmp_path)) == 1
     monkeypatch.delenv("SPITIFO_YTDLP_DIR")
+    # Sin la variable se mira el directorio de datos REAL: si la app instalada
+    # ya bajo una actualizacion de yt-dlp, su zip se insertaria y daria True.
+    monkeypatch.setattr("backend.app.runtime.ytdlp_update_dir",
+                        lambda: tmp_path / "sin-actualizacion")
     assert setup_ytdlp_dir() is False
