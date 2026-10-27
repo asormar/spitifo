@@ -9,6 +9,16 @@ const NAV_OPTIONS = [
   { id: "swipe", label: "Páginas deslizables" },
 ];
 
+/* De donde sale lo que muestra Descubrir y con que licencia. */
+const DATA_SOURCES = [
+  [
+    "MusicBrainz",
+    "La lista de géneros es CC0. Los géneros de cada artista son CC BY-NC-SA y se guardan en este dispositivo.",
+  ],
+  ["Wikidata", "Las relaciones entre géneros del mapa vienen de Wikidata (CC0)."],
+  ["ListenBrainz", "Los artistas similares que se recomiendan."],
+];
+
 /* Ajustes es una pantalla del shell, no un modal: se abre desde el riel o la
    cabecera y el boton atras del telefono la cierra (App escucha popstate). */
 export default function SettingsView({ active, focus, onClose, onChanged, phoneNav, onPhoneNav }) {
@@ -87,6 +97,24 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="settings__card" aria-labelledby="settings-data">
+        <h2 id="settings-data" className="settings__h">
+          Acerca de los datos
+        </h2>
+        <ul className="settings__sources">
+          {DATA_SOURCES.map(([name, note]) => (
+            <li key={name}>
+              <p className="settings__label">{name}</p>
+              <p className="settings__note">{note}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="settings__note settings__fine">
+          Las recomendaciones se calculan en este dispositivo. Solo los nombres de los artistas se
+          envían a MusicBrainz y ListenBrainz; tu historial de escucha no sale de aquí.
+        </p>
       </section>
     </div>
   );

@@ -22,6 +22,12 @@ import {
    acá en variables, nunca en estado de React: un gesto cambia la vista 60 veces
    por segundo y no debe renderizar nada. Se redibuja solo cuando algo cambia,
    con un requestAnimationFrame que junta todos los avisos del fotograma.
+
+   OBSTACULO. Un panel puede tapar un lado del lienzo (el panel "Para ti"). La
+   camara trabaja en el rectangulo que queda a la vista (`vsz`) y su centro cae
+   en (cx, cy): encuadrar, volar a un genero, hacer zoom con los botones y el
+   limite del paneo usan ese rectangulo, no el lienzo entero. Los puntos
+   siguen dibujandose bajo el panel (el cristal los deja ver).
    ------------------------------------------------------------------------- */
 
 const TAU = Math.PI * 2;
@@ -58,11 +64,20 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   let dpr = 1;
   let lim = limits({ w: 1, h: 1 });
   let view = { x: 0.5, y: 0.5, k: 1 };
+  /* Lo que tapa un panel en cada lado, el rectangulo visible y su centro. */
+  let ob = { l: 0, t: 0, r: 0, b: 0 };
+  let vsz = { w: 1, h: 1 };
+  let cx = 0;
+  let cy = 0;
   let theme = readTheme(host);
   let fonts = [];
   let sel = -1;
   let hov = -1;
   let highlight = NO_HIGHLIGHT;
+  /* Generos de la fila elegida (anillo fuerte) y de la fila bajo el puntero
+     (anillo suave). */
+  let focusSet = NO_HIGHLIGHT;
+  let previewSet = NO_HIGHLIGHT;
   let narrow = false;
   let raf = 0;
   let last = 0;
@@ -91,6 +106,15 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     return widths[i];
   };
 
+  /* Rectangulo visible y centro de la vista: se recalculan al cambiar el
+     tamano o el obstaculo. */
+  function syncFrame() {
+    vsz = { w: Math.max(40, size.w - ob.l - ob.r), h: Math.max(40, size.h - ob.t - ob.b) };
+    cx = ob.l + vsz.w / 2;
+    cy = ob.t + vsz.h / 2;
+    lim = limits(vsz);
+  }
+
   /* Con la tarjeta en hoja inferior (pantalla estrecha) el centro útil sube. */
   const inset = () => (narrow && sel >= 0 ? size.h * 0.42 : 0);
 
@@ -102,8 +126,8 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     const { k } = view;
     const xs = data.x;
     const ys = data.y;
-    const ox = w / 2 - view.x * k;
-    const oy = h / 2 - view.y * k;
+    const ox = cx - view.x * k;
+    const oy = cy - view.y * k;
     zf = 1 + 0.45 * Math.log2(k / lim.min);
     const focus = sel >= 0 ? sel : hov;
     const rel = focus >= 0 ? related(data, focus) : null;
@@ -145,6 +169,53 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       }
       ctx.lineWidth = 1.75;
       ctx.strokeStyle = theme.accent;
+      ctx.stroke();
+    }
+
+    /* Vista previa (puntero sobre una fila): anillo suave, sin etiquetas. */
+    if (previewSet.size) {
+      ctx.beginPath();
+      for (const i of previewSet) {
+        const sx = xs[i] * k + ox;
+        const sy = ys[i] * k + oy;
+        if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
+        const r = dotR(i) + 4.5;
+        ctx.moveTo(sx + r, sy);
+        ctx.arc(sx, sy, r, 0, TAU);
+      }
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = theme.accent;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    /* Fila elegida: aro de la superficie y encima otro grueso del acento, como
+       el resaltado del diseno; sus etiquetas compiten primero. */
+    if (focusSet.size) {
+      const marked = [];
+      for (const i of focusSet) {
+        const sx = xs[i] * k + ox;
+        const sy = ys[i] * k + oy;
+        if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
+        marked.push([sx, sy, dotR(i)]);
+        if (first.length < 40) first.unshift(i);
+      }
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = theme.halo;
+      ctx.beginPath();
+      for (const [sx, sy, r] of marked) {
+        ctx.moveTo(sx + r + 2, sy);
+        ctx.arc(sx, sy, r + 2, 0, TAU);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 2.75;
+      ctx.strokeStyle = theme.accent;
+      ctx.beginPath();
+      for (const [sx, sy, r] of marked) {
+        ctx.moveTo(sx + r + 5.4, sy);
+        ctx.arc(sx, sy, r + 5.4, 0, TAU);
+      }
       ctx.stroke();
     }
 
@@ -192,6 +263,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       measure,
       radius: dotR,
       first,
+      center: { x: cx, y: cy },
     });
     ctx.textBaseline = "middle";
     ctx.lineJoin = "round";
@@ -223,7 +295,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       if (t >= 1) anim = null;
     } else if (glide) {
       const s = inertiaStep(glide.vx, glide.vy, dt);
-      const next = panBy(view, size, s.dx, s.dy, lim);
+      const next = panBy(view, vsz, s.dx, s.dy, lim);
       const blocked = next.x === view.x && next.y === view.y;
       view = next;
       glide = { vx: s.vx, vy: s.vy };
@@ -245,7 +317,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   /* Cámara animada con la duración del token --t-move. Con movimiento reducido
      (o sin cambio) salta directo. */
   function animateTo(to) {
-    to = clampView(to, size, lim);
+    to = clampView(to, vsz, lim);
     glide = null;
     if (reduced() || (to.x === view.x && to.y === view.y && to.k === view.k)) {
       anim = null;
@@ -263,15 +335,15 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
 
   function anchor(i) {
     return {
-      x: (data.x[i] - view.x) * view.k + size.w / 2,
-      y: (data.y[i] - view.y) * view.k + size.h / 2,
+      x: (data.x[i] - view.x) * view.k + cx,
+      y: (data.y[i] - view.y) * view.k + cy,
       r: dotR(i),
     };
   }
 
   function pick(sx, sy, touch) {
-    const wx = (sx - size.w / 2) / view.k + view.x;
-    const wy = (sy - size.h / 2) / view.k + view.y;
+    const wx = (sx - cx) / view.k + view.x;
+    const wy = (sy - cy) / view.k + view.y;
     return hitTest(data.grid, data.x, data.y, wx, wy, (touch ? 22 : 12) / view.k);
   }
 
@@ -297,7 +369,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     const prev = lastTap;
     if (prev && t - prev.t < 320 && Math.hypot(p.x - prev.x, p.y - prev.y) < 30) {
       lastTap = null;
-      animateTo(zoomAt(goal(), size, p.x, p.y, 2.2, lim));
+      animateTo(zoomAt(goal(), vsz, p.x - ob.l, p.y - ob.t, 2.2, lim));
       return;
     }
     lastTap = { t, x: p.x, y: p.y };
@@ -344,7 +416,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
         canvas.style.cursor = "grabbing";
       }
       const from = gesture.samples.length === 1 ? { x: gesture.sx, y: gesture.sy } : prev;
-      view = panBy(view, size, p.x - from.x, p.y - from.y, lim);
+      view = panBy(view, vsz, p.x - from.x, p.y - from.y, lim);
       gesture.samples.push({ t: e.timeStamp, x: p.x, y: p.y });
       if (gesture.samples.length > 8) gesture.samples.shift();
       schedule();
@@ -353,7 +425,14 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      view = zoomAt(panBy(view, size, mx - gesture.mx, my - gesture.my, lim), size, mx, my, d / gesture.d, lim);
+      view = zoomAt(
+        panBy(view, vsz, mx - gesture.mx, my - gesture.my, lim),
+        vsz,
+        mx - ob.l,
+        my - ob.t,
+        d / gesture.d,
+        lim
+      );
       gesture = { kind: "pinch", d, mx, my };
       schedule();
     }
@@ -394,7 +473,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     stopMotion();
     const p = local(e);
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * size.h : e.deltaY;
-    view = zoomAt(view, size, p.x, p.y, Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.002)), lim);
+    view = zoomAt(view, vsz, p.x - ob.l, p.y - ob.t, Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.002)), lim);
     setHover(p);
     schedule();
   }
@@ -419,7 +498,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   /* --- API ------------------------------------------------------------------ */
 
   const zoomBy = (factor) =>
-    animateTo(zoomAt(goal(), size, size.w / 2, size.h / 2, factor, lim));
+    animateTo(zoomAt(goal(), vsz, vsz.w / 2, vsz.h / 2, factor, lim));
   const fit = () => animateTo({ x: 0.5, y: 0.5, k: lim.min });
 
   return {
@@ -428,10 +507,38 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       const atFit = !size.w || view.k <= lim.min * 1.001;
       size = { w, h };
       dpr = ratio;
-      lim = limits(size);
+      syncFrame();
       canvas.width = Math.round(w * ratio);
       canvas.height = Math.round(h * ratio);
-      view = clampView(atFit ? { x: 0.5, y: 0.5, k: lim.min } : view, size, lim);
+      view = clampView(atFit ? { x: 0.5, y: 0.5, k: lim.min } : view, vsz, lim);
+      schedule();
+    },
+    /* Un panel tapa parte del lienzo: { left, top, right, bottom } en px. El
+       mapa no se mueve (el mismo punto sigue bajo el mismo pixel); si estaba
+       encuadrado entero, se vuelve a encuadrar en lo que queda a la vista. */
+    setObstacle({ left = 0, top = 0, right = 0, bottom = 0 } = {}) {
+      const next = { l: Math.max(0, left), t: Math.max(0, top), r: Math.max(0, right), b: Math.max(0, bottom) };
+      if (next.l === ob.l && next.t === ob.t && next.r === ob.r && next.b === ob.b) return;
+      const fitted = size.w > 0 && goal().k <= lim.min * 1.001;
+      const [oldX, oldY] = [cx, cy];
+      stopMotion();
+      ob = next;
+      syncFrame();
+      if (!size.w) return;
+      view = clampView(
+        { k: view.k, x: view.x + (cx - oldX) / view.k, y: view.y + (cy - oldY) / view.k },
+        vsz,
+        lim
+      );
+      if (fitted) animateTo({ x: 0.5, y: 0.5, k: lim.min });
+      schedule();
+    },
+    setFocusSet(set) {
+      focusSet = set || NO_HIGHLIGHT;
+      schedule();
+    },
+    setPreviewSet(set) {
+      previewSet = set || NO_HIGHLIGHT;
       schedule();
     },
     /* Sincrono: la cortina del tema captura la pagina nueva sin esperar al
@@ -454,16 +561,18 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     /* Vuela al género y lo deja centrado; no se aleja si ya estaba más cerca. */
     flyTo(i) {
       const k = Math.max(goal().k, lim.min * FLY_ZOOM);
-      animateTo(centerOn(size, data.x[i], data.y[i], k, lim, size.w / 2, (size.h - inset()) / 2));
+      animateTo(centerOn(vsz, data.x[i], data.y[i], k, lim, vsz.w / 2, (vsz.h - inset()) / 2));
     },
     /* Un toque en la parte baja: sube el género para que la hoja no lo tape. */
     reveal(i) {
       const room = inset();
       if (!room) return;
       const a = anchor(i);
-      if (a.y < size.h - room - 28) return;
+      if (a.y < ob.t + vsz.h - room - 28) return;
       const v = goal();
-      animateTo(centerOn(size, data.x[i], data.y[i], v.k, lim, Math.min(size.w - 28, Math.max(28, a.x)), (size.h - room) / 2));
+      animateTo(
+        centerOn(vsz, data.x[i], data.y[i], v.k, lim, Math.min(vsz.w - 28, Math.max(28, a.x - ob.l)), (vsz.h - room) / 2)
+      );
     },
     zoomBy,
     fit,
@@ -473,7 +582,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       const step = size.w * 0.2;
       const pan = (dx, dy) => {
         stopMotion();
-        view = panBy(view, size, dx, dy, lim);
+        view = panBy(view, vsz, dx, dy, lim);
         schedule();
       };
       switch (e.key) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchSamples, pickSamples } from "./samples.js";
+import { fetchArtistSamples, fetchSamples, pickArtistSamples, pickSamples } from "./samples.js";
 
 const hit = (title, artist, preview = `https://p/${title}.m4a`) => ({
   title,
@@ -79,5 +79,53 @@ describe("fetchSamples", () => {
 
   it("returns nothing for an empty name", async () => {
     await expect(fetchSamples("  ")).resolves.toEqual([]);
+  });
+});
+
+describe("pickArtistSamples", () => {
+  it("keeps only the songs of that artist, ignoring case and accents", () => {
+    const out = pickArtistSamples(
+      [hit("Uno", "Rosalía"), hit("Dos", "Otra"), hit("Tres", "rosalia"), hit("Cuatro", " ROSALÍA ")],
+      "Rosalia"
+    );
+    expect(out.map((t) => t.title)).toEqual(["Uno", "Tres", "Cuatro"]);
+  });
+
+  it("falls back to every result when none is by that artist", () => {
+    const out = pickArtistSamples([hit("Uno", "A"), hit("Dos", "B")], "Nadie");
+    expect(out.map((t) => t.title)).toEqual(["Uno", "Dos"]);
+  });
+
+  it("words the second line without a genre and keeps the order", () => {
+    const [first, second] = pickArtistSamples([hit("Uno", "Duki"), hit("Dos", "Duki")], "Duki");
+    expect(first.meta).toBe("Duki · muestra");
+    expect(second.title).toBe("Dos");
+    expect(first.kind).toBe("preview");
+  });
+
+  it("tolerates odd input", () => {
+    expect(pickArtistSamples(null, "Duki")).toEqual([]);
+    expect(pickArtistSamples([null, 3], "Duki")).toEqual([]);
+  });
+});
+
+describe("fetchArtistSamples", () => {
+  it("searches the artist name once and keeps a separate cache from genres", async () => {
+    const urls = [];
+    const fetchFn = async (url) => {
+      urls.push(url);
+      return { ok: true, json: async () => ({ results: [hit("Uno", "Zoé"), hit("Dos", "Otro")] }) };
+    };
+    const a = await fetchArtistSamples("Zoé", { fetchFn });
+    await fetchArtistSamples("Zoé", { fetchFn });
+    expect(a.map((t) => t.title)).toEqual(["Uno"]);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("source=itunes");
+    await fetchSamples("Zoé", { fetchFn });
+    expect(urls).toHaveLength(2);
+  });
+
+  it("returns nothing for an empty name", async () => {
+    await expect(fetchArtistSamples("")).resolves.toEqual([]);
   });
 });

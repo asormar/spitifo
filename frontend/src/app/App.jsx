@@ -625,7 +625,10 @@ export default function App() {
 
         {visited.has("discover") && (
           <Screen id="discover" active={activeId === "discover"}>
-            <DiscoverView onOpenDownload={() => goMode("download")} />
+            <DiscoverView
+              active={activeId === "discover"}
+              onOpenDownload={() => goMode("download")}
+            />
           </Screen>
         )}
 

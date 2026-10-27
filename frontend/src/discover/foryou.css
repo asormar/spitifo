@@ -1,0 +1,829 @@
+/* ---------------------------------------------------------------------------
+   DESCUBRIR: "Para ti"
+
+   El panel de recomendaciones vive dentro del mapa (.gmap). Telefono: hoja
+   inferior que se arrastra entre tres paradas. Ancho: panel flotante de 360 px
+   que se recoge a una pestana. Los colores salen de los tokens, asi que el
+   tema oscuro no pide nada aca. Solo se animan transform y opacity (la fila
+   que sale pliega su alto: es una lista corta).
+
+   touch-action decide quien se queda con el dedo:
+     - barra y pestanas de la hoja: none (el arrastre vertical es de la hoja)
+     - lista con la hoja completa: pan-y (el dedo desplaza la lista)
+     - lista con la hoja a medias: none (todo arrastre es de la hoja)
+     - fila: pan-y (lo horizontal es de la fila; lo vertical, del scroll)
+   ------------------------------------------------------------------------- */
+
+/* El mapa deja sitio al panel: controles y buscador se corren a su izquierda. */
+.gmap__zoom {
+  right: calc(12px + var(--fy-right, 0px));
+}
+
+.gmap__search {
+  width: min(320px, calc(100% - 88px - var(--fy-right, 0px)));
+}
+
+@media (pointer: coarse) {
+  .gmap__search {
+    width: min(320px, calc(100% - 92px - var(--fy-right, 0px)));
+  }
+}
+
+/* Telefono: la tarjeta de un genero se sienta sobre la barra del panel y la
+   nota sube con ella. */
+.gmap.has-sheet .gmap__card.is-sheet {
+  bottom: 72px;
+}
+
+.gmap.has-sheet .gmap__note {
+  bottom: 76px;
+}
+
+/* --- Marco ------------------------------------------------------------------ */
+
+.fy {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: var(--ink);
+}
+
+.fy button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.fy__ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-fg);
+}
+
+.fy__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 600 16px / 1.2 var(--font-display);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Hoja inferior (telefono) ------------------------------------------------ */
+
+.fy--sheet {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  border-radius: var(--r-card);
+  box-shadow: 0 -6px 40px rgba(var(--shadow-rgb), 0.2);
+  transition: transform var(--t-move) var(--ease);
+  will-change: transform;
+}
+
+.fy--sheet[data-drag] {
+  transition: none;
+}
+
+.fy__top {
+  flex: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fy__peek {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 56px;
+  padding: 0 8px 0 18px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fy__grip {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+
+.fy__caret {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--muted);
+}
+
+.fy__caret svg {
+  transition: transform var(--t-move) var(--ease);
+}
+
+.fy--sheet[data-snap="peek"] .fy__caret svg {
+  transform: rotate(180deg);
+}
+
+.fy--sheet .fy-tabs {
+  margin: 0 16px 6px;
+}
+
+.fy--sheet .fy__body {
+  padding-bottom: calc(16px + var(--fy-hide, 0px));
+}
+
+/* Con la hoja a medias la lista no se desplaza con el dedo: arrastrar la mueve. */
+.fy--sheet:not([data-snap="full"]) .fy__body {
+  touch-action: none;
+}
+
+/* --- Panel lateral (escritorio) ---------------------------------------------- */
+
+.fy--side {
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 360px;
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
+}
+
+.fy--side[data-drag] {
+  transition: none;
+}
+
+.fy--side.is-collapsed {
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fy__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 8px 10px 22px;
+}
+
+.fy--side .fy__title {
+  font-size: 17px;
+}
+
+.fy--side .fy-tabs {
+  margin: 0 16px 6px;
+}
+
+.fy__fold {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+}
+
+.fy__fold svg {
+  transform: rotate(-90deg);
+}
+
+.fy__fold:active {
+  transform: scale(0.94);
+}
+
+/* Asa del borde izquierdo: se arrastra a la derecha para replegar. */
+.fy__grab {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.fy__grab span {
+  width: 4px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  transition: background-color var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
+}
+
+.fy--side[data-drag] .fy__grab {
+  cursor: grabbing;
+}
+
+/* La pestana a la que se repliega: vertical, pegada al borde derecho. */
+.fy__pill {
+  position: absolute;
+  z-index: 4;
+  top: 172px;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 38px;
+  padding: 14px 0;
+  border: 1px solid var(--glass-edge);
+  border-right: 0;
+  border-radius: var(--r-field) 0 0 var(--r-field);
+  background: var(--glass-card);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: var(--ink);
+  font: 600 13px / 1 var(--font-body);
+  cursor: pointer;
+  touch-action: none;
+  --pop: 0.9;
+  animation: pop var(--t-enter) var(--ease) both;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.fy__pill svg {
+  color: var(--accent-fg);
+}
+
+.fy__pill span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.02em;
+}
+
+.fy__pill:active {
+  transform: translateX(2px);
+}
+
+.fy__pill:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* --- Cuerpo ------------------------------------------------------------------ */
+
+.fy-tabs {
+  display: flex;
+}
+
+.fy-tabs .seg {
+  flex: 1;
+  min-height: 44px;
+  font-size: 14.5px;
+}
+
+.fy__body {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 10px 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  touch-action: pan-y;
+}
+
+.fy-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fy-foot {
+  margin: 18px 10px 0;
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.fy-note {
+  margin: 4px 8px 8px;
+  color: var(--faint);
+  font-size: 12.5px;
+}
+
+.fy-h {
+  margin: 8px 8px 4px;
+  font: 700 17px / 1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.fy-h--gap {
+  margin-top: 16px;
+}
+
+/* --- Estados ------------------------------------------------------------------ */
+
+.fy-card {
+  margin: 6px 6px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-field);
+  background: var(--surface);
+}
+
+.fy-card--c {
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.fy-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fy-card__t {
+  margin: 0;
+  font: 600 17px / 1.25 var(--font-display);
+}
+
+.fy-card__t--s {
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.fy-card__n {
+  flex: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fy-card__p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.fy-card__p--first {
+  margin: 0;
+}
+
+.fy-bar {
+  height: 6px;
+  margin-top: 12px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.fy-bar__fill {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--t-move) var(--ease);
+}
+
+.fy-ghost {
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: inherit;
+  font: 600 14px var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+}
+
+.fy-ghost:active {
+  transform: scale(0.97);
+}
+
+/* --- Fila de artista ---------------------------------------------------------- */
+
+.fy-row {
+  display: grid;
+  grid-template-rows: 1fr;
+  touch-action: pan-y;
+  transition: grid-template-rows var(--t-enter) var(--ease);
+}
+
+.fy-row.is-leaving {
+  grid-template-rows: 0fr;
+  transition-delay: var(--t-quick);
+}
+
+.fy-row__clip {
+  position: relative;
+  min-height: 0;
+  border-radius: var(--r-cover);
+}
+
+.fy-row.is-leaving .fy-row__clip {
+  overflow: hidden;
+}
+
+/* Lo que se destapa al deslizar: crece con --sw (0..1) que escribe el gesto. */
+.fy-row__hide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 20px;
+  border-radius: var(--r-cover);
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+  font-size: 14px;
+  font-weight: 700;
+  opacity: var(--sw, 0);
+  pointer-events: none;
+}
+
+.fy-row__in {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 68px;
+  padding: 6px 0 6px 8px;
+  border-radius: var(--r-cover);
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform var(--t-quick) var(--ease), opacity var(--t-quick) var(--ease),
+    background-color var(--t-enter) var(--ease);
+}
+
+.fy-row__in.is-sel {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.fy-row[data-swipe] .fy-row__in {
+  background: var(--surface);
+  transition: none;
+  cursor: grabbing;
+}
+
+.fy-row.is-leaving .fy-row__in {
+  transform: translateX(-110%);
+  opacity: 0;
+}
+
+.fy-row__main,
+.fy-exp__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fy-row__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fy-row__name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-row__why {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.fy-av {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, hsl(var(--h) 58% 38%), hsl(calc(var(--h) + 40) 62% 28%));
+  box-shadow: 0 4px 12px rgba(var(--shadow-rgb), 0.16);
+  color: #fff;
+  font: 700 16px / 1 var(--font-display);
+  transition: box-shadow var(--t-quick) var(--ease);
+}
+
+.is-sel .fy-av {
+  box-shadow: 0 0 0 2px var(--ring-gap), 0 0 0 4px var(--accent);
+}
+
+.fy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.fy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.fy-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.fy-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
+    color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
+}
+
+.fy-btn:active {
+  transform: scale(0.96);
+}
+
+.fy-btn--play {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.fy-btn--more {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.fy-btn.is-busy svg {
+  animation: breathe 1s ease-in-out infinite;
+}
+
+.fy-menu {
+  position: absolute;
+  z-index: 6;
+  top: 56px;
+  right: 8px;
+  width: 216px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-cover);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+  transform-origin: top right;
+  --pop: 0.92;
+  animation: pop var(--t-enter) var(--ease) both;
+}
+
+.fy-menu[data-up] {
+  top: auto;
+  bottom: 56px;
+  transform-origin: bottom right;
+}
+
+.fy-menu button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: 500 14.5px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* --- Generos -------------------------------------------------------------------- */
+
+.fy-gen {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 10px 6px 8px;
+  border: 0;
+  border-radius: var(--r-inner);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background-color var(--t-enter) var(--ease);
+}
+
+button.fy-gen {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fy-gen__rank {
+  flex: none;
+  width: 20px;
+  color: var(--faint);
+  font: 700 15px / 1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.fy-gen__body {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.fy-gen__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fy-gen__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.fy-gen__name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy-gen__name i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.fy-gen__pct {
+  flex: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fy-gen__bar {
+  display: block;
+  height: 4px;
+  margin-top: 7px;
+  border-radius: var(--r-pill);
+  background: var(--track);
+  overflow: hidden;
+}
+
+.fy-gen__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.fy-exp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 60px;
+  padding: 2px 6px 2px 12px;
+  border-radius: var(--r-inner);
+  transition: background-color var(--t-enter) var(--ease);
+}
+
+.fy-exp__main i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.fy-exp__near {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 12.5px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Puntero fino: pasar por encima ----------------------------------------------- */
+
+@media (hover: hover) and (pointer: fine) {
+  .fy__top .fy__peek,
+  .fy__grab,
+  .fy-row__in {
+    cursor: grab;
+  }
+
+  .fy-row__main,
+  .fy-btn {
+    cursor: pointer;
+  }
+
+  .fy-row__in:not(.is-sel):hover,
+  button.fy-gen:hover,
+  .fy-exp:hover {
+    background: var(--row-hover);
+  }
+
+  .fy-btn--play:hover {
+    border-color: var(--accent-fill);
+    color: var(--accent-fg);
+  }
+
+  .fy-btn--more:hover,
+  .fy__fold:hover {
+    background: var(--surface-hover);
+  }
+
+  .fy-menu button:hover,
+  .fy-ghost:hover {
+    background: var(--surface-hover);
+  }
+
+  .fy__grab:hover span {
+    background: var(--link-line);
+    transform: scaleY(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fy-btn.is-busy svg {
+    animation: none;
+  }
+}
