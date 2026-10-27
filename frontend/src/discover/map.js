@@ -110,6 +110,43 @@ export function related(data, i) {
   return data.rIdx.subarray(data.rStart[i], data.rStart[i + 1]);
 }
 
+/* Nombre normalizado -> indice. Con nombres repetidos gana el primero. */
+export function genreIndex(data) {
+  const map = new Map();
+  data.norm.forEach((name, i) => {
+    if (!map.has(name)) map.set(name, i);
+  });
+  return map;
+}
+
+/* "Para explorar": generos vecinos de los del usuario que el usuario aun no
+   tiene. Cada genero del usuario (los primeros `from`, en su orden) aporta sus
+   vecinos mas centrales y se reparten por turnos, para que el primero no se
+   quede con todos los sitios. Devuelve [{ i, near }]: `near` es el genero del
+   usuario del que cuelga. */
+export function exploreGenres(data, mine, limit = 6, from = 5) {
+  const own = new Set(mine);
+  const lists = mine.slice(0, from).map((near) => ({
+    near,
+    rest: Array.from(related(data, near))
+      .filter((j) => !own.has(j))
+      .sort((a, b) => data.w[b] - data.w[a] || a - b),
+  }));
+  const out = [];
+  const taken = new Set();
+  for (let round = 0; out.length < limit && lists.some((l) => l.rest.length); round++) {
+    for (const l of lists) {
+      while (l.rest.length && taken.has(l.rest[0])) l.rest.shift();
+      const j = l.rest.shift();
+      if (j === undefined) continue;
+      taken.add(j);
+      out.push({ i: j, near: l.near });
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
 /* --- Vista ------------------------------------------------------------------ */
 
 export const fitScale = (size, pad = FIT_PAD) => Math.min(size.w, size.h) / (1 + 2 * pad);
@@ -239,7 +276,9 @@ export function hitTest(grid, xs, ys, wx, wy, radius) {
    del punto (o a la izquierda si no cabe). Una rejilla de pantalla rechaza las
    que chocan con una ya colocada, así que el detalle crece solo al acercar:
    hay más sitio. `first` se coloca antes y no compite (género tocado, sus
-   relacionados, los destacados).
+   relacionados, los destacados). `center` es el punto de pantalla donde cae el
+   centro de la vista (por defecto, el del lienzo: cambia si un panel tapa un
+   lado).
    Devuelve [{ i, x, y, left }]: x es el borde donde empieza el texto. */
 export function placeLabels({
   order,
@@ -254,14 +293,15 @@ export function placeLabels({
   height = 14,
   gap = 4,
   cell = 40,
+  center = { x: size.w / 2, y: size.h / 2 },
 }) {
   const gw = Math.ceil(size.w / cell);
   const gh = Math.ceil(size.h / cell);
   const bins = new Array(gw * gh);
   const rects = [];
   const out = [];
-  const ox = size.w / 2 - view.x * view.k;
-  const oy = size.h / 2 - view.y * view.k;
+  const ox = center.x - view.x * view.k;
+  const oy = center.y - view.y * view.k;
   const half = height / 2;
 
   const tryPlace = (i) => {

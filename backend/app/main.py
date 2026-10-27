@@ -36,6 +36,7 @@ from .runtime import configure_runtime, ytdlp_version
 # shutil.which o sirva un archivo.
 configure_runtime()
 
+from .artistinfo import Enricher, library_artists
 from .downloader import download_track, library_scan
 from .listens import validate_events
 from .models import Track
@@ -816,6 +817,159 @@ async def listens_summary(request: Request):
     return JSONResponse(data)
 
 
+# ------------------------------------------------------- recomendaciones (Discover)
+# Un solo enricher por proceso: el hilo y los contadores son del proceso, no de
+# la request. Se crea la primera vez que se pide Discover y los tests lo pisan.
+_enricher: Enricher | None = None
+_enricher_lock = threading.Lock()
+
+#: Cuanto viven en memoria la biblioteca escaneada y el resumen de escucha.
+#: La UI de Discover pollea cada pocos segundos y en Drive cada lectura cuesta
+#: ~2 s: sin esto, cada GET vuelve a bajar todo. El libro de descartes no vence
+#: solo (se invalida al descartar) y las fichas salen del enricher si las tiene.
+DISCOVER_CACHE_SECONDS = 30.0
+_cache_lock = threading.Lock()
+_cache_owner: object = None
+_cache_values: dict[str, object] = {}
+_cache_stamps: dict[str, float] = {}
+_cache_epoch = 0
+
+
+def _cache_use_owner(storage: object) -> None:
+    """`_cache_*` es del adapter activo: si cambio, se tira todo."""
+    global _cache_owner
+    if _cache_owner is not storage:
+        _cache_values.clear()
+        _cache_stamps.clear()
+        _cache_owner = storage
+
+
+def _cached(key: str, loader, *, storage, ttl: float | None):
+    """Valor de `loader()` cacheado por `ttl` segundos (`None` = no vence)."""
+    now = time.monotonic()
+    with _cache_lock:
+        _cache_use_owner(storage)
+        stamp = _cache_stamps.get(key)
+        if stamp is not None and (ttl is None or now - stamp < ttl):
+            return _cache_values[key]
+        epoch = _cache_epoch
+    value = loader()
+    with _cache_lock:
+        _cache_use_owner(storage)
+        # Si mientras calculabamos alguien invalido la cache, no se repone.
+        if epoch == _cache_epoch:
+            _cache_values[key] = value
+            _cache_stamps[key] = now
+    return value
+
+
+def _forget_cached(key: str, storage: object | None = None) -> None:
+    """Olvida una entrada (los descartes cambian con cada POST)."""
+    global _cache_epoch
+    with _cache_lock:
+        if storage is not None and _cache_owner is not storage:
+            return
+        # Una lectura en vuelo que empezo antes de esto no debe reponer el
+        # valor viejo: el epoch la descarta al guardar.
+        _cache_epoch += 1
+        _cache_values.pop(key, None)
+        _cache_stamps.pop(key, None)
+
+
+def _discover_records(storage, enricher) -> dict:
+    """Fichas de artista: las del enricher si ya las tiene, si no las del storage."""
+    snapshot = getattr(enricher, "records", None)
+    if callable(snapshot):
+        try:
+            records = snapshot()
+        except Exception as exc:
+            log.warning("no se pudo leer el artistinfo del enricher: %s", exc)
+            records = None
+        if isinstance(records, dict):
+            return records
+    return _cached("artistinfo", storage.load_artistinfo, storage=storage,
+                   ttl=DISCOVER_CACHE_SECONDS)
+
+
+def _get_enricher() -> Enricher:
+    global _enricher
+    with _enricher_lock:
+        if _enricher is None:
+            _enricher = Enricher()
+        return _enricher
+
+
+def _discover_payload(enricher=None) -> dict:
+    """Generos y candidatos con lo que ya esta cacheado. Bloquea: va a un thread."""
+    from .recommend import artist_weights, candidates, user_genres
+
+    storage = get_storage()
+    entries = _cached("scan", library_scan, storage=storage,
+                      ttl=DISCOVER_CACHE_SECONDS)
+    library = library_artists(entries)
+    if enricher is None:
+        enricher = _enricher
+    records = _discover_records(storage, enricher)
+    dismissed = _cached(
+        "discover", lambda: storage.load_discover().dismissed_set(),
+        storage=storage, ttl=None)
+    tracks = (_cached("listens", storage.load_listens_summary,
+                      storage=storage, ttl=DISCOVER_CACHE_SECONDS)
+              or {}).get("tracks", {})
+    weights = artist_weights(library, entries, tracks)
+    return {"genres": user_genres(library, records, weights),
+            "artists": candidates(library, records, weights, dismissed)}
+
+
+async def discover(request: Request):
+    """GET /api/discover: perfil de generos y artistas para descubrir.
+
+    Responde con lo que hay cacheado (rapido) y arranca el enricher en segundo
+    plano. Con la biblioteca vacia o sin red devuelve listas vacias y el
+    `status` lo cuenta.
+    """
+    enricher = _get_enricher()
+    data = await asyncio.to_thread(_discover_payload, enricher)
+    try:
+        enricher.ensure_started()
+    except Exception as exc:
+        # Sin enricher la vista sigue mostrando lo cacheado.
+        log.warning("no se pudo arrancar el enricher: %s", exc)
+    return JSONResponse({"status": enricher.status(), **data})
+
+
+def _dismiss_body(body: dict) -> tuple[str, bool]:
+    """Valida `{name, undo}` del POST, con el mismo 422 que el resto de la API."""
+    name = body.get("name")
+    if not isinstance(name, str):
+        raise _invalid(["body", "name"],
+                       "Field required" if "name" not in body
+                       else "Input should be a valid string")
+    if len(name) < 1:
+        raise _invalid(["body", "name"],
+                       "String should have at least 1 characters")
+    if len(name) > 200:
+        raise _invalid(["body", "name"],
+                       "String should have at most 200 characters")
+    if not name.strip():
+        raise _invalid(["body", "name"],
+                       "String should have at least 1 characters")
+    undo = body.get("undo", False)
+    if not isinstance(undo, bool):
+        raise _invalid(["body", "undo"], "Input should be a valid boolean")
+    return name, undo
+
+
+async def discover_dismiss(request: Request):
+    """POST /api/discover/dismiss: descarta (o deshace) un artista."""
+    name, undo = _dismiss_body(await _json_body(request))
+    storage = get_storage()
+    await asyncio.to_thread(storage.dismiss_artist, name, undo)
+    # El libro de descartes cacheado ya no vale: el proximo GET lo relee.
+    _forget_cached("discover", storage)
+    return JSONResponse({"ok": True})
+
+
 # ----------------------------------------------------------------- cookies YT
 # Ultimo recurso para el muro de verificacion de YouTube. El archivo NUNCA se
 # devuelve: la API solo informa estado (configurado, cuando se importo y
@@ -1202,6 +1356,8 @@ routes = [
     Route("/api/playlists/{id}", playlist_delete, methods=["DELETE"]),
     Route("/api/listens", listens_append, methods=["POST"]),
     Route("/api/listens/summary", listens_summary),
+    Route("/api/discover", discover),
+    Route("/api/discover/dismiss", discover_dismiss, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_info),
     Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),

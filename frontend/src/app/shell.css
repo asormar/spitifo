@@ -582,6 +582,23 @@ html[data-vt="mode"]::view-transition-new(screen) {
   flex: none;
 }
 
+/* Acerca de los datos: una fuente por bloque y la nota de privacidad debajo. */
+.settings__sources {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__sources p {
+  margin-top: 0;
+}
+
+.settings__fine {
+  margin-top: 16px;
+}
+
 @media (pointer: coarse) {
   .settings__segs {
     width: 100%;

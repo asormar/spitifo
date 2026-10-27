@@ -270,6 +270,17 @@ of these bundles:
 | JavaScript | 316,465 B | 337,786 B (+21,321) | 317,000 B | 339,000 B |
 | CSS | 85,232 B | 91,766 B (+6,534) | 86,000 B | 93,000 B |
 
+Recommendations (session 23) live in the same lazy Discover chunk, which grew
+from 21.3 to 48.4 KB of script and from 6.5 to 18.0 KB of CSS: the "Para ti"
+sheet and panel, their pointer gestures, the store and the camera's obstacle
+for the panel. The first script and stylesheet did not grow. Session 24 should
+look at trimming this chunk first:
+
+| Bundle | `main` before | Session 23 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 337,786 B | 366,005 B (+28,219) | 339,000 B | 367,000 B |
+| CSS | 91,766 B | 103,358 B (+11,592) | 93,000 B | 104,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

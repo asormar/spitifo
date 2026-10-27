@@ -37,12 +37,24 @@ function Icon({ name, size = 18, className }) {
 }
 
 /* El mapa: lienzo + buscador + zoom + tarjeta del genero elegido.
-   - `highlight`: Set de indices de genero a resaltar con un anillo. Es el punto
-     de enganche de "Tus generos" (sesion 23): vacio hasta que haya historial.
+   - `highlight`: Set de indices de genero a resaltar con un anillo ("Tus
+     generos"). `focus` los marca con un anillo grueso (la fila elegida de "Para
+     ti") y `preview` con uno suave (la fila bajo el puntero).
    - `onSearchGenre(nombre)`: lleva el genero a Descargar.
    - `onPlaySample(nombre)`: hace sonar una muestra; devuelve una promesa con
-     cuantas pistas puso en la cola (0 = no habia previews). */
-export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre, onPlaySample }) {
+     cuantas pistas puso en la cola (0 = no habia previews).
+   - `panel(ctx)`: pinta el panel "Para ti" dentro del mapa. Recibe el tamano
+     del mapa, si es estrecho, si hay un genero abierto y las llamadas para
+     volar a un genero, abrir/cerrar su tarjeta y avisar de cuanto tapa. */
+export default function GenreMap({
+  data,
+  highlight = NO_HIGHLIGHT,
+  focus = NO_HIGHLIGHT,
+  preview = NO_HIGHLIGHT,
+  onSearchGenre,
+  onPlaySample,
+  panel,
+}) {
   const rootRef = useRef(null);
   const viewRef = useRef(null);
   const canvasRef = useRef(null);
@@ -53,9 +65,19 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
   const mapSize = useRef({ w: 0, h: 0 });
   const cardSize = useRef({ w: 272, h: 220 });
   const narrowRef = useRef(false);
+  /* Lo que tapa el panel por la derecha y por abajo; el lienzo y la tarjeta lo
+     respetan. */
+  const obstacleRef = useRef({ right: 0, bottom: 0 });
+  /* Los anillos de "Para ti" tambien los lee el efecto que crea el lienzo. */
+  const focusRef = useRef(focus);
+  const previewRef = useRef(preview);
+  focusRef.current = focus;
+  previewRef.current = preview;
 
   const [sel, setSel] = useState(-1);
   const [narrow, setNarrow] = useState(false);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [obstacle, setObstacleState] = useState(obstacleRef.current);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -74,7 +96,9 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
       el.style.transform = "";
       return;
     }
-    const p = placeCard(a.x, a.y, cardSize.current, mapSize.current, a.r);
+    /* La tarjeta nunca va bajo el panel: se coloca en el ancho que queda. */
+    const room = { w: mapSize.current.w - obstacleRef.current.right, h: mapSize.current.h };
+    const p = placeCard(a.x, a.y, cardSize.current, room, a.r);
     el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
   }, []);
 
@@ -89,6 +113,15 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
   }, []);
   pickRef.current = (i) => choose(i, "tap");
 
+  const setObstacle = useCallback((o) => {
+    const next = { right: Math.max(0, o.right || 0), bottom: Math.max(0, o.bottom || 0) };
+    const prev = obstacleRef.current;
+    if (next.right === prev.right && next.bottom === prev.bottom) return;
+    obstacleRef.current = next;
+    setObstacleState(next);
+    engineRef.current?.setObstacle(next);
+  }, []);
+
   useEffect(() => {
     const root = rootRef.current;
     const engine = createMapCanvas({
@@ -100,6 +133,9 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
     });
     engineRef.current = engine;
     engine.setHighlight(highlight);
+    engine.setFocusSet(focusRef.current);
+    engine.setPreviewSet(previewRef.current);
+    engine.setObstacle(obstacleRef.current);
 
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
@@ -109,6 +145,7 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
       narrowRef.current = width < NARROW;
       engine.setNarrow(narrowRef.current);
       setNarrow(narrowRef.current);
+      setBox((b) => (b.w === width && b.h === height ? b : { w: width, h: height }));
       engine.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
     });
     ro.observe(root);
@@ -134,6 +171,13 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
     engineRef.current?.setHighlight(highlight);
   }, [highlight, data]);
 
+  useEffect(() => {
+    engineRef.current?.setFocusSet(focus);
+  }, [focus, data]);
+  useEffect(() => {
+    engineRef.current?.setPreviewSet(preview);
+  }, [preview, data]);
+
   /* La tarjeta se mide y se coloca antes de pintar: sin esto aparece un
      fotograma en la esquina. */
   useLayoutEffect(() => {
@@ -141,7 +185,7 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
     if (!el || sel < 0) return;
     cardSize.current = { w: el.offsetWidth, h: el.offsetHeight };
     placeCardAt(engineRef.current?.anchor(sel));
-  }, [sel, narrow, placeCardAt]);
+  }, [sel, narrow, obstacle, placeCardAt]);
 
   const name = sel >= 0 ? data.names[sel] : "";
   const rel = sel >= 0 ? Array.from(related(data, sel)) : [];
@@ -198,7 +242,13 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
   const showList = open && results.length > 0;
 
   return (
-    <div className="gmap" data-no-swipe ref={rootRef} onKeyDown={onRootKey}>
+    <div
+      className={cx("gmap", panel && narrow && "has-sheet")}
+      data-no-swipe
+      ref={rootRef}
+      onKeyDown={onRootKey}
+      style={obstacle.right ? { "--fy-right": `${obstacle.right}px` } : undefined}
+    >
       {/* El foco del teclado vive aca: flechas mueven, +/- acercan, 0 encuadra. */}
       <div
         className="gmap__view"
@@ -343,6 +393,16 @@ export default function GenreMap({ data, highlight = NO_HIGHLIGHT, onSearchGenre
           </div>
         </div>
       )}
+
+      {panel?.({
+        box,
+        narrow,
+        genreOpen: sel >= 0,
+        setObstacle,
+        flyTo: (i) => engineRef.current?.flyTo(i),
+        openGenre: (i) => choose(i, "fly"),
+        closeGenre: () => choose(-1),
+      })}
 
       <p className="sr-only" aria-live="polite">
         {sel >= 0

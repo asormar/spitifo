@@ -6,8 +6,10 @@ import {
   clampView,
   decodeMap,
   easeOut,
+  exploreGenres,
   fitScale,
   flyView,
+  genreIndex,
   hitTest,
   inertiaStep,
   limits,
@@ -419,5 +421,68 @@ describe("parseMs", () => {
     expect(parseMs(" 0.36s ")).toBeCloseTo(360, 9);
     expect(parseMs("", 99)).toBe(99);
     expect(parseMs("fast", 99)).toBe(99);
+  });
+});
+
+describe("genreIndex", () => {
+  it("maps normalized names to indexes and keeps the first of a repeated name", () => {
+    const d = decodeMap({ ...fake(4), n: ["Bossa Nová", "trap", "bossa nova", "R&B"] });
+    const idx = genreIndex(d);
+    expect(idx.get(normalize("BOSSA NOVA"))).toBe(0);
+    expect(idx.get("trap")).toBe(1);
+    expect(idx.get("r&b")).toBe(3);
+    expect(idx.get("jazz")).toBeUndefined();
+  });
+});
+
+describe("exploreGenres", () => {
+  /* 0 y 1 son del usuario; 2..7 cuelgan de ellos. */
+  const raw = {
+    ...fake(8),
+    w: [90, 80, 10, 70, 30, 60, 20, 50],
+    r: [[1, 2, 3, 4], [0, 5, 6, 7], [], [], [], [], [], []],
+  };
+  const d = decodeMap(raw);
+
+  it("takes the neighbours the user does not have, most central first, by turns", () => {
+    const out = exploreGenres(d, [0, 1], 4);
+    expect(out).toEqual([
+      { i: 3, near: 0 },
+      { i: 5, near: 1 },
+      { i: 4, near: 0 },
+      { i: 7, near: 1 },
+    ]);
+  });
+
+  it("never offers a genre the user already has and stops at the limit", () => {
+    const out = exploreGenres(d, [0, 1], 6);
+    expect(out.map((x) => x.i)).not.toContain(0);
+    expect(out.map((x) => x.i)).not.toContain(1);
+    expect(out).toHaveLength(6);
+    expect(new Set(out.map((x) => x.i)).size).toBe(6);
+  });
+
+  it("returns fewer when there is nothing else and tolerates no genres", () => {
+    expect(exploreGenres(d, [2], 6)).toEqual([]);
+    expect(exploreGenres(d, [], 6)).toEqual([]);
+  });
+
+  it("does not repeat a genre that hangs from two of the user's", () => {
+    const shared = decodeMap({ ...fake(4), w: [50, 50, 40, 30], r: [[1, 2, 3], [0, 2, 3], [], []] });
+    const out = exploreGenres(shared, [0, 1], 6);
+    expect(out.map((x) => x.i).sort()).toEqual([2, 3]);
+  });
+});
+
+describe("placeLabels with a shifted centre", () => {
+  it("lays labels out around the given centre instead of the canvas middle", () => {
+    const xs = new Float32Array([0.5]);
+    const ys = new Float32Array([0.5]);
+    const view = { x: 0.5, y: 0.5, k: 400 };
+    const base = { order: [0], xs, ys, view, size: SIZE, measure: () => 40, radius: () => 3 };
+    const [middle] = placeLabels(base);
+    const [shifted] = placeLabels({ ...base, center: { x: SIZE.w / 2 - 150, y: SIZE.h / 2 + 30 } });
+    expect(shifted.x).toBeCloseTo(middle.x - 150);
+    expect(shifted.y).toBeCloseTo(middle.y + 30);
   });
 });

@@ -446,3 +446,24 @@ body.has-mini .lnotice {
   --leave: 12px;
   animation: leave var(--t-quick) var(--ease) forwards;
 }
+
+/* Aviso con boton (Deshacer). Vive aqui y no en playlists.css: Descubrir lo usa
+   sin haber abierto nunca el selector de listas. */
+
+/* El contenedor del aviso no recibe eventos; el boton si. */
+.ltoast__act {
+  margin: 0 -8px 0 12px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: 700 14px var(--font-body);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.ltoast__act:active {
+  transform: scale(0.96);
+}
