@@ -846,7 +846,35 @@ Discover keeps the genre map as its screen and adds a "Para ti" layer on it
 - Checked in the browser with the owner's library on Drive, desktop and phone
   size (mouse drags). Not checked: real touch on a phone, the Pixel.
 
-### 24. Speed and size review 2
+### 24. Speed and size review 2 — done on the PC; Pixel pending
+
+Measured on the installed app with a rewritten `scripts/perf/ui.mjs` (today's
+three modes, the library page, the map and "Para ti"), then fixed what missed.
+Numbers in `docs/performance.md`; what changed:
+
+- **First visit to Descubrir: 128–142 → 44–57 ms** (target 100 ms). "Para ti"
+  is its own chunk with a static frame shown until it arrives, so the first
+  visit downloads 32 KB of script instead of 48; the map's data file is
+  requested in the same tap that opens Descubrir, in parallel with the chunk
+  instead of after it.
+- **Start-up with Drive: 5.3 → 1.7–1.8 s.** The small library files keep a
+  local copy keyed by Drive's version, so a launch lists the folder once and
+  downloads only what changed, four at a time; `/api/library` 3.4 → 0.5 s.
+  `/api/discover` answers with what it has and refreshes in the background.
+- **Start-up with a yt-dlp update: about 1 s less.** The downloaded yt-dlp was
+  imported from its zip before the server was ready, to check that it worked;
+  the check now runs in a thread once the server is up. Local library of 300
+  tracks: usable in 1.15–1.3 s (v0.3.0: 3.2 s).
+- Size: the JavaScript limit went up 4 KB for the split (369,716 B), the CSS
+  limit down 1 KB; the installer is 19.95 MB.
+- `ui.mjs` skips the scroll test on a library shorter than a screen, and can
+  run against the checkout in a headless Chromium.
+- Not done: the Pixel; `/api/discover` still lists Drive five times in a row
+  on its first call (1.2–2.2 s, the panel waits, the map does not); importing
+  the yt-dlp update from an extracted folder instead of the zip would save
+  another 0.4 s per import.
+
+The plan as written:
 
 - The same review as session 20, now covering Discover: the map's data and
   rendering, and anything the recommendations added to start-up.

@@ -14,139 +14,8 @@
      - fila: pan-y (lo horizontal es de la fila; lo vertical, del scroll)
    ------------------------------------------------------------------------- */
 
-/* El mapa deja sitio al panel: controles y buscador se corren a su izquierda. */
-.gmap__zoom {
-  right: calc(12px + var(--fy-right, 0px));
-}
-
-.gmap__search {
-  width: min(320px, calc(100% - 88px - var(--fy-right, 0px)));
-}
-
-@media (pointer: coarse) {
-  .gmap__search {
-    width: min(320px, calc(100% - 92px - var(--fy-right, 0px)));
-  }
-}
-
-/* Telefono: la tarjeta de un genero se sienta sobre la barra del panel y la
-   nota sube con ella. */
-.gmap.has-sheet .gmap__card.is-sheet {
-  bottom: 72px;
-}
-
-.gmap.has-sheet .gmap__note {
-  bottom: 76px;
-}
-
-/* --- Marco ------------------------------------------------------------------ */
-
-.fy {
-  position: absolute;
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--glass-edge);
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  box-shadow: var(--shadow-panel);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
-  color: var(--ink);
-}
-
-.fy button:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-.fy__ico {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-fg);
-}
-
-.fy__title {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  font: 600 16px / 1.2 var(--font-display);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* --- Hoja inferior (telefono) ------------------------------------------------ */
-
-.fy--sheet {
-  left: 8px;
-  right: 8px;
-  bottom: 8px;
-  border-radius: var(--r-card);
-  box-shadow: 0 -6px 40px rgba(var(--shadow-rgb), 0.2);
-  transition: transform var(--t-move) var(--ease);
-  will-change: transform;
-}
-
 .fy--sheet[data-drag] {
   transition: none;
-}
-
-.fy__top {
-  flex: none;
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.fy__peek {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 56px;
-  padding: 0 8px 0 18px;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.fy__grip {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  width: 36px;
-  height: 4px;
-  margin-left: -18px;
-  border-radius: var(--r-pill);
-  background: var(--line-strong);
-}
-
-.fy__caret {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  color: var(--muted);
-}
-
-.fy__caret svg {
-  transition: transform var(--t-move) var(--ease);
-}
-
-.fy--sheet[data-snap="peek"] .fy__caret svg {
-  transform: rotate(180deg);
 }
 
 .fy--sheet .fy-tabs {
@@ -164,16 +33,6 @@
 
 /* --- Panel lateral (escritorio) ---------------------------------------------- */
 
-.fy--side {
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  width: 360px;
-  border-radius: var(--r-card);
-  background: var(--glass-card);
-  transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
-}
-
 .fy--side[data-drag] {
   transition: none;
 }
@@ -182,18 +41,6 @@
   transform: translateX(calc(100% + 24px));
   opacity: 0;
   pointer-events: none;
-}
-
-.fy__head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-  padding: 16px 8px 10px 22px;
-}
-
-.fy--side .fy__title {
-  font-size: 17px;
 }
 
 .fy--side .fy-tabs {
@@ -212,15 +59,10 @@
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
 }
 
 .fy__fold svg {
   transform: rotate(-90deg);
-}
-
-.fy__fold:active {
-  transform: scale(0.94);
 }
 
 /* Asa del borde izquierdo: se arrastra a la derecha para replegar. */
@@ -291,11 +133,6 @@
 
 .fy__pill:active {
   transform: translateX(2px);
-}
-
-.fy__pill:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
 }
 
 /* --- Cuerpo ------------------------------------------------------------------ */
@@ -428,11 +265,6 @@
   color: inherit;
   font: 600 14px var(--font-body);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
-}
-
-.fy-ghost:active {
-  transform: scale(0.97);
 }
 
 /* --- Fila de artista ---------------------------------------------------------- */
@@ -520,7 +352,6 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .fy-row__txt {
@@ -603,13 +434,8 @@
   padding: 0;
   border-radius: 50%;
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
   transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
     color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
-}
-
-.fy-btn:active {
-  transform: scale(0.96);
 }
 
 .fy-btn--play {
@@ -684,7 +510,6 @@
 
 button.fy-gen {
   cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
 }
 
 .fy-gen__rank {
@@ -807,10 +632,7 @@ button.fy-gen {
   }
 
   .fy-btn--more:hover,
-  .fy__fold:hover {
-    background: var(--surface-hover);
-  }
-
+  .fy__fold:hover,
   .fy-menu button:hover,
   .fy-ghost:hover {
     background: var(--surface-hover);

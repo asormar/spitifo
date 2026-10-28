@@ -29,14 +29,14 @@ from starlette.staticfiles import StaticFiles
 
 from . import activity, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
-from .runtime import configure_runtime, ytdlp_version
+from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
 # MIME de audio que Android no trae, para que esten listos cuando algo llame a
 # shutil.which o sirva un archivo.
 configure_runtime()
 
-from .artistinfo import Enricher, library_artists
+from .artistinfo import Enricher, fold, library_artists
 from .downloader import download_track, library_scan
 from .listens import validate_events
 from .models import Track
@@ -64,6 +64,9 @@ BG_TASKS: set = set()
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
+    # El zip de yt-dlp actualizado se prueba ya servido, no antes: importarlo
+    # tarda alrededor de un segundo.
+    start_ytdlp_zip_check()
     # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
     # la deja lista para el proximo arranque (no reemplaza la ya importada).
     ytdlp_update.start_background_check()
@@ -826,13 +829,21 @@ _enricher_lock = threading.Lock()
 #: Cuanto viven en memoria la biblioteca escaneada y el resumen de escucha.
 #: La UI de Discover pollea cada pocos segundos y en Drive cada lectura cuesta
 #: ~2 s: sin esto, cada GET vuelve a bajar todo. El libro de descartes no vence
-#: solo (se invalida al descartar) y las fichas salen del enricher si las tiene.
+#: solo (el descarte lo actualiza en el acto) y las fichas salen del enricher si
+#: las tiene. Un valor vencido NO bloquea: se devuelve tal cual y se refresca en
+#: un thread aparte (stale-while-revalidate); solo la primera lectura, sin nada
+#: cacheado, espera a la nube.
 DISCOVER_CACHE_SECONDS = 30.0
 _cache_lock = threading.Lock()
 _cache_owner: object = None
 _cache_values: dict[str, object] = {}
 _cache_stamps: dict[str, float] = {}
 _cache_epoch = 0
+# Refresco en segundo plano de lo vencido: un solo thread a la vez, que va
+# sacando de la cola `clave -> (loader, storage)`.
+_refresh_queue: dict[str, tuple[object, object]] = {}
+_refresh_running: str | None = None
+_refresh_thread: threading.Thread | None = None
 
 
 def _cache_use_owner(storage: object) -> None:
@@ -850,7 +861,10 @@ def _cached(key: str, loader, *, storage, ttl: float | None):
     with _cache_lock:
         _cache_use_owner(storage)
         stamp = _cache_stamps.get(key)
-        if stamp is not None and (ttl is None or now - stamp < ttl):
+        if stamp is not None:
+            if ttl is not None and now - stamp >= ttl:
+                # Vencido pero con valor: se contesta ya y se refresca aparte.
+                _schedule_refresh(key, loader, storage)
             return _cache_values[key]
         epoch = _cache_epoch
     value = loader()
@@ -861,6 +875,72 @@ def _cached(key: str, loader, *, storage, ttl: float | None):
             _cache_values[key] = value
             _cache_stamps[key] = now
     return value
+
+
+def _schedule_refresh(key: str, loader, storage: object) -> None:
+    """Encola el refresco de `key` (con `_cache_lock` tomado). Una vez por clave."""
+    global _refresh_thread
+    if key in _refresh_queue or key == _refresh_running:
+        return
+    _refresh_queue[key] = (loader, storage)
+    if _refresh_thread is None:
+        _refresh_thread = threading.Thread(
+            target=_refresh_worker, name="discover-refresh", daemon=True)
+        _refresh_thread.start()
+
+
+def _refresh_worker() -> None:
+    """Vacia la cola de refrescos de a uno; al terminar, el thread se retira."""
+    global _refresh_thread, _refresh_running
+    while True:
+        with _cache_lock:
+            if not _refresh_queue:
+                _refresh_thread = None
+                return
+            key = next(iter(_refresh_queue))
+            loader, storage = _refresh_queue.pop(key)
+            if _cache_owner is not storage:
+                continue  # el adapter cambio: ese valor ya no importa
+            _refresh_running = key
+            epoch = _cache_epoch
+        started = time.monotonic()
+        try:
+            value = loader()
+            ok = True
+        except Exception as exc:
+            # Sin red o la nube caida: se sigue sirviendo lo viejo y el
+            # proximo GET lo vuelve a intentar.
+            log.warning("no se pudo refrescar '%s' de Discover: %s", key, exc)
+            value, ok = None, False
+        with _cache_lock:
+            _refresh_running = None
+            # Si mientras tanto alguien invalido la cache, no se repone.
+            if ok and _cache_owner is storage and epoch == _cache_epoch:
+                _cache_values[key] = value
+                _cache_stamps[key] = started
+
+
+def _apply_dismissal(storage: object, name: str, undo: bool) -> None:
+    """Refleja un descarte en el set cacheado, sin releer la nube.
+
+    El descarte siempre le gana al merge de los demas dispositivos (`at` crece
+    por encima de lo que ya habia), asi que aplicarlo a mano da el mismo set
+    que releerlo. Sube el epoch: una lectura en vuelo anterior no lo pisa.
+    """
+    global _cache_epoch
+    with _cache_lock:
+        if _cache_owner is not storage:
+            return
+        _cache_epoch += 1
+        current = _cache_values.get("discover")
+        if current is None:
+            return
+        updated = set(current)
+        if undo:
+            updated.discard(fold(name))
+        else:
+            updated.add(fold(name))
+        _cache_values["discover"] = updated
 
 
 def _forget_cached(key: str, storage: object | None = None) -> None:
@@ -965,8 +1045,9 @@ async def discover_dismiss(request: Request):
     name, undo = _dismiss_body(await _json_body(request))
     storage = get_storage()
     await asyncio.to_thread(storage.dismiss_artist, name, undo)
-    # El libro de descartes cacheado ya no vale: el proximo GET lo relee.
-    _forget_cached("discover", storage)
+    # El set de descartes cacheado se actualiza en el acto: el proximo GET ya
+    # lo ve, sin esperar a la nube.
+    _apply_dismissal(storage, name, undo)
     return JSONResponse({"ok": True})
 
 

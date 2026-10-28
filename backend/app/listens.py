@@ -583,6 +583,12 @@ class ListensStorageMixin:
             }
             aggregates: list[ListenAggregate] = []
             with_agg: set[str] = set()
+            # Se leen todos los agregados: si el adapter sabe bajarlos en
+            # paralelo (nube), lo hace antes del bucle.
+            warm = getattr(self, "_warm_small", None)
+            if warm is not None:
+                warm([ref for name, ref in files.items()
+                      if parse_agg_file(name)])
             for name, ref in files.items():
                 device = parse_agg_file(name)
                 if device is None:

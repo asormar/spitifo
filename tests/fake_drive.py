@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 
 import httpx
@@ -122,6 +123,11 @@ class FakeDrive:
         #: Cuantas subidas usaron cada camino.
         self.resumable_sessions = 0
         self.multipart_uploads = 0
+        #: Los contadores se tocan desde varios threads (descargas en paralelo).
+        self._bookkeeping = threading.Lock()
+        #: Si esta, se llama (fuera del lock) con cada descarga `alt=media` ANTES
+        #: de contestar: sirve para frenar o sincronizar threads en los tests.
+        self.on_download = None
 
     # ------------------------------------------------------------- utilidades
     @property
@@ -186,11 +192,13 @@ class FakeDrive:
 
     # --------------------------------------------------------------- handler
     def __call__(self, request: httpx.Request) -> httpx.Response:
-        self.calls.append((request.method, request.url.path))
+        with self._bookkeeping:
+            self.calls.append((request.method, request.url.path))
         if self.fail_with is not None:
             return self.fail_with(request)
         key = f"{request.method} {request.url.path}"
-        self.counters[key] = self.counters.get(key, 0) + 1
+        with self._bookkeeping:
+            self.counters[key] = self.counters.get(key, 0) + 1
 
         if self.fail_401 > 0:
             self.fail_401 -= 1
@@ -230,6 +238,8 @@ class FakeDrive:
         if path.startswith("/drive/v3/files/"):
             file_id = path.rsplit("/", 1)[-1]
             if method == "GET" and params.get("alt") == "media":
+                if self.on_download is not None:
+                    self.on_download(file_id)
                 return self._download(request, file_id)
             if method == "GET":
                 return httpx.Response(200, json=self._public(
@@ -254,8 +264,15 @@ class FakeDrive:
         raise KeyError(f"ruta no soportada: {method} {path}")
 
     # ------------------------------------------------------------- endpoints
+    def _require_parents(self, parents) -> None:
+        """404 si un padre no existe, como Drive ("File not found: <id>")."""
+        for parent in parents:
+            if parent != "root" and parent not in self.files:
+                raise KeyError(f"File not found: {parent}.")
+
     def _list(self, request: httpx.Request) -> httpx.Response:
         terms = parse_query(request.url.params.get("q", ""))
+        self._require_parents(v for kind, v in terms if kind == "parent")
         fields = request.url.params.get("fields", "")
         files = [self._public(fid, f, fields)
                  for fid, f in self.files.items() if self._match(f, terms)]
@@ -263,6 +280,7 @@ class FakeDrive:
 
     def _create_metadata(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content or b"{}")
+        self._require_parents(body.get("parents") or [])
         file_id = self._add(body["name"], body.get("parents") or ["root"],
                             body.get("mimeType", "application/octet-stream"))
         return httpx.Response(200, json=self._public(file_id,
@@ -311,6 +329,7 @@ class FakeDrive:
             return httpx.Response(400, json={"error": {"message": "no boundary"}})
         parts = split_multipart(request.content, match.group(1))
         meta = json.loads(parts[0]["data"])
+        self._require_parents(meta.get("parents") or [])
         media = parts[1]["data"] if len(parts) > 1 else b""
         media_type = parts[1]["type"] if len(parts) > 1 else "application/json"
         file_id = self._add(meta["name"], meta.get("parents") or ["root"],

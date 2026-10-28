@@ -29,6 +29,8 @@ Cubre:
 - error de red => None;
 - `runtime.setup_ytdlp_dir` cargando el zip del manifest (y fallback si el hash
   o el archivo no sirven), sin bajar nunca por debajo del yt-dlp empaquetado;
+- el zip no se importa al arrancar: `runtime.verify_ytdlp_zip` lo prueba
+  despues, en un thread, y descarta uno que no importa;
 - `runtime.bundled_ytdlp_version` leyendo un paquete de `sys.path`.
 """
 from __future__ import annotations
@@ -431,12 +433,14 @@ def test_health_informa_ytdlp_pending(cliente):
 def sistema_limpio():
     """Deja `sys.path`/`sys.modules` como estaban: importar yt_dlp es global."""
     path_previo = list(sys.path)
+    pendiente_previo = runtime._zip_pendiente
     mods = {k: v for k, v in sys.modules.items()
             if k == "yt_dlp" or k.startswith("yt_dlp.")}
     for k in mods:
         del sys.modules[k]
     yield
     sys.path[:] = path_previo
+    runtime._zip_pendiente = pendiente_previo
     for k in list(sys.modules):
         if k == "yt_dlp" or k.startswith("yt_dlp."):
             del sys.modules[k]
@@ -465,6 +469,81 @@ def test_setup_ytdlp_dir_carga_el_zip_del_manifest(tmp_path, monkeypatch,
 
     version = importlib.import_module("yt_dlp.version")
     assert version.__version__ == "2099.1.1"
+
+
+# ------------------------- el zip se prueba despues del arranque, no durante
+def _zip_roto(d: Path) -> Path:
+    """Zipapp con un `yt_dlp/__init__.py` que falla al importarse."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("yt_dlp/__init__.py", "raise ImportError('roto')\n")
+        z.writestr("yt_dlp/version.py", "__version__ = '2099.1.1'\n")
+    zipapp = b"#!/usr/bin/env python3\n" + buf.getvalue()
+    real = d / "yt-dlp-2099.1.1.zip"
+    real.write_bytes(zipapp)
+    (d / "current.json").write_text(
+        _manifest("2099.1.1", real.name, hashlib.sha256(zipapp).hexdigest()),
+        encoding="utf-8")
+    return real
+
+
+def test_setup_ytdlp_dir_no_importa_el_zip(tmp_path, monkeypatch,
+                                           sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    assert runtime.setup_ytdlp_dir() is True
+    assert "yt_dlp" not in sys.modules
+    assert runtime._zip_pendiente == str(real)
+
+
+def test_verify_ytdlp_zip_importa_el_zip_bueno(tmp_path, monkeypatch,
+                                               sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+
+    assert runtime.verify_ytdlp_zip() is True
+    assert sys.modules["yt_dlp"].__file__.startswith(str(real))
+    assert sys.path[0] == str(real)
+    # Ya probado: una segunda llamada no tiene nada que hacer.
+    assert runtime.verify_ytdlp_zip() is None
+
+
+def test_verify_ytdlp_zip_descarta_el_zip_roto(tmp_path, monkeypatch,
+                                               sistema_limpio, caplog):
+    d = tmp_path / "ytdlp"
+    d.mkdir()
+    real = _zip_roto(d)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    assert runtime.setup_ytdlp_dir() is True
+    assert sys.path[0] == str(real)
+
+    with caplog.at_level(logging.WARNING, logger="spitifo.runtime"):
+        assert runtime.verify_ytdlp_zip() is False
+    assert str(real) not in sys.path
+    assert not [m for m in sys.modules
+                if m == "yt_dlp" or m.startswith("yt_dlp.")]
+    assert "no se puede importar" in caplog.text
+
+
+def test_verify_ytdlp_zip_sin_zip_no_hace_nada(sistema_limpio):
+    runtime._zip_pendiente = None
+    assert runtime.verify_ytdlp_zip() is None
+    assert runtime.start_ytdlp_zip_check() is None
+
+
+def test_start_ytdlp_zip_check_prueba_en_un_thread(tmp_path, monkeypatch,
+                                                   sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+
+    hilo = runtime.start_ytdlp_zip_check()
+    assert hilo is not None and hilo.daemon
+    hilo.join(5)
+    assert not hilo.is_alive()
+    assert runtime._zip_pendiente is None
+    assert sys.modules["yt_dlp"].__file__.startswith(str(real))
 
 
 def test_setup_ytdlp_dir_ignora_hash_corrupto(tmp_path, monkeypatch,

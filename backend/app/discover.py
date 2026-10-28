@@ -153,7 +153,13 @@ class DiscoverStorageMixin:
         """Merge de los descartes de todos los dispositivos."""
         with self._discover_lock():
             merged = DiscoverBook()
-            for ref, name in self._discover_list():
+            listing = self._discover_list()
+            # Se leen todos los descartes: la nube los baja en paralelo antes.
+            warm = getattr(self, "_warm_small", None)
+            if warm is not None:
+                warm([ref for ref, name in listing
+                      if parse_discover_file(name) is not None])
+            for ref, name in listing:
                 if parse_discover_file(name) is None:
                     continue
                 try:

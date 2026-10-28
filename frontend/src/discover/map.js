@@ -19,9 +19,14 @@ export const FIT_PAD = 0.04;
 export const SLACK = 0.12;
 export const MAX_LABELS = 200;
 
+const ASCII = /^[\x00-\x7f]*$/;
+
 /* Minúsculas sin acentos ni mayúsculas: "Bossa Nová" y "bossa nova" coinciden. */
 export function normalize(text) {
-  return String(text ?? "")
+  const s = String(text ?? "");
+  /* Casi todos los géneros son ASCII: sin NFD ni marcas que quitar. */
+  if (ASCII.test(s)) return s.toLowerCase().replace(/\s+/g, " ").trim();
+  return s
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
@@ -61,16 +66,17 @@ export function decodeMap(raw) {
   const w = new Uint8Array(count);
   const rStart = new Uint32Array(count + 1);
   const flat = [];
+  /* seen[j] === i: j ya está en la lista de i (sin un Set por género). */
+  const seen = new Int32Array(count).fill(-1);
   for (let i = 0; i < count; i++) {
     xs[i] = raw.x[i] / 65535;
     ys[i] = raw.y[i] / 65535;
     c[i] = Math.min(CLUSTERS - 1, Math.max(0, raw.c[i] | 0));
     w[i] = Math.min(100, Math.max(0, Math.round(raw.w[i]) || 0));
     /* Un índice fuera de rango o repetido se descarta: nunca rompe el dibujo. */
-    const seen = new Set();
     for (const j of raw.r?.[i] || []) {
-      if (Number.isInteger(j) && j >= 0 && j < count && j !== i && !seen.has(j)) {
-        seen.add(j);
+      if (Number.isInteger(j) && j >= 0 && j < count && j !== i && seen[j] !== i) {
+        seen[j] = i;
         flat.push(j);
       }
     }
@@ -279,6 +285,10 @@ export function hitTest(grid, xs, ys, wx, wy, radius) {
    relacionados, los destacados). `center` es el punto de pantalla donde cae el
    centro de la vista (por defecto, el del lienzo: cambia si un panel tapa un
    lado).
+   `span(i)` (opcional) da [mínimo, máximo] del ancho del texto sin medirlo: si
+   el mínimo ya choca con una etiqueta colocada y el máximo no obliga a pasar a
+   la izquierda, el género se descarta sin medir (medir es lo caro). El
+   resultado es el mismo con o sin `span`.
    Devuelve [{ i, x, y, left }]: x es el borde donde empieza el texto. */
 export function placeLabels({
   order,
@@ -287,6 +297,7 @@ export function placeLabels({
   view,
   size,
   measure,
+  span,
   radius,
   first = [],
   max = MAX_LABELS,
@@ -304,22 +315,8 @@ export function placeLabels({
   const oy = center.y - view.y * view.k;
   const half = height / 2;
 
-  const tryPlace = (i) => {
-    const sx = xs[i] * view.k + ox;
-    const sy = ys[i] * view.k + oy;
-    if (sx < 0 || sx > size.w || sy < half || sy > size.h - half) return false;
-    const w = measure(i);
-    const r = radius(i) + gap;
-    let left = false;
-    let x0 = sx + r;
-    if (x0 + w > size.w - 2) {
-      left = true;
-      x0 = sx - r - w;
-    }
-    if (x0 < 2) return false;
-    const y0 = sy - half;
-    const x1 = x0 + w;
-    const y1 = sy + half;
+  /* ¿Choca el rectángulo con alguno ya colocado? */
+  const hits = (x0, y0, x1, y1) => {
     const c0 = Math.floor(x0 / cell);
     const c1 = Math.min(gw - 1, Math.floor(x1 / cell));
     const r0 = Math.max(0, Math.floor(y0 / cell));
@@ -330,10 +327,39 @@ export function placeLabels({
         if (!bin) continue;
         for (const q of bin) {
           const o = rects[q];
-          if (x0 < o[2] && x1 > o[0] && y0 < o[3] && y1 > o[1]) return false;
+          if (x0 < o[2] && x1 > o[0] && y0 < o[3] && y1 > o[1]) return true;
         }
       }
     }
+    return false;
+  };
+
+  const tryPlace = (i) => {
+    const sx = xs[i] * view.k + ox;
+    const sy = ys[i] * view.k + oy;
+    if (sx < 0 || sx > size.w || sy < half || sy > size.h - half) return false;
+    const r = radius(i) + gap;
+    if (span) {
+      const [lo, hi] = span(i);
+      const px = sx + r;
+      if (px + hi <= size.w - 2 && hits(px, sy - half, px + lo, sy + half)) return false;
+    }
+    const w = measure(i);
+    let left = false;
+    let x0 = sx + r;
+    if (x0 + w > size.w - 2) {
+      left = true;
+      x0 = sx - r - w;
+    }
+    if (x0 < 2) return false;
+    const y0 = sy - half;
+    const x1 = x0 + w;
+    const y1 = sy + half;
+    if (hits(x0, y0, x1, y1)) return false;
+    const c0 = Math.floor(x0 / cell);
+    const c1 = Math.min(gw - 1, Math.floor(x1 / cell));
+    const r0 = Math.max(0, Math.floor(y0 / cell));
+    const r1 = Math.min(gh - 1, Math.floor(y1 / cell));
     const id = rects.length;
     rects.push([x0, y0, x1, y1]);
     for (let cy = r0; cy <= r1; cy++) {

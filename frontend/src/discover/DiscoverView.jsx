@@ -2,56 +2,67 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
 import { useNotice } from "../listen/Notice.jsx";
 import { engine } from "../player/engine.js";
-import ForYou from "./ForYou.jsx";
+import ForYouSlot from "./ForYouSlot.jsx";
 import GenreMap from "./GenreMap.jsx";
+import { startingObstacle } from "./frame.js";
 import { decodeMap, exploreGenres, genreIndex, normalize } from "./map.js";
+import { fetchMapFile, forgetMapFile } from "./mapFile.js";
 import { reco, useReco } from "./reco.js";
 import { fetchArtistSamples, fetchSamples } from "./samples.js";
 import "./discover.css";
-import "./foryou.css";
 
-/* El mapa se pide una vez por sesion (el archivo viaja con la app, ver ADR
-   0003) y se decodifica a arreglos tipados. Si falla se olvida la promesa para
-   que "Reintentar" vuelva a pedirlo. No se importa como modulo: son datos, no
-   codigo, y asi no engordan el chunk. */
+/* El mapa se decodifica una vez por sesion a arreglos tipados. El archivo ya
+   viene pedido (ver mapFile.js: App lo pide junto con este chunk). Si falla se
+   olvida la promesa para que "Reintentar" vuelva a pedirlo. */
 let mapPromise = null;
+/* El mapa ya decodificado, para que la pantalla nazca con el sin esperar. */
+let mapData = null;
 function loadMap() {
   if (!mapPromise) {
-    mapPromise = fetch(`${import.meta.env.BASE_URL}genre-map.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`genre-map.json: HTTP ${r.status}`);
-        return r.json();
-      })
+    mapPromise = fetchMapFile()
       .then(decodeMap)
+      .then((d) => (mapData = d))
       .catch((e) => {
         mapPromise = null;
+        forgetMapFile();
         throw e;
       });
   }
   return mapPromise;
 }
 
+/* Adelanto: App lo llama en cuanto el usuario elige Descubrir, para que el
+   mapa este decodificado cuando la pantalla se monte. */
+export function warmMap() {
+  loadMap().catch(() => {});
+}
+
 const NONE = new Set();
 
 /* Pantalla de Descubrir: el mapa de generos y, dentro de el, "Para ti" con los
    artistas recomendados. `active`: la pantalla esta a la vista; solo entonces
-   se consultan las recomendaciones (una vez por visita y, mientras el servidor
-   siga trabajando, cada pocos segundos). */
+   (y con el mapa ya en pantalla, que es lo primero) se consultan las
+   recomendaciones (una vez por visita y, mientras el servidor siga
+   trabajando, cada pocos segundos). */
 export default function DiscoverView({ active = true, onOpenDownload }) {
-  const [state, setState] = useState({ status: "loading", data: null });
+  const [state, setState] = useState(() =>
+    mapData ? { status: "ready", data: mapData } : { status: "loading", data: null }
+  );
   const [attempt, setAttempt] = useState(0);
   const [noticeNode, notify] = useNotice();
   const [focus, setFocus] = useState(NONE);
   const [preview, setPreview] = useState(NONE);
   const genres = useReco((s) => s.genres);
 
-  useEffect(() => (active ? reco.watch() : undefined), [active]);
+  const ready = state.status === "ready";
+  useEffect(() => (active && ready ? reco.watch() : undefined), [active, ready]);
   useEffect(() => reco.onError((msg) => notify(msg)), [notify]);
 
   useEffect(() => {
     let alive = true;
     loadMap().then(
-      (data) => alive && setState({ status: "ready", data }),
+      (data) =>
+        alive && setState((s) => (s.status === "ready" && s.data === data ? s : { status: "ready", data })),
       () => alive && setState({ status: "error", data: null })
     );
     return () => {
@@ -111,7 +122,7 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
   const panel = useCallback(
     (ctx) =>
       ctx.box.w > 0 && (
-        <ForYou
+        <ForYouSlot
           data={data}
           idx={idx}
           mine={mine}
@@ -140,6 +151,7 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
           onSearchGenre={searchGenre}
           onPlaySample={playSample}
           panel={panel}
+          initialObstacle={startingObstacle}
         />
       ) : state.status === "error" ? (
         <div className="gmap gmap--state" role="alert">

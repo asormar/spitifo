@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { cx } from "../shared/ui.jsx";
 import { placeCard, related, searchGenres } from "./map.js";
 import { createMapCanvas } from "./mapCanvas.js";
@@ -6,6 +7,18 @@ import { createMapCanvas } from "./mapCanvas.js";
 /* Por debajo de este ancho la tarjeta pasa a hoja inferior. */
 const NARROW = 560;
 const NO_HIGHLIGHT = new Set();
+
+/* Lo que tapa el panel, siempre con las dos claves. */
+const clean = (o) => ({ right: Math.max(0, o.right || 0), bottom: Math.max(0, o.bottom || 0) });
+
+/* Controles y buscador se corren a la izquierda del panel con esta variable
+   del CSS. Se escribe en el nodo y no por estado de React: asi ya esta puesta
+   en el primer cuadro y nada salta cuando el panel llega. */
+function paintRoom(el, o) {
+  if (!el) return;
+  if (o.right) el.style.setProperty("--fy-right", `${o.right}px`);
+  else el.style.removeProperty("--fy-right");
+}
 
 /* Iconos sueltos: cada import de Phosphor trae sus seis pesos al chunk. */
 const PATH = {
@@ -45,7 +58,10 @@ function Icon({ name, size = 18, className }) {
      cuantas pistas puso en la cola (0 = no habia previews).
    - `panel(ctx)`: pinta el panel "Para ti" dentro del mapa. Recibe el tamano
      del mapa, si es estrecho, si hay un genero abierto y las llamadas para
-     volar a un genero, abrir/cerrar su tarjeta y avisar de cuanto tapa. */
+     volar a un genero, abrir/cerrar su tarjeta y avisar de cuanto tapa.
+   - `initialObstacle({ w, h, narrow })`: lo que el panel va a tapar nada mas
+     nacer, para que la camara encuadre bien desde el primer cuadro aunque el
+     panel llegue despues. */
 export default function GenreMap({
   data,
   highlight = NO_HIGHLIGHT,
@@ -54,6 +70,7 @@ export default function GenreMap({
   onSearchGenre,
   onPlaySample,
   panel,
+  initialObstacle,
 }) {
   const rootRef = useRef(null);
   const viewRef = useRef(null);
@@ -73,6 +90,10 @@ export default function GenreMap({
   const previewRef = useRef(preview);
   focusRef.current = focus;
   previewRef.current = preview;
+  const startRef = useRef(initialObstacle);
+  startRef.current = initialObstacle;
+  const hasPanel = useRef(Boolean(panel));
+  hasPanel.current = Boolean(panel);
 
   const [sel, setSel] = useState(-1);
   const [narrow, setNarrow] = useState(false);
@@ -114,15 +135,19 @@ export default function GenreMap({
   pickRef.current = (i) => choose(i, "tap");
 
   const setObstacle = useCallback((o) => {
-    const next = { right: Math.max(0, o.right || 0), bottom: Math.max(0, o.bottom || 0) };
+    const next = clean(o);
     const prev = obstacleRef.current;
     if (next.right === prev.right && next.bottom === prev.bottom) return;
     obstacleRef.current = next;
+    paintRoom(rootRef.current, next);
     setObstacleState(next);
     engineRef.current?.setObstacle(next);
   }, []);
 
-  useEffect(() => {
+  /* Layout y no un efecto normal: asi el ResizeObserver queda armado antes del
+     primer cuadro y su primera medida llega en ese mismo cuadro, antes de
+     pintar. */
+  useLayoutEffect(() => {
     const root = rootRef.current;
     const engine = createMapCanvas({
       canvas: canvasRef.current,
@@ -137,18 +162,54 @@ export default function GenreMap({
     engine.setPreviewSet(previewRef.current);
     engine.setObstacle(obstacleRef.current);
 
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
+    /* Medir y dibujar. `early`: el mapa nace ya con tamano (dentro del commit
+       de React) y no hay que esperar al ResizeObserver, que llega con el
+       siguiente cuadro; ahi React no admite flushSync y el marco del panel
+       sale igual, en cuanto termina el commit. */
+    let sized = false;
+    let hidden = false;
+    const measure = (width, height, early) => {
       /* Pantalla oculta (display:none): no hay nada que medir ni dibujar. */
-      if (!width || !height) return;
+      if (!width || !height) {
+        hidden = true;
+        return;
+      }
+      const first = !sized;
+      /* El mismo tamano que ya se dibujo (el ResizeObserver repite lo que
+         midio el commit): nada que hacer, salvo al volver de oculta. */
+      if (!first && !hidden && width === mapSize.current.w && height === mapSize.current.h) return;
+      hidden = false;
+      sized = true;
       mapSize.current = { w: width, h: height };
       narrowRef.current = width < NARROW;
       engine.setNarrow(narrowRef.current);
-      setNarrow(narrowRef.current);
-      setBox((b) => (b.w === width && b.h === height ? b : { w: width, h: height }));
+      root.classList.toggle("has-sheet", hasPanel.current && narrowRef.current);
+      /* Lo que el panel va a tapar se sabe antes de dibujar: el primer cuadro
+         ya encuadra bien y no se mueve cuando el panel llega. */
+      let start = null;
+      if (first && startRef.current) {
+        start = clean(startRef.current({ w: width, h: height, narrow: narrowRef.current }));
+        obstacleRef.current = start;
+        paintRoom(root, start);
+        engine.setObstacle(start);
+      }
+      /* Dibuja ya: el primer cuadro del mapa no espera a React. */
       engine.resize(width, height, Math.min(window.devicePixelRatio || 1, 2));
+      const commit = () => {
+        setNarrow(narrowRef.current);
+        setBox((b) => (b.w === width && b.h === height ? b : { w: width, h: height }));
+        if (start) setObstacleState(start);
+      };
+      /* El callback del ResizeObserver corre antes de pintar: el marco del
+         panel sale en ese mismo cuadro. */
+      if (first && !early) flushSync(commit);
+      else commit();
+    };
+    const ro = new ResizeObserver(([entry]) => {
+      measure(entry.contentRect.width, entry.contentRect.height, false);
     });
     ro.observe(root);
+    measure(root.clientWidth, root.clientHeight, true);
 
     /* El tema vive en data-theme de <html>; la paleta y la tinta cambian con el. */
     const mo = new MutationObserver(() => engine.refreshTheme());
@@ -247,7 +308,6 @@ export default function GenreMap({
       data-no-swipe
       ref={rootRef}
       onKeyDown={onRootKey}
-      style={obstacle.right ? { "--fy-right": `${obstacle.right}px` } : undefined}
     >
       {/* El foco del teclado vive aca: flechas mueven, +/- acercan, 0 encuadra. */}
       <div

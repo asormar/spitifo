@@ -20,18 +20,20 @@ open to DevTools); everything else comes from the published files.
 
 ## Budgets
 
-| Budget | Target | Limit | PC (v0.3.0) | Pixel (v0.3.0) | Checked by |
-| --- | --- | --- | --- | --- | --- |
-| Launch to usable, local library of 300 tracks | 2 s | PC 3.5 s, Pixel 6 s | 3.2 s | 5.4 s | `ui.mjs`, by hand |
-| Launch to usable, the user's own setup (Drive, 13 tracks) | 2 s | — (network-bound, for reference) | 5.5 s | 3.7 s | `ui.mjs`, by hand |
-| View switch: tap to the first frame of the new view | 100 ms | 100 ms | mode 13 ms ✅, library 400 ms ❌ | mode 19 ms ✅, library 260 ms ❌ | `ui.mjs`, by hand |
-| Tap feedback: tap to the first frame that shows it | 50 ms | 50 ms | 16 ms ✅ | 18 ms ✅ | `ui.mjs`, by hand |
-| Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | `ui.mjs`, by hand |
-| Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 341,000 B | 314,126 B (gzip 88,464 B) | same file | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 60,000 B | 52,787 B (gzip 11,115 B) | same file | CI, `test.yml` |
-| Windows installer | — | 24,000,000 B | 22,707,225 B | — | CI, `release.yml` |
-| Android APK | — | 31,000,000 B | — | 29,451,010 B | CI, `release.yml` |
+| Budget | Target | Limit | PC (v0.3.0) | Pixel (v0.3.0) | PC (session 24) | Checked by |
+| --- | --- | --- | --- | --- | --- | --- |
+| Launch to usable, local library of 300 tracks | 2 s | PC 3.5 s, Pixel 6 s | 3.2 s | 5.4 s | 1.15–1.3 s ✅ | `ui.mjs`, by hand |
+| Launch to usable, the user's own setup (Drive, 13 tracks) | 2 s | — (network-bound, for reference) | 5.5 s | 3.7 s | 1.7–1.8 s ✅ | `ui.mjs`, by hand |
+| View switch: tap to the first frame of the new view | 100 ms | 100 ms | mode 13 ms ✅, library 400 ms ❌ | mode 19 ms ✅, library 260 ms ❌ | mode 16–19 ms ✅, content 34–37 ms | `ui.mjs`, by hand |
+| First visit to Descubrir: tap to the map's first drawn frame | 100 ms | 100 ms | — | — | 44–57 ms ✅ | `ui.mjs`, by hand |
+| Tap feedback: tap to the first frame that shows it | 50 ms | 50 ms | 16 ms ✅ | 18 ms ✅ | 16 ms ✅ | `ui.mjs`, by hand |
+| Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
+| Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
+| Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
+| JavaScript bundle (raw, all `.js`) | — | 371,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
+| Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
 - **Target** is where the app should be; **limit** is the line no change may
   cross. A row over its limit today (❌) is a known debt with a session that
@@ -44,6 +46,14 @@ open to DevTools); everything else comes from the published files.
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.
+- **Session 24** measured a local 0.6.1 build of the session's branch, installed
+  on the PC, with a downloaded yt-dlp update present (as on any installation
+  after its first update). The ranges leave out the first launch of each set,
+  which builds the media cache or follows the install's antivirus scan
+  (3.1–3.8 s). Same day, same conditions, an empty library: 0.6.0 and 0.6.1
+  both reached usable in 1.1–1.25 s, so the start-up gain over 0.6.0 is the
+  yt-dlp import and the Drive reads below, not noise. The Pixel was not
+  measured again.
 
 ## Where the start-up time goes
 
@@ -66,14 +76,37 @@ lifespan step by step in the same interpreter):
   (logging, concurrent.futures, ssl, socket: ~0.47 s), Starlette (~0.28 s) and
   httpx, which `ytdlp_update` imports at module level (~0.22 s).
 - **yt-dlp is not imported at start-up.** `sources` registers it lazily and
-  `runtime.bundled_ytdlp_version()` reads its version without importing it. It
-  is only imported early when a downloaded yt-dlp zip is newer than the bundled
-  one (`runtime._insert_zip`).
+  `runtime.bundled_ytdlp_version()` reads its version without importing it.
+  Until session 24 it was imported early when a downloaded yt-dlp zip was newer
+  than the bundled one (`runtime._insert_zip` tried the import to fall back if
+  it failed), which is every installation after its first yt-dlp update:
+  importing from the zip takes about 1.1 s on the PC (zipimport compiles every
+  `.py` again on each launch; the same files extracted to a folder import in
+  0.7 s once their `.pyc` are written). The zip now goes on `sys.path` without
+  being imported, and `runtime.verify_ytdlp_zip` tries the import in a thread
+  once the server is up (a zip that fails is dropped as before). With the
+  update present, launch to the app's navigation went from 1.55–2.13 s to
+  0.85–0.93 s.
 - **With Google Drive as the library, building `DriveStorage` in the lifespan
   adds 0.2–0.7 s before `SPITIFO_READY`** (token store, HTTP client, TLS
   context), and the first `/api/library` lists the Drive folder over the
   network (2.4 s for 13 tracks). The second call is served from the cache in
   4 ms.
+- **Session 24: Drive's start-up reads.** They were sequential: resolve the
+  `Spitifo` folder by name, list the `index-*` files, download each one. Now
+  the small library files (`index-*`, `playlists-*`, `listens-*`, …) keep a
+  local copy in `<data dir>/snapshots/` (`backend/app/cloud/snapshot.py`),
+  keyed by the version Drive reports and checked with SHA-256 on every read,
+  so a launch lists the folder once and downloads only what changed, up to
+  four files at a time; the folder ids are remembered too. The copy is never a
+  source of truth: anything unreadable is fetched again. `/api/library` on the
+  owner's Drive: 3.4 s → 0.5 s, launch to usable 5.3 s → 1.7–1.8 s.
+- **Session 24: `/api/discover` never waits for a refresh.** Its inputs are
+  cached for 30 s; an expired value is now returned at once and refreshed in a
+  background thread (stale-while-revalidate), so only the first request after
+  a launch waits for Drive: 3.8 s → 1.2–2.2 s on the owner's setup, every
+  later one 5–7 ms. It still lists Drive five times in a row (the listens are
+  listed twice), which is the next thing to cut there.
 - **A local `/api/library` is not cached: 300 tracks take 0.7–0.8 s on every
   call** (about 2.5 ms per file, reading each file's duration), and 6 s on the
   first call after the files were written (Windows Defender scans them).
@@ -281,6 +314,19 @@ look at trimming this chunk first:
 | JavaScript | 337,786 B | 366,005 B (+28,219) | 339,000 B | 367,000 B |
 | CSS | 91,766 B | 103,358 B (+11,592) | 93,000 B | 104,000 B |
 
+Session 24 split "Para ti" out of the Discover chunk, so the first visit to
+Descubrir downloads 32.3 KB of script and 8.2 KB of CSS instead of 48.4 and
+18.0 KB; "Para ti" (19.2 KB and 8.8 KB) loads next to the map's data, and its
+panel shows a static frame (`ForYouSlot`) until it arrives. The split costs
+3.7 KB of script in total (the static frame, the panel measurements both chunks
+share in `frame.js`, and the chunk's own wrapper); the CSS came out 1 KB
+smaller:
+
+| Bundle | `main` before | Session 24 | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 366,005 B | 369,716 B (+3,711) | 367,000 B | 371,000 B |
+| CSS | 103,358 B | 102,395 B (−963) | 104,000 B | 103,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
@@ -378,17 +424,69 @@ SPITIFO_DATA_DIR=<empty folder> node scripts/perf/ui.mjs --launch "$LOCALAPPDATA
 
 `ui.mjs` launches the installed app with WebView2's DevTools port open
 (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`),
-attaches to the page and reports:
+attaches to the page and reports, in this order:
 
 - **startup**: launch to the app's navigation, first contentful paint, when
-  `/api/library` answered and launch to usable (the later of the two);
-- **tapFeedback**: `pointerdown` on a format chip to the end of the next frame;
-- **modeSwitch**: a click on a search mode to the end of the next frame;
-- **libraryOpen / libraryClose**: the same for the library button, plus the
-  time until the drawer's transition ends and the longest frame during it;
-- **libraryScroll**: three flings down and up the open library, with the frame
-  rate, the median and 95th percentile frame interval and the share of frames
-  that took over 1.5 refreshes.
+  `/api/library` answered, and launch to usable: `/api/library` answered **and**
+  the first content of the mode the app opened on (Descargar) is rendered. When
+  that content was already there at attach time the value is a lower bound
+  (`usableBasis: "lower-bound"`: the latest of the library response, the mode's
+  JS chunk and the first paint); otherwise it is observed. It also lists the
+  mode bar in use (`rail` or `tabbar`) and the viewport;
+- **discoverOnStartup**: whether `genre-map.json`, `/api/discover` or the
+  Discover JS chunk were requested before the first visit to Descubrir (taken
+  4 s after start-up, once the idle preload has had its chance). Neither the
+  map nor the API should be. The chunk is preloaded when the app idles, from
+  any mode (it is the one chunk with a canvas to draw, so its first visit is
+  where milliseconds show); `genre-map.json` is not, and is requested in the
+  same gesture that opens Descubrir, in parallel with the chunk when it was not
+  preloaded. `/api/discover` waits for the map to be drawn. The
+  `afterRun` part shows what the visits requested afterwards (`/api/discover`
+  once per visit to Descubrir, and again while the server is still working);
+- **tapFeedback**: `pointerdown` on a segment of Descargar's "Modo de
+  búsqueda" (a real control with `:active`; a mode bar button if it were gone)
+  to the end of the next frame, with the press held so `:active` is read at
+  that frame (`activeShown`, e.g. `3/3`; emulated touch never sets it, so check
+  it on the phone);
+- **modeSwitch**: a click on each button of the mode bar. `firstVisit` is the
+  first, cold visit to Descubrir (straight from Descargar) and to Escuchar;
+  `toListen`, `toDiscover` and `toDownload` are `--runs` warm cycles
+  Descargar → Escuchar → Descubrir → Descargar. Per switch: `frame` (click to
+  the end of the first frame), `shown` (the new screen is visible and its mode
+  button is current, plus a frame: the View Transition has swapped the
+  screens), `content` (the mode's own content painted: Escuchar's home
+  sections, Descubrir's map canvas **drawn**) and the longest frame while the
+  switch settles;
+- **listenScroll**: opens "Explorar la biblioteca" (the virtual list), flings
+  three times down and up it, then closes it with "Volver". Frame rate, median
+  and 95th percentile frame interval, share of frames over 1.5 refreshes,
+  longest frame, and how far the page scrolled (`maxScrollPx`, a check that the
+  fling moved). When the library scrolls less than one screen (13 tracks on
+  Drive scroll 298 px in an 800 px window) there is not enough list to fling:
+  the section is then `{ "skipped": "library scrolls less than one screen (N
+  rows, P px)" }` instead of a warning;
+- **discover**: `cold` is the click on Descubrir to the map's first drawn frame
+  on the first visit, including the JS chunk (`chunkPreloaded`) and
+  `genre-map.json`: its fetch, transfer size, body read and JSON parse
+  (`jsonMs`), and the time from the response to the first draw
+  (`responseToFirstDrawMs`, which adds `decodeMap`, the React render and the
+  canvas). The first frame is the dots only: the label layout, the "Para ti"
+  panel (a separate chunk, shown as a static frame first) and the
+  recommendations request come after it. `warm` is the same click on later visits (the screen stays mounted,
+  so this is the redraw after showing it again). Then `pan` (2 s of mouse
+  drags in circles, or touch drags with `--touch`) and `zoom` (wheel, 1 s in
+  and 1 s out) with the frame rate, the longest frame and the number of map
+  redraws, and `panel`: closing and opening the "Para ti" panel (the side
+  panel, or the sheet on a narrow screen) with the first frame and the longest
+  frame while it moves.
+
+Everything is taken inside the page. The map's first draw is noticed by
+watching `clearRect` on the canvases inside `.gmap__view` (the one call each
+redraw makes), and `genre-map.json`'s parse by wrapping `Response.json()`; those
+two read-only wrappers are all `ui.mjs` injects, and the frontend carries no
+measuring hook. A missing control stops the run with `ui.mjs: missing selector:
+…` (or `timed out after … waiting for …`); a gesture that did not move the page
+or the map is listed in `warnings` and the exit code is 2.
 
 Run it three times and keep the medians. The timings start at the input
 event's timestamp inside the page, so they leave out the operating system's
@@ -398,6 +496,27 @@ them with each other, not with a camera.
 Setting `SPITIFO_DATA_DIR` to an empty folder makes the app use the local
 library with default settings without touching the user's own; leave it out to
 measure the real setup.
+
+To try the script without the installed app, against the checkout in any
+Chromium (headless Edge or Chrome, `chrome.exe` takes the same flags; their
+numbers are not the app's):
+
+```bash
+(cd frontend && npm run build)
+SPITIFO_DATA_DIR=<empty folder> SPITIFO_LIBRARY=<seeded folder> \
+    .venv/Scripts/python.exe -m uvicorn backend.app.main:app --port 8010
+msedge --headless=new --remote-debugging-port=9333 --window-size=1280,800 \
+    --user-data-dir=<temp folder> http://127.0.0.1:8010/
+node scripts/perf/ui.mjs --endpoint http://127.0.0.1:9333 --runs 3 --reload
+```
+
+`--reload` loads the app's root URL again with the HTTP cache off, so the
+start-up is observed and the chunks and `genre-map.json` are really fetched
+(the app keeps the current mode in the URL, and a page left on Descubrir would
+make the "cold" visit warm). With a narrow `--window-size` the same command
+measures the tab bar and the bottom sheet; add `--touch` for touch drags (the
+library fling then falls back to the mouse wheel's gesture, which a desktop
+Chromium scrolls).
 
 ### UI and start-up on the Pixel
 
@@ -419,7 +538,9 @@ node scripts/perf/ui.mjs --adb "$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe
 `--adb` force-stops and starts `dev.spitifo`, reads the launch time from
 logcat (`ActivityTaskManager`'s `START` line, on the same clock as the page's
 `performance.timeOrigin`), forwards `webview_devtools_remote_<pid>` to port
-9333 and sends touch input. Keep the phone unlocked and untouched while it
+9333 and sends touch input. The mode bar is the tab bar and "Para ti" is the bottom
+sheet there; the map is panned with touch drags, but the zoom is the mouse wheel
+(there is no pinch), so `warnings` may report that it did not register. Keep the phone unlocked and untouched while it
 runs: a WebView whose Activity is not in front stops producing frames and the
 run hangs. In Git Bash, set `MSYS_NO_PATHCONV=1` before any `adb` command that
 names a path on the phone, or Bash rewrites `/sdcard/...` into a Windows path.

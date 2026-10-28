@@ -22,21 +22,23 @@ import secrets
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, ContextManager, Iterator
+from typing import Callable, ContextManager, Iterator, NamedTuple
 
 import httpx
 
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
-from ..listens import ListensStorageMixin
+from ..listens import AGG_PREFIX, MONTH_PREFIX, ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
 from .cache import AudioCache
 from .library_index import IndexEntry, IndexFormatError, LibraryIndex
+from .snapshot import RemoteFile, SmallFileSnapshot
 from .tokens import TokenSource
 
 log = logging.getLogger(__name__)
@@ -49,6 +51,13 @@ FOLDER_NAME = "Spitifo"
 #: merge de todos.
 INDEX_PREFIX = "index-"
 PLAYLIST_PREFIX = "playlists-"
+
+#: Prefijos de los archivos chicos por dispositivo que se guardan en la copia
+#: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea.
+SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, MONTH_PREFIX, AGG_PREFIX,
+                  ARTISTINFO_PREFIX, DISCOVER_PREFIX)
+#: Cuantos archivos chicos se bajan a la vez al cargar el indice y compania.
+SMALL_FILE_WORKERS = 4
 
 #: Tamano de cada lectura de `open_range`, igual que el adapter local.
 CHUNK = 64 * 1024
@@ -183,6 +192,13 @@ class _RemoteBody:
         self.close()
 
 
+class _Blob(NamedTuple):
+    """Bytes de un archivo chico y si salieron de la copia local."""
+
+    data: bytes
+    cached: bool
+
+
 def default_device_id(data_dir: Path) -> str:
     """Id aleatorio del dispositivo, guardado una vez en `data_dir/device_id`.
 
@@ -241,7 +257,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def __init__(self, tokens: TokenSource, client: httpx.Client, device_id: str,
                  cache: AudioCache | None = None, folder_name: str = FOLDER_NAME,
                  clock: Callable[[], float] = time.time,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 sleep: Callable[[float], None] = time.sleep,
+                 snapshot: SmallFileSnapshot | None = None) -> None:
         self.tokens = tokens
         self.client = client
         self.device_id = device_id
@@ -253,6 +270,19 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # Ids de carpeta del proveedor ya resueltos, por ruta relativa ("" es la
         # raiz de la biblioteca): la logica de carpetas vive en cada adapter.
         self._folders: dict[str, str] = {}
+        # Copia local de los archivos chicos y de los ids de carpeta (None =
+        # sin copia: todo se baja de la nube en cada carga, como siempre).
+        self._snap = snapshot
+        # Lo que dijo el ultimo listado de cada archivo chico:
+        # `remote_id -> (name, stamp, prefix)`.
+        self._small: dict[str, tuple[str, str, str]] = {}
+        self._small_lock = threading.Lock()
+        # True mientras los ids de carpeta vengan del disco y ninguna request
+        # los haya confirmado: un listado vacio con ellos se vuelve a verificar.
+        self._folders_from_disk = False
+        if snapshot is not None:
+            self._folders = snapshot.folders()
+            self._folders_from_disk = bool(self._folders)
         self._index: LibraryIndex | None = None
         self._index_at = float("-inf")
         self._own = LibraryIndex()
@@ -368,6 +398,187 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         finally:
             resp.close()
 
+    # ------------------------------------------------------------ archivos chicos
+    def _list_small(self, prefix: str) -> list[RemoteFile]:
+        """Listado de los archivos chicos con `prefix`, anotando sus versiones.
+
+        Es la unica puerta de entrada al hook `_list_small_files`: deja lo que
+        dijo el listado (para decidir despues si la copia local sirve) y saca de
+        la copia local lo que ya no existe en la nube.
+        """
+        files = list(self._list_small_files(prefix))
+        with self._small_lock:
+            for rf in files:
+                self._small[rf.remote_id] = (rf.name, rf.stamp, prefix)
+        if self._snap is not None:
+            self._snap.prune(prefix, {rf.remote_id for rf in files})
+            self._snap.save()
+        return files
+
+    def _cached_small(self, remote_id: str) -> bytes | None:
+        """Bytes de la copia local si la version listada no cambio."""
+        if self._snap is None:
+            return None
+        with self._small_lock:
+            info = self._small.get(remote_id)
+        if info is None or not info[1]:
+            return None
+        return self._snap.get(remote_id, info[1])
+
+    def _fetch_small(self, remote_id: str) -> bytes:
+        """Baja el archivo y deja la copia local (sin escribir el estado)."""
+        with self._small_lock:
+            info = self._small.get(remote_id)
+        data = self._read_file(remote_id)
+        if self._snap is not None and info is not None and info[1]:
+            self._snap.put(remote_id, info[0], info[2], info[1], data)
+        return data
+
+    def _read_small(self, remote_id: str) -> bytes:
+        """Bytes de un archivo chico: de la copia local o, si cambio, de la nube."""
+        data = self._cached_small(remote_id)
+        if data is not None:
+            return data
+        data = self._fetch_small(remote_id)
+        if self._snap is not None:
+            self._snap.save()
+        return data
+
+    def _read_many(self,
+                   files: list[RemoteFile]) -> dict[str, "_Blob | Exception"]:
+        """Bytes de varios archivos chicos: copia local y, lo que falte, en paralelo.
+
+        Un fallo de un archivo no tira a los demas: queda como excepcion en su
+        lugar y el llamador la levanta cuando le toca, en el orden del listado
+        (igual que cuando se leia uno por uno).
+        """
+        out: dict[str, _Blob | Exception] = {}
+        missing: list[RemoteFile] = []
+        for rf in files:
+            data = self._cached_small(rf.remote_id)
+            if data is None:
+                missing.append(rf)
+            else:
+                out[rf.remote_id] = _Blob(data, True)
+
+        def fetch(rf: RemoteFile) -> "_Blob | Exception":
+            try:
+                return _Blob(self._fetch_small(rf.remote_id), False)
+            except Exception as exc:
+                return exc
+
+        if len(missing) > 1:
+            workers = min(SMALL_FILE_WORKERS, len(missing))
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="small-file") as pool:
+                results = list(pool.map(fetch, missing))
+        else:
+            results = [fetch(rf) for rf in missing]
+        for rf, result in zip(missing, results):
+            out[rf.remote_id] = result
+        if self._snap is not None:
+            self._snap.save()
+        return out
+
+    def _warm_small(self, refs: list[str]) -> None:
+        """Baja en paralelo los archivos que falten, antes de leerlos de a uno.
+
+        Lo usan quienes van a leer TODOS los archivos de un listado (fichas,
+        descartes, agregados de escucha). Los errores se ignoran: la lectura
+        posterior los vuelve a intentar y decide que hacer con ellos.
+        """
+        if len(refs) < 2:
+            return
+        files: list[RemoteFile] = []
+        with self._small_lock:
+            for ref in refs:
+                info = self._small.get(ref)
+                if info is not None:
+                    files.append(RemoteFile(ref, info[0], info[1]))
+        if len(files) > 1:
+            self._read_many(files)
+
+    def _parse_small(self, rf: RemoteFile, blob: "_Blob | Exception", parse):
+        """`parse(bytes)` del archivo; si la copia local no parsea, la tira y rebaja.
+
+        Los bytes de una version son siempre los mismos, asi que esto solo cubre
+        una copia danada que aun asi paso la verificacion: ante la duda se
+        prefiere lo que diga la nube a quedar trabado en un archivo "ilegible".
+        """
+        if isinstance(blob, Exception):
+            raise blob
+        try:
+            return parse(blob.data)
+        except Exception:
+            if not blob.cached or self._snap is None:
+                raise
+            log.warning("la copia local de %s no parsea: se baja de nuevo",
+                        rf.name)
+            self._snap.discard(rf.remote_id)
+            return parse(self._read_small(rf.remote_id))
+
+    def _remember_small(self, remote_id: str, name: str, stamp: str,
+                        data: bytes) -> None:
+        """Deja en la copia local lo que acabamos de subir, con la version nueva.
+
+        Asi el proximo arranque no vuelve a bajar nuestras propias escrituras.
+        """
+        prefix = next((p for p in SMALL_PREFIXES if name.startswith(p)), "")
+        with self._small_lock:
+            self._small[remote_id] = (name, stamp, prefix)
+        if self._snap is None or not stamp or not prefix:
+            return
+        self._snap.put(remote_id, name, prefix, stamp, data)
+        self._snap.save()
+
+    def _forget_small(self, remote_id: str) -> None:
+        with self._small_lock:
+            self._small.pop(remote_id, None)
+        if self._snap is not None:
+            self._snap.discard(remote_id)
+            self._snap.save()
+
+    def _store_small(self, name: str, data: bytes,
+                     ref: str | None = None) -> str:
+        """Crea (`ref` None) o reemplaza un archivo chico y devuelve su ref."""
+        if ref:
+            meta = self._replace_file(ref, data)
+            remote_id = ref
+        else:
+            meta = self._create_file(name, data)
+            remote_id = str(meta["id"])
+        self._remember_small(remote_id, name, self._stamp_of(meta), data)
+        return remote_id
+
+    # ---------------------------------------------------------- carpetas cacheadas
+    def _persist_folders(self) -> None:
+        """Guarda los ids de carpeta resueltos para el proximo arranque."""
+        if self._snap is not None:
+            self._snap.set_folders(self._folders)
+
+    def _forget_folders(self) -> None:
+        """Olvida TODOS los ids de carpeta (memoria y disco): hay que buscarlos."""
+        with self._lock:
+            self._folders.clear()
+            self._folders_from_disk = False
+            self._persist_folders()
+
+    def _with_fresh_folders(self, action: Callable[[], object]):
+        """Corre `action`; si una carpeta cacheada ya no existe (404) la rebusca.
+
+        Un id viejo (carpeta borrada o cuenta distinta) hace fallar la request
+        con 404. Se olvidan los ids y se repite UNA vez con la busqueda normal.
+        """
+        had_ids = bool(self._folders)
+        try:
+            return action()
+        except httpx.HTTPStatusError as exc:
+            if not had_ids or exc.response.status_code != 404:
+                raise
+        log.info("una carpeta cacheada ya no existe: se busca de nuevo")
+        self._forget_folders()
+        return action()
+
     # --------------------------------------------------------------------- indice
     def _own_name(self) -> str:
         return f"index-{self.device_id}.json"
@@ -386,11 +597,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = LibraryIndex()
             own_id: str | None = None
             own_unreadable = False
-            for remote_id, name in self._list_small_files(INDEX_PREFIX):
-                if not name.startswith(INDEX_PREFIX):
-                    continue
+            files = [rf for rf in self._list_small(INDEX_PREFIX)
+                     if rf.name.startswith(INDEX_PREFIX)]
+            blobs = self._read_many(files)
+            for rf in files:
+                remote_id, name = rf.remote_id, rf.name
                 try:
-                    parsed = LibraryIndex.from_bytes(self._read_file(remote_id))
+                    parsed = self._parse_small(rf, blobs[remote_id],
+                                               LibraryIndex.from_bytes)
                 except (httpx.HTTPError, IndexFormatError) as exc:
                     log.warning("indice ilegible %s: %s", name, exc)
                     if name == self._own_name():
@@ -425,11 +639,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = LibraryIndex(entries=dict(self._own.entries))
             change(own)
             body = own.to_bytes()
-            if self._own_index_id:
-                self._replace_file(self._own_index_id, body)
-            else:
-                created = self._create_file(self._own_name(), body)
-                self._own_index_id = str(created["id"])
+            self._own_index_id = self._store_small(
+                self._own_name(), body, self._own_index_id)
             self._own = own
             # El indice recien escrito es el mas fresco para SUS claves: en un
             # empate de `updated_at` (el reloj de Windows tiene resolucion
@@ -475,11 +686,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = PlaylistBook()
             own_id: str | None = None
             own_unreadable = False
-            for remote_id, name in self._list_small_files(PLAYLIST_PREFIX):
-                if not name.startswith(PLAYLIST_PREFIX):
-                    continue
+            files = [rf for rf in self._list_small(PLAYLIST_PREFIX)
+                     if rf.name.startswith(PLAYLIST_PREFIX)]
+            blobs = self._read_many(files)
+            for rf in files:
+                remote_id, name = rf.remote_id, rf.name
                 try:
-                    parsed = PlaylistBook.from_bytes(self._read_file(remote_id))
+                    parsed = self._parse_small(rf, blobs[remote_id],
+                                               PlaylistBook.from_bytes)
                 except (httpx.HTTPError, PlaylistFormatError) as exc:
                     log.warning("playlists ilegibles %s: %s", name, exc)
                     if name == self._own_playlists_name():
@@ -516,11 +730,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = PlaylistBook(playlists=dict(self._own_playlists.playlists))
             change(own)
             body = own.to_bytes()
-            if self._own_playlists_id:
-                self._replace_file(self._own_playlists_id, body)
-            else:
-                created = self._create_file(self._own_playlists_name(), body)
-                self._own_playlists_id = str(created["id"])
+            self._own_playlists_id = self._store_small(
+                self._own_playlists_name(), body, self._own_playlists_id)
             self._own_playlists = own
             # Igual que con el indice: lo recien escrito gana los empates de
             # `updated_at` contra la copia que ya estaba en memoria.
@@ -534,22 +745,20 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
     def _listens_list(self) -> list[tuple[str, str]]:
         """`(remote_id, name)` de los mensuales y agregados de escucha."""
-        return (self._list_small_files("listens-")
-                + self._list_small_files("listenagg-"))
+        return [(rf.remote_id, rf.name)
+                for rf in (self._list_small(MONTH_PREFIX)
+                           + self._list_small(AGG_PREFIX))]
 
     def _listens_read(self, ref: str) -> bytes:
-        return self._read_file(ref)
+        return self._read_small(ref)
 
     def _listens_write(self, name: str, data: bytes,
                        ref: str | None = None) -> str:
-        if ref:
-            self._replace_file(ref, data)
-            return ref
-        created = self._create_file(name, data)
-        return str(created["id"])
+        return self._store_small(name, data, ref)
 
     def _listens_delete(self, ref: str) -> None:
         self._trash(ref)
+        self._forget_small(ref)
 
     # --------------------------------------------------------------- artistinfo
     def _artistinfo_device(self) -> str:
@@ -557,10 +766,11 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
     def _artistinfo_list(self) -> list[tuple[str, str]]:
         """`(remote_id, name)` de las fichas de todos los dispositivos."""
-        return self._list_small_files(ARTISTINFO_PREFIX)
+        return [(rf.remote_id, rf.name)
+                for rf in self._list_small(ARTISTINFO_PREFIX)]
 
     def _artistinfo_read(self, ref: str) -> bytes:
-        return self._read_file(ref)
+        return self._read_small(ref)
 
     def _artistinfo_write(self, name: str, data: bytes,
                           ref: str | None = None) -> str:
@@ -572,10 +782,11 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
     def _discover_list(self) -> list[tuple[str, str]]:
         """`(remote_id, name)` de los descartes de todos los dispositivos."""
-        return self._list_small_files(DISCOVER_PREFIX)
+        return [(rf.remote_id, rf.name)
+                for rf in self._list_small(DISCOVER_PREFIX)]
 
     def _discover_read(self, ref: str) -> bytes:
-        return self._read_file(ref)
+        return self._read_small(ref)
 
     def _discover_write(self, name: str, data: bytes,
                         ref: str | None = None) -> str:
@@ -584,11 +795,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def _write_small(self, name: str, data: bytes,
                      ref: str | None = None) -> str:
         """Crea o reemplaza un archivo chico y devuelve su ref."""
-        if ref:
-            self._replace_file(ref, data)
-            return ref
-        created = self._create_file(name, data)
-        return str(created["id"])
+        return self._store_small(name, data, ref)
 
     # ---------------------------------------------------------------------- puerto
     def list(self) -> list[StoredFile]:
@@ -772,12 +979,17 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     # Lo unico que cambia entre proveedores. Son chicos a proposito: el indice,
     # la cache, los reintentos y los rangos viven arriba, en esta misma clase.
 
-    def _list_index_files(self) -> list[tuple[str, str]]:
-        """`(remote_id, name)` de los `index-*.json` de la carpeta biblioteca."""
-        return self._list_small_files(INDEX_PREFIX)
+    def _list_index_files(self) -> list[RemoteFile]:
+        """Los `index-*.json` de la carpeta biblioteca."""
+        return self._list_small(INDEX_PREFIX)
 
-    def _list_small_files(self, prefix: str) -> list[tuple[str, str]]:
-        """`(remote_id, name)` de los archivos chicos con `prefix`."""
+    def _list_small_files(self, prefix: str) -> list[RemoteFile]:
+        """`RemoteFile(remote_id, name, stamp)` de los archivos chicos con `prefix`.
+
+        `stamp` es la version que informa el proveedor (en Drive, `modifiedTime`
+        + `version` + `size`): si no cambia, el contenido tampoco y se reusa la
+        copia local. Los llamadores NO lo usan directo: pasan por `_list_small`.
+        """
         raise NotImplementedError
 
     def _read_file(self, remote_id: str) -> bytes:
@@ -791,6 +1003,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def _replace_file(self, remote_id: str, data: bytes) -> dict:
         """Pisa el contenido de un archivo chico. Devuelve su metadata."""
         raise NotImplementedError
+
+    def _stamp_of(self, meta: dict) -> str:
+        """`stamp` de la metadata que devuelven `_create_file`/`_replace_file`.
+
+        Tiene que coincidir con el que el listado da para ese mismo archivo.
+        Vacio (el default) = no se guarda copia local de lo que escribimos.
+        """
+        return ""
 
     def _upload(self, key: str, src: Path, size: int, media_type: str,
                 existing_remote_id: str | None) -> tuple[str, str]:

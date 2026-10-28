@@ -39,6 +39,7 @@ from .bench import _q
 from .cache import AudioCache, default_cache_dir
 from .library_index import IndexEntry
 from .oauth import OAuthError, google_provider
+from .snapshot import RemoteFile, SmallFileSnapshot, snapshot_dir
 from .tokens import (
     StoredTokenSource,
     TokenSource,
@@ -86,6 +87,19 @@ def _reason(resp: httpx.Response) -> str | None:
 def _folder_query(parent_id: str, name: str) -> str:
     return (f"name='{_q(name)}' and mimeType='{FOLDER_MIME}' "
             f"and '{_q(parent_id)}' in parents and trashed=false")
+
+
+def _stamp(meta: dict) -> str:
+    """Version de un archivo de Drive: cambia si cambia el contenido.
+
+    `modifiedTime` tiene resolucion de milisegundos, `version` sube con cada
+    cambio de contenido y `size` tapa el caso raro de dos escrituras en el mismo
+    instante. Sin `modifiedTime` no hay version confiable: vacio = no se reusa.
+    """
+    modified = meta.get("modifiedTime")
+    if not modified:
+        return ""
+    return f"{modified}|{meta.get('version', '')}|{meta.get('size', '')}"
 
 
 def _multipart_body(boundary: str, metadata: bytes, media: bytes,
@@ -151,18 +165,42 @@ class DriveStorage(CloudStorage):
         found = self._find_child(parent, name)
         folder_id = found if found else self._create_folder(parent, name)
         self._folders[rel] = folder_id
+        self._persist_folders()
         return folder_id
 
     # --------------------------------------------------------------------- indice
-    def _list_small_files(self, prefix: str) -> list[tuple[str, str]]:
-        """`(remote_id, name)` de los archivos chicos con `prefix`."""
-        root_id = self._folder_id("")
-        resp = self._request("GET", DRIVE_FILES, params={
-            "q": (f"name contains '{_q(prefix)}' and '{_q(root_id)}' in parents "
-                  f"and trashed=false"),
-            "fields": "files(id,name,modifiedTime)"})
-        return [(str(entry["id"]), str(entry.get("name", "")))
-                for entry in resp.json().get("files") or []]
+    def _list_small_files(self, prefix: str) -> list[RemoteFile]:
+        """`RemoteFile` de los archivos chicos con `prefix` (una sola request)."""
+
+        def run() -> list[RemoteFile]:
+            root_id = self._folder_id("")
+            resp = self._request("GET", DRIVE_FILES, params={
+                "q": (f"name contains '{_q(prefix)}' and '{_q(root_id)}' in "
+                      f"parents and trashed=false"),
+                "fields": "files(id,name,modifiedTime,version,size)"})
+            return [RemoteFile(str(entry["id"]), str(entry.get("name", "")),
+                               _stamp(entry))
+                    for entry in resp.json().get("files") or []]
+
+        files = self._with_fresh_folders(run)
+        if files:
+            self._folders_from_disk = False
+        elif self._folders_from_disk:
+            # Vacio con un id que viene del disco: o la biblioteca esta vacia o
+            # la carpeta cacheada ya no es la buena (borrada y recreada). Se
+            # confirma con UNA busqueda; si cambio, se rebusca todo.
+            if self._root_still_valid():
+                self._folders_from_disk = False
+            else:
+                self._forget_folders()
+                files = run()
+        return files
+
+    def _root_still_valid(self) -> bool:
+        """True si buscar `Spitifo` por nombre da el mismo id que el cacheado."""
+        cached = self._folders.get("")
+        return cached is not None and self._find_child(
+            "root", self.folder_name) == cached
 
     def _read_file(self, remote_id: str) -> bytes:
         """Bytes completos de un archivo chico (`alt=media`)."""
@@ -172,8 +210,11 @@ class DriveStorage(CloudStorage):
 
     def _create_file(self, name: str, data: bytes) -> dict:
         """Crea el archivo chico en la carpeta visible con `multipart`."""
-        return self._multipart_create(name, [self._folder_id("")], data,
-                                      "application/json")
+        return self._with_fresh_folders(lambda: self._multipart_create(
+            name, [self._folder_id("")], data, "application/json"))
+
+    def _stamp_of(self, meta: dict) -> str:
+        return _stamp(meta)
 
     def _replace_file(self, remote_id: str, data: bytes) -> dict:
         """Pisa el contenido del archivo chico sin tocar la metadata."""
@@ -253,9 +294,9 @@ class DriveStorage(CloudStorage):
             meta = self._upload_replace(existing_remote_id, src, size, media_type)
             remote_id = existing_remote_id
         else:
-            folder_id = self._folder_id(_parent(key))
             name = key.rsplit("/", 1)[-1]
-            meta = self._upload_new(name, folder_id, src, size, media_type)
+            meta = self._with_fresh_folders(lambda: self._upload_new(
+                name, self._folder_id(_parent(key)), src, size, media_type))
             remote_id = str(meta["id"])
         return remote_id, str(meta.get("version", "")) or "0"
 
@@ -344,5 +385,10 @@ def drive_storage_from_env() -> DriveStorage:
     cache = AudioCache(
         default_cache_dir(),
         budget_bytes=int(os.getenv("SPITIFO_CACHE_BYTES", 2 * 1024 ** 3)))
-    device_id = default_device_id(default_data_dir())
-    return DriveStorage(tokens, client, device_id, cache=cache)
+    data_dir = default_data_dir()
+    device_id = default_device_id(data_dir)
+    # Copia local de los archivos chicos y de los ids de carpeta: el arranque
+    # solo baja lo que cambio desde la ultima vez.
+    snapshot = SmallFileSnapshot(snapshot_dir(data_dir, "drive", FOLDER_NAME))
+    return DriveStorage(tokens, client, device_id, cache=cache,
+                        snapshot=snapshot)

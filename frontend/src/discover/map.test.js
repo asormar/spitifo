@@ -53,6 +53,19 @@ describe("normalize", () => {
     expect(normalize("Cumbia ÑANDÚ")).toBe("cumbia nandu");
     expect(normalize(null)).toBe("");
   });
+
+  it("gives the same answer on the ASCII fast path as the full path", () => {
+    const full = (t) =>
+      t
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+    for (const t of ["Dream  Pop\tGaze", "  DnB ", "k-pop", "", "a\n\nb", "UK Garage"]) {
+      expect(normalize(t)).toBe(full(t));
+    }
+  });
 });
 
 describe("decodeMap", () => {
@@ -318,6 +331,28 @@ describe("placeLabels", () => {
   it("keeps the most central genres first", () => {
     const out = placeLabels({ ...base, view: fit });
     expect(out[0].i).toBe(d.order[0]);
+  });
+
+  it("places the same labels with or without the width span, measuring less", () => {
+    /* Anchos variables entre el minimo y el maximo que declara `span`. */
+    const width = (i) => 30 + ((i * 37) % 90);
+    const span = () => [30, 120];
+    let plain = 0;
+    let pruned = 0;
+    for (const view of [fit, { x: 0.5, y: 0.5, k: fit.k * 3 }, { x: 0.9, y: 0.2, k: fit.k * 8 }]) {
+      const args = { ...base, view, max: 400, first: [d.order[5], d.order[9]] };
+      const a = placeLabels({
+        ...args,
+        measure: (i) => (plain++, width(i)),
+      });
+      const b = placeLabels({
+        ...args,
+        measure: (i) => (pruned++, width(i)),
+        span,
+      });
+      expect(b).toEqual(a);
+    }
+    expect(pruned).toBeLessThan(plain);
   });
 
   it("shows more detail when zoomed in", () => {

@@ -10,6 +10,7 @@ import { engine } from "../player/engine.js";
 import { createListenTracker } from "../player/listens.js";
 import { requestLibrary, requestPlaylist, requestReveal } from "../listen/reveal.js";
 import { bindMediaSession } from "../player/mediaSession.js";
+import { fetchMapFile } from "../discover/mapFile.js";
 import {
   MODES,
   canStartSwipe,
@@ -52,7 +53,15 @@ const writeLibCache = (files) => {
 
 const loadDownloadView = () => import("../download/DownloadView.jsx");
 const loadListenView = () => import("../listen/ListenView.jsx");
-const loadDiscoverView = () => import("../discover/DiscoverView.jsx");
+/* Descubrir se guarda ya resuelto cuando su chunk llega (se adelanta con la app
+   ociosa): si el usuario lo abre despues, la pantalla se pinta dentro de la
+   transicion y no tras una pasada de Suspense. Mismo motivo que "Ahora suena". */
+let ReadyDiscover = null;
+const loadDiscoverView = () =>
+  import("../discover/DiscoverView.jsx").then((m) => {
+    ReadyDiscover = m.default;
+    return m;
+  });
 const loadSettingsView = () => import("../settings/SettingsView.jsx");
 
 /* "Ahora suena" no usa React.lazy: abrirla es una View Transition que pinta la
@@ -67,7 +76,12 @@ const loadNowPlaying = () =>
 
 const DownloadView = React.lazy(loadDownloadView);
 const ListenView = React.lazy(loadListenView);
-const DiscoverView = React.lazy(loadDiscoverView);
+const LazyDiscover = React.lazy(loadDiscoverView);
+function DiscoverView(props) {
+  /* Se elige al montar y no cambia: cambiar de tipo desmontaria la pantalla. */
+  const [View] = useState(() => ReadyDiscover ?? LazyDiscover);
+  return <View {...props} />;
+}
 const SettingsView = React.lazy(loadSettingsView);
 
 /* Una pantalla sigue montada aunque no se vea: `hidden` la saca del layout y
@@ -93,6 +107,21 @@ const MODE_LOADERS = {
   discover: loadDiscoverView,
 };
 loadDownloadView();
+
+/* El mapa de generos se pide en el mismo gesto que abre Descubrir, en paralelo
+   con su chunk, y nunca antes: ni al arrancar ni cuando la app esta ociosa. Si
+   hay chunk (adelantado con la app ociosa) tambien se decodifica ya, para que la
+   pantalla nazca con el mapa. Si la app abre ya en Descubrir (?view=discover),
+   desde aca. */
+function warmDiscover() {
+  fetchMapFile().catch(() => {});
+  loadDiscoverView().then(
+    (m) => m.warmMap?.(),
+    () => {}
+  );
+}
+const bootView = readView(window.location.search);
+if (bootView.mode === "discover" && !bootView.settings) warmDiscover();
 
 export default function App() {
   /* La URL manda en el arranque: ?view=listen abre Escuchar y ?view=settings
@@ -211,6 +240,7 @@ export default function App() {
   }, []);
 
   const visit = useCallback((id) => {
+    if (id === "discover") warmDiscover();
     setVisited((cur) => (cur.has(id) ? cur : new Set(cur).add(id)));
   }, []);
 
@@ -250,6 +280,9 @@ export default function App() {
   const goMode = useCallback(
     (m) => {
       if (!MODES.includes(m)) return;
+      /* Ya, no dentro de la transicion de pantalla (que espera un cuadro): el
+         mapa viaja mientras la app se prepara para mostrarlo. */
+      if (m === "discover") warmDiscover();
       if (leaveNp(() => goMode(m))) return;
       rememberScroll();
       const from = activeIdRef.current;
@@ -475,14 +508,18 @@ export default function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [settings.open, closeSettings, closeNp]);
 
-  /* Adelanto del chunk del modo vecino y de Ajustes cuando la app esta ociosa
-     (y no antes, para no competir con la primera pintura). Se repite al cambiar
-     de modo: la siguiente pantalla probable cambia. */
+  /* Adelanto del chunk del modo vecino, de Ajustes y de Descubrir cuando la
+     app esta ociosa (y no antes, para no competir con la primera pintura). El
+     de Descubrir va desde cualquier modo: es el unico que trae un mapa que
+     dibujar y cada milisegundo de su primera visita se nota. Solo el chunk:
+     su mapa (genre-map.json) espera a que el usuario abra Descubrir. Se repite
+     al cambiar de modo: la siguiente pantalla probable cambia. */
   useEffect(() => {
     const preload = () => {
       loadSettingsView();
       loadNowPlaying();
       MODE_LOADERS[nextGuess(mode)]?.();
+      loadDiscoverView();
     };
     if (typeof window.requestIdleCallback === "function") {
       const id = window.requestIdleCallback(preload);
