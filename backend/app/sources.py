@@ -413,6 +413,11 @@ class InternetArchiveSource(Source):
         if info.get("_source") in ("derived", "none"):
             track.extra["match"] = "unknown"
             track.extra["match_label"] = "no se pudo verificar (el archivo no trae tags)"
+        elif info.get("_error"):
+            # archive.org negó o cortó la lectura (403 en items restringidos):
+            # sin tags no hay veredicto, pero la UI igual tiene que mostrar uno
+            track.extra["match"] = "unknown"
+            track.extra["match_label"] = "no se pudo verificar (archive.org no dejó leer el archivo)"
         track.album = track.album or info.get("album") or track.title
         return track
 
