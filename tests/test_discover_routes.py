@@ -6,6 +6,7 @@ red ni arranca el hilo de verdad.
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 import pytest
@@ -246,3 +247,139 @@ def test_dismiss_sobre_varios_artistas_los_guarda_todos(api):
         assert client.post("/api/discover/dismiss",
                            json={"name": name}).status_code == 200
     assert storage.load_discover().dismissed_set() == {"uno", "dos"}
+
+
+# ------------------------------------- stale-while-revalidate (nunca espera a la nube)
+class CountingStorage(SlowStorage):
+    """SlowStorage que cuenta las lecturas y puede fallar a pedido."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.loads = {"list": 0, "artistinfo": 0}
+        self.fail_artistinfo = False
+
+    def list(self):
+        self.loads["list"] += 1
+        return super().list()
+
+    def load_artistinfo(self) -> dict:
+        self.loads["artistinfo"] += 1
+        if self.fail_artistinfo:
+            raise OSError("sin red")
+        return super().load_artistinfo()
+
+
+def _wait_refresh_done(timeout: float = 5.0) -> None:
+    """Espera a que el thread de refresco termine y la cola quede vacia."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with main._cache_lock:
+            idle = main._refresh_thread is None and not main._refresh_queue
+        if idle:
+            return
+        time.sleep(0.01)
+    raise AssertionError("el refresco en segundo plano no termino")
+
+
+def _names(body: dict) -> list[str]:
+    return [artist["name"] for artist in body["artists"]]
+
+
+def _newer_artistinfo(storage) -> None:
+    """Lo que otro dispositivo publicaria: Alfa ahora recomienda a Z, no a X."""
+    storage.save_artistinfo({
+        "alfa": dict(_record("Alfa", genres=[["pop", 5]], similar=[
+            {"name": "Z", "mbid": "m-Z", "score": 1.0}]), fetched_at=T0 + 10),
+        "z": dict(_record("Z", genres=[["pop", 1]]), fetched_at=T0 + 10),
+    })
+
+
+@pytest.fixture
+def slow_api(tmp_path, monkeypatch):
+    """Cliente sobre un storage lento y con un TTL de 50 ms para vencer rapido."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    storage = CountingStorage(root, device_id="d1")
+    set_storage(storage)
+    monkeypatch.setattr(main, "_enricher", FakeEnricher())
+    monkeypatch.setattr(main, "DISCOVER_CACHE_SECONDS", 0.05)
+    try:
+        with TestClient(create_app()) as client:
+            _seed(storage)
+            yield client, storage
+            _wait_refresh_done()
+    finally:
+        set_storage(None)
+
+
+def test_get_discover_vencido_responde_ya_y_se_refresca_aparte(slow_api):
+    client, storage = slow_api
+    assert _names(client.get("/api/discover").json()) == ["X"]  # frio: espera
+    _newer_artistinfo(storage)
+    time.sleep(0.1)  # vence el TTL
+
+    started = time.perf_counter()
+    stale = client.get("/api/discover").json()
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.05, f"el GET vencido espero a la nube: {elapsed:.3f} s"
+    assert _names(stale) == ["X"], "mientras se refresca, se sirve lo anterior"
+
+    _wait_refresh_done()
+    started = time.perf_counter()
+    fresh = client.get("/api/discover").json()
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.05
+    assert _names(fresh) == ["Z"], "el GET siguiente ya ve lo refrescado"
+
+
+def test_get_discover_vencido_refresca_una_sola_vez_a_la_vez(slow_api):
+    client, storage = slow_api
+    client.get("/api/discover")
+    loads = dict(storage.loads)
+    time.sleep(0.1)
+
+    for _ in range(6):
+        client.get("/api/discover")
+        names = [t.name for t in threading.enumerate()
+                 if t.name == "discover-refresh"]
+        assert len(names) <= 1
+    _wait_refresh_done()
+    assert storage.loads["artistinfo"] == loads["artistinfo"] + 1
+    assert storage.loads["list"] == loads["list"] + 1
+
+
+def test_un_refresco_que_falla_sigue_sirviendo_lo_anterior(slow_api):
+    client, storage = slow_api
+    client.get("/api/discover")
+    _newer_artistinfo(storage)
+    storage.fail_artistinfo = True
+    time.sleep(0.1)
+
+    assert _names(client.get("/api/discover").json()) == ["X"]
+    _wait_refresh_done()
+    response = client.get("/api/discover")
+    assert response.status_code == 200
+    assert _names(response.json()) == ["X"], "sin red se sigue con lo cacheado"
+
+    storage.fail_artistinfo = False
+    _wait_refresh_done()
+    time.sleep(0.1)
+    client.get("/api/discover")  # dispara el refresco bueno
+    _wait_refresh_done()
+    assert _names(client.get("/api/discover").json()) == ["Z"]
+
+
+def test_dismiss_se_ve_en_el_acto_aunque_los_insumos_esten_vencidos(slow_api):
+    client, storage = slow_api
+    assert _names(client.get("/api/discover").json()) == ["X"]
+    time.sleep(0.1)
+
+    assert client.post("/api/discover/dismiss", json={"name": "X"}).status_code == 200
+    started = time.perf_counter()
+    body = client.get("/api/discover").json()
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.05
+    assert body["artists"] == []
+
+    client.post("/api/discover/dismiss", json={"name": "x", "undo": True})
+    assert _names(client.get("/api/discover").json()) == ["X"]
