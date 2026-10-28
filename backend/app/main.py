@@ -14,6 +14,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -844,6 +845,8 @@ _cache_epoch = 0
 _refresh_queue: dict[str, tuple[object, object]] = {}
 _refresh_running: str | None = None
 _refresh_thread: threading.Thread | None = None
+_discover_pool: ThreadPoolExecutor | None = None
+_discover_pool_lock = threading.Lock()
 
 
 def _cache_use_owner(storage: object) -> None:
@@ -855,14 +858,21 @@ def _cache_use_owner(storage: object) -> None:
         _cache_owner = storage
 
 
-def _cached(key: str, loader, *, storage, ttl: float | None):
-    """Valor de `loader()` cacheado por `ttl` segundos (`None` = no vence)."""
+def _cached(key: str, loader, *, storage, ttl: float | None,
+            stale_ok: bool = True):
+    """Valor de `loader()` cacheado por `ttl` segundos (`None` = no vence).
+
+    Vencido, se devuelve igual y se refresca aparte; con `stale_ok=False` se
+    vuelve a leer en el acto (el enricher no puede trabajar con fichas viejas).
+    """
     now = time.monotonic()
     with _cache_lock:
         _cache_use_owner(storage)
         stamp = _cache_stamps.get(key)
-        if stamp is not None:
-            if ttl is not None and now - stamp >= ttl:
+        expired = (stamp is not None and ttl is not None
+                   and now - stamp >= ttl)
+        if stamp is not None and (stale_ok or not expired):
+            if expired:
                 # Vencido pero con valor: se contesta ya y se refresca aparte.
                 _schedule_refresh(key, loader, storage)
             return _cache_values[key]
@@ -967,15 +977,47 @@ def _discover_records(storage, enricher) -> dict:
             records = None
         if isinstance(records, dict):
             return records
+    return _cached_records(storage)
+
+
+# Las entradas de Discover, compartidas por la request y el enricher: el hilo
+# arranca justo despues del primer GET y asi no relista lo que este acaba de
+# leer. El enricher las pide frescas (`stale_ok=False`).
+def _cached_records(storage, stale_ok: bool = True) -> dict:
     return _cached("artistinfo", storage.load_artistinfo, storage=storage,
-                   ttl=DISCOVER_CACHE_SECONDS)
+                   ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
+
+
+def _cached_tracks(storage, stale_ok: bool = True) -> dict:
+    summary = _cached("listens", storage.load_listens_summary, storage=storage,
+                      ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
+    return (summary or {}).get("tracks", {})
+
+
+def _cached_dismissed(storage) -> set[str]:
+    # No vence: cada descarte lo actualiza en el acto (`_apply_dismissal`).
+    return _cached("discover", lambda: storage.load_discover().dismissed_set(),
+                   storage=storage, ttl=None)
+
+
+def _discover_loader_pool() -> ThreadPoolExecutor:
+    """Threads para las cuatro entradas de Discover: se crean una sola vez."""
+    global _discover_pool
+    with _discover_pool_lock:
+        if _discover_pool is None:
+            _discover_pool = ThreadPoolExecutor(
+                max_workers=4, thread_name_prefix="discover-load")
+        return _discover_pool
 
 
 def _get_enricher() -> Enricher:
     global _enricher
     with _enricher_lock:
         if _enricher is None:
-            _enricher = Enricher()
+            _enricher = Enricher(
+                load_records=lambda storage: _cached_records(storage, False),
+                load_tracks=lambda storage: _cached_tracks(storage, False),
+                load_dismissed=_cached_dismissed)
         return _enricher
 
 
@@ -984,18 +1026,19 @@ def _discover_payload(enricher=None) -> dict:
     from .recommend import artist_weights, candidates, user_genres
 
     storage = get_storage()
-    entries = _cached("scan", library_scan, storage=storage,
-                      ttl=DISCOVER_CACHE_SECONDS)
-    library = library_artists(entries)
     if enricher is None:
         enricher = _enricher
-    records = _discover_records(storage, enricher)
-    dismissed = _cached(
-        "discover", lambda: storage.load_discover().dismissed_set(),
-        storage=storage, ttl=None)
-    tracks = (_cached("listens", storage.load_listens_summary,
-                      storage=storage, ttl=DISCOVER_CACHE_SECONDS)
-              or {}).get("tracks", {})
+    # En frio cada entrada es una request a la nube: se piden a la vez, asi
+    # se espera la mas lenta y no la suma. Con todo cacheado no cuesta nada.
+    pool = _discover_loader_pool()
+    entries = pool.submit(_cached, "scan", library_scan, storage=storage,
+                          ttl=DISCOVER_CACHE_SECONDS)
+    records = pool.submit(_discover_records, storage, enricher)
+    dismissed = pool.submit(_cached_dismissed, storage)
+    tracks = pool.submit(_cached_tracks, storage)
+    entries, records = entries.result(), records.result()
+    dismissed, tracks = dismissed.result(), tracks.result()
+    library = library_artists(entries)
     weights = artist_weights(library, entries, tracks)
     return {"genres": user_genres(library, records, weights),
             "artists": candidates(library, records, weights, dismissed)}

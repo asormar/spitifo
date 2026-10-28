@@ -107,6 +107,21 @@ lifespan step by step in the same interpreter):
   a launch waits for Drive: 3.8 s → 1.2–2.2 s on the owner's setup, every
   later one 5–7 ms. It still lists Drive five times in a row (the listens are
   listed twice), which is the next thing to cut there.
+- **After session 24: the first `/api/discover` lists Drive in parallel.** Its
+  four inputs (library, artist records, dismissals, listens) are loaded at the
+  same time, the monthly and aggregate listens files come from one `files.list`
+  (`(name contains 'listens-' or name contains 'listenagg-')`, following
+  `nextPageToken`, which no listing did before), and a folder id already
+  resolved is read without the adapter lock, which `_load_index` holds while it
+  lists. The enricher that starts after the request reuses its fresh inputs
+  instead of listing them again. On the owner's Drive, installed 0.6.1 with
+  only the sidecar swapped, 4 launches each: the cold request 1.17–1.32 s →
+  0.42–0.63 s, its listings 4 sequential → 3 parallel, and Drive listings per
+  launch (library, Discover, enricher, listen history) 12 → 6.
+  `tests/test_discover_drive.py` counts them on the fake Drive. The 4.4 s gap
+  once seen before an `alt=media` download did not come back (no downloads in
+  8 launches): httpx logs a request when its response headers arrive, so that
+  gap was Drive's own time to answer the download, not work in the app.
 - **A local `/api/library` is not cached: 300 tracks take 0.7–0.8 s on every
   call** (about 2.5 ms per file, reading each file's duration), and 6 s on the
   first call after the files were written (Windows Defender scans them).

@@ -57,6 +57,8 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 MULTIPART_LIMIT = 5 * 1024 * 1024
 #: 8 MiB por chunk: multiplo de 256 KiB, como exige el upload resumable.
 UPLOAD_CHUNK = 8 * 1024 * 1024
+#: Tope de `files.list` por pagina (el default de Drive es 100).
+LIST_PAGE_SIZE = 1000
 
 #: Razones de un 403 que tambien son "rate limited" (ADR 0002, seccion 8).
 RETRY_REASONS = frozenset({"rateLimitExceeded", "userRateLimitExceeded"})
@@ -148,8 +150,13 @@ class DriveStorage(CloudStorage):
         """Id de la carpeta `rel` bajo `Spitifo` ("" es `Spitifo` misma).
 
         Bajo el lock: dos descargas del mismo artista a la vez crearian dos
-        carpetas con el mismo nombre (Drive lo permite).
+        carpetas con el mismo nombre (Drive lo permite). Un id ya resuelto se
+        lee sin el: `_load_index` lista con el lock tomado y los demas
+        listados no tienen por que esperarlo.
         """
+        cached = self._folders.get(rel)
+        if cached:
+            return cached
         with self._lock:
             return self._folder_id_locked(rel)
 
@@ -169,18 +176,33 @@ class DriveStorage(CloudStorage):
         return folder_id
 
     # --------------------------------------------------------------------- indice
-    def _list_small_files(self, prefix: str) -> list[RemoteFile]:
-        """`RemoteFile` de los archivos chicos con `prefix` (una sola request)."""
+    def _list_small_files(self, prefixes: tuple[str, ...]) -> list[RemoteFile]:
+        """`RemoteFile` de los archivos chicos con alguno de `prefixes`.
+
+        Una sola request para todos los prefijos (`or` en el `q`); solo se pide
+        otra pagina si Drive corta el listado.
+        """
+        names = " or ".join(f"name contains '{_q(p)}'" for p in prefixes)
+        if len(prefixes) > 1:
+            names = f"({names})"
 
         def run() -> list[RemoteFile]:
             root_id = self._folder_id("")
-            resp = self._request("GET", DRIVE_FILES, params={
-                "q": (f"name contains '{_q(prefix)}' and '{_q(root_id)}' in "
-                      f"parents and trashed=false"),
-                "fields": "files(id,name,modifiedTime,version,size)"})
-            return [RemoteFile(str(entry["id"]), str(entry.get("name", "")),
-                               _stamp(entry))
-                    for entry in resp.json().get("files") or []]
+            params = {
+                "q": f"{names} and '{_q(root_id)}' in parents and trashed=false",
+                "fields": ("nextPageToken,"
+                           "files(id,name,modifiedTime,version,size)"),
+                "pageSize": LIST_PAGE_SIZE}
+            out: list[RemoteFile] = []
+            while True:
+                body = self._request("GET", DRIVE_FILES, params=params).json()
+                out.extend(RemoteFile(str(entry["id"]),
+                                      str(entry.get("name", "")), _stamp(entry))
+                           for entry in body.get("files") or [])
+                token = body.get("nextPageToken")
+                if not token:
+                    return out
+                params = {**params, "pageToken": token}
 
         files = self._with_fresh_folders(run)
         if files:

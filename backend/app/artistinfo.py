@@ -668,6 +668,18 @@ def _default_storage():
     return get_storage()
 
 
+def _default_records(storage) -> dict[str, dict]:
+    return storage.load_artistinfo()
+
+
+def _default_tracks(storage) -> dict:
+    return (storage.load_listens_summary() or {}).get("tracks", {})
+
+
+def _default_dismissed(storage) -> set[str]:
+    return storage.load_discover().dismissed_set()
+
+
 class Enricher:
     """Hilo unico que completa las fichas que faltan o estan vencidas.
 
@@ -676,16 +688,25 @@ class Enricher:
     request: `ensure_started()` dispara el hilo y `status()` solo lee contadores.
     Tres errores de red seguidos lo dejan `offline` 60 s; la proxima llamada a
     `ensure_started()` lo vuelve a arrancar pasado ese tiempo.
+
+    `load_records`, `load_tracks` y `load_dismissed` reciben el storage y leen
+    sus entradas; el default va directo al storage. Discover pasa las suyas,
+    cacheadas: asi el hilo no vuelve a listar la nube que la request acaba de leer.
     """
 
     def __init__(self, *, source: ArtistSource | None = None,
                  scan=None, storage=None, clock=time.time,
                  batch_size: int = ENRICH_BATCH,
                  cooldown: float = OFFLINE_COOLDOWN,
-                 rerun_after: float = RERUN_AFTER) -> None:
+                 rerun_after: float = RERUN_AFTER,
+                 load_records=None, load_tracks=None,
+                 load_dismissed=None) -> None:
         self._source = source
         self._scan = scan or _default_scan
         self._storage = storage or _default_storage
+        self._load_records = load_records or _default_records
+        self._load_tracks = load_tracks or _default_tracks
+        self._load_dismissed = load_dismissed or _default_dismissed
         self._clock = clock
         self._batch_size = max(1, int(batch_size))
         self._cooldown = float(cooldown)
@@ -789,7 +810,8 @@ class Enricher:
         storage = self._storage()
         entries = self._scan()
         library = library_artists(entries)
-        records = storage.load_artistinfo()
+        # Copia: `_remember` la va completando y puede venir de una cache ajena.
+        records = dict(self._load_records(storage))
         with self._lock:
             self._records = records
         now = self._clock()
@@ -829,8 +851,8 @@ class Enricher:
         """Generos (MusicBrainz solo) de los 12 candidatos de Discover."""
         try:
             from . import recommend
-            tracks = (storage.load_listens_summary() or {}).get("tracks", {})
-            dismissed = storage.load_discover().dismissed_set()
+            tracks = self._load_tracks(storage)
+            dismissed = self._load_dismissed(storage)
             weights = recommend.artist_weights(library, entries, tracks)
             candidates = recommend.candidates(
                 library, records, weights, dismissed)[:ENRICH_TOP_CANDIDATES]
