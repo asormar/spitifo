@@ -608,7 +608,13 @@ class ArtistInfoStorageMixin:
         """Merge de las fichas de todos los dispositivos."""
         with self._artistinfo_lock():
             merged = ArtistInfoBook()
-            for ref, name in self._artistinfo_list():
+            listing = self._artistinfo_list()
+            # Se leen todas las fichas: la nube las baja en paralelo antes.
+            warm = getattr(self, "_warm_small", None)
+            if warm is not None:
+                warm([ref for ref, name in listing
+                      if parse_artistinfo_file(name) is not None])
+            for ref, name in listing:
                 if parse_artistinfo_file(name) is None:
                     continue
                 try:
