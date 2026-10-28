@@ -102,7 +102,8 @@ body.has-mini .gmap {
   z-index: 2;
   top: 12px;
   left: 12px;
-  width: min(320px, calc(100% - 88px));
+  /* El panel tapa un lado: --fy-right (ver GenreMap.jsx) corre lo flotante. */
+  width: min(320px, calc(100% - 88px - var(--fy-right, 0px)));
 }
 
 .gmap__input {
@@ -122,11 +123,6 @@ body.has-mini .gmap {
 
 .gmap__input::placeholder {
   color: var(--faint);
-}
-
-.gmap__input:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
 }
 
 .gmap__lupa {
@@ -169,7 +165,7 @@ body.has-mini .gmap {
   position: absolute;
   z-index: 2;
   top: 12px;
-  right: 12px;
+  right: calc(12px + var(--fy-right, 0px));
   display: grid;
   gap: 6px;
 }
@@ -186,12 +182,24 @@ body.has-mini .gmap {
   box-shadow: var(--shadow-raise);
   color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
 }
 
-.gmap__btn:active {
+/* Botones del mapa y del panel: mismo tiempo de pulsacion y de color, y la
+   misma escala al pulsar los de la misma clase. */
+:is(.gmap__btn, .gmap__chip, .gmap__go, .fy-ghost, .fy__fold) {
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+}
+
+:is(.gmap__btn, .fy__fold):active {
   transform: scale(0.94);
+}
+
+:is(.gmap__chip, .fy-btn):active {
+  transform: scale(0.96);
+}
+
+:is(.gmap__go, .fy-ghost):active {
+  transform: scale(0.97);
 }
 
 .gmap__note {
@@ -245,6 +253,16 @@ body.has-mini .gmap {
 
 /* En la hoja inferior la altura es lo que falta: las dos acciones van lado a
    lado en vez de una encima de la otra. */
+/* Con la hoja de "Para ti" abajo, la tarjeta se sienta sobre su barra y la nota
+   sube con ella. */
+.gmap.has-sheet .gmap__card.is-sheet {
+  bottom: 72px;
+}
+
+.gmap.has-sheet .gmap__note {
+  bottom: 76px;
+}
+
 .gmap__card.is-sheet .gmap__acts {
   /* Pegadas al pie: si hay muchos generos cercanos, se desplazan los chips y
      las acciones siguen a la vista. */
@@ -343,12 +361,6 @@ body.has-mini .gmap {
   font: inherit;
   font-size: 13.5px;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
-}
-
-.gmap__chip:active {
-  transform: scale(0.96);
 }
 
 .gmap__chip i {
@@ -369,12 +381,6 @@ body.has-mini .gmap {
   font-size: 14.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
-}
-
-.gmap__go:active {
-  transform: scale(0.97);
 }
 
 /* La muestra es la accion principal de la tarjeta; Descargar queda segunda. */
@@ -402,15 +408,9 @@ body.has-mini .gmap {
   box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
 
-.gmap__btn:focus-visible,
-.gmap__chip:focus-visible,
-.gmap__go:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
 @media (hover: hover) and (pointer: fine) {
-  .gmap__btn:hover {
+  .gmap__btn:hover,
+  .gmap__sug:hover {
     background: var(--surface-hover);
   }
 
@@ -423,10 +423,6 @@ body.has-mini .gmap {
   }
 
   .gmap__go--quiet:hover:not(:disabled) {
-    background: var(--surface-hover);
-  }
-
-  .gmap__sug:hover {
     background: var(--surface-hover);
   }
 }
@@ -452,8 +448,141 @@ body.has-mini .gmap {
   }
 
   .gmap__search {
-    width: min(320px, calc(100% - 92px));
+    width: min(320px, calc(100% - 92px - var(--fy-right, 0px)));
   }
+}
+
+/* --- Marco de "Para ti" -------------------------------------------------------
+   Lo que se pinta con el primer cuadro del mapa (el marco estatico de
+   ForYouSlot.jsx) vive aca; el resto del panel, en foryou.css, llega despues. */
+
+.fy {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--glass-edge);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  color: var(--ink);
+}
+
+.fy__ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-fg);
+}
+
+.fy__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 600 16px / 1.2 var(--font-display);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fy--sheet {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  border-radius: var(--r-card);
+  box-shadow: 0 -6px 40px rgba(var(--shadow-rgb), 0.2);
+  transition: transform var(--t-move) var(--ease);
+  will-change: transform;
+}
+
+.fy__top {
+  flex: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.fy__peek {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 56px;
+  padding: 0 8px 0 18px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fy__grip {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+
+.fy__caret {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  color: var(--muted);
+}
+
+.fy__caret svg {
+  transition: transform var(--t-move) var(--ease);
+}
+
+.fy--sheet[data-snap="peek"] .fy__caret svg {
+  transform: rotate(180deg);
+}
+
+.fy--side {
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 360px;
+  border-radius: var(--r-card);
+  background: var(--glass-card);
+  transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
+}
+
+.fy__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 8px 10px 22px;
+}
+
+.fy--side .fy__title {
+  font-size: 17px;
+}
+
+/* El marco estatico mide lo que el panel de verdad y no se toca. */
+.fy--stub {
+  pointer-events: none;
+}
+
+.fy--sheet.fy--stub {
+  height: 56px;
+  transition: none;
+  will-change: auto;
 }
 
 /* --- Carga y error ---------------------------------------------------------- */

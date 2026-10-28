@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx, useSlidingPill } from "../shared/ui.jsx";
 import { listDrag, panelDecision, pickSnap, resist, sheetGeometry, snapName, tabDecision } from "./gestures.js";
+import { PANEL_ROOM, PANEL_W, startsCollapsed } from "./frame.js";
+import { Icon } from "./icons.jsx";
+import { PanelTitle, panelHead } from "./ForYouSlot.jsx";
 import { normalize } from "./map.js";
 import { reco, useReco, visibleArtists } from "./reco.js";
 import { useDrag } from "./useDrag.js";
-import { ArtistRow, GenresTab, Ico, StateBlock } from "./ForYouLists.jsx";
+import { ArtistRow, GenresTab, StateBlock } from "./ForYouLists.jsx";
+import "./foryou.css";
 
 /* ---------------------------------------------------------------------------
    PARA TI
@@ -22,11 +26,6 @@ import { ArtistRow, GenresTab, Ico, StateBlock } from "./ForYouLists.jsx";
    ------------------------------------------------------------------------- */
 
 const NONE = new Set();
-const PANEL_W = 360;
-/* Ancho que el panel quita al mapa: su ancho mas el margen a cada lado. */
-const PANEL_ROOM = PANEL_W + 12;
-/* Bajo este ancho de mapa el panel empieza recogido: casi no dejaria mapa. */
-const PANEL_MIN_MAP = 820;
 /* Lo que dura una fila saliendo: desliza (--t-quick) y luego se pliega (--t-enter). */
 const EXIT_MS = 380;
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -41,8 +40,6 @@ function emptyKind({ rec, hiddenCount }) {
   return "empty";
 }
 
-const plural = (n) => `${n} ${n === 1 ? "artista" : "artistas"}`;
-
 export default function ForYou({
   data,
   idx,
@@ -55,6 +52,7 @@ export default function ForYou({
   onSearch,
   onPlayArtist,
   onPlayGenre,
+  initialCollapsed = false,
 }) {
   const rec = useReco();
   const { narrow, box, genreOpen, setObstacle } = ctx;
@@ -65,7 +63,8 @@ export default function ForYou({
   const [leaving, setLeaving] = useState(NONE);
   const [busy, setBusy] = useState(null);
   const [snap, setSnap] = useState("peek");
-  const [collapsed, setCollapsed] = useState(false);
+  /* El hueco (ForYouSlot) ya decidio si el panel lateral nace recogido. */
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
 
   const segsRef = useRef(null);
   const listRef = useRef(null);
@@ -92,12 +91,7 @@ export default function ForYou({
     [artists, idx]
   );
   const kind = emptyKind({ rec, hiddenCount: rec.hidden.length });
-  const warm = rows.length === 0 && rec.status.running;
-  const head = warm
-    ? "Para ti · Conociendo tus artistas…"
-    : rows.length
-      ? `Para ti · ${plural(rows.length)}`
-      : "Para ti";
+  const head = panelHead(rec);
 
   /* --- Fila elegida: anillo fuerte en el mapa y vuelo al primer genero ------ */
 
@@ -225,12 +219,13 @@ export default function ForYou({
   }, [narrow, snap, collapsed, geo, setObstacle]);
   useEffect(() => () => setObstacle({}), [setObstacle]);
 
-  /* En ancho estrecho (pero no telefono) el panel empieza recogido. */
-  const decided = useRef(false);
+  /* En ancho estrecho (pero no telefono) el panel empieza recogido: lo decide
+     el hueco al nacer; si nacio en telefono se decide al pasar a ancho. */
+  const decided = useRef(!narrow);
   useEffect(() => {
     if (decided.current || narrow || !box.w) return;
     decided.current = true;
-    if (box.w < PANEL_MIN_MAP) setCollapsed(true);
+    if (startsCollapsed(box.w, false)) setCollapsed(true);
   }, [box.w, narrow]);
 
   /* --- Hoja inferior (pantalla estrecha) ------------------------------------ */
@@ -514,14 +509,7 @@ export default function ForYou({
     </>
   );
 
-  const title = (
-    <>
-      <span className="fy__ico" aria-hidden="true">
-        <Ico name="sparkle" />
-      </span>
-      <span className="fy__title">{head}</span>
-    </>
-  );
+  const title = <PanelTitle head={head} />;
 
   /* --- Hoja ------------------------------------------------------------------ */
 
@@ -549,7 +537,7 @@ export default function ForYou({
             <span className="fy__grip" aria-hidden="true" />
             {title}
             <span className="fy__caret" aria-hidden="true">
-              <Ico name="caret" size={20} />
+              <Icon name="CaretDown" weight="fill" size={20} />
             </span>
           </button>
           <div inert={open ? undefined : ""}>{tabs}</div>
@@ -596,7 +584,7 @@ export default function ForYou({
             aria-label="Replegar el panel Para ti"
             onClick={() => fold(true, true)}
           >
-            <Ico name="caret" size={18} />
+            <Icon name="CaretDown" weight="fill" size={18} />
           </button>
         </div>
         {tabs}
@@ -614,7 +602,7 @@ export default function ForYou({
           onClick={() => fold(false, true)}
           {...tabDrag}
         >
-          <Ico name="sparkle" size={16} />
+          <Icon name="Sparkle" weight="fill" size={16} />
           <span>Para ti</span>
         </button>
       )}

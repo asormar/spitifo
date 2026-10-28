@@ -85,6 +85,15 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   let glide = null;
   let lastTap = null;
   let zf = 1;
+  /* Etiquetas: el primer cuadro lleva solo los puntos (ver deferLabels). Su
+     disposicion se guarda mientras la vista, el tema y los resaltados no
+     cambien: pasar el puntero por el mapa no la recalcula entera. */
+  let labelsOn = false;
+  let labelAlpha = 1;
+  let fade = null;
+  let layout = null;
+  let deferRaf = 0;
+  let deferTimer = 0;
   const widths = new Float32Array(data.count).fill(-1);
   /* Radio base por peso; el zoom lo agranda despacio (ver dotR). */
   const baseR = Float32Array.from(data.w, (w) => 1.4 + w * 0.026);
@@ -94,6 +103,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     theme = next;
     fonts = TIERS.map((px) => `${px}px ${theme.font}`);
     widths.fill(-1);
+    layout = null;
   };
   applyTheme(theme);
 
@@ -104,6 +114,15 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       widths[i] = ctx.measureText(data.names[i]).width;
     }
     return widths[i];
+  };
+
+  /* Cuanto puede medir el texto de un genero sin medirlo: ya medido, exacto;
+     si no, entre 0.18 y 1.25 veces el tamano de la letra por caracter. Con eso
+     placeLabels descarta sin medir lo que ya choca (medir es lo caro). */
+  const span = (i) => {
+    if (widths[i] >= 0) return [widths[i], widths[i]];
+    const em = data.names[i].length * TIERS[tierOf(data.w[i])];
+    return [em * 0.18, em * 1.25];
   };
 
   /* Rectangulo visible y centro de la vista: se recalculan al cambiar el
@@ -253,42 +272,73 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     }
     first.forEach((i) => priority.add(i));
 
-    /* Etiquetas: tope de ~200 y nivel de detalle por colisión (ver placeLabels). */
-    const labels = placeLabels({
-      order: data.order,
-      xs,
-      ys,
-      view,
-      size,
-      measure,
-      radius: dotR,
-      first,
-      center: { x: cx, y: cy },
-    });
-    ctx.textBaseline = "middle";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = theme.halo;
-    for (const l of labels) {
-      const text = data.names[l.i];
-      ctx.font = fonts[tierOf(data.w[l.i])];
-      ctx.textAlign = l.left ? "right" : "left";
-      const main = priority.has(l.i);
-      ctx.globalAlpha = 0.85;
-      ctx.strokeText(text, l.x, l.y);
-      ctx.globalAlpha = focus >= 0 && !main ? 0.5 : 1;
-      ctx.fillStyle = main ? theme.ink : theme.muted;
-      ctx.fillText(text, l.x, l.y);
+    if (labelsOn && labelAlpha > 0) {
+      /* Etiquetas: tope de ~200 y nivel de detalle por colisión (ver placeLabels). */
+      const key = [view.x, view.y, view.k, w, h, cx, cy, lim.min, first.join(",")].join("|");
+      if (!layout || layout.key !== key) {
+        layout = {
+          key,
+          labels: placeLabels({
+            order: data.order,
+            xs,
+            ys,
+            view,
+            size,
+            measure,
+            span,
+            radius: dotR,
+            first,
+            center: { x: cx, y: cy },
+          }),
+        };
+      }
+      ctx.textBaseline = "middle";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = theme.halo;
+      for (const l of layout.labels) {
+        const text = data.names[l.i];
+        ctx.font = fonts[tierOf(data.w[l.i])];
+        ctx.textAlign = l.left ? "right" : "left";
+        const main = priority.has(l.i);
+        ctx.globalAlpha = 0.85 * labelAlpha;
+        ctx.strokeText(text, l.x, l.y);
+        ctx.globalAlpha = (focus >= 0 && !main ? 0.5 : 1) * labelAlpha;
+        ctx.fillStyle = main ? theme.ink : theme.muted;
+        ctx.fillText(text, l.x, l.y);
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
 
     onAnchor(sel >= 0 ? anchor(sel) : null);
+  }
+
+  /* El primer cuadro es solo los puntos: colocar las etiquetas (medir y
+     chocar) es lo mas caro de dibujar y el mapa ya se entiende sin ellas. En
+     cuanto ese cuadro esta en pantalla entran con un fundido corto. */
+  function deferLabels() {
+    deferRaf = requestAnimationFrame(() => {
+      deferRaf = 0;
+      deferTimer = setTimeout(() => {
+        deferTimer = 0;
+        labelsOn = true;
+        fade = reduced() ? null : { t0: null };
+        labelAlpha = fade ? 0 : 1;
+        schedule();
+      }, 0);
+    });
   }
 
   function frame(now) {
     raf = 0;
     const dt = Math.min(64, Math.max(0, now - last));
     last = now;
+    if (fade) {
+      fade.t0 ??= now;
+      const t = (now - fade.t0) / 180;
+      labelAlpha = t >= 1 ? 1 : easeOut(t);
+      if (t >= 1) fade = null;
+    }
     if (anim) {
       const t = (now - anim.t0) / anim.dur;
       view = t >= 1 ? anim.to : flyView(anim.from, anim.to, easeOut(t));
@@ -302,7 +352,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       if (blocked || Math.hypot(s.vx, s.vy) < 15) glide = null;
     }
     draw();
-    if (anim || glide) raf = requestAnimationFrame(frame);
+    if (anim || glide || fade) raf = requestAnimationFrame(frame);
   }
 
   function schedule() {
@@ -504,14 +554,18 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   return {
     resize(w, h, ratio) {
       if (!w || !h) return;
-      const atFit = !size.w || view.k <= lim.min * 1.001;
+      const firstSize = !size.w;
+      const atFit = firstSize || view.k <= lim.min * 1.001;
       size = { w, h };
       dpr = ratio;
       syncFrame();
       canvas.width = Math.round(w * ratio);
       canvas.height = Math.round(h * ratio);
       view = clampView(atFit ? { x: 0.5, y: 0.5, k: lim.min } : view, vsz, lim);
-      schedule();
+      /* Al instante: cambiar el tamano vacia el lienzo y quien llama (el
+         ResizeObserver) corre antes de pintar, asi no sale un cuadro en blanco. */
+      draw();
+      if (firstSize && !labelsOn) deferLabels();
     },
     /* Un panel tapa parte del lienzo: { left, top, right, bottom } en px. El
        mapa no se mueve (el mismo punto sigue bajo el mismo pixel); si estaba
@@ -616,6 +670,8 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     anchor,
     destroy() {
       cancelAnimationFrame(raf);
+      cancelAnimationFrame(deferRaf);
+      clearTimeout(deferTimer);
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);

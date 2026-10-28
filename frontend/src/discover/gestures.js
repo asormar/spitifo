@@ -1,3 +1,5 @@
+import { PEEK } from "./frame.js";
+
 /* ---------------------------------------------------------------------------
    GESTOS DE "PARA TI": matematica pura
 
@@ -11,8 +13,9 @@
               velocidad positiva.
    ------------------------------------------------------------------------- */
 
-/* Alto de la barra cuando la hoja esta recogida. */
-export const PEEK = 56;
+/* Alto de la barra cuando la hoja esta recogida (ver frame.js: el mapa lo
+   necesita antes de que este archivo llegue). */
+export { PEEK };
 export const HALF_RATIO = 0.45;
 export const FULL_RATIO = 0.85;
 /* Por encima de esta velocidad (px/s) un soltar es un "lanzamiento": elige el

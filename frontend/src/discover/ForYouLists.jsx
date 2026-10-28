@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { hashHue } from "../player/tint.js";
+import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { becauseText } from "./reco.js";
 import { useDrag } from "./useDrag.js";
@@ -11,24 +12,6 @@ import { useDrag } from "./useDrag.js";
    Todo lo que va dentro del panel salvo el marco (hoja inferior o panel
    lateral) y los gestos del marco, que viven en ForYou.jsx.
    ------------------------------------------------------------------------- */
-
-/* Iconos de 256 px (los de Phosphor que usa el diseno), sueltos para no traer
-   los seis pesos de cada uno al chunk. */
-export const PATH = {
-  sparkle:
-    "M208,144a15.78,15.78,0,0,1-10.42,14.94L146,178l-19,51.62a15.92,15.92,0,0,1-29.88,0L78,178l-51.62-19a15.92,15.92,0,0,1,0-29.88L78,110l19-51.62a15.92,15.92,0,0,1,29.88,0L146,110l51.62,19A15.78,15.78,0,0,1,208,144ZM152,48h16V64a8,8,0,0,0,16,0V48h16a8,8,0,0,0,0-16H184V16a8,8,0,0,0-16,0V32H152a8,8,0,0,0,0,16Zm88,32h-8V72a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0V96h8a8,8,0,0,0,0-16Z",
-  caret: "M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z",
-  dots: "M144,128a16,16,0,1,1-16-16A16,16,0,0,1,144,128ZM60,112a16,16,0,1,0,16,16A16,16,0,0,0,60,112Zm136,0a16,16,0,1,0,16,16A16,16,0,0,0,196,112Z",
-  play: "M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z",
-};
-
-export function Ico({ name, size = 18, className }) {
-  return (
-    <svg className={className} viewBox="0 0 256 256" width={size} height={size} fill="currentColor" aria-hidden="true">
-      <path d={PATH[name]} />
-    </svg>
-  );
-}
 
 /* "Ana Maria" -> "AM"; "Wisin & Yandel" -> "WY"; un solo nombre, sus dos primeras letras. */
 export function initials(name) {
@@ -235,7 +218,7 @@ export function ArtistRow({
             aria-busy={busy}
             onClick={onPlay}
           >
-            <Ico name="play" />
+            <Icon name="Play" weight="fill" size={18} />
           </button>
           <button
             type="button"
@@ -245,7 +228,7 @@ export function ArtistRow({
             aria-expanded={menuOpen}
             onClick={onToggleMenu}
           >
-            <Ico name="dots" size={20} />
+            <Icon name="DotsThree" weight="fill" size={20} />
           </button>
           {menuOpen && <RowMenu onPick={onMenuPick} listRef={listRef} />}
         </div>
@@ -337,7 +320,7 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
                     aria-busy={busy === name}
                     onClick={() => onPlay(name)}
                   >
-                    <Ico name="play" />
+                    <Icon name="Play" weight="fill" size={18} />
                   </button>
                 </li>
               );
