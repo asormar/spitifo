@@ -81,6 +81,14 @@ def _parent(key: str) -> str:
     return key.rsplit("/", 1)[0] if "/" in key else ""
 
 
+def _prefix_of(name: str, prefixes: tuple[str, ...]) -> str:
+    """El prefijo del listado que trajo `name` (Drive busca con `contains`)."""
+    for prefix in prefixes:
+        if name.startswith(prefix):
+            return prefix
+    return next((p for p in prefixes if p in name), prefixes[0])
+
+
 def _ext_of(key: str) -> str:
     name = key.rsplit("/", 1)[-1]
     if "." not in name:
@@ -399,19 +407,23 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             resp.close()
 
     # ------------------------------------------------------------ archivos chicos
-    def _list_small(self, prefix: str) -> list[RemoteFile]:
-        """Listado de los archivos chicos con `prefix`, anotando sus versiones.
+    def _list_small(self, *prefixes: str) -> list[RemoteFile]:
+        """Listado de los archivos chicos con alguno de `prefixes` (una request).
 
         Es la unica puerta de entrada al hook `_list_small_files`: deja lo que
         dijo el listado (para decidir despues si la copia local sirve) y saca de
         la copia local lo que ya no existe en la nube.
         """
-        files = list(self._list_small_files(prefix))
+        files = list(self._list_small_files(prefixes))
+        by_prefix: dict[str, set[str]] = {prefix: set() for prefix in prefixes}
         with self._small_lock:
             for rf in files:
+                prefix = _prefix_of(rf.name, prefixes)
+                by_prefix[prefix].add(rf.remote_id)
                 self._small[rf.remote_id] = (rf.name, rf.stamp, prefix)
         if self._snap is not None:
-            self._snap.prune(prefix, {rf.remote_id for rf in files})
+            for prefix, keep in by_prefix.items():
+                self._snap.prune(prefix, keep)
             self._snap.save()
         return files
 
@@ -746,8 +758,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def _listens_list(self) -> list[tuple[str, str]]:
         """`(remote_id, name)` de los mensuales y agregados de escucha."""
         return [(rf.remote_id, rf.name)
-                for rf in (self._list_small(MONTH_PREFIX)
-                           + self._list_small(AGG_PREFIX))]
+                for rf in self._list_small(MONTH_PREFIX, AGG_PREFIX)]
 
     def _listens_read(self, ref: str) -> bytes:
         return self._read_small(ref)
@@ -983,8 +994,9 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         """Los `index-*.json` de la carpeta biblioteca."""
         return self._list_small(INDEX_PREFIX)
 
-    def _list_small_files(self, prefix: str) -> list[RemoteFile]:
-        """`RemoteFile(remote_id, name, stamp)` de los archivos chicos con `prefix`.
+    def _list_small_files(self, prefixes: tuple[str, ...]) -> list[RemoteFile]:
+        """`RemoteFile(remote_id, name, stamp)` de los archivos chicos con alguno
+        de `prefixes`, en UNA request si el proveedor puede.
 
         `stamp` es la version que informa el proveedor (en Drive, `modifiedTime`
         + `version` + `size`): si no cambia, el contenido tampoco y se reusa la

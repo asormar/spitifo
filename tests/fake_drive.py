@@ -23,6 +23,7 @@ _NAME_CONTAINS = re.compile(r"^name\s+contains\s+" + _VALUE + r"$")
 _MIME_EQ = re.compile(r"^mimeType=" + _VALUE + r"$")
 _PARENT = re.compile(r"^" + _VALUE + r"\s+in\s+parents$")
 _TRASHED = re.compile(r"^trashed=(true|false)$")
+_ANY_OF = re.compile(r"^\((.*)\)$")
 _CONTENT_RANGE = re.compile(r"^bytes (\d+)-(\d+)/(\d+)$")
 
 
@@ -45,6 +46,17 @@ def parse_query(q: str) -> list[tuple[str, object]]:
     terms: list[tuple[str, object]] = []
     for raw in re.split(r"\s+and\s+", q.strip()):
         part = raw.strip()
+        match = _ANY_OF.match(part)
+        if match:
+            # `(name contains 'a' or name contains 'b')`: lo unico con `or`.
+            values = []
+            for alt in re.split(r"\s+or\s+", match.group(1).strip()):
+                found = _NAME_CONTAINS.match(alt.strip())
+                if not found:
+                    raise ValueError(f"q no soportada por el fake: {part!r}")
+                values.append(_unescape(found.group(1)))
+            terms.append(("name_contains_any", values))
+            continue
         match = _NAME_CONTAINS.match(part)
         if match:
             terms.append(("name_contains", _unescape(match.group(1))))
@@ -128,6 +140,12 @@ class FakeDrive:
         #: Si esta, se llama (fuera del lock) con cada descarga `alt=media` ANTES
         #: de contestar: sirve para frenar o sincronizar threads en los tests.
         self.on_download = None
+        #: Tope de archivos por pagina de `files.list` (None = el que pidan).
+        self.page_size_cap: int | None = None
+        #: El `q` de cada `files.list`, en orden de llegada.
+        self.list_queries: list[str] = []
+        #: Como `on_download`, pero para cada `files.list` (recibe el `q`).
+        self.on_list = None
 
     # ------------------------------------------------------------- utilidades
     @property
@@ -139,6 +157,7 @@ class FakeDrive:
     def reset_calls(self) -> None:
         self.calls.clear()
         self.counters.clear()
+        self.list_queries.clear()
 
     def data_of(self, file_id: str) -> bytes:
         return self.files[file_id]["data"]
@@ -181,6 +200,9 @@ class FakeDrive:
             if kind == "name" and f["name"] != value:
                 return False
             if kind == "name_contains" and str(value) not in f["name"]:
+                return False
+            if kind == "name_contains_any" and not any(
+                    v in f["name"] for v in value):
                 return False
             if kind == "mime" and f["mimeType"] != value:
                 return False
@@ -271,12 +293,27 @@ class FakeDrive:
                 raise KeyError(f"File not found: {parent}.")
 
     def _list(self, request: httpx.Request) -> httpx.Response:
-        terms = parse_query(request.url.params.get("q", ""))
+        q = request.url.params.get("q", "")
+        with self._bookkeeping:
+            self.list_queries.append(q)
+        if self.on_list is not None:
+            self.on_list(q)
+        terms = parse_query(q)
         self._require_parents(v for kind, v in terms if kind == "parent")
-        fields = request.url.params.get("fields", "")
+        params = request.url.params
+        fields = params.get("fields", "").replace("nextPageToken,", "")
         files = [self._public(fid, f, fields)
                  for fid, f in self.files.items() if self._match(f, terms)]
-        return httpx.Response(200, json={"files": files})
+        # Paginado como Drive: `pageSize` (que el test puede achicar con
+        # `page_size_cap`) y `pageToken` = offset del proximo corte.
+        size = int(params.get("pageSize", 100))
+        if self.page_size_cap is not None:
+            size = min(size, self.page_size_cap)
+        start = int(params.get("pageToken", 0))
+        body: dict = {"files": files[start:start + size]}
+        if start + size < len(files):
+            body["nextPageToken"] = str(start + size)
+        return httpx.Response(200, json=body)
 
     def _create_metadata(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content or b"{}")
