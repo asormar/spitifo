@@ -18,7 +18,9 @@ backend sí (Tauri en Windows, Chaquopy/WebView en Android):
    deja el zip y un `current.json` en el directorio de actualizacion; acá se lee
    ese manifest y se carga el zip (zipimport necesita la ruta del zip), pero
    SOLO si ese zip es mas nuevo que el yt-dlp empaquetado: nunca se baja de
-   version (`bundled_ytdlp_version` lo resuelve sin importar el paquete).
+   version (`bundled_ytdlp_version` lo resuelve sin importar el paquete). El
+   zip se pone en `sys.path` sin importarlo: la prueba de que importa
+   (`verify_ytdlp_zip`) corre en segundo plano, despues del arranque.
 
 4. **Temp escribible.** En Android el solver de JavaScript de yt-dlp escribe
    archivos .js temporales. `SPITIFO_TEMP_DIR` deja `tempfile` apuntando a la
@@ -39,9 +41,14 @@ import os
 import re
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 log = logging.getLogger("spitifo.runtime")
+
+#: Ruta del zip de actualizacion que `setup_ytdlp_dir` puso en `sys.path` y
+#: que todavia nadie probo importar (ver `verify_ytdlp_zip`).
+_zip_pendiente: str | None = None
 
 # Tipos que el navegador/WebView tiene que reconocer para poder reproducir sin
 # descargar. `.opus` va como audio/ogg: es un flujo Ogg y es lo que espera el
@@ -309,11 +316,15 @@ def _manifest_zip(base: Path, manifest: dict) -> Path | None:
 
 
 def _insert_zip(archivo: Path) -> bool:
-    """Inserta el zipapp y comprueba que se pueda importar.
+    """Inserta el zipapp al frente de `sys.path`, SIN importarlo.
 
-    Si `import yt_dlp` falla, se deshace: se saca la ruta, se purgan los modulos
-    `yt_dlp*` de `sys.modules` y se sigue con el yt-dlp empaquetado.
+    Importar yt-dlp desde el zip tarda alrededor de un segundo (zipimport
+    compila cada `.py` en cada arranque) y el backend no lo necesita para
+    quedar listo. El actualizador ya comprobo al bajarlo que es un zip con
+    `yt_dlp/version.py` y aca el SHA-256 coincide con el manifest; la prueba
+    de que importa queda para `verify_ytdlp_zip`, despues del arranque.
     """
+    global _zip_pendiente
     ruta = str(archivo)
     if sys.path and sys.path[0] == ruta:
         return False
@@ -321,14 +332,42 @@ def _insert_zip(archivo: Path) -> bool:
         log.warning("yt_dlp ya estaba importado: el zip nuevo no lo reemplaza")
     sys.path.insert(0, ruta)
     importlib.invalidate_caches()
+    _zip_pendiente = ruta
+    return True
+
+
+def verify_ytdlp_zip() -> bool | None:
+    """Comprueba que el zip que inserto `setup_ytdlp_dir` se pueda importar.
+
+    Si `import yt_dlp` falla, se deshace: se saca la ruta, se purgan los modulos
+    `yt_dlp*` de `sys.modules` y se sigue con el yt-dlp empaquetado. Una
+    busqueda que llegue antes de que esto termine importa el mismo zip; si
+    estaba roto, esa falla una vez. Devuelve None si no habia zip por probar,
+    True si importa y False si se descarto. De paso deja yt-dlp importado para
+    la primera busqueda.
+    """
+    global _zip_pendiente
+    ruta, _zip_pendiente = _zip_pendiente, None
+    if ruta is None:
+        return None
     try:
         import yt_dlp  # noqa: F401
     except Exception as exc:
         log.warning("yt-dlp: el zip %s no se puede importar (%s): se usa el "
-                    "empaquetado", archivo.name, exc)
+                    "empaquetado", Path(ruta).name, exc)
         _descartar_zip(ruta)
         return False
     return True
+
+
+def start_ytdlp_zip_check() -> threading.Thread | None:
+    """Corre `verify_ytdlp_zip` en un thread daemon si hay un zip por probar."""
+    if _zip_pendiente is None:
+        return None
+    hilo = threading.Thread(target=verify_ytdlp_zip, name="ytdlp-zip-check",
+                            daemon=True)
+    hilo.start()
+    return hilo
 
 
 def _descartar_zip(ruta: str) -> None:

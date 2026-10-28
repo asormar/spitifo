@@ -29,7 +29,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import activity, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
-from .runtime import configure_runtime, ytdlp_version
+from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
 # MIME de audio que Android no trae, para que esten listos cuando algo llame a
@@ -64,6 +64,9 @@ BG_TASKS: set = set()
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
+    # El zip de yt-dlp actualizado se prueba ya servido, no antes: importarlo
+    # tarda alrededor de un segundo.
+    start_ytdlp_zip_check()
     # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
     # la deja lista para el proximo arranque (no reemplaza la ya importada).
     ytdlp_update.start_background_check()
