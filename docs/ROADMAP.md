@@ -869,10 +869,10 @@ Numbers in `docs/performance.md`; what changed:
   limit down 1 KB; the installer is 19.95 MB.
 - `ui.mjs` skips the scroll test on a library shorter than a screen, and can
   run against the checkout in a headless Chromium.
-- Not done: the Pixel; `/api/discover` still lists Drive five times in a row
-  on its first call (1.2–2.2 s, the panel waits, the map does not); importing
-  the yt-dlp update from an extracted folder instead of the zip would save
-  another 0.4 s per import.
+- Not done: the Pixel.
+- Done after the session, for 0.6.1: the first `/api/discover` lists Drive in
+  parallel (1.17–1.32 → 0.42–0.63 s), and the yt-dlp update is imported from
+  a folder extracted from its zip (0.8–0.9 → 0.43–0.47 s per launch).
 
 The plan as written:
 

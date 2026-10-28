@@ -26,9 +26,11 @@ El estado vive junto a los zip, en el directorio que devuelve
 
     current.json                 {"version", "file", "sha256", "checked_at"}
     yt-dlp-<version>.zip         el zipapp verificado (con shebang)
+    yt-dlp-<version>/            el zip extraido y compilado (lo arma runtime)
 
 Se conservan solo el zip actual y el anterior: si el nuevo quedara roto, el
-arranque puede volver al anterior a mano.
+arranque puede volver al anterior a mano. La carpeta extraida es solo la del
+zip actual; si falta o no sirve, se usa el zip.
 
 Nada de red en los tests: todo HTTP pasa por un `httpx.Client` inyectable.
 """

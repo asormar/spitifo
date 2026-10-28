@@ -20,7 +20,10 @@ backend sí (Tauri en Windows, Chaquopy/WebView en Android):
    SOLO si ese zip es mas nuevo que el yt-dlp empaquetado: nunca se baja de
    version (`bundled_ytdlp_version` lo resuelve sin importar el paquete). El
    zip se pone en `sys.path` sin importarlo: la prueba de que importa
-   (`verify_ytdlp_zip`) corre en segundo plano, despues del arranque.
+   (`verify_ytdlp_zip`) corre en segundo plano, despues del arranque. Si
+   importa, se extrae a `yt-dlp-<version>/` con los modulos ya compilados y
+   desde el arranque siguiente se carga esa carpeta: zipimport compila cada
+   `.py` en cada arranque y la carpeta no (en el PC, 0.64 s contra 1.0 s).
 
 4. **Temp escribible.** En Android el solver de JavaScript de yt-dlp escribe
    archivos .js temporales. `SPITIFO_TEMP_DIR` deja `tempfile` apuntando a la
@@ -39,16 +42,25 @@ import logging
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import tempfile
 import threading
+import zipfile
 from pathlib import Path
 
 log = logging.getLogger("spitifo.runtime")
 
-#: Ruta del zip de actualizacion que `setup_ytdlp_dir` puso en `sys.path` y
-#: que todavia nadie probo importar (ver `verify_ytdlp_zip`).
+#: Ruta de la actualizacion (el zip o su carpeta extraida) que
+#: `setup_ytdlp_dir` puso en `sys.path` y que todavia nadie probo importar
+#: (ver `verify_ytdlp_zip`).
 _zip_pendiente: str | None = None
+#: Zip insertado que todavia no tiene carpeta extraida: (zip, sha256). Lo
+#: extrae `verify_ytdlp_zip` una vez que comprobo que importa.
+_por_extraer: tuple[Path, str] | None = None
+#: Archivo dentro de `yt-dlp-<version>/` con el SHA-256 del zip del que salio.
+#: Se escribe al final: una carpeta sin marca es una extraccion cortada.
+_MARCA_EXTRAIDA = ".spitifo-sha256"
 
 # Tipos que el navegador/WebView tiene que reconocer para poder reproducir sin
 # descargar. `.opus` va como audio/ogg: es un flujo Ogg y es lo que espera el
@@ -128,12 +140,15 @@ def setup_ytdlp_dir() -> bool:
 
     Dos fuentes, en este orden:
 
-    1. El zip que bajo `ytdlp_update.py`: si el directorio de actualizacion
-       tiene un `current.json` valido cuyo archivo existe y cuyo SHA-256
-       coincide, se inserta la RUTA DEL ZIP (zipimport importa zips desde
-       `sys.path`). El zip solo se usa si es MAS NUEVO que el yt-dlp
-       empaquetado: nunca se baja de version. Si el archivo no esta, el hash no
-       da o el zip no aporta, se avisa y se sigue.
+    1. Lo que bajo `ytdlp_update.py`, si el directorio de actualizacion tiene
+       un `current.json` valido y la version es MAS NUEVA que el yt-dlp
+       empaquetado (nunca se baja de version):
+       a. su carpeta extraida, si existe y su marca trae el SHA-256 del
+          manifest;
+       b. si no, la RUTA DEL ZIP (zipimport importa zips desde `sys.path`),
+          siempre que exista y su SHA-256 coincida. La carpeta se arma
+          despues, en `verify_ytdlp_zip`.
+       Si nada de eso sirve, se avisa y se sigue.
     2. `SPITIFO_YTDLP_DIR`: una carpeta con `yt_dlp/` adentro o el zip oficial,
        comportamiento de siempre.
 
@@ -141,12 +156,19 @@ def setup_ytdlp_dir() -> bool:
     Tiene que correr ANTES del primer `import yt_dlp`: con el módulo ya cargado,
     el reemplazo no tendría efecto.
     """
+    global _por_extraer
     base = ytdlp_update_dir()
     manifest = read_ytdlp_manifest(base)
-    if manifest:
+    if manifest and _zip_supera_al_empaquetado(manifest):
+        carpeta = _carpeta_extraida(base, manifest)
+        if carpeta is not None:
+            return _insert_zip(carpeta)
         archivo = _manifest_zip(base, manifest)
-        if archivo is not None and _zip_supera_al_empaquetado(manifest):
-            return _insert_zip(archivo)
+        if archivo is not None:
+            insertado = _insert_zip(archivo)
+            if insertado:
+                _por_extraer = (archivo, str(manifest["sha256"]))
+            return insertado
     return _setup_ytdlp_dir_plano()
 
 
@@ -316,7 +338,8 @@ def _manifest_zip(base: Path, manifest: dict) -> Path | None:
 
 
 def _insert_zip(archivo: Path) -> bool:
-    """Inserta el zipapp al frente de `sys.path`, SIN importarlo.
+    """Inserta el zipapp (o su carpeta extraida) al frente de `sys.path`, SIN
+    importarlo.
 
     Importar yt-dlp desde el zip tarda alrededor de un segundo (zipimport
     compila cada `.py` en cada arranque) y el backend no lo necesita para
@@ -337,17 +360,20 @@ def _insert_zip(archivo: Path) -> bool:
 
 
 def verify_ytdlp_zip() -> bool | None:
-    """Comprueba que el zip que inserto `setup_ytdlp_dir` se pueda importar.
+    """Comprueba que la actualizacion que inserto `setup_ytdlp_dir` importe.
 
     Si `import yt_dlp` falla, se deshace: se saca la ruta, se purgan los modulos
-    `yt_dlp*` de `sys.modules` y se sigue con el yt-dlp empaquetado. Una
-    busqueda que llegue antes de que esto termine importa el mismo zip; si
-    estaba roto, esa falla una vez. Devuelve None si no habia zip por probar,
-    True si importa y False si se descarto. De paso deja yt-dlp importado para
-    la primera busqueda.
+    `yt_dlp*` de `sys.modules` y se sigue con el yt-dlp empaquetado; si lo roto
+    era la carpeta extraida, se borra y el proximo arranque vuelve al zip. Una
+    busqueda que llegue antes de que esto termine importa lo mismo; si estaba
+    roto, esa falla una vez. Si lo que importo fue el zip, se extrae para el
+    proximo arranque. Devuelve None si no habia nada por probar, True si
+    importa y False si se descarto. De paso deja yt-dlp importado para la
+    primera busqueda.
     """
-    global _zip_pendiente
+    global _zip_pendiente, _por_extraer
     ruta, _zip_pendiente = _zip_pendiente, None
+    extraer, _por_extraer = _por_extraer, None
     if ruta is None:
         return None
     try:
@@ -356,7 +382,11 @@ def verify_ytdlp_zip() -> bool | None:
         log.warning("yt-dlp: el zip %s no se puede importar (%s): se usa el "
                     "empaquetado", Path(ruta).name, exc)
         _descartar_zip(ruta)
+        if (Path(ruta) / _MARCA_EXTRAIDA).is_file():
+            shutil.rmtree(ruta, ignore_errors=True)
         return False
+    if extraer is not None:
+        _extraer_zip(*extraer)
     return True
 
 
@@ -379,6 +409,87 @@ def _descartar_zip(ruta: str) -> None:
                    if m == "yt_dlp" or m.startswith("yt_dlp.")]:
         del sys.modules[nombre]
     importlib.invalidate_caches()
+
+
+def _carpeta_extraida(base: Path, manifest: dict) -> Path | None:
+    """`yt-dlp-<version>/` del zip del manifest, si esta completa y es de ese zip."""
+    nombre = manifest.get("file")
+    esperado = manifest.get("sha256")
+    if not nombre or not esperado:
+        return None
+    carpeta = base / Path(str(nombre)).stem
+    try:
+        marca = (carpeta / _MARCA_EXTRAIDA).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if marca.lower() != str(esperado).lower():
+        return None
+    if not (carpeta / "yt_dlp" / "__init__.py").is_file():
+        return None
+    return carpeta
+
+
+def _extraer_zip(archivo: Path, sha256: str) -> Path | None:
+    """Extrae el zip a `yt-dlp-<version>/` para el proximo arranque.
+
+    Se compilan solo los modulos que ya se importaron desde el zip (unos 70 de
+    mas de 1000 archivos): compilar todo yt-dlp tarda 15 s en el PC, y el
+    resto importado de la carpeta sin `.pyc` igual es mas rapido que del zip.
+    Los `.pyc` se escriben aca y no al importar porque el binario de escritorio
+    puede no escribir bytecode. Se extrae en una carpeta temporal, se renombra
+    y se compila ya en su lugar (el `.pyc` queda donde lo va a buscar el
+    import); la marca va al final, asi una extraccion cortada nunca parece
+    completa. Despues se borran las carpetas de versiones anteriores. Si algo
+    falla se sigue con el zip; devuelve la carpeta o None.
+    """
+    import py_compile
+
+    base = archivo.parent
+    destino = base / archivo.stem
+    temporal = Path(tempfile.mkdtemp(dir=base, prefix=".extraer-"))
+    try:
+        with zipfile.ZipFile(archivo) as z:
+            # Todo menos el `__main__.py` del zipapp: ademas de `yt_dlp/`
+            # viene `yt_dlp_ejs/` (el solver de JavaScript de YouTube).
+            z.extractall(temporal, [n for n in z.namelist()
+                                    if n != "__main__.py"])
+        shutil.rmtree(destino, ignore_errors=True)
+        os.replace(temporal, destino)
+        for relativo in _modulos_importados_de(archivo):
+            py_compile.compile(str(destino / relativo), doraise=True)
+        (destino / _MARCA_EXTRAIDA).write_text(sha256, encoding="utf-8")
+    except Exception as exc:
+        log.warning("yt-dlp: no se pudo extraer %s (%s): se sigue con el zip",
+                    archivo.name, exc)
+        shutil.rmtree(temporal, ignore_errors=True)
+        return None
+    for vieja in base.iterdir():
+        if vieja.is_dir() and vieja != destino and (
+                vieja.name.startswith(("yt-dlp-", ".extraer-"))):
+            shutil.rmtree(vieja, ignore_errors=True)
+    log.info("yt-dlp: %s extraido; el proximo arranque usa la carpeta",
+             archivo.name)
+    return destino
+
+
+def _modulos_importados_de(archivo: Path) -> list[str]:
+    """Rutas relativas (`yt_dlp/...py`, `yt_dlp_ejs/...py`) de los modulos
+    cargados desde el zip.
+
+    zipimport arma `__file__` como `<zip><sep><ruta interna>`, con la ruta del
+    zip normalizada; por eso se compara con `normcase` y se recorta por largo.
+    """
+    raiz = os.path.abspath(archivo)
+    prefijo = os.path.normcase(raiz) + os.sep
+    rutas = []
+    for modulo in list(sys.modules.values()):
+        origen = getattr(modulo, "__file__", None)
+        if not origen:
+            continue
+        origen = os.path.abspath(origen)
+        if os.path.normcase(origen).startswith(prefijo) and origen.endswith(".py"):
+            rutas.append(origen[len(raiz) + 1:])
+    return rutas
 
 
 def _setup_ytdlp_dir_plano() -> bool:
