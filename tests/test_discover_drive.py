@@ -6,6 +6,7 @@ archivos chicos se vuelve a listar. Estos tests cuentan esos `files.list`.
 """
 from __future__ import annotations
 
+import functools
 import os
 import threading
 import time
@@ -15,7 +16,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from backend.app import main
-from backend.app.artistinfo import MATCH_RULE
+from backend.app.artistinfo import MATCH_RULE, Enricher
 from backend.app.cloud.drive import DriveStorage
 from backend.app.cloud.snapshot import SmallFileSnapshot
 from backend.app.main import create_app
@@ -43,6 +44,15 @@ class FakeEnricher:
 
     def status(self) -> dict:
         return {"done": 0, "total": 0, "running": False, "offline": False}
+
+
+class NoNetwork:
+    """`ArtistSource` que no se puede usar: todas las fichas estan frescas."""
+
+    def fetch(self, name):
+        raise AssertionError(f"el enricher no debia buscar {name}")
+
+    fetch_genres = fetch
 
 
 def _storage(fake, snap_dir) -> DriveStorage:
@@ -121,6 +131,25 @@ def test_los_listados_del_get_frio_van_en_paralelo(launch, monkeypatch):
 
     assert response.status_code == 200
     assert _artists(response.json()) == ["X"]
+
+
+def test_el_enricher_no_vuelve_a_listar_lo_que_leyo_el_get(launch,
+                                                          monkeypatch):
+    fake, _ = launch
+    monkeypatch.setattr(main, "_enricher", None)
+    monkeypatch.setattr(main, "Enricher",
+                        functools.partial(Enricher, source=NoNetwork()))
+    with TestClient(create_app()) as client:
+        assert _artists(client.get("/api/discover").json()) == ["X"]
+        enricher = main._enricher
+        deadline = time.monotonic() + 5
+        while enricher.status()["running"] and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not enricher.status()["running"]
+
+    # Las fichas, las escuchas y los descartes salieron de la cache del GET.
+    assert len(fake.list_queries) == COLD_LISTINGS
+    assert enricher.records() is not None
 
 
 def test_el_listado_sigue_las_paginas_de_drive(launch):
