@@ -14,6 +14,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -844,6 +845,8 @@ _cache_epoch = 0
 _refresh_queue: dict[str, tuple[object, object]] = {}
 _refresh_running: str | None = None
 _refresh_thread: threading.Thread | None = None
+_discover_pool: ThreadPoolExecutor | None = None
+_discover_pool_lock = threading.Lock()
 
 
 def _cache_use_owner(storage: object) -> None:
@@ -971,6 +974,16 @@ def _discover_records(storage, enricher) -> dict:
                    ttl=DISCOVER_CACHE_SECONDS)
 
 
+def _discover_loader_pool() -> ThreadPoolExecutor:
+    """Threads para las cuatro entradas de Discover: se crean una sola vez."""
+    global _discover_pool
+    with _discover_pool_lock:
+        if _discover_pool is None:
+            _discover_pool = ThreadPoolExecutor(
+                max_workers=4, thread_name_prefix="discover-load")
+        return _discover_pool
+
+
 def _get_enricher() -> Enricher:
     global _enricher
     with _enricher_lock:
@@ -984,18 +997,23 @@ def _discover_payload(enricher=None) -> dict:
     from .recommend import artist_weights, candidates, user_genres
 
     storage = get_storage()
-    entries = _cached("scan", library_scan, storage=storage,
-                      ttl=DISCOVER_CACHE_SECONDS)
-    library = library_artists(entries)
     if enricher is None:
         enricher = _enricher
-    records = _discover_records(storage, enricher)
-    dismissed = _cached(
-        "discover", lambda: storage.load_discover().dismissed_set(),
+    # En frio cada entrada es una request a la nube: se piden a la vez, asi
+    # se espera la mas lenta y no la suma. Con todo cacheado no cuesta nada.
+    pool = _discover_loader_pool()
+    entries = pool.submit(_cached, "scan", library_scan, storage=storage,
+                          ttl=DISCOVER_CACHE_SECONDS)
+    records = pool.submit(_discover_records, storage, enricher)
+    dismissed = pool.submit(
+        _cached, "discover", lambda: storage.load_discover().dismissed_set(),
         storage=storage, ttl=None)
-    tracks = (_cached("listens", storage.load_listens_summary,
-                      storage=storage, ttl=DISCOVER_CACHE_SECONDS)
-              or {}).get("tracks", {})
+    listens = pool.submit(_cached, "listens", storage.load_listens_summary,
+                          storage=storage, ttl=DISCOVER_CACHE_SECONDS)
+    entries, records = entries.result(), records.result()
+    dismissed = dismissed.result()
+    tracks = (listens.result() or {}).get("tracks", {})
+    library = library_artists(entries)
     weights = artist_weights(library, entries, tracks)
     return {"genres": user_genres(library, records, weights),
             "artists": candidates(library, records, weights, dismissed)}

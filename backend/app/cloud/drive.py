@@ -150,8 +150,13 @@ class DriveStorage(CloudStorage):
         """Id de la carpeta `rel` bajo `Spitifo` ("" es `Spitifo` misma).
 
         Bajo el lock: dos descargas del mismo artista a la vez crearian dos
-        carpetas con el mismo nombre (Drive lo permite).
+        carpetas con el mismo nombre (Drive lo permite). Un id ya resuelto se
+        lee sin el: `_load_index` lista con el lock tomado y los demas
+        listados no tienen por que esperarlo.
         """
+        cached = self._folders.get(rel)
+        if cached:
+            return cached
         with self._lock:
             return self._folder_id_locked(rel)
 
