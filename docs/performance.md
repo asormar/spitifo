@@ -87,6 +87,20 @@ lifespan step by step in the same interpreter):
   once the server is up (a zip that fails is dropped as before). With the
   update present, launch to the app's navigation went from 1.55–2.13 s to
   0.85–0.93 s.
+- **After session 24: the yt-dlp update is imported from a folder.** Once
+  `verify_ytdlp_zip` has imported the zip, it extracts it to
+  `yt-dlp-<version>/` next to it and compiles the modules that import loaded
+  (69 of the zip's 1,046 `.py`; compiling all of them takes 15 s), and every
+  later launch puts that folder on `sys.path` instead of the zip. A marker
+  file with the zip's SHA-256 is written last, so a cut extraction is ignored;
+  a folder that fails to import is deleted and the next launch goes back to
+  the zip. The `.pyc` are written by the extraction because the frozen app may
+  not write bytecode. The import, from the venv with `python -B` on the PC,
+  5 runs: zip 0.79–0.91 s, folder 0.43–0.47 s. The extraction is a one-off
+  1.0–1.7 s in the background, on the launch after each update. Modules
+  imported later (YouTube's extractor, at the first search) are not
+  precompiled, and still import faster from the folder than from the zip
+  (0.82 s against 1.0 s for the whole package without `.pyc`).
 - **With Google Drive as the library, building `DriveStorage` in the lifespan
   adds 0.2–0.7 s before `SPITIFO_READY`** (token store, HTTP client, TLS
   context), and the first `/api/library` lists the Drive folder over the

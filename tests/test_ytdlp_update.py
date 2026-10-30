@@ -31,12 +31,16 @@ Cubre:
   o el archivo no sirven), sin bajar nunca por debajo del yt-dlp empaquetado;
 - el zip no se importa al arrancar: `runtime.verify_ytdlp_zip` lo prueba
   despues, en un thread, y descarta uno que no importa;
+- el zip que importa se extrae a `yt-dlp-<version>/` con lo importado ya
+  compilado, el arranque siguiente usa esa carpeta, y una carpeta rota, de
+  otro zip o a medio extraer hace volver al zip;
 - `runtime.bundled_ytdlp_version` leyendo un paquete de `sys.path`.
 """
 from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.util
 import io
 import json
 import logging
@@ -66,11 +70,16 @@ TAG_REAL = "2026.08.19"
 
 # --------------------------------------------------------------------- helpers
 def _zipapp(version: str) -> bytes:
-    """Zipapp falso: zip con shebang, `yt_dlp/__init__.py` y `version.py`."""
+    """Zipapp falso: zip con shebang, `yt_dlp/__init__.py` y `version.py`.
+
+    Como el oficial, trae `__main__.py` y un segundo paquete (`yt_dlp_ejs/`).
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("__main__.py", "import yt_dlp\n")
         z.writestr("yt_dlp/__init__.py", "")
         z.writestr("yt_dlp/version.py", f"__version__ = {version!r}\n")
+        z.writestr("yt_dlp_ejs/__init__.py", "")
     return b"#!/usr/bin/env python3\n" + buf.getvalue()
 
 
@@ -434,6 +443,7 @@ def sistema_limpio():
     """Deja `sys.path`/`sys.modules` como estaban: importar yt_dlp es global."""
     path_previo = list(sys.path)
     pendiente_previo = runtime._zip_pendiente
+    por_extraer_previo = runtime._por_extraer
     mods = {k: v for k, v in sys.modules.items()
             if k == "yt_dlp" or k.startswith("yt_dlp.")}
     for k in mods:
@@ -441,6 +451,7 @@ def sistema_limpio():
     yield
     sys.path[:] = path_previo
     runtime._zip_pendiente = pendiente_previo
+    runtime._por_extraer = por_extraer_previo
     for k in list(sys.modules):
         if k == "yt_dlp" or k.startswith("yt_dlp."):
             del sys.modules[k]
@@ -544,6 +555,127 @@ def test_start_ytdlp_zip_check_prueba_en_un_thread(tmp_path, monkeypatch,
     assert not hilo.is_alive()
     assert runtime._zip_pendiente is None
     assert sys.modules["yt_dlp"].__file__.startswith(str(real))
+
+
+# ------------------- el zip que importa se extrae para el arranque siguiente
+def _otro_arranque(path_previo: list[str]) -> None:
+    """Simula un arranque nuevo: sin yt_dlp cargado ni la ruta insertada."""
+    sys.path[:] = path_previo
+    for k in [m for m in sys.modules
+              if m == "yt_dlp" or m.startswith("yt_dlp.")]:
+        del sys.modules[k]
+    runtime._zip_pendiente = None
+    runtime._por_extraer = None
+    importlib.invalidate_caches()
+
+
+def test_verify_extrae_y_compila_solo_lo_importado(tmp_path, monkeypatch,
+                                                   sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+    assert runtime.verify_ytdlp_zip() is True
+
+    carpeta = d / "yt-dlp-2099.1.1"
+    assert (carpeta / runtime._MARCA_EXTRAIDA).read_text(encoding="utf-8") \
+        == hashlib.sha256(real.read_bytes()).hexdigest()
+    init = carpeta / "yt_dlp" / "__init__.py"
+    version = carpeta / "yt_dlp" / "version.py"
+    assert Path(importlib.util.cache_from_source(str(init))).is_file()
+    # `version.py` no se importo durante la prueba: queda sin compilar.
+    assert version.is_file()
+    assert not Path(importlib.util.cache_from_source(str(version))).exists()
+    # Todos los paquetes del zip, pero no el `__main__.py` del zipapp.
+    assert (carpeta / "yt_dlp_ejs" / "__init__.py").is_file()
+    assert not (carpeta / "__main__.py").exists()
+
+
+def test_el_arranque_siguiente_usa_la_carpeta(tmp_path, monkeypatch,
+                                              sistema_limpio):
+    previo = list(sys.path)
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+    runtime.verify_ytdlp_zip()
+
+    _otro_arranque(previo)
+    assert runtime.setup_ytdlp_dir() is True
+    carpeta = d / "yt-dlp-2099.1.1"
+    assert sys.path[0] == str(carpeta)
+    assert runtime._por_extraer is None
+    assert runtime.verify_ytdlp_zip() is True
+    assert sys.modules["yt_dlp"].__file__.startswith(str(carpeta))
+    assert importlib.import_module("yt_dlp.version").__version__ == "2099.1.1"
+
+
+def test_carpeta_de_otro_zip_no_se_usa(tmp_path, monkeypatch, sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    carpeta = d / "yt-dlp-2099.1.1"
+    (carpeta / "yt_dlp").mkdir(parents=True)
+    (carpeta / "yt_dlp" / "__init__.py").write_text("", encoding="utf-8")
+    (carpeta / runtime._MARCA_EXTRAIDA).write_text("c" * 64, encoding="utf-8")
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    assert runtime.setup_ytdlp_dir() is True
+    assert sys.path[0] == str(real)
+
+
+def test_carpeta_rota_se_borra_y_se_vuelve_al_zip(tmp_path, monkeypatch,
+                                                  sistema_limpio, caplog):
+    previo = list(sys.path)
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+    runtime.verify_ytdlp_zip()
+    carpeta = d / "yt-dlp-2099.1.1"
+    (carpeta / "yt_dlp" / "__init__.py").write_text(
+        "raise ImportError('roto')\n", encoding="utf-8")
+
+    _otro_arranque(previo)
+    runtime.setup_ytdlp_dir()
+    with caplog.at_level(logging.WARNING, logger="spitifo.runtime"):
+        assert runtime.verify_ytdlp_zip() is False
+    assert not carpeta.exists()
+    assert str(carpeta) not in sys.path
+
+    _otro_arranque(previo)
+    assert runtime.setup_ytdlp_dir() is True
+    assert sys.path[0] == str(real)
+
+
+def test_extraer_borra_las_carpetas_viejas(tmp_path, monkeypatch,
+                                           sistema_limpio):
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    (d / "yt-dlp-2098.1.1" / "yt_dlp").mkdir(parents=True)
+    (d / ".extraer-cortada").mkdir()
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+    runtime.setup_ytdlp_dir()
+    runtime.verify_ytdlp_zip()
+    assert sorted(p.name for p in d.iterdir() if p.is_dir()) \
+        == ["yt-dlp-2099.1.1"]
+    assert real.is_file()
+
+
+def test_extraccion_fallida_sigue_con_el_zip(tmp_path, monkeypatch,
+                                             sistema_limpio, caplog):
+    import py_compile
+
+    previo = list(sys.path)
+    d, real = _dir_con_manifest(tmp_path, sha_ok=True)
+    monkeypatch.setenv("SPITIFO_YTDLP_DIR", str(d))
+
+    def compilar_roto(*args, **kwargs):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(py_compile, "compile", compilar_roto)
+    runtime.setup_ytdlp_dir()
+    with caplog.at_level(logging.WARNING, logger="spitifo.runtime"):
+        assert runtime.verify_ytdlp_zip() is True
+    assert "no se pudo extraer" in caplog.text
+    assert not (d / "yt-dlp-2099.1.1" / runtime._MARCA_EXTRAIDA).exists()
+
+    _otro_arranque(previo)
+    assert runtime.setup_ytdlp_dir() is True
+    assert sys.path[0] == str(real)
 
 
 def test_setup_ytdlp_dir_ignora_hash_corrupto(tmp_path, monkeypatch,
