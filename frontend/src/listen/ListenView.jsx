@@ -6,27 +6,19 @@ import {
   useRef,
   useState,
 } from "react";
-import { keyUrl } from "../shared/api.js";
-import { engine } from "../player/engine.js";
-import { openVideo } from "../player/videoStore.js";
-import { normalizeLibrary, toQueue, toTrack } from "./library.js";
-import { buildIndex, searchLibrary, sortEntries } from "./home.js";
-import { history, useHistory } from "./history.js";
+import { sortEntries, searchLibrary } from "./home.js";
 import {
   subscribeReveal,
   takeLibrary,
   takePlaylist,
   takeReveal,
 } from "./reveal.js";
-import { playlists, usePlaylists } from "./playlists.js";
-import { useNotice } from "./Notice.jsx";
-import PlaylistPicker from "./PlaylistPicker.jsx";
+import { useListen } from "./ListenProvider.jsx";
 import useViewStack from "./useViewStack.js";
 import HomeFeed from "./HomeFeed.jsx";
 import SearchResults from "./SearchResults.jsx";
 import { AllPage, DetailPage, LibraryPage } from "./Pages.jsx";
 import { Icon } from "./icons.jsx";
-import { SongRow } from "./rows.jsx";
 import "./home.css";
 
 /* ---------------------------------------------------------------------------
@@ -74,16 +66,9 @@ export default function ListenView({
   const dq = useDeferredValue(q);
   /* Orden de Explorar la biblioteca; Descargar lo pide en "recent". */
   const [sort, setSort] = useState("recent");
-  /* { key, el }: la fila con el menu abierto y su boton. Solo hay uno. */
-  const [menu, setMenu] = useState(null);
-  /* { key, title, el }: la cancion de la hoja "Añadir a una lista". */
-  const [picker, setPicker] = useState(null);
-  const [noticeNode, show] = useNotice();
+  const { ctx: shared, model } = useListen();
   const [revealTick, setRevealTick] = useState(0);
-
-  const lists = usePlaylists((s) => s.list);
-  const listsReady = usePlaylists((s) => s.ready);
-  const hist = useHistory();
+  const { index, byKey, lists, listsReady, plays, entries } = model;
 
   const searchRef = useRef(null);
   const libRef = useRef(null);
@@ -91,14 +76,6 @@ export default function ListenView({
   const wanted = useRef(null);
   const revealRef = useRef(null);
   const firstView = useRef(true);
-
-  const entries = useMemo(() => normalizeLibrary(files), [files]);
-  const index = useMemo(() => buildIndex(entries), [entries]);
-  const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
-  const plays = useMemo(
-    () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
-    [hist.tracks]
-  );
 
   const top = stack[stack.length - 1];
   const page = top && top.type !== "search" ? top : null;
@@ -117,11 +94,11 @@ export default function ListenView({
   const open = (view) => {
     scrolls.current.set(viewKey, window.scrollY);
     scrolls.current.delete(keyOf(view));
-    setMenu(null);
+    shared.closeMenu();
     nav.push(view);
   };
   const back = () => {
-    setMenu(null);
+    shared.closeMenu();
     nav.pop();
   };
 
@@ -134,7 +111,7 @@ export default function ListenView({
   }, [viewKey]);
 
   /* Un atras del navegador cierra tambien el menu abierto. */
-  useEffect(() => setMenu(null), [stack]);
+  useEffect(() => shared.closeMenu(), [stack]);
 
   /* La busqueda activa es una entrada de la pila (debajo de las paginas): el
      atras la cierra, y al cerrarse la consulta se vacia. */
@@ -145,7 +122,7 @@ export default function ListenView({
 
   const onSearch = (value) => {
     setQ(value);
-    setMenu(null);
+    shared.closeMenu();
     const has = nav.getStack().some((v) => v.type === "search");
     if (value.trim() && !has) nav.push({ type: "search" });
     else if (!value.trim() && has) nav.pop();
@@ -200,78 +177,6 @@ export default function ListenView({
     if (i >= 0) setTimeout(() => libRef.current?.scrollToIndex(i), 120);
   }, [revealTick, page, index, sort]);
 
-  /* --- Menu de fila y aviso ------------------------------------------------ */
-
-  /* Con teclado el foco vuelve al boton que abrio el menu. */
-  const closeMenu = (refocus) => {
-    if (refocus) menu?.el.focus({ preventScroll: true });
-    setMenu(null);
-  };
-
-  /* Fuera del menu, con scroll o con Escape se cierra. El boton de otra fila
-     queda fuera de la excepcion a proposito: su clic ya cambia el menu. */
-  useEffect(() => {
-    if (!menu) return undefined;
-    const close = () => setMenu(null);
-    const onDown = (e) => {
-      if (!e.target.closest(".rmenu, .srow__more")) close();
-    };
-    document.addEventListener("pointerdown", onDown);
-    window.addEventListener("scroll", close, { passive: true });
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("scroll", close);
-    };
-  }, [menu]);
-
-  /* Las listas y el historial se piden al montar Escuchar, una vez; los fallos
-     de escritura de las listas (que ya deshizo el almacen) se dicen en el
-     aviso de esta pantalla. */
-  useEffect(() => {
-    playlists.load();
-    history.load();
-    return playlists.onError(show);
-  }, [show]);
-
-  const onMenu = (key, el) => setMenu((m) => (m && m.key === key ? null : { key, el }));
-
-  const pick = (entry, kind) => {
-    if (kind === "list") {
-      setPicker({ key: entry.key, title: entry.title, el: menu?.el });
-      setMenu(null);
-      return;
-    }
-    const track = toTrack(entry, keyUrl);
-    /* Con el motor parado las dos opciones arrancan la cancion: el aviso tiene
-       que decir eso y no "a continuacion". */
-    const idle = !engine.getState().track;
-    const done = kind === "next" ? engine.playNext(track) : engine.enqueue(track);
-    closeMenu(true);
-    show(
-      idle
-        ? "Reproduciendo"
-        : !done
-          ? "Ya está en la cola"
-          : kind === "next"
-            ? "Sonará a continuación"
-            : "Añadida a la cola"
-    );
-  };
-
-  const closePicker = () => {
-    if (picker?.el?.isConnected) picker.el.focus({ preventScroll: true });
-    setPicker(null);
-  };
-
-  /* Borrar es inmediato y se puede deshacer unos segundos: la lista vuelve con
-     el mismo id, nombre y canciones. */
-  const deleteList = (pl) => {
-    setMenu(null);
-    playlists.remove(pl.id);
-    nav.pop();
-    show(`Lista «${pl.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(pl) });
-  };
-
   /* --- Teclado -------------------------------------------------------------- */
 
   /* "/" lleva el foco al buscador (solo en el inicio) y Escape cierra, de lo
@@ -288,86 +193,25 @@ export default function ListenView({
         e.preventDefault();
         searchRef.current.focus();
       } else if (e.key === "Escape") {
-        if (menu) closeMenu(true);
-        else if (page) back();
+        if (shared.closeTop()) return;
+        if (page) back();
         else if (q) clearSearch();
-      } else if (e.key === "Tab" && menu) {
-        setMenu(null);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   });
 
-  /* --- Reproduccion ---------------------------------------------------------- */
-
-  const play = (entry, el, list) => {
-    if (entry.kind === "video") {
-      /* Un video no entra en la cola: se abre en el VideoHost. */
-      openVideo(
-        { src: keyUrl(entry.key), title: entry.title, artist: entry.artist, hasAudio: entry.hasAudio },
-        el
-      );
-      return;
-    }
-    const queue = toQueue(list, keyUrl);
-    engine.play(toTrack(entry, keyUrl), {
-      queue,
-      index: queue.findIndex((t) => t.key === entry.key),
-    });
-  };
-
-  /* Pulsar la que suena la pausa o la reanuda; otra, la pone. */
-  const tap = (entry, el, list) => {
-    if (engine.getState().track?.key === entry.key) engine.toggle();
-    else play(entry, el, list);
-  };
-
-  /* "Reproducir" / "Aleatorio" de un grupo. Con aleatorio se empieza por una al
-     azar, no siempre por la primera; restart: aunque ya suene esa pista, el
-     grupo nuevo sustituye a la cola. */
-  const playGroup = (group, shuffle = false) => {
-    const queue = toQueue(group, keyUrl);
-    if (!queue.length) return;
-    if (shuffle) engine.setShuffle(true);
-    const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
-    engine.play(queue[i], { queue, index: i, restart: true });
-  };
-
-  /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
-     donde se quedo. */
-  const resume = (item, items) => {
-    const queue = toQueue(
-      items.map((i) => i.entry),
-      keyUrl
-    );
-    const at = queue.findIndex((t) => t.key === item.entry.key);
-    engine.play(queue[at], { queue, index: at, at: item.at });
-  };
-
-  /* Lo que reciben las vistas. Se rehace en cada render: lleva el menu abierto. */
+  /* Lo que reciben las vistas: lo compartido (provider) mas la pila de esta
+     pantalla. */
   const ctx = {
-    menu,
-    onMenu,
-    closeMenu,
-    play,
-    tap,
-    playGroup,
-    resume,
+    ...shared,
     open,
     back,
-    deleteList,
-    song: (entry, list, extra) => (
-      <SongRow
-        key={entry.key}
-        entry={entry}
-        menuOpen={menu?.key === entry.key}
-        onPlay={(e, el) => play(e, el, list)}
-        onMenu={onMenu}
-        onPick={pick}
-        {...extra}
-      />
-    ),
+    deleteList: (pl) => {
+      shared.deleteList(pl);
+      nav.pop();
+    },
   };
 
   /* --- Pintado ---------------------------------------------------------------- */
@@ -487,17 +331,6 @@ export default function ListenView({
           </header>
           {body}
         </>
-      )}
-
-      {noticeNode}
-
-      {picker && (
-        <PlaylistPicker
-          songKey={picker.key}
-          title={picker.title}
-          onNotice={show}
-          onClose={closePicker}
-        />
       )}
     </section>
   );

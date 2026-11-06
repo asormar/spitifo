@@ -539,6 +539,10 @@ html[data-vt="mode"]::view-transition-new(screen) {
   gap: 14px;
 }
 
+.settings__row + .settings__row {
+  margin-top: 16px;
+}
+
 .settings__label {
   margin: 0;
   font-weight: 600;

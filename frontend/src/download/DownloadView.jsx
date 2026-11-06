@@ -13,8 +13,9 @@ import {
   isYouTubeUrl,
   trackState,
 } from "./constants.js";
-import { buildSearchParams, isTerminal, mismatchNotice, pollJob } from "./api.js";
-import { ProgressStack } from "./progress.jsx";
+import { buildSearchParams, mismatchNotice, pollJob } from "./api.js";
+import { setJobFor } from "./jobsStore.js";
+import { useSearchDraft } from "./searchDraft.js";
 import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
 import { LibraryLink, RecentSection } from "./RecentList.jsx";
@@ -27,7 +28,7 @@ export default function DownloadView({
   onImportCookies,
   onOpenLibrary,
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,9 +54,6 @@ export default function DownloadView({
   /* Claves de lo que ya se bajo en esta sesion: la tarjeta lo marca con un
      check (sigue siendo pulsable para volver a descargar). */
   const [downloadedIds, setDownloadedIds] = useState(() => new Set());
-  /* Un solo `job` tambien se pisaba entre descargas simultaneas. Ahora es un
-     mapa clave -> job, y ProgressBar dibuja uno por descarga en curso. */
-  const [jobs, setJobs] = useState({});
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
   /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
@@ -84,47 +82,6 @@ export default function DownloadView({
      de resultados (o el bloque de "sin resultados"). */
   const focusPending = useRef(false);
   const resultsRef = useRef(null);
-
-  /* Un job terminal (done/error/timeout/gone) se retira solo a los 5 s. Con
-     varias descargas en curso cada uno tiene su propio temporizador: el de la
-     primera no puede borrar el toast de la segunda, que es justo lo que
-     pasaba antes. */
-  const dismissTimers = useRef(new Map());
-  useEffect(() => {
-    /* Un temporizador POR job, creado una sola vez cuando el job pasa a
-       terminal. Antes habia uno global que se reiniciaba en cada cambio de
-       `jobs`: con otra descarga todavia sondeando (un tick cada 700 ms) el
-       toast ya terminado no se retiraba nunca, y el CSS de salida (que cuenta
-       los mismos 5 s) lo dejaba invisible pero ocupando su hueco en la pila. */
-    Object.entries(jobs).forEach(([k, j]) => {
-      if (!isTerminal(j) || dismissTimers.current.has(k)) return;
-      dismissTimers.current.set(
-        k,
-        setTimeout(() => {
-          dismissTimers.current.delete(k);
-          setJobs((cur) => {
-            /* Si la misma cancion se volvio a bajar en estos 5 s, el job ya no
-               es terminal y NO se toca: no se le retira una descarga viva. */
-            if (!isTerminal(cur[k])) return cur;
-            const next = { ...cur };
-            delete next[k];
-            return next;
-          });
-        }, JOB_DISMISS_MS)
-      );
-    });
-  }, [jobs]);
-
-  useEffect(() => {
-    const timers = dismissTimers.current;
-    return () => timers.forEach((id) => clearTimeout(id));
-  }, []);
-
-  /* Actualiza UN job sin tocar los demas. El setJob viejo pisaba el estado
-     entero en cada tick del polling. */
-  const setJobFor = useCallback((key, patch) => {
-    setJobs((cur) => ({ ...cur, [key]: { ...cur[key], ...patch, key } }));
-  }, []);
 
   /* Abrir/cerrar el menú de resoluciones por clave. Cerrar una clave que ya no
      es la abierta no pisa a la que sí lo está (dos tarjetas no se pelean). */
@@ -384,7 +341,7 @@ export default function DownloadView({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fmt, media, mode, query, setQuery, setJobFor]
+    [fmt, media, mode, query, setQuery]
   );
 
   /* El estado vive en la URL: el link se puede compartir y sobrevive al F5.
@@ -561,7 +518,6 @@ export default function DownloadView({
           </span>
         </div>
       )}
-      <ProgressStack jobs={jobs} />
       {matchedDead && (
         <div className="msg msg--warn" role="status">
           <Icon name="WarningCircle" size={17} weight="fill" />

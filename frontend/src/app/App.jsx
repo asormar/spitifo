@@ -27,6 +27,12 @@ import { swapNowPlaying, swapScreens } from "./screenSwap.js";
 import { NavIcon } from "./navIcons.jsx";
 import Logo from "../shared/Logo.jsx";
 import { useEngine } from "../player/useEngine.js";
+import ListenProvider from "../listen/ListenProvider.jsx";
+import { ProgressStack } from "../download/progress.jsx";
+
+/* El provider recibe la pila de paginas del shell; mientras esta viva en
+   ListenView la pone esa pantalla (ver ctx en ListenView). */
+const NO_NAV = { open() {}, back() {} };
 
 /* El disco gira mientras suena algo (selector booleano: solo repinta al
    pausar o reanudar). */
@@ -634,6 +640,7 @@ export default function App() {
         onPlaylist={openPlaylist}
       />
 
+      <ListenProvider files={libFiles} nav={NO_NAV}>
       <div className="screens" ref={screensRef}>
         {visited.has("download") && (
           <Screen id="download" active={activeId === "download"}>
@@ -685,6 +692,11 @@ export default function App() {
           </Screen>
         )}
       </div>
+      </ListenProvider>
+
+      {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
+          marcha. */}
+      <ProgressStack />
 
       <MiniPlayer onReveal={revealSong} onOpen={openNp} npOpen={np} />
       {/* Montado una sola vez: es el dueno del <video> y por eso la
