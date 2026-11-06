@@ -4,7 +4,7 @@
    la interfaz que se ve (las filas de la biblioteca viven en listen/). Mismo
    vocabulario que el resto: pildoras (--r-pill), rosa (--pink) para
    "suena" y reproducir, cifras tabulares. Solo transform y opacity.
-   Dos piezas: .pv (preview discreto de tarjeta) y .mini (pastilla fija).
+   Dos piezas: .pv (preview discreto de tarjeta) y .mini (pastilla flotante).
    ------------------------------------------------------------------------- */
 
 /* Boton de reproducir: los tres iconos (play, pausa, cargando) viven apilados y
@@ -74,9 +74,10 @@
   box-shadow: 0 6px 16px color-mix(in srgb, var(--pink) 40%, transparent);
 }
 
-/* Onda que sale del boton mientras suena. */
+/* Onda que sale del boton mientras suena. La del mini solo corre con la
+   pastilla a la vista: escondida no puede seguir dibujando. */
 .pv.is-playing .pbtn::after,
-.mini.is-playing .pbtn::after {
+.mini[data-state="open"].is-playing .pbtn::after {
   content: "";
   position: absolute;
   inset: -1px;
@@ -149,7 +150,6 @@
 }
 
 .pv.is-active .scrub__knob,
-.mini .scrub__knob,
 .np .scrub__knob,
 .scrub:focus-visible .scrub__knob {
   opacity: 1;
@@ -259,28 +259,29 @@
   height: 34px;
 }
 
-/* --- Mini-reproductor: pastilla de cristal (--glass) fija abajo al centro.
-   Sin transform para
-   centrarla (left/right + margin auto): asi la entrada puede usar transform.
-   Siempre montada; data-state decide si se ve. Sale rapido y entra con el
-   rebote de la casa. */
+/* --- Mini-reproductor (telefono): pastilla de cristal flotante sobre la barra
+   inferior, izquierda y derecha a 10 px. Siempre montada; data-state decide si
+   se ve: entra subiendo (transform + opacity) y sale rapido. El desenfoque es
+   de 14 px a proposito: es la capa mas cara al hacer scroll en Android. */
 
 :root {
-  /* Alto de la pastilla (con borde). Lo usan el hueco de la pagina y la subida
-     de los toasts de descarga. */
-  --mini-h: 92px;
+  /* Alto de la pastilla mas su aire. Lo usan el hueco de la pagina y la subida
+     de los avisos. */
+  --mini-h: 74px;
 }
 
 .mini {
-  border: 0;
   position: fixed;
   z-index: 45;
-  left: 16px;
-  right: 16px;
-  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--nav-h) + 10px);
   max-width: 560px;
+  height: 62px;
   margin: 0 auto;
-  padding: 10px 12px;
+  padding: 0 6px 0 8px;
+  overflow: hidden;
+  border: 0;
   border-radius: 22px;
   background: var(--glass);
   box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
@@ -288,7 +289,7 @@
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(24px);
+  transform: translateY(16px);
   transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease),
     visibility 0s linear var(--t-quick);
 }
@@ -298,22 +299,24 @@
   visibility: visible;
   pointer-events: auto;
   transform: none;
-  transition: opacity var(--t-enter) var(--ease), transform var(--t-move) var(--ease-spring),
-    visibility 0s;
+  transition: opacity 260ms var(--ease), transform 260ms var(--ease), visibility 0s;
 }
 
 .mini__row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
+  height: 100%;
 }
 
+/* Portada + titulo: un solo boton que abre "Ahora suena". */
 .mini__txt {
   display: flex;
   flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
+  height: 100%;
   padding: 0;
   border: 0;
   background: none;
@@ -323,25 +326,29 @@
   cursor: pointer;
 }
 
-.mini__txt > span {
-  max-width: 100%;
+.mini .mini__art {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
-.mini__txt:disabled {
-  cursor: default;
+.mini__tx {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .mini__title {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
+  font: 800 14.5px / 1.3 var(--font-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mini__meta {
-  color: var(--dim);
+  color: var(--mut);
   font-size: 12.5px;
   line-height: 1.3;
   overflow: hidden;
@@ -349,43 +356,12 @@
   white-space: nowrap;
 }
 
-.mini__art {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-sm);
-  object-fit: cover;
-  cursor: pointer;
-}
-
-/* Silencio siempre visible; el deslizador solo donde hay raton y sitio. */
-.mini__vol {
-  display: flex;
-  flex: none;
-  align-items: center;
-}
-
-.mini__vol .vol {
-  display: none;
-}
-
-.mini .pl__mute {
-  width: 36px;
-  height: 36px;
-}
-
-@media (hover: hover) and (pointer: fine) and (min-width: 640px) {
-  .mini__vol .vol {
-    display: block;
-  }
-}
-
 .mini__btn {
   display: grid;
   flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -397,7 +373,7 @@
 }
 
 .mini__btn:active {
-  transform: scale(0.97);
+  transform: scale(0.92);
 }
 
 .mini__btn:disabled {
@@ -420,66 +396,27 @@
   }
 }
 
-/* Anterior y siguiente: comparten la caja de los botones secundarios de la
-   pastilla (.mini__btn: 36 px, hover y atenuado al deshabilitarse). Solo se
-   ajusta el aro de foco, que sobre un icono sin texto queda muy pegado. */
-.mini__btn--prev:focus-visible,
-.mini__btn--next:focus-visible {
-  outline-offset: 1px;
-}
-
+/* Hilo de progreso pegado al borde de abajo: 3 px, sin tirador. */
 .mini__bar {
+  position: absolute;
+  inset: auto 20px 0;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 2px;
+  height: 12px;
 }
 
 .mini .scrub {
-  height: 24px;
+  height: 12px;
+  align-items: flex-end;
 }
 
-.mini__time {
-  flex: none;
-  color: var(--dim);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.mini .scrub__rail {
+  height: 3px;
+  border-radius: 0;
+  background: var(--s3);
 }
 
-/* Dedo: la zona de toque de la barra y de los botones sube a 32+ px. */
-@media (pointer: coarse) {
-  :root {
-    --mini-h: 100px;
-  }
-
-  .mini .scrub {
-    height: 32px;
-  }
-
-  .mini__btn,
-  .mini .pl__mute {
-    width: 40px;
-    height: 40px;
-  }
-}
-
-/* En un movil estrecho el silencio y la mira le robaban al titulo el sitio
-   justo para leerse ("Creep…"). El volumen ya lo llevan los botones del
-   telefono, y a la cancion se llega tocando el titulo. */
-@media (max-width: 480px) {
-  .mini__vol,
-  .mini__btn--reveal {
-    display: none;
-  }
-}
-
-/* 360 px: con anterior y siguiente el titulo se quedaria sin sitio. Se esconde
-   solo el de atras; play, siguiente y cerrar siguen en la pastilla. */
-@media (max-width: 380px) {
-  .mini__btn--prev {
-    display: none;
-  }
+.mini .scrub__knob {
+  display: none;
 }
 
 .pv .pbtn__ico--play {

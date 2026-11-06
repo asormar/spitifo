@@ -2,9 +2,8 @@
    APP SHELL: modos, navegacion fija y pantallas
 
    Cuatro pestanas viven a la vez (Inicio, Buscar, Tu biblioteca, Descubrir) y
-   Ajustes es una pagina mas, no un modal. En el telefono manda una barra inferior; desde
-   720 px, un riel a la izquierda. Las dos piezas usan el mismo cristal que la
-   pildora de la cabecera (.top) para que el shell se lea como una sola cosa.
+   Ajustes es una pagina mas, no un modal. En el telefono manda una barra
+   inferior; desde 720 px, un riel a la izquierda.
    ------------------------------------------------------------------------- */
 
 :root {
@@ -13,6 +12,8 @@
   /* Alto de la barra inferior. En escritorio no existe; el body lo redefine
      solo por debajo de 720 px y segun la preferencia de navegacion. */
   --nav-h: 0px;
+  /* Alto de la barra de arriba (solo escritorio). */
+  --top-h: 0px;
   /* Recorrido del cambio de pantalla: en el telefono se desliza en X; desde
      720 px (riel), en Y. Las variables llegan a los pseudo-elementos de la
      View Transition por herencia desde <html>. */
@@ -49,12 +50,6 @@
   }
 }
 
-@media (max-width: 719.98px) {
-  .mini {
-    bottom: calc(var(--nav-h) + 12px);
-  }
-}
-
 /* Los avisos fijos y la ventana mini del video suben con la barra inferior. */
 .progstack,
 .prog {
@@ -87,10 +82,6 @@ html[data-vt="mode"] .screen:not([hidden]) {
 /* Las capas de la transicion se pintan por encima de la raiz: si solo la
    pantalla tuviera nombre, taparia la cabecera y la barra mientras entra. Lo
    que flota sobre la pantalla lleva nombre propio para quedar encima. */
-html[data-vt="mode"] .top {
-  view-transition-name: vt-top;
-}
-
 html[data-vt="mode"] .tabbar {
   view-transition-name: vt-tabbar;
 }
@@ -189,7 +180,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 .tabbar {
   grid-template-columns: repeat(4, 1fr);
+  align-items: start;
   height: calc(64px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 6px env(safe-area-inset-bottom, 0px);
 }
 
 @media (max-width: 719.98px) {
@@ -202,19 +195,27 @@ html[data-vt="mode"]::view-transition-new(screen) {
   }
 }
 
-/* Pastilla del activo: una sola pieza que se desliza. Se deja 8 px a cada lado
-   y el paso es el ancho de la propia pastilla (100 %), no el del contenedor. */
+/* Pastilla del icono activo: una sola pieza que se desliza. El elemento mide
+   una columna y su pastilla de 52 x 30 va centrada arriba; el paso es el ancho
+   de la propia columna (100 %), no el del contenedor. */
 .tabbar__ind {
   position: absolute;
   z-index: 0;
-  top: 6px;
-  bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  left: 8px;
-  width: calc((100% - 16px) / 4);
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--acc) 13%, transparent);
+  top: 8px;
+  left: 6px;
+  display: grid;
+  justify-items: center;
+  width: calc((100% - 12px) / 4);
   transform: translateX(calc(var(--i, 0) * 100%));
   transition: transform var(--t-move) var(--ease-spring);
+}
+
+.tabbar__ind::before {
+  content: "";
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--acc) 13%, transparent);
 }
 
 .tabbar__btn {
@@ -223,18 +224,24 @@ html[data-vt="mode"]::view-transition-new(screen) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 0;
+  padding: 3px 0 0;
   border: 0;
   background: transparent;
   color: var(--mut);
   font: inherit;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
   transition: color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
+}
+
+/* El icono mide 24 y la pastilla 30: queda centrado en ella (3 px de relleno
+   arriba) y la etiqueta empieza bajo la pastilla. */
+.tabbar__btn svg {
+  margin-bottom: 3px;
 }
 
 .tabbar__btn:active {
@@ -254,10 +261,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 /* --- Puntos del modo deslizable ------------------------------------------ */
 
 .dots {
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   height: calc(44px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -267,17 +272,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
   }
 }
 
-.dots__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .dots__btn {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 22px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -287,12 +286,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 .dots__dot {
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: var(--r-pill);
   background: var(--s3);
-  transition: width var(--t-enter) var(--ease-spring),
-    background-color var(--t-quick) var(--ease);
+  transition: width var(--t-enter) var(--ease), background-color var(--t-quick) var(--ease);
 }
 
 .dots__btn[aria-current="page"] .dots__dot {
@@ -301,9 +299,10 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .dots__name {
-  color: var(--mut);
-  font-size: 10.5px;
-  font-weight: 600;
+  min-width: 84px;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-align: center;
 }
 
 /* --- Riel lateral (escritorio) -------------------------------------------- */
@@ -426,36 +425,42 @@ html[data-vt="mode"]::view-transition-new(screen) {
   }
 }
 
-/* --- Ajustes en la cabecera (solo telefono; en escritorio lo lleva el riel) */
+/* --- Cabecera de Inicio (telefono) --------------------------------------- */
 
-.top__gear {
-  display: none;
+/* La marca y el engranaje de Ajustes. Va sobre --bg: el agujero del disco es
+   del color de la pagina. En escritorio los lleva el menu lateral. */
+.apphead {
+  --logo-hole: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  margin: 0 0 4px;
+}
+
+.apphead__gear {
+  display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--mut);
+  color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
 }
 
-@media (max-width: 719.98px) {
-  .top__gear {
-    display: grid;
+.apphead__gear:active {
+  transform: scale(0.92);
+}
+
+@media (min-width: 720px) {
+  .apphead {
+    display: none;
   }
-}
-
-.top__gear:active {
-  transform: scale(0.94);
-}
-
-.top__gear.is-on {
-  background: var(--s2);
-  color: var(--acc);
 }
 
 /* --- Pantallas vacias (Escuchar, Descubrir) ------------------------------- */
@@ -517,8 +522,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
   border-radius: var(--r-card);
   background: var(--s1);
   box-shadow: var(--shadow);
-  /* La cabecera es sticky: al traer una seccion a la vista, no queda debajo. */
-  scroll-margin-top: 88px;
+  /* La barra de arriba (escritorio) es fija: al traer una seccion a la vista,
+     no queda debajo. */
+  scroll-margin-top: calc(var(--top-h) + 16px);
 }
 
 .settings__h {

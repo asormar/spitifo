@@ -40,7 +40,7 @@
   font-weight: 600;
   overflow-wrap: anywhere;
   /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
-  scroll-margin-block: 84px 120px;
+  scroll-margin-block: calc(var(--top-h) + 16px) 120px;
   /* Entra desde arriba y sale por donde entro. */
   --rise: -4px;
   --leave: -4px;

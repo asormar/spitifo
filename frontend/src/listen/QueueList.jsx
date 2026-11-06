@@ -46,7 +46,7 @@ export default function QueueList({ active, scroller }) {
     <>
       <h2 className="llabel">Sonando</h2>
       <div className="qnow">
-        <QueueRow track={track} pos={index} now reg={!scroller} />
+        <QueueRow track={track} pos={index} now />
       </div>
       <h2 className="llabel">A continuación</h2>
       {upcoming.length ? (

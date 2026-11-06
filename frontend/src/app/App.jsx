@@ -1,15 +1,13 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { Icon } from "../shared/icons.jsx";
 import { API } from "../shared/api.js";
-import { cx } from "../shared/ui.jsx";
-import { useTheme } from "../shared/theme.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
+import { requestReveal } from "../listen/revealRequest.js";
 import ListenProvider, { useListen } from "../listen/ListenProvider.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
@@ -24,13 +22,6 @@ import {
 import useNavController, { NavContext } from "./useNav.js";
 import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
 import { swapNowPlaying } from "./screenSwap.js";
-import { NavIcon } from "./navIcons.jsx";
-import Logo from "../shared/Logo.jsx";
-import { useEngine } from "../player/useEngine.js";
-
-/* El disco gira mientras suena algo (selector booleano: solo repinta al
-   pausar o reanudar). */
-const BrandLogo = () => <Logo spinning={useEngine((s) => s.playing)} />;
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -176,9 +167,6 @@ export default function App() {
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
-
-  const [theme, chooseTheme] = useTheme();
-  const dark = theme === "dark";
 
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
   const screensRef = useRef(null);
@@ -417,11 +405,14 @@ export default function App() {
     return () => clearTimeout(id);
   }, [tab]);
 
-  /* Saltar a una cancion desde el mini-reproductor: se abre Tu biblioteca con
-     la lista completa y la fila centrada. Una lista del riel, igual. */
+  /* Saltar a una cancion desde "Ahora suena": se abre Tu biblioteca con la
+     lista completa y la fila centrada. Una lista del riel, igual. */
   const revealSong = useCallback(
-    (key) => nav.goTo("library", { type: "library", wanted: key }),
-    [nav.goTo]
+    (key) => {
+      requestReveal(key);
+      nav.goTab("library");
+    },
+    [nav.goTab]
   );
   const openPlaylist = useCallback((id) => nav.goTo("library", { type: "list", id }), [nav.goTo]);
 
@@ -458,46 +449,6 @@ export default function App() {
   return (
     <NavContext.Provider value={nav}>
       <main className="app" inert={np ? "" : undefined}>
-        <header className="top">
-          <div className="brand">
-            <BrandLogo />
-          </div>
-          <div className="top__actions">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={dark}
-              className="themesw"
-              onClick={() => chooseTheme(dark ? "light" : "dark")}
-              aria-label="Modo oscuro"
-              title={
-                dark
-                  ? "Modo oscuro: cambiar a modo claro"
-                  : "Modo claro: cambiar a modo oscuro"
-              }
-            >
-              <span className="themesw__knob">
-                <span className="themesw__ico themesw__ico--moon">
-                  <Icon name="Moon" size={12} weight="fill" />
-                </span>
-                <span className="themesw__ico themesw__ico--sun">
-                  <Icon name="Sun" size={12} weight="fill" />
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className={cx("top__gear", settingsOpen && "is-on")}
-              onClick={nav.toggleSettings}
-              aria-label="Ajustes"
-              aria-pressed={settingsOpen}
-              title={settingsOpen ? "Cerrar los ajustes" : "Abrir los ajustes"}
-            >
-              <NavIcon name="settings" filled={settingsOpen} size={19} />
-            </button>
-          </div>
-        </header>
-
         <Rail
           tab={nav.tab}
           settingsOpen={settingsOpen}
@@ -584,7 +535,7 @@ export default function App() {
             marcha. */}
         <ProgressStack />
 
-        <MiniPlayer onReveal={revealSong} onOpen={openNp} npOpen={np} />
+        <MiniPlayer onOpen={openNp} npOpen={np} />
         {/* Montado una sola vez: es el dueno del <video> y por eso la
             reproduccion no se corta al cambiar de pestana. */}
         <VideoHost />

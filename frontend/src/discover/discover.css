@@ -1,9 +1,10 @@
 /* ---------------------------------------------------------------------------
    DESCUBRIR: el mapa de generos
 
-   El mapa ocupa lo que queda de la pantalla bajo la cabecera, sin scroll de
-   pagina: el alto resta la cabecera (96 px con su aire) y la barra inferior
-   del telefono (--nav-h), y un margen negativo anula el relleno inferior de
+   El mapa ocupa lo que queda de la pantalla bajo la barra de arriba, sin scroll
+   de pagina: el alto resta esa barra (--top-h, solo escritorio) con el aire de
+   arriba (24 px) y la barra inferior del telefono (--nav-h), y un margen
+   negativo anula el relleno inferior de
    .app para que el documento no crezca por encima de la ventana. Con el
    mini-reproductor visible el mapa se acorta lo que este mide.
    Los controles flotan sobre el lienzo; el lienzo dibuja solo (ver
@@ -15,7 +16,7 @@
   --gmap-pad: 128px;
 
   position: relative;
-  height: calc(100dvh - 96px - var(--nav-h) - var(--gmap-below));
+  height: calc(100dvh - var(--top-h) - 24px - var(--nav-h) - var(--gmap-below));
   min-height: 300px;
   margin: 12px 0 calc(var(--gmap-below) - var(--gmap-pad) - 1px);
   overflow: hidden;

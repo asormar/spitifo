@@ -12,7 +12,7 @@
   --row-h: 56px;
   /* El inicio usa todo el ancho; las paginas se estrechan (home.css). */
   max-width: 1200px;
-  margin: 24px auto 0;
+  margin: 0 auto;
 }
 
 .lhead {

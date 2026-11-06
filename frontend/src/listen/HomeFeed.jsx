@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { clock } from "../shared/format.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
+import { useNav } from "../app/useNav.js";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
 import { Cover, Mosaic, NowBadge, SectionHead, coverOf } from "./cards.jsx";
@@ -127,6 +128,7 @@ function ListCard({ list, byKey, ctx }) {
 }
 
 export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
+  const nav = useNav();
   const hist = useHistory();
   const entries = index.entries;
 
@@ -244,7 +246,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
         </div>
       </section>
 
-      <button type="button" className="hcard xcard" onClick={() => ctx.open({ type: "library" })}>
+      <button type="button" className="hcard xcard" onClick={() => nav.goTab("library")}>
         <span className="xcard__ico">
           <Icon name="HardDrives" size={22} />
         </span>

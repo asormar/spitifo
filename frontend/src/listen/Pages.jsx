@@ -41,10 +41,10 @@ const LIST_ITEMS = [
 ];
 
 /* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi. */
-function useFocusBack(ref) {
+function useFocusBack(ref, on = true) {
   useEffect(() => {
-    ref.current?.focus({ preventScroll: true });
-  }, [ref]);
+    if (on) ref.current?.focus({ preventScroll: true });
+  }, [ref, on]);
 }
 
 /* --- Filas de grupos -------------------------------------------------------------- */
@@ -219,22 +219,28 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
 
 /* --- Explorar la biblioteca ------------------------------------------------------------- */
 
-export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort, active, ctx }, listRef) {
+/* `root`: es la raiz de Tu biblioteca, no una pagina apilada: sin "Volver" ni
+   titulo (los pone la pantalla) y sin animacion de entrada. */
+export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort, active, ctx, root }, listRef) {
   const backRef = useRef(null);
-  useFocusBack(backRef);
+  useFocusBack(backRef, !root);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
 
   return (
-    <div className="lpage">
+    <div className={cx("lpage", root && "lpage--root")}>
       <div className="libhead">
-        <button ref={backRef} type="button" className="vback" onClick={ctx.back}>
-          <span aria-hidden="true">‹</span> Volver
-        </button>
+        {!root && (
+          <button ref={backRef} type="button" className="vback" onClick={ctx.back}>
+            <span aria-hidden="true">‹</span> Volver
+          </button>
+        )}
         <div className="libhead__row">
-          <div>
-            <h1 className="libhead__h">Biblioteca</h1>
-            <p className="libhead__n">{plural(rows.length, "tema", "temas")}</p>
-          </div>
+          {!root && (
+            <div>
+              <h1 className="libhead__h">Biblioteca</h1>
+              <p className="libhead__n">{plural(rows.length, "tema", "temas")}</p>
+            </div>
+          )}
           <div className="libhead__sort" role="group" aria-label="Ordenar por">
             <span className="libhead__lbl" aria-hidden="true">
               Ordenar

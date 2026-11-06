@@ -29,8 +29,8 @@ export function TabBar({ tab, onTab }) {
   const index = indexOf(tab);
   return (
     <nav className="tabbar" aria-label="Modos">
-      {/* La pastilla viaja con transform (spring), no cambia de izquierda a
-          izquierda: es lo unico que se mueve al cambiar de pestana. */}
+      {/* La pastilla del icono viaja con transform: es lo unico que se mueve al
+          cambiar de pestana. */}
       <span className="tabbar__ind" aria-hidden="true" style={{ "--i": index }} />
       {ITEMS.map(({ id, label }) => {
         const active = tab === id;
@@ -42,7 +42,7 @@ export function TabBar({ tab, onTab }) {
             aria-current={active ? "page" : undefined}
             onClick={() => onTab(id)}
           >
-            <NavIcon name={id} filled={active} />
+            <NavIcon name={id} filled={active} size={24} />
             <span>{label}</span>
           </button>
         );
@@ -51,32 +51,32 @@ export function TabBar({ tab, onTab }) {
   );
 }
 
-/* Variante de paginas deslizables: barra mucho mas baja, solo puntos y el
-   nombre de la pestana activa. El gesto es el protagonista, no los botones. */
+/* Variante de paginas deslizables: barra mucho mas baja, dos puntos, el nombre
+   de la pestana activa y dos puntos. El gesto es el protagonista. */
 export function SwipeDots({ tab, onTab }) {
   const index = indexOf(tab);
+  const dot = ({ id, label }) => {
+    const active = tab === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        className="dots__btn"
+        aria-label={label}
+        aria-current={active ? "page" : undefined}
+        onClick={() => onTab(id)}
+      >
+        <span className="dots__dot" aria-hidden="true" />
+      </button>
+    );
+  };
   return (
     <nav className="dots" aria-label="Modos">
-      <div className="dots__row">
-        {ITEMS.map(({ id, label }) => {
-          const active = tab === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              className="dots__btn"
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              onClick={() => onTab(id)}
-            >
-              <span className="dots__dot" aria-hidden="true" />
-            </button>
-          );
-        })}
-      </div>
+      {ITEMS.slice(0, 2).map(dot)}
       <span className="dots__name" aria-hidden="true">
         {ITEMS[index].label}
       </span>
+      {ITEMS.slice(2).map(dot)}
     </nav>
   );
 }

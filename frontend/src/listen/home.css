@@ -72,11 +72,11 @@
 
 /* --- Buscador ----------------------------------------------------------------- */
 
-/* Pegajoso bajo la pildora de la cabecera (72 px) con un velo del color de la
-   pagina que se desvanece hacia abajo. */
+/* Pegajoso arriba (bajo la barra de escritorio, --top-h) con un velo del color
+   de la pagina que se desvanece hacia abajo. */
 .hsearch {
   position: sticky;
-  top: 72px;
+  top: var(--top-h);
   z-index: 30;
   margin: 0 -10px;
   padding: 8px 10px 10px;
@@ -788,6 +788,13 @@
 
 .lpage--detail {
   max-width: 1000px;
+}
+
+/* La raiz de Tu biblioteca: ocupa el ancho de la pantalla y no entra animada
+   (cambiar de pestana ya lo hace). */
+.lpage--root {
+  max-width: none;
+  animation: none;
 }
 
 .phead {

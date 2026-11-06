@@ -2,23 +2,56 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
-import HomeFeed from "./HomeFeed.jsx";
 import PageHost from "./PageHost.jsx";
 import SearchResults from "./SearchResults.jsx";
-import { searchLibrary } from "./home.js";
+import { LibraryPage } from "./Pages.jsx";
+import { searchLibrary, sortEntries } from "./home.js";
+import { subscribeReveal, takeReveal } from "./revealRequest.js";
 import { Icon } from "./icons.jsx";
 import "./home.css";
 
 /* ---------------------------------------------------------------------------
    TU BIBLIOTECA
 
-   La biblioteca con su buscador (instantaneo, en memoria) y sus paginas. La
-   busqueda activa es una entrada de la pila, debajo de las paginas: el atras la
-   cierra y, al cerrarse, la consulta se vacia (tambien al cambiar de pestana,
-   que vacia la pila).
+   La biblioteca entera (ordenable, con lista virtual) con su buscador
+   (instantaneo, en memoria) y sus paginas. La raiz no repite el feed de
+   Inicio: es la lista completa, sin "Volver". La busqueda activa es una
+   entrada de la pila, debajo de las paginas: el atras la cierra y, al
+   cerrarse, la consulta se vacia (tambien al cambiar de pestana, que vacia la
+   pila).
    ------------------------------------------------------------------------- */
 
 const NO_STACK = [];
+
+/* La lista completa de la raiz. "Ver en tu biblioteca" (requestReveal) centra
+   la fila pedida en cuanto la pantalla esta a la vista. Se espera un momento:
+   si el pedido llego al cerrar "Ahora suena" (un atras del historial), el
+   navegador restaura despues el scroll de la entrada y pisaria este. */
+function LibraryRoot({ model, ctx, active }) {
+  const [sort, setSort] = useState("recent");
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    let timer = 0;
+    const run = () => {
+      const key = takeReveal();
+      if (key == null) return;
+      const i = sortEntries(model.index.entries, sort).findIndex((e) => e.key === key);
+      if (i < 0) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => listRef.current?.scrollToIndex(i), 120);
+    };
+    run();
+    const off = subscribeReveal(run);
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, [active, model.index, sort]);
+
+  return <LibraryPage ref={listRef} root index={model.index} sort={sort} onSort={setSort} active={active} ctx={ctx} />;
+}
 
 export default function LibraryScreen({ ready, error, errorCode, health, active, onRetry }) {
   const nav = useNav();
@@ -118,13 +151,7 @@ export default function LibraryScreen({ ready, error, errorCode, health, active,
         {searching ? (
           <SearchResults r={results} query={dq} byKey={model.byKey} ctx={ctx} />
         ) : (
-          <HomeFeed
-            index={model.index}
-            byKey={model.byKey}
-            lists={model.lists}
-            listsReady={model.listsReady}
-            ctx={ctx}
-          />
+          <LibraryRoot model={model} ctx={ctx} active={active} />
         )}
       </LibraryGate>
     </section>

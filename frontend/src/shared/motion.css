@@ -5,10 +5,6 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .themesw:hover {
-    filter: brightness(1.06);
-  }
-
   .search__go:not(:disabled):hover,
   .pv.is-playing .pbtn:hover {
     filter: brightness(1.08);
@@ -101,19 +97,7 @@
   }
 }
 
-/* Pantallas muy estrechas: la cabecera pierde margen para no desbordar a
-   360 px. */
-@media (max-width: 420px) {
-  .top {
-    padding-left: 16px;
-  }
-}
-
 @media (max-width: 720px) {
-  .top {
-    padding-left: 18px;
-  }
-
   /* En movil no hay "derecha libre": el toast vuelve a ocupar el ancho, pero
      centrado y por ENCIMA de una banda de contenido, que es lo unico que
      funciona sin tapar la fila que se esta leyendo. */

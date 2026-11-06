@@ -117,8 +117,9 @@ export default function DownloadView({
     const el = msgRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    /* 72 px: la barra sticky tapa la parte de arriba. */
-    if (r.top >= 72 && r.bottom <= window.innerHeight) return;
+    /* La barra de arriba (escritorio, --top-h) tapa el borde de la pagina. */
+    const bar = parseFloat(getComputedStyle(document.body).getPropertyValue("--top-h")) || 0;
+    if (r.top >= bar + 16 && r.bottom <= window.innerHeight) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [err, done]);
