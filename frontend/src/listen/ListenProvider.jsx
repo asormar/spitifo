@@ -32,7 +32,8 @@ import { SongRow } from "./rows.jsx";
      model  { entries, index, byKey, plays, lists, listsReady }, calculado
             una vez para las tres pantallas.
      show   el aviso pasajero.
-   `nav` pone open/back (la pila de paginas vive en useNav).
+   `nav` (useNav) pone open/back: la pila de paginas vive en el shell. Un atras
+   del navegador o un cambio de pestana cierra tambien el menu abierto.
    ------------------------------------------------------------------------- */
 
 /* La hoja solo se abre desde un menu: no hace falta en el primer script. */
@@ -72,6 +73,8 @@ export default function ListenProvider({ files, nav, children }) {
     history.load();
     return playlists.onError(show);
   }, [show]);
+
+  useEffect(() => setMenu(null), [nav.stack, nav.tab]);
 
   /* Fuera del menu, con scroll o con Tab se cierra. El boton de otra fila
      queda fuera de la excepcion a proposito: su clic ya cambia el menu. */

@@ -19,7 +19,7 @@
 //
 // Every timing is taken inside the page:
 // - "usable" is when /api/library has answered AND the first content of the
-//   mode the app opened on (Descargar by default) is rendered. When the content
+//   mode the app opened on (Inicio by default) is rendered. When the content
 //   was already there at attach time the value is a lower bound: the latest of
 //   the library response, the mode's JS chunk and the first contentful paint
 //   ("usableBasis": "lower-bound", otherwise "observed"). It is measured from
@@ -28,7 +28,7 @@
 //   end of the first frame produced after it (requestAnimationFrame, then a
 //   task), which is when the change is on its way to the screen. A mode switch
 //   also reports when the new screen is shown and when its own content is
-//   painted (Escuchar: the home sections; Descubrir: the map canvas's first
+//   painted (Inicio: the home sections; Descubrir: the map canvas's first
 //   draw, noticed by watching clearRect on the canvases inside .gmap__view);
 // - frame intervals come from requestAnimationFrame while the library page
 //   scrolls, the map is dragged and zoomed, and the panel animates.
@@ -126,7 +126,7 @@ function pageKit() {
     // Older WebViews: the default buffer (250) is enough for one session.
   }
   const k = (window.__k = { draws: 0 });
-  k.MODES = { Descargar: "download", Escuchar: "listen", Descubrir: "discover" };
+  k.MODES = { Inicio: "home", Buscar: "search", "Tu biblioteca": "library", Descubrir: "discover" };
   k.task = () => new Promise((r) => setTimeout(r));
   k.frame = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
   /** The moment the page can show a change: a draw happens inside a frame, so
@@ -202,7 +202,7 @@ function pageKit() {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   };
 
-  // The mode bar: the rail on a desktop, the tab bar (or the dots) on a phone.
+  // The mode bar: the left nav on a desktop, the tab bar (or the dots) on a phone.
   // Both are in the DOM; the one CSS hides has no boxes.
   k.nav = () => {
     const nav = [...document.querySelectorAll('nav[aria-label="Modos"]')].find((n) => n.getClientRects().length > 0);
@@ -227,7 +227,11 @@ function pageKit() {
   };
   k.navKind = () => {
     const nav = k.nav();
-    return nav.classList.contains("rail") ? "rail" : nav.classList.contains("tabbar") ? "tabbar" : "dots";
+    return nav.classList.contains("rail") || nav.classList.contains("leftnav")
+      ? "leftnav"
+      : nav.classList.contains("tabbar")
+        ? "tabbar"
+        : "dots";
   };
 
   // Each mode's "first content rendered". `base` (Descubrir): the draw count
@@ -235,16 +239,20 @@ function pageKit() {
   const screenOf = (id) => document.querySelector(`[data-screen="${id}"]:not([hidden])`);
   k.visible = (id) => !!screenOf(id);
   k.ready = {
-    download: () => !!screenOf("download")?.querySelector('[role="search"] input'),
-    listen: () => !!screenOf("listen")?.querySelector(".hfeed, .lnote:not([role=alert])"),
+    home: () => !!screenOf("home")?.querySelector(".hfeed, .lnote:not([role=alert])"),
+    // The hero form is hidden on a desktop (the top bar holds the field), so
+    // the screen is ready with its search-mode segments.
+    search: () => !!screenOf("search")?.querySelector('[aria-label="Modo de búsqueda"] [role=radio]'),
+    library: () => !!screenOf("library")?.querySelector(".hsearch, .lnote:not([role=alert])"),
     discover: (base = 0) => {
       const c = screenOf("discover")?.querySelector(".gmap__view canvas");
       return !!c && c.width > 0 && k.draws > base;
     },
   };
   k.WHAT = {
-    download: 'the Descargar search box ([data-screen="download"] [role="search"] input)',
-    listen: 'the Escuchar home ([data-screen="listen"] .hfeed, or .lnote when the library is empty)',
+    home: 'the Inicio feed ([data-screen="home"] .hfeed, or .lnote when the library is empty)',
+    search: 'the Buscar search modes ([data-screen="search"] [aria-label="Modo de búsqueda"] [role=radio])',
+    library: 'the Tu biblioteca search box ([data-screen="library"] .hsearch, or .lnote when the library is empty)',
     discover: 'the genre map drawn ([data-screen="discover"] .gmap__view canvas, sized and drawn)',
   };
 
@@ -267,7 +275,7 @@ function pageKit() {
  *  library, and reports the start-up timings. */
 function pageStartup() {
   const k = window.__k;
-  const CHUNK = { download: /DownloadView-/, listen: /ListenView-/, discover: /DiscoverView-/ };
+  const CHUNK = { home: /HomeScreen-/, search: /DownloadView-/, library: /LibraryScreen-/, discover: /DiscoverView-/ };
   const find = (re) => performance.getEntriesByType("resource").filter((e) => re.test(e.name));
   return (async () => {
     // The mode bar marks the mode the app opened on.
@@ -442,12 +450,12 @@ function pageDiscoverResources() {
   };
 }
 
-/** Opens "Explorar la biblioteca" from the Escuchar home. */
+/** Opens "Explorar la biblioteca" from the Inicio feed. */
 async function pageOpenLibrary() {
   const k = window.__k;
-  const root = k.q('[data-screen="listen"]:not([hidden])', "the Escuchar screen");
+  const root = k.q('[data-screen="home"]:not([hidden])', "the Inicio screen");
   const card = [...root.querySelectorAll("button.xcard")].find((b) => /Explorar la biblioteca/.test(b.textContent));
-  if (!card) throw new Error('missing selector: [data-screen="listen"] button.xcard "Explorar la biblioteca"');
+  if (!card) throw new Error('missing selector: [data-screen="home"] button.xcard "Explorar la biblioteca"');
   card.click();
   await k.waitFor(() => root.querySelector(".lpage .vlist .vrow"), 'the library page rows (.lpage .vlist .vrow)');
   window.scrollTo(0, 0);
@@ -461,14 +469,16 @@ async function pageOpenLibrary() {
   };
 }
 
-/** Leaves the library page with its "Volver" button. */
+/** Leaves the library page with "Volver": the top bar's on a desktop (when
+ *  there is one), the page's own on a phone. */
 async function pageCloseLibrary() {
   const k = window.__k;
-  const root = k.q('[data-screen="listen"]:not([hidden])', "the Escuchar screen");
-  const back = root.querySelector(".lpage .vback");
-  if (!back) throw new Error('missing selector: [data-screen="listen"] .lpage .vback ("Volver")');
+  const root = k.q('[data-screen="home"]:not([hidden])', "the Inicio screen");
+  const bar = [...document.querySelectorAll('.topbar [aria-label="Volver"]')].find((b) => b.getClientRects().length > 0);
+  const back = bar || root.querySelector(".lpage .vback");
+  if (!back) throw new Error('missing selector: .topbar [aria-label="Volver"] or [data-screen="home"] .lpage .vback');
   back.click();
-  await k.waitFor(() => root.querySelector(".hfeed"), 'the Escuchar home (.hfeed) after "Volver"');
+  await k.waitFor(() => root.querySelector(".hfeed"), 'the Inicio feed (.hfeed) after "Volver"');
   await k.frame();
   return true;
 }
@@ -544,7 +554,7 @@ async function switchMode(cdp, label, id) {
   return { ...out, longestFrame: frames.longestMs };
 }
 
-const MODE_LABEL = { download: "Descargar", listen: "Escuchar", discover: "Descubrir" };
+const MODE_LABEL = { home: "Inicio", search: "Buscar", library: "Tu biblioteca", discover: "Descubrir" };
 
 /** Goes to a mode without measuring (set-up between measurements). */
 async function goTo(cdp, id) {
@@ -635,7 +645,7 @@ async function main() {
   if (touch && !adb) await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
 
   if (args.reload) {
-    // From the app's root URL, which opens on Descargar (the page may be on
+    // From the app's root URL, which opens on Inicio (the page may be on
     // another mode, and the mode is kept in the URL). The session cookie from the
     // first load carries over.
     // The HTTP cache is off for the whole run, so the chunks and genre-map.json
@@ -666,7 +676,7 @@ async function main() {
   delete result.startup.timeOrigin;
   result.startup.tracks = await cdp.eval(async () => (await (await fetch("/api/library")).json()).count);
   await sleep(1500); // let the boot animations finish
-  await goTo(cdp, "download"); // everything below starts from Descargar
+  await goTo(cdp, "search"); // everything below starts from Buscar (its mode segments are the tap target)
 
   // What Discover cost before the user opened it: after the idle preload had its
   // chance, neither genre-map.json nor /api/discover should have been requested.
@@ -677,7 +687,7 @@ async function main() {
   // with it. The press is held until the frame ends so :active can be read.
   const radio = '[aria-label="Modo de búsqueda"] [role=radio]';
   const hasRadios = await cdp.eval((sel) => document.querySelectorAll(sel).length >= 2, radio);
-  const control = hasRadios ? 'Descargar "Modo de búsqueda" segments' : "mode bar button";
+  const control = hasRadios ? 'Buscar "Modo de búsqueda" segments' : "mode bar button";
   const startRadio = hasRadios
     ? await cdp.eval((sel) => [...document.querySelectorAll(sel)].findIndex((b) => b.getAttribute("aria-checked") === "true"), radio)
     : -1;
@@ -685,7 +695,7 @@ async function main() {
   for (let i = 0; i < runs; i++) {
     const spec = hasRadios
       ? { css: `${radio}:nth-child(${(i % 2) + 1})` }
-      : { nav: "Escuchar" };
+      : { nav: "Tu biblioteca" };
     const point = await cdp.eval(pageArmTap, spec);
     await press(cdp, point);
     const t = await cdp.eval(() => window.__perf);
@@ -698,7 +708,7 @@ async function main() {
     await release(cdp, point);
     await sleep(250);
     // With the mode bar as the control, the release switched mode: come back.
-    if (!hasRadios) await goTo(cdp, "download");
+    if (!hasRadios) await goTo(cdp, "search");
   }
   if (hasRadios && startRadio >= 0) {
     await cdp.eval((sel, i) => document.querySelectorAll(sel)[i].click(), radio, startRadio);
@@ -712,7 +722,7 @@ async function main() {
     runs: tap.length,
   };
 
-  // First visits (cold). Descubrir goes first, straight from Descargar, so its
+  // First visits (cold). Descubrir goes first, straight from Buscar, so its
   // JS chunk (not preloaded by the idle callback, which only guesses the next
   // mode) and genre-map.json are both fetched inside the measurement.
   const cold = await switchMode(cdp, "Descubrir", "discover");
@@ -720,42 +730,42 @@ async function main() {
   const clickAt = cold.t0;
   const map = afterCold.genreMap[0];
   const chunk = afterCold.chunk[0];
-  const coldListen = await switchMode(cdp, "Escuchar", "listen");
-  await goTo(cdp, "download");
+  const coldLibrary = await switchMode(cdp, "Tu biblioteca", "library");
+  await goTo(cdp, "search");
 
-  // Mode switch, warm: Descargar -> Escuchar -> Descubrir -> Descargar.
-  const toListen = [];
+  // Mode switch, warm: Buscar -> Tu biblioteca -> Descubrir -> Buscar.
+  const toLibrary = [];
   const toDiscover = [];
-  const toDownload = [];
+  const toSearch = [];
   for (let i = 0; i < runs; i++) {
-    toListen.push(await switchMode(cdp, "Escuchar", "listen"));
+    toLibrary.push(await switchMode(cdp, "Tu biblioteca", "library"));
     toDiscover.push(await switchMode(cdp, "Descubrir", "discover"));
-    toDownload.push(await switchMode(cdp, "Descargar", "download"));
+    toSearch.push(await switchMode(cdp, "Buscar", "search"));
   }
   result.modeSwitch = {
     firstVisit: {
       discover: { frameMs: round(cold.frame), shownMs: round(cold.shown), contentMs: round(cold.content), longestFrameMs: cold.longestFrame },
-      listen: { frameMs: round(coldListen.frame), shownMs: round(coldListen.shown), contentMs: round(coldListen.content), longestFrameMs: coldListen.longestFrame },
+      library: { frameMs: round(coldLibrary.frame), shownMs: round(coldLibrary.shown), contentMs: round(coldLibrary.content), longestFrameMs: coldLibrary.longestFrame },
     },
-    toListen: summarize(toListen),
+    toLibrary: summarize(toLibrary),
     toDiscover: summarize(toDiscover),
-    toDownload: summarize(toDownload),
+    toSearch: summarize(toSearch),
   };
 
-  // Listen scroll: open "Explorar la biblioteca" (the virtual list), fling
-  // through it and back, close it.
-  await goTo(cdp, "listen");
+  // Library scroll: open "Explorar la biblioteca" (the virtual list) from
+  // Inicio, fling through it and back, close it.
+  await goTo(cdp, "home");
   // An empty library has no "Explorar la biblioteca" card to open.
   const lib = result.startup.tracks === 0 ? null : await cdp.eval(pageOpenLibrary);
   if (lib) await sleep(700); // the rows' entry cascade
   const vp = await cdp.eval(() => ({ w: innerWidth, h: innerHeight }));
   if (!lib) {
-    result.listenScroll = { skipped: "empty library" };
+    result.libraryScroll = { skipped: "empty library" };
   } else if (lib.scrollable < vp.h) {
     // A small library scrolls less than one screen: there is not enough list
     // to fling and no frame rate to read. Skip instead of warning.
     await cdp.eval(pageCloseLibrary);
-    result.listenScroll = { skipped: `library scrolls less than one screen (${lib.total || lib.rows} rows, ${lib.scrollable} px)` };
+    result.libraryScroll = { skipped: `library scrolls less than one screen (${lib.total || lib.rows} rows, ${lib.scrollable} px)` };
   } else {
     const flings = [];
     // A desktop Chromium with emulated touch does not scroll for a synthesized touch
@@ -785,9 +795,9 @@ async function main() {
     }
     await cdp.eval(pageCloseLibrary);
     if (!(max(flings.map((f) => f.maxScrollPx)) > vp.h)) {
-      warn("the library fling did not scroll the page (maxScrollPx too small): listenScroll numbers are meaningless");
+      warn("the library fling did not scroll the page (maxScrollPx too small): libraryScroll numbers are meaningless");
     }
-    result.listenScroll = {
+    result.libraryScroll = {
       rowsMounted: lib.rows,
       rowsTotal: lib.total,
       gesture: source,
@@ -798,7 +808,7 @@ async function main() {
       longestFrameMs: max(flings.map((f) => f.longestMs)),
     };
   }
-  await goTo(cdp, "download");
+  await goTo(cdp, "search");
   await sleep(300);
 
   // Discover: the map's first draw cold and warm (above), then pan and zoom.

@@ -1,8 +1,8 @@
 /* ---------------------------------------------------------------------------
    APP SHELL: modos, navegacion fija y pantallas
 
-   Tres modos viven a la vez (Descargar, Escuchar, Descubrir) y Ajustes es una
-   pantalla mas, no un modal. En el telefono manda una barra inferior; desde
+   Cuatro pestanas viven a la vez (Inicio, Buscar, Tu biblioteca, Descubrir) y
+   Ajustes es una pagina mas, no un modal. En el telefono manda una barra inferior; desde
    720 px, un riel a la izquierda. Las dos piezas usan el mismo cristal que la
    pildora de la cabecera (.top) para que el shell se lea como una sola cosa.
    ------------------------------------------------------------------------- */
@@ -165,7 +165,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 /* --- Navegacion fija ------------------------------------------------------ */
 
-/* Las tres piezas comparten el cristal de la cabecera. Las de telefono viven
+/* Las tres piezas comparten el fondo. Las de telefono viven
    abajo y se turnan; el riel vive a la izquierda desde 720 px. */
 .tabbar,
 .dots,
@@ -188,7 +188,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 /* --- Barra inferior (telefono) ------------------------------------------- */
 
 .tabbar {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   height: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -210,7 +210,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   top: 6px;
   bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   left: 8px;
-  width: calc((100% - 16px) / 3);
+  width: calc((100% - 16px) / 4);
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--acc) 13%, transparent);
   transform: translateX(calc(var(--i, 0) * 100%));

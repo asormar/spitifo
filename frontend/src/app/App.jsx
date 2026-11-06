@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Icon } from "../shared/icons.jsx";
 import { API } from "../shared/api.js";
@@ -8,44 +8,34 @@ import MiniPlayer from "../player/MiniPlayer.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { createListenTracker } from "../player/listens.js";
-import { requestLibrary, requestPlaylist, requestReveal } from "../listen/reveal.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
+import ListenProvider, { useListen } from "../listen/ListenProvider.jsx";
+import { ProgressStack } from "../download/progress.jsx";
 import {
-  MODES,
+  TABS,
   canStartSwipe,
-  modeDirection,
   nextGuess,
   readPhoneNav,
   readView,
   swipeTarget,
   writePhoneNav,
-  writeView,
 } from "./navigation.js";
+import useNavController, { NavContext } from "./useNav.js";
 import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
-import { swapNowPlaying, swapScreens } from "./screenSwap.js";
+import { swapNowPlaying } from "./screenSwap.js";
 import { NavIcon } from "./navIcons.jsx";
 import Logo from "../shared/Logo.jsx";
 import { useEngine } from "../player/useEngine.js";
-import ListenProvider from "../listen/ListenProvider.jsx";
-import { ProgressStack } from "../download/progress.jsx";
-
-/* El provider recibe la pila de paginas del shell; mientras esta viva en
-   ListenView la pone esa pantalla (ver ctx en ListenView). */
-const NO_NAV = { open() {}, back() {} };
 
 /* El disco gira mientras suena algo (selector booleano: solo repinta al
    pausar o reanudar). */
 const BrandLogo = () => <Logo spinning={useEngine((s) => s.playing)} />;
 
-/* writeView devuelve "" para Descargar sin otros parametros, y pushState/
-   replaceState con "" no cambian la URL: se cae al pathname. */
-const viewUrl = (view) => writeView(window.location.search, view) || window.location.pathname;
-
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
-   Escuchar pinta la de la vez anterior y la real la reemplaza al llegar. Si el
-   almacenamiento no deja leer o escribir, se sigue sin ella. */
+   Inicio y Tu biblioteca pintan la de la vez anterior y la real la reemplaza
+   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella. */
 const LIB_CACHE = "spitifo:library";
 const readLibCache = () => {
   try {
@@ -63,8 +53,11 @@ const writeLibCache = (files) => {
   }
 };
 
-const loadDownloadView = () => import("../download/DownloadView.jsx");
-const loadListenView = () => import("../listen/ListenView.jsx");
+/* Inicio y Tu biblioteca son pantallas distintas con el mismo codigo: Vite
+   emite un chunk compartido y cada una solo suma su pantalla. */
+const loadHomeScreen = () => import("../listen/HomeScreen.jsx");
+const loadLibraryScreen = () => import("../listen/LibraryScreen.jsx");
+const loadSearchView = () => import("../download/DownloadView.jsx");
 /* Descubrir se guarda ya resuelto cuando su chunk llega (se adelanta con la app
    ociosa): si el usuario lo abre despues, la pantalla se pinta dentro de la
    transicion y no tras una pasada de Suspense. Mismo motivo que "Ahora suena". */
@@ -86,8 +79,9 @@ const loadNowPlaying = () =>
     NowPlaying = m.default;
   });
 
-const DownloadView = React.lazy(loadDownloadView);
-const ListenView = React.lazy(loadListenView);
+const HomeScreen = React.lazy(loadHomeScreen);
+const LibraryScreen = React.lazy(loadLibraryScreen);
+const SearchView = React.lazy(loadSearchView);
 const LazyDiscover = React.lazy(loadDiscoverView);
 function DiscoverView(props) {
   /* Se elige al montar y no cambia: cambiar de tipo desmontaria la pantalla. */
@@ -95,6 +89,8 @@ function DiscoverView(props) {
   return <View {...props} />;
 }
 const SettingsView = React.lazy(loadSettingsView);
+/* Las paginas de la pila de Buscar (Explorar la biblioteca desde "Ver mas"). */
+const PageHost = React.lazy(() => import("../listen/PageHost.jsx"));
 
 /* Una pantalla sigue montada aunque no se vea: `hidden` la saca del layout y
    `inert` del foco, pero su estado (scroll, resultados, reproductores) queda. */
@@ -111,14 +107,16 @@ function Screen({ id, active, children }) {
   );
 }
 
-/* Adelanto del chunk que probablemente sigue. Descargar arranca ya: es el modo
-   inicial y no puede esperar a que la app este ociosa. */
+/* Adelanto del chunk que probablemente sigue. La pestana con la que arranca la
+   app carga ya: no puede esperar a que este ociosa. */
 const MODE_LOADERS = {
-  download: loadDownloadView,
-  listen: loadListenView,
+  home: loadHomeScreen,
+  search: loadSearchView,
+  library: loadLibraryScreen,
   discover: loadDiscoverView,
 };
-loadDownloadView();
+const bootView = readView(window.location.search);
+MODE_LOADERS[bootView.tab]();
 
 /* El mapa de generos se pide en el mismo gesto que abre Descubrir, en paralelo
    con su chunk, y nunca antes: ni al arrancar ni cuando la app esta ociosa. Si
@@ -132,17 +130,46 @@ function warmDiscover() {
     () => {}
   );
 }
-const bootView = readView(window.location.search);
-if (bootView.mode === "discover" && !bootView.settings) warmDiscover();
+if (bootView.tab === "discover" && !bootView.settings) warmDiscover();
+
+const typing = () => {
+  const a = document.activeElement;
+  return a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
+};
+
+/* Las dos teclas de toda la app, UNA vez. Va dentro del provider de la
+   biblioteca: Escape tambien cierra su menu de fila.
+   Escape, de lo mas pequeno a lo mas grande (gana el primero que actua):
+   "Ahora suena", el menu de fila, la pagina de arriba (o Ajustes).
+   "/" lleva el foco al buscador de la pantalla a la vista, si lo tiene. */
+function Hotkeys({ nav, escapeNp, npOpen }) {
+  const { ctx } = useListen();
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        if (escapeNp()) return;
+        if (ctx.closeTop()) return;
+        if (nav.getStack().length) nav.back();
+      } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
+        if (npOpen || typing()) return;
+        const field =
+          document.querySelector('[data-screen]:not([hidden]) [data-field="search"]') ||
+          document.querySelector('.topbar [data-field="search"]');
+        if (!field) return;
+        e.preventDefault();
+        field.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [nav, ctx, escapeNp, npOpen]);
+  return null;
+}
 
 export default function App() {
-  /* La URL manda en el arranque: ?view=listen abre Escuchar y ?view=settings
-     abre Ajustes. El resto de la app no cambia de modo sin pasar por aca. */
-  const [boot] = useState(() => readView(window.location.search));
-
   const [health, setHealth] = useState(null);
   /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
-     Escuchar pinta esqueletos mientras llega y "Todavia no has descargado
+     Inicio pinta esqueletos mientras llega y "Todavia no has descargado
      nada" solo cuando de verdad esta vacia. */
   const [lib, setLib] = useState(readLibCache);
   /* true = /api/library fallo y todavia no hay lista que mostrar. */
@@ -153,29 +180,7 @@ export default function App() {
   const [theme, chooseTheme] = useTheme();
   const dark = theme === "dark";
 
-  const [mode, setMode] = useState(boot.mode);
-  /* `focus` elige la seccion que se trae a la vista al abrir Ajustes; null
-     (el engranaje, el atras, la URL) la abre por arriba. */
-  const [settings, setSettings] = useState(() =>
-    boot.settings ? { open: true, focus: null } : { open: false, focus: null }
-  );
-  /* Pantallas montadas. La primera vez que una se activa se suma y ya no se
-     desmonta: volver a un modo conserva scroll, resultados y reproductores. */
-  const [visited, setVisited] = useState(
-    () => new Set(boot.settings ? ["settings"] : [boot.mode])
-  );
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
-
-  const activeId = settings.open ? "settings" : mode;
-  const scrollByScreen = useRef(new Map());
-  const activeIdRef = useRef(activeId);
-  /* true = la entrada actual del historial la creamos nosotros al abrir
-     Ajustes. Cerrar entonces hace history.back() y deja que popstate sincronice
-     (que es lo mismo que hace el boton atras de Android). */
-  const settingsEntry = useRef(false);
-  /* Modo pedido mientras se cerraba Ajustes con history.back(): popstate lo
-     aplica cuando la entrada vieja ya esta activa. */
-  const pendingMode = useRef(null);
   const screensRef = useRef(null);
 
   /* "Ahora suena" abierta. Como Ajustes, abrirla empuja UNA entrada al
@@ -188,7 +193,7 @@ export default function App() {
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
-  /* Lo que se hace al terminar de cerrarla: cambiar de modo, abrir Ajustes. */
+  /* Lo que se hace al terminar de cerrarla: cambiar de pestana, abrir Ajustes. */
   const npThen = useRef(null);
 
   const loadHealth = useCallback(() => {
@@ -245,18 +250,9 @@ export default function App() {
     loadLib();
   }, [loadHealth, loadLib]);
 
-  /* --- Shell: modos, Ajustes e historial ---------------------------------- */
+  /* --- "Ahora suena" -------------------------------------------------------- */
 
-  const rememberScroll = useCallback(() => {
-    scrollByScreen.current.set(activeIdRef.current, window.scrollY);
-  }, []);
-
-  const visit = useCallback((id) => {
-    if (id === "discover") warmDiscover();
-    setVisited((cur) => (cur.has(id) ? cur : new Set(cur).add(id)));
-  }, []);
-
-  /* Cambiar de modo o abrir Ajustes con "Ahora suena" abierta la cierra
+  /* Cambiar de pestana o abrir Ajustes con "Ahora suena" abierta la cierra
      primero. Devuelve true si se hizo cargo: `then` corre cuando el historial
      ya volvio a la entrada de debajo, asi no queda una entrada muerta. */
   const leaveNp = useCallback((then) => {
@@ -268,6 +264,13 @@ export default function App() {
     }
     return true;
   }, []);
+
+  /* --- Navegacion: pestanas, Ajustes y la pila de paginas ------------------- */
+
+  const nav = useNavController({
+    leaveNp,
+    warm: (tab) => tab === "discover" && warmDiscover(),
+  });
 
   const openNp = useCallback(() => {
     if (npEntry.current || !engine.getState().track) return;
@@ -289,120 +292,15 @@ export default function App() {
     window.history.back();
   }, []);
 
-  const goMode = useCallback(
-    (m) => {
-      if (!MODES.includes(m)) return;
-      /* Ya, no dentro de la transicion de pantalla (que espera un cuadro): el
-         mapa viaja mientras la app se prepara para mostrarlo. */
-      if (m === "discover") warmDiscover();
-      if (leaveNp(() => goMode(m))) return;
-      rememberScroll();
-      const from = activeIdRef.current;
-      /* Con Ajustes abierto y entrada propia en el historial, el modo lo aplica
-         popstate: animar aca y alla dejaria dos transiciones. */
-      if (from === "settings" && settingsEntry.current) {
-        settingsEntry.current = false;
-        pendingMode.current = m;
-        window.history.back();
-        return;
-      }
-      const update = () => {
-        setSettings({ open: false, focus: null });
-        setMode(m);
-        visit(m);
-      };
-      /* Tocar el modo que ya se ve no cambia de pantalla: sin transicion. */
-      if (from === m) update();
-      else swapScreens(update, modeDirection(from, m));
-      window.history.replaceState(
-        null,
-        "",
-        viewUrl({ mode: m, settings: false })
-      );
-    },
-    [rememberScroll, visit, leaveNp]
-  );
+  /* Escape: cierra "Ahora suena" si esta abierta. */
+  const escapeNp = useCallback(() => {
+    if (!npEntry.current) return false;
+    closeNp();
+    return true;
+  }, [closeNp]);
 
-  const openSettings = useCallback(
-    (focus = "storage") => {
-      if (leaveNp(() => openSettings(focus))) return;
-      rememberScroll();
-      swapScreens(() => {
-        setSettings({ open: true, focus });
-        visit("settings");
-      }, 0);
-      if (!settingsEntry.current) {
-        window.history.pushState(
-          { spitifo: "settings" },
-          "",
-          viewUrl({ mode, settings: true })
-        );
-        settingsEntry.current = true;
-      }
-    },
-    [mode, rememberScroll, visit, leaveNp]
-  );
-
-  const closeSettings = useCallback(() => {
-    rememberScroll();
-    if (settingsEntry.current) {
-      settingsEntry.current = false;
-      window.history.back();
-      return;
-    }
-    swapScreens(() => {
-      setSettings({ open: false, focus: null });
-      visit(mode);
-    }, 0);
-    window.history.replaceState(
-      null,
-      "",
-      viewUrl({ mode, settings: false })
-    );
-  }, [mode, rememberScroll, visit]);
-
-  const toggleSettings = useCallback(() => {
-    if (settings.open) closeSettings();
-    else openSettings(null);
-  }, [settings.open, closeSettings, openSettings]);
-
-  /* Un solo camino para el atras del navegador y el de Android: se relee la URL
-     y se sincroniza el estado. Si venimos de un goMode con Ajustes abierto, el
-     modo elegido gana y la entrada se reescribe. */
-  useEffect(() => {
-    const onPop = () => {
-      rememberScroll();
-      const view = readView(window.location.search);
-      const pending = pendingMode.current;
-      pendingMode.current = null;
-      settingsEntry.current = pending ? false : view.settings;
-      const nextMode = pending || view.mode;
-      const nextSettings = view.settings && !pending;
-      const nextActive = nextSettings ? "settings" : nextMode;
-      const from = activeIdRef.current;
-      const update = () => {
-        setMode(nextMode);
-        setSettings({ open: nextSettings, focus: null });
-        visit(nextMode);
-      };
-      /* Si la pantalla visible no cambia (el modo ya lo aplico goMode), una
-         transicion sobre la misma foto se veria como un doble deslizamiento. */
-      if (nextActive === from) update();
-      else swapScreens(update, pending ? modeDirection(from, nextMode) : 0);
-      if (pending) {
-        window.history.replaceState(
-          null,
-          "",
-          viewUrl({ mode: pending, settings: false })
-        );
-      }
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [rememberScroll, visit]);
-
-  /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de arriba
-     para que este ya haya sincronizado la URL cuando corre `then`. */
+  /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de
+     useNav para que este ya haya sincronizado la pila cuando corre `then`. */
   useEffect(() => {
     const onNpPop = () => {
       if (!npEntry.current) return;
@@ -433,18 +331,6 @@ export default function App() {
     wasNp.current = np;
   }, [np]);
 
-  /* Al cambiar de pantalla se guarda el scroll de la que sale (lo hace cada
-     transicion, antes de tocar el estado) y se restaura el de la que entra. Va
-     en layout effect para que no se vea el salto de un fotograma; swapScreens
-     lo corre dentro de flushSync, asi la foto de la View Transition ya sale
-     con el scroll bueno. */
-  useLayoutEffect(() => {
-    const prev = activeIdRef.current;
-    if (prev === activeId) return;
-    activeIdRef.current = activeId;
-    window.scrollTo(0, scrollByScreen.current.get(activeId) ?? 0);
-  }, [activeId]);
-
   /* La barra inferior cambia de alto segun la preferencia; el CSS lo lee de
      --nav-h (body.nav-swipe). */
   useEffect(() => {
@@ -457,11 +343,14 @@ export default function App() {
     setPhoneNav(value);
   }, []);
 
-  /* Swipe entre modos: solo en telefono, con la barra de puntos y Ajustes
-     cerrado. El gesto no puede nacer en una zona con su propio arrastre
-     horizontal (progreso, video, menus). */
+  /* Swipe entre pestanas: solo en telefono, con la barra de puntos, en la raiz
+     de la pestana (con una pagina abierta el gesto es de la pagina y soltaria
+     la pila) y con Ajustes cerrado. El gesto no puede nacer en una zona con su
+     propio arrastre horizontal (progreso, video, menus). */
+  const { tab, goTab } = nav;
+  const canSwipe = phoneNav === "swipe" && nav.stack.length === 0;
   useEffect(() => {
-    if (phoneNav !== "swipe" || settings.open) return undefined;
+    if (!canSwipe) return undefined;
     const root = screensRef.current;
     if (!root) return undefined;
     let start = null;
@@ -487,10 +376,10 @@ export default function App() {
       if (!t) return;
       const next = swipeTarget(
         { dx: t.clientX - from.x, dy: t.clientY - from.y, dt: performance.now() - from.time },
-        MODES.indexOf(mode),
-        MODES.length
+        TABS.indexOf(tab),
+        TABS.length
       );
-      if (next !== null) goMode(MODES[next]);
+      if (next !== null) goTab(TABS[next]);
     };
 
     const onCancel = () => {
@@ -505,32 +394,19 @@ export default function App() {
       root.removeEventListener("touchend", onEnd);
       root.removeEventListener("touchcancel", onCancel);
     };
-  }, [phoneNav, settings.open, mode, goMode]);
+  }, [canSwipe, tab, goTab]);
 
-  /* Escape cierra "Ahora suena" y, si no, Ajustes. El "/" y el resto de Escape
-     (menu de una fila, detalle de un artista) los maneja cada pantalla con lo
-     suyo. */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      if (npEntry.current) closeNp();
-      else if (settings.open) closeSettings();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [settings.open, closeSettings, closeNp]);
-
-  /* Adelanto del chunk del modo vecino, de Ajustes y de Descubrir cuando la
-     app esta ociosa (y no antes, para no competir con la primera pintura). El
-     de Descubrir va desde cualquier modo: es el unico que trae un mapa que
-     dibujar y cada milisegundo de su primera visita se nota. Solo el chunk:
+  /* Adelanto del chunk de la pestana vecina, de Ajustes y de Descubrir cuando
+     la app esta ociosa (y no antes, para no competir con la primera pintura).
+     El de Descubrir va desde cualquier pestana: es el unico que trae un mapa
+     que dibujar y cada milisegundo de su primera visita se nota. Solo el chunk:
      su mapa (genre-map.json) espera a que el usuario abra Descubrir. Se repite
-     al cambiar de modo: la siguiente pantalla probable cambia. */
+     al cambiar de pestana: la siguiente pantalla probable cambia. */
   useEffect(() => {
     const preload = () => {
       loadSettingsView();
       loadNowPlaying();
-      MODE_LOADERS[nextGuess(mode)]?.();
+      MODE_LOADERS[nextGuess(tab)]?.();
       loadDiscoverView();
     };
     if (typeof window.requestIdleCallback === "function") {
@@ -539,36 +415,24 @@ export default function App() {
     }
     const id = setTimeout(preload, 1500);
     return () => clearTimeout(id);
-  }, [mode]);
+  }, [tab]);
 
-  /* Saltar a una cancion desde el mini-reproductor. La lista vive en Escuchar:
-     si estamos en otro modo (o con Ajustes abierto) primero se cambia de
-     pantalla, y ListenView recoge la peticion cuando ya esta a la vista. */
+  /* Saltar a una cancion desde el mini-reproductor: se abre Tu biblioteca con
+     la lista completa y la fila centrada. Una lista del riel, igual. */
   const revealSong = useCallback(
-    (key) => {
-      if (settings.open || mode !== "listen") goMode("listen");
-      requestReveal(key);
-    },
-    [settings.open, mode, goMode]
+    (key) => nav.goTo("library", { type: "library", wanted: key }),
+    [nav.goTo]
+  );
+  const openPlaylist = useCallback((id) => nav.goTo("library", { type: "list", id }), [nav.goTo]);
+
+  /* "Ver mas" de Buscar: Explorar la biblioteca, lo ultimo que llego primero. */
+  const openLibrary = useCallback(
+    () => nav.open({ type: "library", sort: "recent" }),
+    [nav.open]
   );
 
-  /* Abrir una lista desde el riel: mismo camino que ir a una cancion. */
-  const openPlaylist = useCallback(
-    (id) => {
-      if (settings.open || mode !== "listen") goMode("listen");
-      requestPlaylist(id);
-    },
-    [settings.open, mode, goMode]
-  );
-
-  /* "Ver más" de Descargar: Explorar la biblioteca, lo ultimo que llego primero. */
-  const openLibrary = useCallback(() => {
-    if (settings.open || mode !== "listen") goMode("listen");
-    requestLibrary("recent");
-  }, [settings.open, mode, goMode]);
-
-  /* "Ver en Escuchar" de "Ahora suena": primero se cierra la vista y despues
-     se salta a la fila. */
+  /* "Ver en tu biblioteca" de "Ahora suena": primero se cierra la vista y
+     despues se salta a la fila. */
   const revealFromNp = useCallback(
     (key) => {
       leaveNp(() => revealSong(key));
@@ -576,141 +440,163 @@ export default function App() {
     [leaveNp, revealSong]
   );
 
-  /* /api/library se pide al montar y no solo al abrir Escuchar: es una lista de
-     archivos locales (no toca red) y asi la pantalla ya la tiene al llegar. */
+  /* /api/library se pide al montar y no solo al abrir una pantalla: es una lista
+     de archivos locales (no toca red) y asi las pantallas ya la tienen. */
   useEffect(() => {
     loadLib();
   }, [loadLib]);
 
-  /* null = la consulta sigue en vuelo. Sin esta distincion Escuchar mostraria
+  /* null = la consulta sigue en vuelo. Sin esta distincion Inicio mostraria
      "vacia" mientras todavia pregunta. */
-  const libFiles = lib || [];
+  const libFiles = useMemo(() => lib || [], [lib]);
   const libReady = lib !== null;
 
-  const onImportCookies = useCallback(() => openSettings("cookies"), [openSettings]);
+  const { activeId, visited } = nav;
+  const settingsOpen = nav.settings !== null;
+  const searchPage = nav.pageOf("search");
 
   return (
-    <>
-    <main className="app" inert={np ? "" : undefined}>
-      <header className="top">
-        <div className="brand">
-          <BrandLogo />
-        </div>
-        <div className="top__actions">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={dark}
-            className="themesw"
-            onClick={() => chooseTheme(dark ? "light" : "dark")}
-            aria-label="Modo oscuro"
-            title={
-              dark
-                ? "Modo oscuro: cambiar a modo claro"
-                : "Modo claro: cambiar a modo oscuro"
-            }
-          >
-            <span className="themesw__knob">
-              <span className="themesw__ico themesw__ico--moon">
-                <Icon name="Moon" size={12} weight="fill" />
+    <NavContext.Provider value={nav}>
+      <main className="app" inert={np ? "" : undefined}>
+        <header className="top">
+          <div className="brand">
+            <BrandLogo />
+          </div>
+          <div className="top__actions">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={dark}
+              className="themesw"
+              onClick={() => chooseTheme(dark ? "light" : "dark")}
+              aria-label="Modo oscuro"
+              title={
+                dark
+                  ? "Modo oscuro: cambiar a modo claro"
+                  : "Modo claro: cambiar a modo oscuro"
+              }
+            >
+              <span className="themesw__knob">
+                <span className="themesw__ico themesw__ico--moon">
+                  <Icon name="Moon" size={12} weight="fill" />
+                </span>
+                <span className="themesw__ico themesw__ico--sun">
+                  <Icon name="Sun" size={12} weight="fill" />
+                </span>
               </span>
-              <span className="themesw__ico themesw__ico--sun">
-                <Icon name="Sun" size={12} weight="fill" />
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            className={cx("top__gear", settings.open && "is-on")}
-            onClick={toggleSettings}
-            aria-label="Ajustes"
-            aria-pressed={settings.open}
-            title={settings.open ? "Cerrar los ajustes" : "Abrir los ajustes"}
-          >
-            <NavIcon name="settings" filled={settings.open} size={19} />
-          </button>
-        </div>
-      </header>
+            </button>
+            <button
+              type="button"
+              className={cx("top__gear", settingsOpen && "is-on")}
+              onClick={nav.toggleSettings}
+              aria-label="Ajustes"
+              aria-pressed={settingsOpen}
+              title={settingsOpen ? "Cerrar los ajustes" : "Abrir los ajustes"}
+            >
+              <NavIcon name="settings" filled={settingsOpen} size={19} />
+            </button>
+          </div>
+        </header>
 
-      <Rail
-        mode={mode}
-        settingsOpen={settings.open}
-        onMode={goMode}
-        onSettings={toggleSettings}
-        onPlaylist={openPlaylist}
-      />
+        <Rail
+          tab={nav.tab}
+          settingsOpen={settingsOpen}
+          onTab={nav.goTab}
+          onSettings={nav.toggleSettings}
+          onPlaylist={openPlaylist}
+        />
 
-      <ListenProvider files={libFiles} nav={NO_NAV}>
-      <div className="screens" ref={screensRef}>
-        {visited.has("download") && (
-          <Screen id="download" active={activeId === "download"}>
-            <DownloadView
-              health={health}
-              files={libFiles}
-              onLibraryChanged={loadLib}
-              onImportCookies={onImportCookies}
-              onOpenLibrary={openLibrary}
-            />
-          </Screen>
+        <ListenProvider files={libFiles} nav={nav}>
+          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
+          <div className="screens" ref={screensRef}>
+            {visited.has("home") && (
+              <Screen id="home" active={activeId === "home"}>
+                <HomeScreen
+                  ready={libReady}
+                  error={libErr}
+                  errorCode={libErrCode}
+                  active={activeId === "home"}
+                  onRetry={loadLib}
+                />
+              </Screen>
+            )}
+
+            {visited.has("search") && (
+              <Screen id="search" active={activeId === "search"}>
+                {/* Con una pagina abierta (Explorar la biblioteca) Buscar se
+                    esconde pero sigue montada: conserva resultados y
+                    descargas. */}
+                <div hidden={searchPage ? true : undefined}>
+                  <SearchView
+                    health={health}
+                    files={libFiles}
+                    onLibraryChanged={loadLib}
+                    onImportCookies={() => nav.openSettings("cookies")}
+                    onOpenLibrary={openLibrary}
+                  />
+                </div>
+                {searchPage && (
+                  <Suspense fallback={null}>
+                    <PageHost view={searchPage} tab="search" active={activeId === "search"} />
+                  </Suspense>
+                )}
+              </Screen>
+            )}
+
+            {visited.has("library") && (
+              <Screen id="library" active={activeId === "library"}>
+                <LibraryScreen
+                  ready={libReady}
+                  error={libErr}
+                  errorCode={libErrCode}
+                  health={health}
+                  active={activeId === "library"}
+                  onRetry={loadLib}
+                />
+              </Screen>
+            )}
+
+            {visited.has("discover") && (
+              <Screen id="discover" active={activeId === "discover"}>
+                <DiscoverView
+                  active={activeId === "discover"}
+                  onOpenDownload={() => nav.goTab("search")}
+                />
+              </Screen>
+            )}
+
+            {visited.has("settings") && (
+              <Screen id="settings" active={activeId === "settings"}>
+                <SettingsView
+                  active={activeId === "settings"}
+                  focus={nav.settings?.focus ?? null}
+                  onClose={nav.back}
+                  onChanged={onStorageChanged}
+                  phoneNav={phoneNav}
+                  onPhoneNav={changePhoneNav}
+                />
+              </Screen>
+            )}
+          </div>
+        </ListenProvider>
+
+        {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
+            marcha. */}
+        <ProgressStack />
+
+        <MiniPlayer onReveal={revealSong} onOpen={openNp} npOpen={np} />
+        {/* Montado una sola vez: es el dueno del <video> y por eso la
+            reproduccion no se corta al cambiar de pestana. */}
+        <VideoHost />
+
+        {phoneNav === "tabs" ? (
+          <TabBar tab={nav.tab} onTab={nav.goTab} />
+        ) : (
+          <SwipeDots tab={nav.tab} onTab={nav.goTab} />
         )}
-
-        {visited.has("listen") && (
-          <Screen id="listen" active={activeId === "listen"}>
-            <ListenView
-              files={libFiles}
-              ready={libReady}
-              error={libErr}
-              errorCode={libErrCode}
-              health={health}
-              active={activeId === "listen"}
-              onOpenStorage={() => openSettings("storage")}
-              onRetry={loadLib}
-              onGoDownload={() => goMode("download")}
-            />
-          </Screen>
-        )}
-
-        {visited.has("discover") && (
-          <Screen id="discover" active={activeId === "discover"}>
-            <DiscoverView
-              active={activeId === "discover"}
-              onOpenDownload={() => goMode("download")}
-            />
-          </Screen>
-        )}
-
-        {visited.has("settings") && (
-          <Screen id="settings" active={activeId === "settings"}>
-            <SettingsView
-              active={activeId === "settings"}
-              focus={settings.focus}
-              onClose={closeSettings}
-              onChanged={onStorageChanged}
-              phoneNav={phoneNav}
-              onPhoneNav={changePhoneNav}
-            />
-          </Screen>
-        )}
-      </div>
-      </ListenProvider>
-
-      {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
-          marcha. */}
-      <ProgressStack />
-
-      <MiniPlayer onReveal={revealSong} onOpen={openNp} npOpen={np} />
-      {/* Montado una sola vez: es el dueno del <video> y por eso la
-          reproduccion no se corta al cambiar de modo. */}
-      <VideoHost />
-
-      {phoneNav === "tabs" ? (
-        <TabBar mode={mode} onMode={goMode} />
-      ) : (
-        <SwipeDots mode={mode} onMode={goMode} />
-      )}
-    </main>
-    {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
-    {np && NowPlaying && <NowPlaying onClose={closeNp} onReveal={revealFromNp} />}
-    </>
+      </main>
+      {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
+      {np && NowPlaying && <NowPlaying onClose={closeNp} onReveal={revealFromNp} />}
+    </NavContext.Provider>
   );
 }

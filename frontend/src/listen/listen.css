@@ -32,6 +32,34 @@
   letter-spacing: -0.04em;
 }
 
+/* Lo que va a la derecha del titulo de Tu biblioteca: el almacenamiento y
+   "Nueva lista". */
+.lhead__end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lhead__new {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.lhead__new:active {
+  transform: scale(0.92);
+}
+
 /* La ruta que muestra el boton de almacenamiento (el boton es .panel__store,
    de storage.css). En movil solo queda el icono (motion.css la oculta). */
 .panel__path {

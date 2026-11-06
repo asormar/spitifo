@@ -123,19 +123,6 @@ export default function DownloadView({
     el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [err, done]);
 
-  /* "/" lleva el foco al buscador salvo que ya se este escribiendo en algo. */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-      const a = document.activeElement;
-      if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
-      e.preventDefault();
-      inputRef.current?.focus();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
      automatico comparten exactamente el mismo camino, y no importa que el
@@ -354,7 +341,8 @@ export default function DownloadView({
     if (text) p.set("q", text);
     else p.delete("q");
     const qs = p.toString();
-    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+    /* El estado del historial es de useNav (cuantas paginas hay): se conserva. */
+    window.history.replaceState(window.history.state, "", qs ? `?${qs}` : window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -457,7 +445,7 @@ export default function DownloadView({
       </p>
 
       <section className="hero">
-        <h1 className="hero__title">Descarga contenido libremente</h1>
+        <h1 className="hero__title">Buscar</h1>
 
         <div className="finder">
           <form
@@ -473,6 +461,7 @@ export default function DownloadView({
               ref={inputRef}
               type="search"
               name="q"
+              data-field="search"
               enterKeyHint="search"
               autoComplete="off"
               spellCheck={false}

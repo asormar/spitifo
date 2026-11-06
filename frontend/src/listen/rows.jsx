@@ -36,7 +36,7 @@ function useRegisterRow(key, ref, enabled = true) {
   }, [key, ref, enabled]);
 }
 
-/* Menu de la fila. Lo abre y lo cierra ListenView (solo hay uno a la vez); aqui
+/* Menu de la fila. Lo abre y lo cierra ListenProvider (solo hay uno a la vez); aqui
    solo se coloca y se maneja con flechas. `items`: [clave, texto]; la clave es
    lo que recibe `onPick`. */
 export function RowMenu({ items, onPick }) {

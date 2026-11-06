@@ -10,9 +10,9 @@ import "./recent.css";
 /* ---------------------------------------------------------------------------
    DESCARGADO HACE POCO
 
-   La biblioteca asoma en Descargar: las ultimas descargas para oirlas sin
-   cambiar de pantalla y una salida a Escuchar para ver el resto. Reusa SongRow
-   y los helpers de Escuchar para que titulos, artistas y el registro con el
+   La biblioteca asoma en Buscar: las ultimas descargas para oirlas sin
+   cambiar de pantalla y una salida a la biblioteca para ver el resto. Reusa
+   SongRow y los helpers de la biblioteca para que titulos, artistas y el registro con el
    motor (el mini-reproductor se aparta mientras la fila esta a la vista) sean
    los mismos. El backend ya entrega la lista de mas nueva a mas vieja.
    ------------------------------------------------------------------------- */
@@ -70,7 +70,7 @@ export function RecentSection({ files, onOpen }) {
           <SongRow key={entry.key} entry={entry} enter={i} onPlay={play} />
         ))}
         <button type="button" className="recent__more" onClick={onOpen}>
-          {total > RECENT ? "Ver más" : "Abrir en Escuchar"}
+          {total > RECENT ? "Ver más" : "Abrir tu biblioteca"}
           <Icon name="CaretRight" size={14} />
         </button>
       </div>

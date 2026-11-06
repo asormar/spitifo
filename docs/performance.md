@@ -457,11 +457,11 @@ attaches to the page and reports, in this order:
 
 - **startup**: launch to the app's navigation, first contentful paint, when
   `/api/library` answered, and launch to usable: `/api/library` answered **and**
-  the first content of the mode the app opened on (Descargar) is rendered. When
+  the first content of the mode the app opened on (Inicio) is rendered. When
   that content was already there at attach time the value is a lower bound
   (`usableBasis: "lower-bound"`: the latest of the library response, the mode's
   JS chunk and the first paint); otherwise it is observed. It also lists the
-  mode bar in use (`rail` or `tabbar`) and the viewport;
+  mode bar in use (`leftnav`, `tabbar` or `dots`) and the viewport;
 - **discoverOnStartup**: whether `genre-map.json`, `/api/discover` or the
   Discover JS chunk were requested before the first visit to Descubrir (taken
   4 s after start-up, once the idle preload has had its chance). Neither the
@@ -472,21 +472,21 @@ attaches to the page and reports, in this order:
   preloaded. `/api/discover` waits for the map to be drawn. The
   `afterRun` part shows what the visits requested afterwards (`/api/discover`
   once per visit to Descubrir, and again while the server is still working);
-- **tapFeedback**: `pointerdown` on a segment of Descargar's "Modo de
+- **tapFeedback**: `pointerdown` on a segment of Buscar's "Modo de
   búsqueda" (a real control with `:active`; a mode bar button if it were gone)
   to the end of the next frame, with the press held so `:active` is read at
   that frame (`activeShown`, e.g. `3/3`; emulated touch never sets it, so check
   it on the phone);
 - **modeSwitch**: a click on each button of the mode bar. `firstVisit` is the
-  first, cold visit to Descubrir (straight from Descargar) and to Escuchar;
-  `toListen`, `toDiscover` and `toDownload` are `--runs` warm cycles
-  Descargar → Escuchar → Descubrir → Descargar. Per switch: `frame` (click to
+  first, cold visit to Descubrir (straight from Buscar) and to Tu biblioteca;
+  `toLibrary`, `toDiscover` and `toSearch` are `--runs` warm cycles
+  Buscar → Tu biblioteca → Descubrir → Buscar. Per switch: `frame` (click to
   the end of the first frame), `shown` (the new screen is visible and its mode
   button is current, plus a frame: the View Transition has swapped the
-  screens), `content` (the mode's own content painted: Escuchar's home
-  sections, Descubrir's map canvas **drawn**) and the longest frame while the
+  screens), `content` (the mode's own content painted: Tu biblioteca's
+  search box and feed, Descubrir's map canvas **drawn**) and the longest frame while the
   switch settles;
-- **listenScroll**: opens "Explorar la biblioteca" (the virtual list), flings
+- **libraryScroll**: opens "Explorar la biblioteca" from Inicio (the virtual list), flings
   three times down and up it, then closes it with "Volver". Frame rate, median
   and 95th percentile frame interval, share of frames over 1.5 refreshes,
   longest frame, and how far the page scrolled (`maxScrollPx`, a check that the

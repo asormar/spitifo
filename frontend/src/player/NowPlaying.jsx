@@ -208,7 +208,7 @@ export default function NowPlaying({ onClose, onReveal }) {
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
   const [badArt, setBadArt] = useState(null);
   /* Hoja "Añadir a una lista" abierta. Se pinta dentro de esta capa (queda por
-     encima) y el aviso tambien: el de Escuchar esta debajo y no se veria. */
+     encima) y el aviso tambien: el de la biblioteca esta debajo y no se veria. */
   const [adding, setAdding] = useState(false);
   const [noticeNode, show] = useNotice();
 
@@ -399,7 +399,7 @@ export default function NowPlaying({ onClose, onReveal }) {
               disabled={track.kind !== "library"}
               onClick={() => onReveal(track.key)}
             >
-              Ver en Escuchar
+              Ver en tu biblioteca
             </button>
           </div>
         </header>

@@ -25,12 +25,12 @@ import {
 } from "./home.js";
 
 /* ---------------------------------------------------------------------------
-   PAGINAS DE ESCUCHAR
+   PAGINAS DE LA BIBLIOTECA
 
-   Lo que se apila sobre el inicio (useViewStack): una lista de "Ver todo", la
+   Lo que se apila sobre una pestana (la pila de useNav): una lista de "Ver todo", la
    biblioteca entera para explorar y la ficha de un album, un artista o una
    lista. Todas llevan su "Volver"; el cuerpo es una lista virtual de filas, la
-   misma fila (SongRow) que el resto de Escuchar.
+   misma fila (SongRow) que el resto de la biblioteca.
    ------------------------------------------------------------------------- */
 
 const songs = (n) => plural(n, "canción", "canciones");
