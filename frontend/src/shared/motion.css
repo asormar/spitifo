@@ -9,31 +9,28 @@
     filter: brightness(1.06);
   }
 
-  .search__go:not(:disabled):hover {
-    background: var(--accent-hover);
+  .search__go:not(:disabled):hover,
+  .pv.is-playing .pbtn:hover {
+    filter: brightness(1.08);
   }
 
   .seg:not(.is-on):hover {
-    background: var(--seg-hover);
+    background: var(--hover);
     color: var(--ink);
   }
 
   .dl:not(:disabled):not(.dl--off):hover {
-    background: var(--ink-hover);
+    filter: brightness(1.08);
   }
 
   .vf:not(:disabled):not(.vf--static):hover,
-  .disclosure:hover {
-    background: var(--track-hover);
-  }
-
+  .disclosure:hover,
   .example:hover {
-    background: var(--track);
+    background: var(--s3);
   }
 
   .ext:hover {
-    color: var(--accent-fg);
-    text-decoration-color: var(--accent-fg);
+    text-decoration-color: var(--acc);
   }
 
   .scrub:hover .scrub__rail {
@@ -41,12 +38,7 @@
   }
 
   .pv:not(.is-playing) .pbtn:not(:disabled):hover {
-    border-color: var(--accent-fill);
-    color: var(--accent-fg);
-  }
-
-  .pv.is-playing .pbtn:hover {
-    background: var(--accent-hover);
+    box-shadow: inset 0 0 0 1.5px var(--ink);
   }
 
   .pl__mute:hover {
@@ -57,7 +49,7 @@
      dentro y moverse bajo el puntero cansa. */
   .card:not(.card--wide):not(.skel):hover {
     transform: translateY(-3px);
-    box-shadow: 0 18px 40px rgba(var(--shadow-rgb), 0.16);
+    box-shadow: 0 14px 28px rgba(var(--shadow-rgb), 0.22);
   }
 
   .example:not(:active):hover {
@@ -135,7 +127,7 @@
   /* En movil el toast suelto nunca deberia verse: el stack es quien posiciona.
      Si se deja, apareceria dos veces (una fija, una en el stack). */
   .progstack > .prog {
-    position: static;
+    position: relative;
   }
 
   .finder {
@@ -215,15 +207,6 @@
    de chip. Sin animacion por scroll ni parallax. Solo transform y opacity.
    ------------------------------------------------------------------------- */
 
-@keyframes drift {
-  from {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  to {
-    transform: translate3d(56px, 40px, 0) scale(1.12);
-  }
-}
-
 /* Parametros de rise, pop y leave. Registrados sin herencia: si no, un
    --rise puesto en un contenedor (la cabecera baja desde -14 px) llegaria a
    cada hijo que tambien entra con rise. */
@@ -266,12 +249,6 @@
   to {
     opacity: 0;
     transform: translateY(var(--leave));
-  }
-}
-
-@keyframes sheen {
-  to {
-    transform: translateX(100%);
   }
 }
 
@@ -356,10 +333,8 @@
 
   .spin,
   .skel--pulse,
-  .blob,
   .eq i,
   .pbtn::after,
-  .prog__fill::after,
   .search.is-scanning .search__icon {
     animation: none !important;
   }

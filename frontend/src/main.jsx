@@ -1,5 +1,4 @@
-import "@fontsource-variable/outfit";
-import "@fontsource-variable/figtree";
+import "./shared/fonts.css";
 import { createRoot } from "react-dom/client";
 import App from "./app/App.jsx";
 import "./shared/tokens.css";

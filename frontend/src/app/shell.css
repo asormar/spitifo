@@ -172,9 +172,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .rail {
   position: fixed;
   z-index: 44;
-  background: var(--nav-bg);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: var(--s1);
 }
 
 .tabbar,
@@ -213,9 +211,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
   bottom: calc(6px + env(safe-area-inset-bottom, 0px));
   left: 8px;
   width: calc((100% - 16px) / 3);
-  border-radius: var(--r-inner);
-  background: var(--seg-on);
-  box-shadow: var(--shadow-raise);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--acc) 13%, transparent);
   transform: translateX(calc(var(--i, 0) * 100%));
   transition: transform var(--t-move) var(--ease-spring);
 }
@@ -232,10 +229,10 @@ html[data-vt="mode"]::view-transition-new(screen) {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
   font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
   transition: color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
 }
@@ -245,7 +242,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .tabbar__btn[aria-current="page"] {
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 .tabbar__btn span {
@@ -293,18 +290,18 @@ html[data-vt="mode"]::view-transition-new(screen) {
   width: 6px;
   height: 6px;
   border-radius: var(--r-pill);
-  background: var(--line-strong);
+  background: var(--s3);
   transition: width var(--t-enter) var(--ease-spring),
     background-color var(--t-quick) var(--ease);
 }
 
 .dots__btn[aria-current="page"] .dots__dot {
   width: 20px;
-  background: var(--accent);
+  background: var(--acc);
 }
 
 .dots__name {
-  color: var(--muted);
+  color: var(--mut);
   font-size: 10.5px;
   font-weight: 600;
 }
@@ -342,7 +339,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   border: 0;
   border-radius: var(--r-md);
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
   cursor: pointer;
   transition: background-color var(--t-quick) var(--ease),
     color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
@@ -353,12 +350,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .rail__btn.is-on {
-  background: var(--surface);
-  color: var(--accent-fg);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--acc);
 }
 
-/* Barra coral de 4 px pegada al borde del riel. Una sola pieza que viaja con
+/* Barra cobalto de 4 px pegada al borde del riel. Una sola pieza que viaja con
    --i: el paso es el boton (44) mas el gap del riel (6). Nace centrada en el
    primer boton (10 px desde su borde superior). */
 .rail__bar {
@@ -368,7 +364,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   width: 4px;
   height: 24px;
   border-radius: 0 4px 4px 0;
-  background: var(--accent);
+  background: var(--acc);
   pointer-events: none;
   transform: translateY(calc(var(--i, 0) * (44px + 6px)));
   transition: transform var(--t-move) var(--ease-spring);
@@ -405,7 +401,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
   font: 600 11px / 1.2 var(--font-body);
   overflow-wrap: anywhere;
   text-align: center;
@@ -425,7 +421,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 @media (hover: hover) and (pointer: fine) {
   .rail__list:hover {
-    background: var(--surface);
+    background: var(--s1);
     color: var(--ink);
   }
 }
@@ -441,7 +437,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease),
     background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
@@ -458,8 +454,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .top__gear.is-on {
-  background: var(--track);
-  color: var(--accent-fg);
+  background: var(--s2);
+  color: var(--acc);
 }
 
 /* --- Pantallas vacias (Escuchar, Descubrir) ------------------------------- */
@@ -469,9 +465,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
   margin: 48px auto 0;
   padding: 44px 32px;
   border-radius: var(--r-panel);
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   text-align: center;
 }
 
@@ -482,20 +477,20 @@ html[data-vt="mode"]::view-transition-new(screen) {
   height: 60px;
   margin: 0 auto 16px;
   border-radius: var(--r-cover);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-fg);
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--acc);
 }
 
 .empty__h {
   margin: 0 0 8px;
   font: 700 clamp(24px, 4vw, 30px) / 1.15 var(--font-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.035em;
 }
 
 .empty__p {
   max-width: 48ch;
   margin: 0 auto;
-  color: var(--muted);
+  color: var(--mut);
 }
 
 /* --- Ajustes -------------------------------------------------------------- */
@@ -521,7 +516,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: var(--s1);
   color: var(--ink);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease),
@@ -534,28 +529,28 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 .settings__title {
   margin: 0;
-  font: 600 clamp(22px, 3.4vw, 26px) / 1.2 var(--font-display);
-  letter-spacing: -0.02em;
+  font: 700 clamp(22px, 3.4vw, 28px) / 1.1 var(--font-display);
+  letter-spacing: -0.035em;
 }
 
 .settings__card {
+  border: 0;
   margin: 0 0 16px;
   padding: 20px;
   border-radius: var(--r-card);
-  background: var(--glass-card);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   /* La cabecera es sticky: al traer una seccion a la vista, no queda debajo. */
   scroll-margin-top: 88px;
 }
 
 .settings__h {
   margin: 0 0 14px;
-  font: 600 18px / 1.2 var(--font-display);
+  font: 700 17px / 1.2 var(--font-display);
+  letter-spacing: -0.03em;
 }
 
 .settings__h:focus-visible {
-  outline: 2px solid var(--ink);
   outline-offset: 4px;
 }
 
@@ -574,7 +569,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 .settings__note {
   margin: 2px 0 0;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
 }
 

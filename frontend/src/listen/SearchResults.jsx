@@ -3,7 +3,7 @@ import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
 import { Cover, Mosaic, SectionHead, coverOf } from "./cards.jsx";
-import { albumHue, entryHue, hueOf, minutes, mosaicHues, plural } from "./home.js";
+import { albumTone, entryTone, toneOf, minutes, mosaicTones, plural } from "./home.js";
 
 /* ---------------------------------------------------------------------------
    RESULTADOS AGRUPADOS
@@ -29,7 +29,7 @@ function Best({ best, all, ctx }) {
           name: item.name,
           type: "Artista",
           sub: songs(item.entries.length),
-          hue: hueOf(item.name),
+          tone: toneOf(item.name),
           label: item.name,
           round: true,
           src: null,
@@ -43,7 +43,7 @@ function Best({ best, all, ctx }) {
             name: item.name,
             type: "Álbum",
             sub: `${item.artist} · ${songs(item.entries.length)}`,
-            hue: albumHue(item.artist, item.name),
+            tone: albumTone(item.artist, item.name),
             label: item.name,
             src: coverOf(item.entries),
             entries: item.entries,
@@ -55,7 +55,7 @@ function Best({ best, all, ctx }) {
             name: item.title,
             type: "Canción",
             sub: item.album ? `${item.artist} · ${item.album}` : item.artist,
-            hue: entryHue(item),
+            tone: entryTone(item),
             label: item.artist,
             src: coverOf([item]),
             entries: [item],
@@ -81,7 +81,7 @@ function Best({ best, all, ctx }) {
         aria-label={view.openLabel}
         onClick={(e) => view.open(e.currentTarget)}
       >
-        <Cover hue={view.hue} label={view.label} src={view.src} round={view.round} className="best__cv" />
+        <Cover tone={view.tone} label={view.label} src={view.src} round={view.round} className="best__cv" />
         <span className="best__txt">
           <span className="best__name">{view.name}</span>
           <span className="best__row">
@@ -141,7 +141,7 @@ export default function SearchResults({ r, query, byKey, ctx }) {
                 aria-label={`Abrir artista ${g.name}`}
                 onClick={() => ctx.open({ type: "artist", id: g.id })}
               >
-                <Cover hue={hueOf(g.name)} label={g.name} round className="art-c__cv" />
+                <Cover tone={toneOf(g.name)} label={g.name} round className="art-c__cv" />
                 <span className="art-c__t">{g.name}</span>
               </button>
             ))}
@@ -161,7 +161,7 @@ export default function SearchResults({ r, query, byKey, ctx }) {
                 aria-label={`Abrir álbum ${g.name}, ${g.artist}`}
                 onClick={() => ctx.open({ type: "album", id: g.id })}
               >
-                <Cover hue={albumHue(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} className="alb__cv" />
+                <Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} className="alb__cv" />
                 <span className="alb__t">{g.name}</span>
                 <span className="alb__a">{g.artist}</span>
               </button>
@@ -185,7 +185,7 @@ export default function SearchResults({ r, query, byKey, ctx }) {
 }
 
 function ListResult({ list, byKey, ctx }) {
-  const hues = useMemo(() => mosaicHues(list.keys, byKey), [list.keys, byKey]);
+  const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
   const entries = useMemo(() => list.keys.map((k) => byKey.get(k)).filter(Boolean), [list.keys, byKey]);
   const mins = minutes(entries);
   const sub = `${songs(entries.length)}${mins ? ` · ${mins} min` : ""}`;
@@ -196,7 +196,7 @@ function ListResult({ list, byKey, ctx }) {
       aria-label={`${list.name}, ${sub}`}
       onClick={() => ctx.open({ type: "list", id: list.id })}
     >
-      <Mosaic hues={hues} className="lres__mos" />
+      <Mosaic tones={tones} className="lres__mos" />
       <span className="lres__txt">
         <span className="lres__t">{list.name}</span>
         <span className="lres__s">{sub}</span>

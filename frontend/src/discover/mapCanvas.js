@@ -48,11 +48,11 @@ export function readTheme(el) {
   const cs = getComputedStyle(el);
   const v = (name, fallback) => cs.getPropertyValue(name).trim() || fallback;
   return {
-    palette: Array.from({ length: CLUSTERS }, (_, i) => v(`--genre-${i}`, "#7a8a99")),
-    ink: v("--ink", "#14202b"),
-    muted: v("--muted", "#3c4c5a"),
+    palette: Array.from({ length: CLUSTERS }, (_, i) => v(`--genre-${i}`, "#6182f8")),
+    ink: v("--ink", "#11111c"),
+    muted: v("--muted", "#585870"),
     halo: v("--surface", "#ffffff"),
-    accent: v("--accent", "#d3402b"),
+    accent: v("--accent", "#3045ff"),
     font: v("--font-body", "system-ui, sans-serif"),
     moveMs: parseMs(v("--t-move", "360ms")),
   };

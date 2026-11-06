@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { keyUrl } from "../shared/api.js";
 import { cx } from "../shared/ui.jsx";
+import { toneClass, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 
@@ -10,8 +11,9 @@ import { Bars, initial } from "./rows.jsx";
    Portada, mosaico y cabecera de seccion: lo que comparten las tarjetas del
    inicio, los resultados de busqueda y las paginas. La portada es el .jpg que
    el backend deja junto a la pista (`thumbKey`); sin el, o si falla al cargar,
-   se dibuja un degradado con la inicial. El degradado sale de un tono (--h)
-   estable por nombre: el CSS lo convierte en color (home.css).
+   se dibuja un color de genero con una trama suave y la inicial. El color y la
+   trama salen de un tono estable por nombre (shared/cover.js); el CSS lo
+   pinta (home.css).
    ------------------------------------------------------------------------- */
 
 /* La primera portada real de un grupo de canciones, o null. */
@@ -21,12 +23,12 @@ export const coverOf = (entries) => {
 };
 
 /* `size` es el lado en px (lo lee el CSS con --s); `round` = artista. */
-export function Cover({ hue, label, src, size, round, className, children }) {
+export function Cover({ tone, label, src, size, round, className, children }) {
   const [bad, setBad] = useState(false);
   return (
     <span
-      className={cx("cv", round && "cv--round", className)}
-      style={{ "--h": hue, ...(size && { "--s": `${size}px` }) }}
+      className={cx("cv", toneClass(tone), round && "cv--round", className)}
+      style={{ ...toneVars(tone), ...(size && { "--s": `${size}px` }) }}
     >
       <span aria-hidden="true">{initial(label)}</span>
       {src && !bad && (
@@ -52,8 +54,8 @@ export const NowBadge = ({ on }) => (
 );
 
 /* Cuatro tonos en cuadricula 2x2; sin ninguno, una nota sobre fondo neutro. */
-export function Mosaic({ hues, className }) {
-  if (!hues.length) {
+export function Mosaic({ tones, className }) {
+  if (!tones.length) {
     return (
       <span className={cx("mos mos--empty", className)} aria-hidden="true">
         <Icon name="MusicNote" size={22} />
@@ -62,8 +64,8 @@ export function Mosaic({ hues, className }) {
   }
   return (
     <span className={cx("mos", className)} aria-hidden="true">
-      {hues.map((h, i) => (
-        <span key={i} className="cv" style={{ "--h": h }} />
+      {tones.map((t, i) => (
+        <span key={i} className={cx("cv", toneClass(t))} style={toneVars(t)} />
       ))}
     </span>
   );

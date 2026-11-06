@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
-import { hashHue } from "../player/tint.js";
+import { coverTone, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { becauseText } from "./reco.js";
@@ -23,7 +23,7 @@ export function initials(name) {
   return text.toUpperCase();
 }
 
-const genreColor = (data, i) => (i >= 0 ? `var(--genre-${data.c[i]})` : "var(--icon-dim)");
+const genreColor = (data, i) => (i >= 0 ? `var(--genre-${data.c[i]})` : "var(--dim)");
 
 /* --- Estados ---------------------------------------------------------------- */
 
@@ -165,7 +165,7 @@ export function ArtistRow({
     }
   };
 
-  const hue = hashHue(row.name);
+  const tone = coverTone(row.name);
   const why = becauseText(row.because) || row.genres.slice(0, 2).join(" · ");
   /* `gidx` va alineado con `genres`: -1 = ese genero no esta en el mapa. */
   const chips = row.genres.slice(0, 2).map((name, n) => ({ name, i: row.gidx[n] }));
@@ -193,7 +193,7 @@ export function ArtistRow({
             }
             onClick={onSelect}
           >
-            <span className="fy-av" style={{ "--h": hue }} aria-hidden="true">
+            <span className="fy-av" style={toneVars(tone)} aria-hidden="true">
               {initials(row.name)}
             </span>
             <span className="fy-row__txt">

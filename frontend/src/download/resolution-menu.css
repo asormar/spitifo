@@ -7,9 +7,10 @@
    el overflow de la página y el cajón de la biblioteca.
    ------------------------------------------------------------------------- */
 
-/* Mismo botón oscuro, pero con texto: ancho automático y chevrón a la derecha. */
+/* Mismo botón cobalto, pero con texto: ancho automático y chevrón a la derecha. */
 .dl--split {
   width: auto;
+  border-radius: var(--r-pill);
   gap: 6px;
   padding: 0 10px 0 14px;
   font-size: 13.5px;
@@ -33,7 +34,7 @@
 /* Mientras el menu esta abierto el boton lleva un aro suave: se ve de donde
    sale. */
 .dl--split[aria-expanded="true"] {
-  box-shadow: 0 0 0 3px rgba(255, 138, 117, 0.35);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 35%, transparent);
 }
 
 /* Sin las medidas del botón todavía (primer fotograma): existe para poder
@@ -49,11 +50,9 @@
   flex-direction: column;
   padding: 8px;
   border-radius: 24px;
-  background: var(--glass-card);
-  -webkit-backdrop-filter: blur(22px) saturate(1.3);
-  backdrop-filter: blur(22px) saturate(1.3);
+  background: var(--s1);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow);
 }
 
 .rsvm.is-placed {
@@ -64,7 +63,7 @@
 .rsvm:focus,
 .rsvm:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow);
 }
 
 @keyframes rsvm-in {
@@ -119,15 +118,15 @@
   white-space: nowrap;
 }
 
-/* "Mejor disponible": la fila que más se pulsa, con el coral de la app. */
+/* "Mejor disponible": la fila que más se pulsa, en cobalto. */
 .rsvm__item--best {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
   min-height: 56px;
   border-radius: 16px;
-  background: var(--accent-fill);
-  color: #2a0d07;
+  background: var(--acc);
+  color: var(--acc-ink);
 }
 
 .rsvm__item--best .rsvm__h {
@@ -149,7 +148,7 @@
   padding: 1px 8px;
   border: 1px solid currentColor;
   border-radius: var(--r-pill);
-  color: var(--ok-fg);
+  color: var(--ok-t);
   font-size: 11.5px;
   font-weight: 600;
 }
@@ -158,7 +157,7 @@
   display: inline-flex;
   align-items: baseline;
   gap: 10px;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -173,8 +172,8 @@
 .rsvm__hdr {
   padding: 1px 6px;
   border-radius: var(--r-pill);
-  background: var(--accent-badge);
-  color: #fff;
+  background: var(--pink);
+  color: var(--on-pink);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -192,12 +191,12 @@
   gap: 8px;
   margin: 0;
   padding: 12px 10px;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13.5px;
 }
 
 .rsvm__msg--err {
-  color: var(--bad-fg);
+  color: var(--bad-t);
   align-items: flex-start;
 }
 
@@ -212,28 +211,26 @@
 }
 
 .rsvm__item--retry svg {
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 @media (hover: hover) {
   .rsvm__item:hover {
-    background: var(--row-hover);
+    background: var(--hover);
   }
 
   .rsvm__item--best:hover {
-    background: var(--accent-fill);
-    filter: brightness(0.95);
+    background: var(--acc);
+    filter: brightness(1.08);
   }
 }
 
 .rsvm__item:focus-visible {
-  background: var(--row-hover);
+  background: var(--hover);
 }
 
 .rsvm__item--best:focus-visible {
-  background: var(--accent-fill);
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  background: var(--acc);
 }
 
 @media (pointer: coarse) {

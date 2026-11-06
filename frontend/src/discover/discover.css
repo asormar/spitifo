@@ -11,26 +11,6 @@
    ------------------------------------------------------------------------- */
 
 .gmap {
-  /* Paleta de los 16 grupos. El lienzo la lee con getComputedStyle (los
-     colores de un <canvas> no pueden ser var()), asi que claro y oscuro viven
-     solo aca. Tonos medios que se leen sobre --surface en los dos temas. */
-  --genre-0: #b03927;
-  --genre-1: #27b028;
-  --genre-2: #2e41d1;
-  --genre-3: #d12e55;
-  --genre-4: #59b027;
-  --genre-5: #276ab0;
-  --genre-6: #d12e93;
-  --genre-7: #a7d12e;
-  --genre-8: #279db0;
-  --genre-9: #b027af;
-  --genre-10: #d1be2e;
-  --genre-11: #2ed1aa;
-  --genre-12: #7d27b0;
-  --genre-13: #b06c27;
-  --genre-14: #2ed16c;
-  --genre-15: #582ed1;
-
   --gmap-below: 12px;
   --gmap-pad: 128px;
 
@@ -41,27 +21,8 @@
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-card);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-}
-
-:root[data-theme="dark"] .gmap {
-  --genre-0: #e86854;
-  --genre-1: #54e856;
-  --genre-2: #7886ed;
-  --genre-3: #ed7894;
-  --genre-4: #8ae854;
-  --genre-5: #549de8;
-  --genre-6: #ed78c0;
-  --genre-7: #cfed78;
-  --genre-8: #54d4e8;
-  --genre-9: #e854e7;
-  --genre-10: #eddf78;
-  --genre-11: #78edd1;
-  --genre-12: #b254e8;
-  --genre-13: #e89f54;
-  --genre-14: #78eda5;
-  --genre-15: #9678ed;
+  background: var(--s1);
+  box-shadow: var(--shadow);
 }
 
 body.has-mini .gmap {
@@ -113,8 +74,8 @@ body.has-mini .gmap {
   padding: 0 16px 0 42px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--surface);
-  box-shadow: var(--shadow-raise);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
   color: var(--ink);
   font: inherit;
   /* 16 px: por debajo, iOS hace zoom al enfocar. */
@@ -122,14 +83,14 @@ body.has-mini .gmap {
 }
 
 .gmap__input::placeholder {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 .gmap__lupa {
   position: absolute;
   top: 13px;
   left: 14px;
-  color: var(--icon-dim);
+  color: var(--dim);
   pointer-events: none;
 }
 
@@ -143,8 +104,8 @@ body.has-mini .gmap {
   list-style: none;
   border: 1px solid var(--line);
   border-radius: var(--r-field);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
 }
 
 .gmap__sug {
@@ -158,7 +119,7 @@ body.has-mini .gmap {
 }
 
 .gmap__sug[aria-selected="true"] {
-  background: var(--surface-hover);
+  background: var(--hover);
 }
 
 .gmap__zoom {
@@ -178,8 +139,8 @@ body.has-mini .gmap {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--surface);
-  box-shadow: var(--shadow-raise);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
   color: var(--ink);
   cursor: pointer;
 }
@@ -211,8 +172,8 @@ body.has-mini .gmap {
   margin: 0;
   padding: 4px 12px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--s1) 86%, transparent);
+  color: var(--mut);
   font-size: 12.5px;
   line-height: 1.4;
   pointer-events: none;
@@ -234,8 +195,8 @@ body.has-mini .gmap {
   padding: 14px 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--r-field);
-  background: var(--surface);
-  box-shadow: var(--shadow-panel);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   --pop: 0.96;
   animation: pop var(--t-enter) var(--ease) both;
 }
@@ -273,7 +234,7 @@ body.has-mini .gmap {
   gap: 8px;
   margin-top: 10px;
   padding: 8px 0 14px;
-  background: var(--surface);
+  background: var(--s1);
 }
 
 .gmap__card.is-sheet .gmap__acts .gmap__go {
@@ -329,12 +290,12 @@ body.has-mini .gmap {
   border-color: transparent;
   box-shadow: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
 }
 
 .gmap__sub {
   margin: 10px 0 0;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 12.5px;
   font-weight: 600;
 }
@@ -356,7 +317,7 @@ body.has-mini .gmap {
   padding: 0 12px;
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--track);
+  background: var(--s2);
   color: var(--ink);
   font: inherit;
   font-size: 13.5px;
@@ -375,11 +336,11 @@ body.has-mini .gmap {
   margin-top: 10px;
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--pink);
+  color: var(--on-pink);
   font: inherit;
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
 }
 
@@ -405,25 +366,25 @@ body.has-mini .gmap {
   margin-top: 8px;
   background: transparent;
   color: var(--ink);
-  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .gmap__btn:hover,
   .gmap__sug:hover {
-    background: var(--surface-hover);
+    background: var(--hover);
   }
 
   .gmap__chip:hover {
-    background: var(--track-hover);
+    background: var(--hover);
   }
 
   .gmap__go:hover:not(:disabled) {
-    background: var(--ink-hover);
+    filter: brightness(1.08);
   }
 
   .gmap__go--quiet:hover:not(:disabled) {
-    background: var(--surface-hover);
+    background: var(--hover);
   }
 }
 
@@ -462,11 +423,8 @@ body.has-mini .gmap {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--glass-edge);
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
-  box-shadow: var(--shadow-panel);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--s1) 86%, transparent);
+  box-shadow: var(--shadow);
   color: var(--ink);
 }
 
@@ -477,8 +435,8 @@ body.has-mini .gmap {
   width: 32px;
   height: 32px;
   border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent-fg);
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--acc);
 }
 
 .fy__title {
@@ -532,7 +490,7 @@ body.has-mini .gmap {
   height: 4px;
   margin-left: -18px;
   border-radius: var(--r-pill);
-  background: var(--line-strong);
+  background: var(--s3);
 }
 
 .fy__caret {
@@ -541,7 +499,7 @@ body.has-mini .gmap {
   flex: none;
   width: 44px;
   height: 44px;
-  color: var(--muted);
+  color: var(--mut);
 }
 
 .fy__caret svg {
@@ -558,7 +516,7 @@ body.has-mini .gmap {
   bottom: 12px;
   width: 360px;
   border-radius: var(--r-card);
-  background: var(--glass-card);
+  background: var(--s1);
   transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
 }
 
@@ -597,7 +555,7 @@ body.has-mini .gmap {
 .gmap__msg {
   max-width: 34ch;
   margin: 0 auto 14px;
-  color: var(--muted);
+  color: var(--mut);
 }
 
 .gmap__pulse {
@@ -605,7 +563,7 @@ body.has-mini .gmap {
   height: 56px;
   margin: 0 auto 14px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, var(--accent-fill), transparent);
+  background: radial-gradient(closest-side, var(--acc), transparent);
   animation: breathe 1.4s ease-in-out infinite;
 }
 

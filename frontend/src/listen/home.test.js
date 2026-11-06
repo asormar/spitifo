@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  albumHue,
+  albumTone,
   albumOrder,
   buildIndex,
   continueItems,
-  entryHue,
-  hueOf,
+  entryTone,
+  toneOf,
   minutes,
-  mosaicHues,
+  mosaicTones,
   plural,
   queryTerms,
   recentAlbums,
@@ -310,33 +310,33 @@ describe("topItems", () => {
 });
 
 describe("covers", () => {
-  it("gives the same hue to the same name, always in 0..359", () => {
-    expect(hueOf("Rosalía")).toBe(hueOf("Rosalía"));
-    expect(hueOf("Rosalía")).not.toBe(hueOf("Soda Stereo"));
-    expect(hueOf("x")).toBeGreaterThanOrEqual(0);
-    expect(hueOf("x")).toBeLessThan(360);
+  it("gives the same tone to the same name, always in 0..63", () => {
+    expect(toneOf("Rosalía")).toBe(toneOf("Rosalía"));
+    expect(toneOf("Rosalía")).not.toBe(toneOf("Soda Stereo"));
+    expect(toneOf("x")).toBeGreaterThanOrEqual(0);
+    expect(toneOf("x")).toBeLessThan(64);
   });
 
-  it("uses the album hue for a song with album and the artist's without", () => {
-    expect(entryHue(byKey.get("rosalia/saoko"))).toBe(albumHue("Rosalía", "Motomami"));
-    expect(entryHue(byKey.get("zoe/azul"))).toBe(hueOf("Zoé"));
+  it("uses the album tone for a song with album and the artist's without", () => {
+    expect(entryTone(byKey.get("rosalia/saoko"))).toBe(albumTone("Rosalía", "Motomami"));
+    expect(entryTone(byKey.get("zoe/azul"))).toBe(toneOf("Zoé"));
   });
 
   it("builds a four-tone mosaic from the first songs still in the library", () => {
     const keys = ["gone/x", "rosalia/saoko", "soda/signos"];
-    const hues = mosaicHues(keys, byKey);
-    expect(hues).toHaveLength(4);
-    expect(hues[0]).toBe(entryHue(byKey.get("rosalia/saoko")));
-    expect(hues[1]).toBe(entryHue(byKey.get("soda/signos")));
-    expect(hues[2]).toBe(hues[0]);
-    expect(hues[3]).toBe(hues[0]);
+    const tones = mosaicTones(keys, byKey);
+    expect(tones).toHaveLength(4);
+    expect(tones[0]).toBe(entryTone(byKey.get("rosalia/saoko")));
+    expect(tones[1]).toBe(entryTone(byKey.get("soda/signos")));
+    expect(tones[2]).toBe(tones[0]);
+    expect(tones[3]).toBe(tones[0]);
   });
 
   it("caps the mosaic at four and is empty for a list with nothing left", () => {
     const keys = LIB.map((e) => e.key);
-    expect(mosaicHues(keys, byKey)).toHaveLength(4);
-    expect(mosaicHues(["gone/x"], byKey)).toEqual([]);
-    expect(mosaicHues([], byKey)).toEqual([]);
+    expect(mosaicTones(keys, byKey)).toHaveLength(4);
+    expect(mosaicTones(["gone/x"], byKey)).toEqual([]);
+    expect(mosaicTones([], byKey)).toEqual([]);
   });
 });
 

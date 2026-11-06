@@ -1,8 +1,8 @@
 /* ---------------------------------------------------------------------------
    DONDE VIVE LA BIBLIOTECA (seccion de Ajustes)
    Ya no es un <dialog>: es el cuerpo de una seccion normal. Dos opciones
-   grandes; la elegida lleva el borde coral. La barra de espacio es la de Drive:
-   Spitifo en coral, el resto de la cuenta en coral claro, lo libre es la pista.
+   grandes; la elegida lleva el aro cobalto. La barra de espacio es la de Drive:
+   Spitifo en rosa, el resto de la cuenta en cobalto, lo libre es la pista.
    ------------------------------------------------------------------------- */
 .panel__store {
   display: inline-flex;
@@ -14,14 +14,14 @@
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--muted);
+  color: var(--mut);
   font: inherit;
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
 }
 
 .panel__store:hover {
-  background: var(--surface-hover);
+  background: var(--hover);
 }
 
 .panel__store:active {
@@ -30,7 +30,7 @@
 
 .panel__store svg {
   flex: none;
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 .panel__store .panel__path {
@@ -46,7 +46,7 @@
 
 .store__lede {
   margin: 0 0 14px;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 14px;
 }
 
@@ -62,30 +62,30 @@
   align-items: flex-start;
   gap: 4px;
   min-height: 116px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: transparent;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--r-field);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 2px transparent;
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), border-color var(--t-press) var(--ease),
+  transition: transform var(--t-press) var(--ease), box-shadow var(--t-quick) var(--ease),
     background-color var(--t-press) var(--ease);
 }
 
 .store__opt:hover {
-  background: var(--surface-hover);
+  background: var(--s3);
 }
 
 .store__opt:active {
   transform: scale(0.98);
 }
 
-/* La elegida: 2px coral. El padding baja 1px para que nada salte. */
+/* La elegida: aro de 2px cobalto. */
 .store__opt[aria-checked="true"] {
-  padding: 13px;
-  border: 2px solid var(--accent);
+  box-shadow: inset 0 0 0 2px var(--acc);
 }
 
 .store__opt[aria-disabled="true"] {
@@ -99,11 +99,11 @@
 
 .store__icon {
   margin-bottom: 6px;
-  color: var(--icon-dim);
+  color: var(--dim);
 }
 
 .store__opt[aria-checked="true"] .store__icon {
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 .store__name {
@@ -111,7 +111,7 @@
 }
 
 .store__sub {
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
 }
 
@@ -125,7 +125,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--ok-fg);
+  background: var(--ok-t);
 }
 
 .quota {
@@ -137,16 +137,15 @@
   height: 8px;
   overflow: hidden;
   border-radius: var(--r-pill);
-  background: var(--track);
+  background: var(--s2);
 }
 
 .quota__app {
-  background: var(--accent);
+  background: var(--pink);
 }
 
 .quota__other {
-  background: var(--accent-fill);
-  opacity: 0.55;
+  background: var(--acc);
 }
 
 .quota__legend {
@@ -156,7 +155,7 @@
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
@@ -174,12 +173,11 @@
 }
 
 .quota__key--app {
-  background: var(--accent);
+  background: var(--pink);
 }
 
 .quota__key--other {
-  background: var(--accent-fill);
-  opacity: 0.55;
+  background: var(--acc);
 }
 
 /* ---------------------------------------------------------------------------
@@ -208,11 +206,11 @@
 }
 
 .store__cookies-title svg {
-  color: var(--icon-dim);
+  color: var(--dim);
 }
 
 .store__cookies-state {
-  color: var(--muted);
+  color: var(--mut);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
@@ -239,12 +237,12 @@
 
 .store__note {
   margin: 14px 0 0;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
 }
 
 .store__note a {
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 .store__err {
@@ -252,7 +250,7 @@
   padding: 10px 12px;
   border-radius: var(--r-sm);
   background: var(--bad-bg);
-  color: var(--bad-fg);
+  color: var(--bad-t);
   font-size: 13px;
 }
 
@@ -272,11 +270,11 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--muted);
+  color: var(--mut);
   font: inherit;
   font-size: 13px;
   text-decoration: underline;
-  text-decoration-color: var(--link-line);
+  text-decoration-color: var(--s3);
   text-underline-offset: 3px;
   cursor: pointer;
 }

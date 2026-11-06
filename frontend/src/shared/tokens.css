@@ -1,126 +1,103 @@
 /* =============================================================================
-   SPITIFO, tema "Cristal"
-   Herramienta de una sola vista: buscar, entender, bajar. Tema claro unico:
-   cristal esmerilado sobre un degradado azul cielo, con coral como acento.
+   SPITIFO: tokens del tema "Giro"
 
-   1. TOKENS       colores, forma, tipografia, movimiento
-   2. BASE         reset, fondo, foco
-   3. NAV          pildora flotante
-   4. HERO         titulo y panel de busqueda
-   5. CONTROLES    segmentados (modo, formato, filtro)
-   6. AVISOS       error, ok y aviso de descarga
-   7. PROGRESO     toast fijo abajo
-   8. ESCUCHAR     biblioteca y cola (listen/listen.css)
-   9. RESULTADOS   cabecera, rejilla de tarjetas, chips, botones
-   10. CONCIERTOS  tarjeta ancha + setlist
-   11. VACIOS      pantalla inicial, sin resultados, skeletons
-   8b. REPRODUCTOR  fila de biblioteca + preview de tarjeta
-   12. HOVER / TACTIL / RESPONSIVE / MOVIMIENTO
-   14. RESOLUCIONES  boton dividido + menu de alturas de YouTube
+   Cobalto + rosa sobre superficies planas con sombras suaves. Un solo sistema
+   en dos temas: claro (:root) y oscuro (:root[data-theme="dark"]), con los
+   mismos nombres. El atributo lo pone un script en index.html antes del primer
+   pintado, para que no haya destello. Todo lo demas (base, nav, listen, ...)
+   solo lee estos nombres.
+
+   COLOR
+     --bg --s1 --s2 --s3    suelo de la pagina y tres superficies (tarjeta,
+                            chip, aro/pista)
+     --ink --on             tinta y su contraste (texto sobre superficie --ink)
+     --mut --dim            texto secundario / terciario (>= 4.5:1 sobre
+                            --bg, --s1 y --s2, en los dos temas)
+     --acc --acc-ink        cobalto para enlaces, activo y boton primario, y el
+                            texto que lleva encima
+     --pink --pink2         rosa de reproduccion; --ink va SOBRE el rosa
+     --ok --near --bad      veredictos; --*-t es su texto, --*-bg su tinte
+   El contraste de los pares que importan lo comprueba tokens.test.js.
+
+   FORMA: radios 12 / 14 / 16 / 18 / 22 / 24 / 30 y pildora; los bordes son
+   sombras interiores (aro de 1.5px en --s3), casi nunca border.
+   TIPOGRAFIA: Unbounded (titulos, cifras, inicial de portada) y Onest (todo el
+   texto), autoalojadas con @fontsource (main.jsx), la app funciona sin red.
    ========================================================================== */
-
-/* ---------------------------------------------------------------------------
-   1. TOKENS
-
-   TIPOGRAFIA (self-hosted con @fontsource-variable, se importan desde
-   main.jsx, la app funciona sin red):
-     Outfit Variable    marca, h1, titulos de tarjeta y de panel
-     Figtree Variable   todo el texto de UI
-   Cifras tabulares (tabular-nums) en duraciones, pesos y contadores para que
-   las columnas no baileen.
-
-   COLOR: tinta casi negra sobre cristal claro, un solo acento (coral).
-   Verde, ambar y rojo son SEMANTICOS: estado real del archivo, no decoracion.
-   Contraste del texto sobre el fondo claro (>= 4.5:1 en todos los casos):
-     --ink    #14202B  texto principal y botones oscuros
-     --muted  #3C4C5A  texto secundario
-     --faint  #4A5A68  metadatos y placeholders (el mas claro que se permite)
-     --accent #D3402B  blanco sobre coral = 4.6:1
-   Los chips llevan su par fondo/texto (--ok, --warn, --bad, --mute).
-
-   FORMA (una sola escala, aplicada en todo el archivo):
-     12 / 14   controles pequenos: botones de segmento, botones de descarga
-     16 / 18   interior: pista del segmentado, portadas
-     22 / 26   contenedores: campo de busqueda, avisos, tarjetas, biblioteca
-     32        paneles grandes: buscador, pantalla inicial
-     999       pildoras: nav, chips, botones de accion
-   No se inventan radios intermedios: si algo necesita otro, se cambia la
-   escala, no el elemento.
-   ------------------------------------------------------------------------- */
 
 :root {
   color-scheme: light;
 
-  --ink: #14202b;
-  --muted: #3c4c5a;
-  --faint: #4a5a68;
-  /* Tinta para iconos inertes (lupa, "sin descarga"): un paso mas claro que
-     --faint porque son glifos, no texto, y no necesitan 4.5:1. */
-  --icon-dim: #6b7b89;
-  --line: #dce7ee;
-  --track: #e4eef4;
-  --bg: #f6f9fb;
+  --bg: #f5f5fa;
+  --s1: #ffffff;
+  --s2: #ebebf3;
+  --s3: #d8d8e6;
+  --ink: #11111c;
+  --on: #ffffff;
+  --mut: #585870;
+  --dim: #66667e;
+  --line: rgba(17, 17, 28, 0.09);
+  --hair: rgba(17, 17, 28, 0.12);
+  --hover: rgba(17, 17, 28, 0.05);
 
-  --accent: #d3402b;
-  --accent-hover: #bb3622;
-  --accent-badge: #f0563f;
-  --accent-fill: #ff8a75;
-  /* El coral como TEXTO o icono. Los rellenos (botones) usan --accent, que con
-     texto blanco da 4.6:1; sobre fondo oscuro ese mismo coral como glifo se
-     queda corto, asi que en oscuro este token se aclara. */
-  --accent-fg: #d3402b;
+  --acc: #3045ff;
+  --acc-ink: #ffffff;
+  --pink: #ff4fa3;
+  --pink2: #ffe0ef;
+  /* Glifo y texto sobre rosa: tinta fija en los dos temas. */
+  --on-pink: #11111c;
 
-  --glass: rgba(255, 255, 255, 0.72);
-  --glass-card: rgba(255, 255, 255, 0.78);
-  --glass-edge: rgba(255, 255, 255, 0.95);
-  --nav-bg: rgba(255, 255, 255, 0.7);
-  --shadow-rgb: 40, 90, 130;
-  --shadow-nav: 0 8px 30px rgba(var(--shadow-rgb), 0.12);
-  --shadow-card: 0 10px 30px rgba(var(--shadow-rgb), 0.1);
-  --shadow-panel: 0 20px 60px rgba(var(--shadow-rgb), 0.16);
-  --shadow-raise: 0 2px 8px rgba(var(--shadow-rgb), 0.16);
+  --ok: #0f7442;
+  --near: #8d5c00;
+  --bad: #c8323b;
+  --ok-t: #0b6338;
+  --near-t: #7a5000;
+  --bad-t: #ad262e;
+  --ok-bg: rgba(15, 116, 66, 0.15);
+  --near-bg: rgba(141, 92, 0, 0.16);
+  --bad-bg: rgba(200, 50, 59, 0.15);
 
-  /* Superficies y estados que antes eran #fff / hex sueltos. Con tokens, el
-     tema oscuro solo redefine valores; ningun componente cambia. */
-  --surface: #fff;
-  --surface-hover: #f1f6f9;
-  /* Pastilla activa de los segmentados: debe separarse de su pista. */
-  --seg-on: #fff;
-  --on-ink: #fff;
-  --ink-hover: #2a3d4e;
-  --track-hover: #d7e6ef;
-  --seg-hover: rgba(255, 255, 255, 0.6);
-  --row-hover: rgba(228, 238, 244, 0.55);
-  --line-strong: #b9c8d4;
-  --link-line: #9db2c2;
-  --ring-gap: #fff;
-  --badge-text: #14202b;
-  --toast-bg: rgba(20, 32, 43, 0.94);
-  --toast-edge: transparent;
-  --page-top: #cfe6f5;
-  --page-mid: #e6f1f7;
-  --blob-coral: #ffd6c9;
-  --blob-coral-o: 0.6;
-  --blob-sky: #bfe3f5;
-  --blob-sky-o: 0.7;
+  --shadow-rgb: 30, 30, 80;
+  --shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.13);
+  --shadow-sm: 0 2px 8px rgba(var(--shadow-rgb), 0.16);
+  --scrim: rgba(17, 17, 28, 0.38);
+  --glass: rgba(255, 255, 255, 0.76);
+  /* Accion de un toast (el toast es --ink: oscuro en claro, claro en oscuro). */
+  --toast-act: #ff4fa3;
 
-  --ok-bg: #d5f1e1;
-  --ok-fg: #0f6b3a;
-  --warn-bg: #fcebc4;
-  --warn-fg: #7a5200;
-  --bad-bg: #fadad5;
-  --bad-fg: #a32a1b;
+  /* Nombres que el JS lee con getComputedStyle (mapCanvas.readTheme). */
+  --muted: var(--mut);
+  --surface: var(--s1);
+  --accent: var(--acc);
 
-  --font-display: "Outfit Variable", "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body: "Figtree Variable", "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Colores de genero (el mapa los lee y las portadas generadas los usan). */
+  --genre-0: #e45741;
+  --genre-1: #38a636;
+  --genre-2: #6182f8;
+  --genre-3: #e3526c;
+  --genre-4: #51a31f;
+  --genre-5: #218df5;
+  --genre-6: #d7559f;
+  --genre-7: #779c00;
+  --genre-8: #00a5c9;
+  --genre-9: #c45dc2;
+  --genre-10: #a48d00;
+  --genre-11: #00ad7f;
+  --genre-12: #ac67de;
+  --genre-13: #d66b00;
+  --genre-14: #00a94d;
+  --genre-15: #8476f3;
+
+  --font-display: "Unbounded Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Onest Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --r-sm: 12px;
   --r-md: 14px;
   --r-inner: 16px;
   --r-cover: 18px;
   --r-field: 22px;
-  --r-card: 26px;
-  --r-panel: 32px;
+  --r-card: 24px;
+  --r-panel: 30px;
   --r-pill: 999px;
 
   --gutter: clamp(16px, 4.4vw, 56px);
@@ -130,13 +107,15 @@
        --t-press  presion        --t-quick  color, hover y toda salida
        --t-enter  entrada        --t-move   indicadores y cajas
        --t-scene  escenas largas: la cortina del tema y el meneo de los
-                  ejemplos. */
-  --t-press: 120ms;
+                  ejemplos.
+     --drawer es la curva de hojas y paneles que se deslizan. */
+  --t-press: 150ms;
   --t-quick: 180ms;
   --t-enter: 240ms;
   --t-move: 360ms;
   --t-scene: 550ms;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* Ease-in-out simetrica para superficies grandes que empujan el contenido
      (la biblioteca): arranca y frena despacio, sin tiron al principio. */
   --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
@@ -148,65 +127,57 @@
   --stagger: 30ms;
 }
 
-/* ---------------------------------------------------------------------------
-   TEMA OSCURO
-   Mismo sistema, otros valores. Fondo azul noche, cristal oscuro con borde de
-   luz al 9 %, tinta clara. El boton "oscuro" de la web (biblioteca, descarga)
-   se INVIERTE: pildora clara con texto oscuro, que es lo que hace de primario
-   sobre fondo oscuro. Los tonos semanticos pasan a fondo apagado + texto claro
-   (contraste >= 4.5:1). El coral de relleno no cambia; como texto se aclara.
-   El atributo lo pone un script en index.html antes del primer pintado, para
-   que no haya destello.
-   ------------------------------------------------------------------------- */
-
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --ink: #e8eff5;
-  --muted: #b6c5d1;
-  --faint: #95a8b7;
-  --icon-dim: #71869a;
-  --line: #243648;
-  --track: #1c2b3a;
-  --bg: #0b131a;
+  --bg: #0e0e18;
+  --s1: #181826;
+  --s2: #232336;
+  --s3: #34344c;
+  --ink: #f3f3fb;
+  --on: #0e0e18;
+  --mut: #a7a7bf;
+  --dim: #8b8ba4;
+  --line: rgba(255, 255, 255, 0.09);
+  --hair: rgba(255, 255, 255, 0.14);
+  --hover: rgba(255, 255, 255, 0.06);
 
-  --accent-fg: #ff7a63;
+  --acc: #8592ff;
+  --acc-ink: #0e0e18;
+  --pink: #ff7ec0;
+  --pink2: #3a2032;
 
-  --glass: rgba(20, 32, 44, 0.72);
-  --glass-card: rgba(22, 34, 47, 0.78);
-  --glass-edge: rgba(255, 255, 255, 0.09);
-  --nav-bg: rgba(20, 32, 44, 0.7);
+  --ok: #54d38f;
+  --near: #f5bb4d;
+  --bad: #ff8585;
+  --ok-t: var(--ok);
+  --near-t: var(--near);
+  --bad-t: var(--bad);
+  --ok-bg: rgba(84, 211, 143, 0.15);
+  --near-bg: rgba(245, 187, 77, 0.16);
+  --bad-bg: rgba(255, 133, 133, 0.15);
+
   --shadow-rgb: 0, 0, 0;
-  --shadow-nav: 0 8px 30px rgba(0, 0, 0, 0.35);
-  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.3);
-  --shadow-panel: 0 20px 60px rgba(0, 0, 0, 0.45);
-  --shadow-raise: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --glass: rgba(24, 24, 38, 0.74);
+  --toast-act: #b8126f;
 
-  --ok-bg: #123a2b;
-  --ok-fg: #7fdda8;
-  --warn-bg: #40330f;
-  --warn-fg: #f3cb6f;
-  --bad-bg: #4a211d;
-  --bad-fg: #ff9c8f;
-
-  --surface: #162331;
-  --surface-hover: #1d2d3d;
-  --seg-on: #30465c;
-  --on-ink: #0b131a;
-  --ink-hover: #ffffff;
-  --track-hover: #27394c;
-  --seg-hover: rgba(255, 255, 255, 0.06);
-  --row-hover: rgba(255, 255, 255, 0.05);
-  --line-strong: #33485c;
-  --link-line: #5b7288;
-  --ring-gap: #0b131a;
-  --toast-bg: rgba(30, 45, 60, 0.96);
-  --toast-edge: rgba(255, 255, 255, 0.1);
-  --page-top: #14293b;
-  --page-mid: #0f1e2b;
-  --blob-coral: #6b2f27;
-  --blob-coral-o: 0.35;
-  --blob-sky: #1d5a80;
-  --blob-sky-o: 0.4;
+  --genre-0: #ff866f;
+  --genre-1: #6eca69;
+  --genre-2: #88aaff;
+  --genre-3: #ff8294;
+  --genre-4: #7ec85d;
+  --genre-5: #5fb5ff;
+  --genre-6: #f983c3;
+  --genre-7: #9dc13f;
+  --genre-8: #00caea;
+  --genre-9: #e789e3;
+  --genre-10: #c7b300;
+  --genre-11: #00d1a5;
+  --genre-12: #cf92fd;
+  --genre-13: #f8962e;
+  --genre-14: #56cd7a;
+  --genre-15: #a8a0ff;
 }
-

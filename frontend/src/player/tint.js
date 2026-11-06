@@ -8,8 +8,10 @@
    aqui solo se calcula, y por eso se puede probar en Node.
    ------------------------------------------------------------------------- */
 
-/* Negro azulado del tema oscuro: hacia el se mezcla el color de la portada. */
-const BASE = [11, 15, 20];
+import { hash32 } from "../shared/cover.js";
+
+/* Casi negro del tema oscuro (--bg): hacia el se mezcla el color de la portada. */
+const BASE = [14, 14, 24];
 
 /* Contraste minimo del blanco sobre el fondo. El texto principal pide 4.5, pero
    el secundario va en blanco al 85 % y por debajo de 6 se queda corto. */
@@ -57,11 +59,7 @@ export function darken(rgb) {
 export const rgbCss = ([r, g, b]) => `rgb(${r} ${g} ${b})`;
 
 /* Tono 0-359 estable para un nombre (hash de cadena de 32 bits). */
-export function hashHue(name) {
-  let h = 0;
-  for (const ch of String(name || "")) h = (Math.imul(h, 31) + ch.codePointAt(0)) >>> 0;
-  return h % 360;
-}
+export const hashHue = (name) => hash32(name) % 360;
 
 /* Saturacion y luz fijas: el peor tono (amarillo) da mas de 5:1 con blanco. */
 export const fallbackTint = (name) => `hsl(${hashHue(name)} 45% 28%)`;

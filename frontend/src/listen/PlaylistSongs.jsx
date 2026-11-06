@@ -1,4 +1,5 @@
 import { cx } from "../shared/ui.jsx";
+import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import VirtualList from "./VirtualList.jsx";
@@ -21,6 +22,7 @@ function PlaylistSongRow({ entry, enter, transform, dragging, handleRef, handleP
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
+  const tone = coverTone(artist, album);
 
   return (
     <div
@@ -43,7 +45,9 @@ function PlaylistSongRow({ entry, enter, transform, dragging, handleRef, handleP
         aria-label={`${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}`}
         onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget))}
       >
-        <span className="art">{isCurrent ? <Bars on={playing} /> : initial(artist)}</span>
+        <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
+          {isCurrent ? <Bars on={playing} /> : initial(artist)}
+        </span>
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
           <span className="srow__m">{album ? `${artist} · ${album}` : artist}</span>

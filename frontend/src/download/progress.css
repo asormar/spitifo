@@ -1,29 +1,29 @@
 /* ---------------------------------------------------------------------------
    6. AVISOS: error, descarga terminada, combinacion que degrada el resultado
-   Cada tono trae su par fondo/texto; el aviso mezcla el fondo con blanco.
+   Cada tono trae su par tinte/texto (tokens --*-bg y --*-t).
    ------------------------------------------------------------------------- */
 
 .st--ok,
 .msg--ok {
   --tone-bg: var(--ok-bg);
-  --tone-fg: var(--ok-fg);
+  --tone-fg: var(--ok-t);
 }
 
 .st--warn,
 .msg--warn {
-  --tone-bg: var(--warn-bg);
-  --tone-fg: var(--warn-fg);
+  --tone-bg: var(--near-bg);
+  --tone-fg: var(--near-t);
 }
 
 .st--bad,
 .msg--err {
   --tone-bg: var(--bad-bg);
-  --tone-fg: var(--bad-fg);
+  --tone-fg: var(--bad-t);
 }
 
 .st--mute {
-  --tone-bg: var(--track);
-  --tone-fg: var(--muted);
+  --tone-bg: var(--s2);
+  --tone-fg: var(--mut);
 }
 
 .msg {
@@ -34,10 +34,9 @@
   margin: 20px auto 0;
   padding: 14px 18px;
   border-radius: var(--r-field);
-  background: color-mix(in srgb, var(--tone-bg) 60%, var(--surface));
-  border: 1px solid var(--tone-bg);
+  background: linear-gradient(var(--tone-bg), var(--tone-bg)), var(--s1);
   color: var(--tone-fg);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   overflow-wrap: anywhere;
   /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
@@ -71,7 +70,7 @@
 .msg__sub {
   display: block;
   margin-top: 2px;
-  color: var(--muted);
+  color: var(--mut);
   font-weight: 500;
 }
 
@@ -111,7 +110,11 @@ body.has-mini .progstack {
 }
 
 .progstack .prog {
-  position: static;
+  /* relative (no static): la barra de 4 px se ancla a la tarjeta; sin offsets
+     heredados de la version fija. */
+  position: relative;
+  right: auto;
+  bottom: auto;
   width: 100%;
   margin: 0;
   pointer-events: auto;
@@ -123,13 +126,13 @@ body.has-mini .progstack {
   right: 16px;
   bottom: max(24px, env(safe-area-inset-bottom));
   width: min(380px, calc(100% - 32px));
-  /* sin margin:auto: centraria el toast y anularia el right de arriba */
-  padding: 16px 20px;
-  border-radius: var(--r-card);
-  background: var(--toast-bg);
-  border: 1px solid var(--toast-edge);
-  color: #fff;
-  box-shadow: 0 20px 50px rgba(20, 32, 43, 0.35);
+  /* sin margin:auto: centraria el aviso y anularia el right de arriba */
+  padding: 14px 16px 18px;
+  border-radius: var(--r-cover);
+  background: var(--s1);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  overflow: hidden;
   --rise: 12px;
   animation: rise var(--t-enter) var(--ease) both;
 }
@@ -152,7 +155,7 @@ body.has-mini .progstack {
 .prog__ico {
   display: inline-flex;
   flex: none;
-  color: var(--accent-fill);
+  color: var(--acc);
 }
 
 /* El giro del spinner se queda en .spin; el icono final (check o aviso) entra
@@ -164,11 +167,11 @@ body.has-mini .progstack {
 }
 
 .prog.is-done .prog__ico {
-  color: #7fdda8;
+  color: var(--ok-t);
 }
 
 .prog.is-failed .prog__ico {
-  color: #ff9c8f;
+  color: var(--bad-t);
 }
 
 .prog__title {
@@ -182,46 +185,32 @@ body.has-mini .progstack {
 
 .prog__state {
   flex: 0 1 auto;
-  color: #c8d6e0;
+  color: var(--mut);
   font-variant-numeric: tabular-nums;
 }
 
+/* Barra de 4 px pegada al borde inferior de la tarjeta. */
 .prog__bar {
-  height: 6px;
-  margin-top: 10px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.2);
-  overflow: hidden;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--s2);
 }
 
 .prog__fill {
   height: 100%;
-  border-radius: var(--r-pill);
-  background: var(--accent-fill);
+  background: var(--acc);
   transform-origin: left center;
   transform: scaleX(0);
   transition: transform var(--t-enter) var(--ease);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Brillo que recorre el relleno mientras la descarga sigue en curso: dice que
-   el proceso esta vivo aunque el porcentaje no se mueva (la conversion final
-   puede tardar minutos en el 99%). */
-.prog:not(.is-done):not(.is-failed) .prog__fill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
-  transform: translateX(-100%);
-  animation: sheen 1.4s ease-in-out infinite;
 }
 
 .prog.is-done .prog__fill {
-  background: #7fdda8;
+  background: var(--ok);
 }
 
 .prog.is-failed .prog__fill {
-  background: #ff9c8f;
+  background: var(--bad);
 }
-
