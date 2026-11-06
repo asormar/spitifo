@@ -470,29 +470,6 @@ html[data-vt="mode"]::view-transition-new(screen) {
   text-align: center;
 }
 
-.empty__ico {
-  display: grid;
-  place-items: center;
-  width: 60px;
-  height: 60px;
-  margin: 0 auto 16px;
-  border-radius: var(--r-cover);
-  background: color-mix(in srgb, var(--acc) 12%, transparent);
-  color: var(--acc);
-}
-
-.empty__h {
-  margin: 0 0 8px;
-  font: 700 clamp(24px, 4vw, 30px) / 1.15 var(--font-display);
-  letter-spacing: -0.035em;
-}
-
-.empty__p {
-  max-width: 48ch;
-  margin: 0 auto;
-  color: var(--mut);
-}
-
 /* --- Ajustes -------------------------------------------------------------- */
 
 .settings {

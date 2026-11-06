@@ -65,11 +65,6 @@
   /* Accion de un toast (el toast es --ink: oscuro en claro, claro en oscuro). */
   --toast-act: #ff4fa3;
 
-  /* Nombres que el JS lee con getComputedStyle (mapCanvas.readTheme). */
-  --muted: var(--mut);
-  --surface: var(--s1);
-  --accent: var(--acc);
-
   /* Colores de genero (el mapa los lee y las portadas generadas los usan). */
   --genre-0: #e45741;
   --genre-1: #38a636;

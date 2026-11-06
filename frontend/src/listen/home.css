@@ -202,10 +202,6 @@
   scrollbar-width: none;
 }
 
-.hs::-webkit-scrollbar {
-  display: none;
-}
-
 .hs > * {
   scroll-snap-align: start;
 }
@@ -222,7 +218,7 @@
   cursor: pointer;
 }
 
-/* Todos los botones del inicio comparten la presion de 120 ms. */
+/* Todos los botones del inicio comparten la presion de 150 ms. */
 :is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it) {
   transition: transform var(--t-press) var(--ease);
 }

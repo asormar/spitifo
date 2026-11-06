@@ -50,9 +50,9 @@ export function readTheme(el) {
   return {
     palette: Array.from({ length: CLUSTERS }, (_, i) => v(`--genre-${i}`, "#6182f8")),
     ink: v("--ink", "#11111c"),
-    muted: v("--muted", "#585870"),
-    halo: v("--surface", "#ffffff"),
-    accent: v("--accent", "#3045ff"),
+    muted: v("--mut", "#585870"),
+    halo: v("--s1", "#ffffff"),
+    accent: v("--acc", "#3045ff"),
     font: v("--font-body", "system-ui, sans-serif"),
     moveMs: parseMs(v("--t-move", "360ms")),
   };

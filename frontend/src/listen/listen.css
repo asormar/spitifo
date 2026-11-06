@@ -257,10 +257,6 @@
   background: var(--s2);
 }
 
-.art--round {
-  border-radius: 50%;
-}
-
 .is-current .art {
   background: color-mix(in srgb, var(--acc) 14%, var(--s1));
   color: var(--acc);

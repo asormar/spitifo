@@ -46,6 +46,8 @@
   width: 0.84em;
   height: 0.84em;
   margin: 0.05em 0 0 0.05em;
+  animation: spin 3.2s linear infinite;
+  animation-play-state: paused;
 }
 
 .logo__rec {
@@ -69,8 +71,9 @@
   fill: var(--s1);
 }
 
+/* En pausa conserva el angulo en vez de volver a 0 de golpe. */
 .logo__o.is-spin {
-  animation: spin 3.2s linear infinite;
+  animation-play-state: running;
 }
 
 /* Cambio de tema: cortina vertical. La foto vieja queda fija debajo y la nueva
@@ -88,22 +91,17 @@ html[data-vt="theme"]::view-transition-new(root) {
 }
 
 html[data-vt="theme"]::view-transition-new(root) {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
   mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
-  -webkit-mask-size: 100% 300%;
   mask-size: 100% 300%;
-  -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   animation: theme-curtain var(--t-scene) cubic-bezier(0.45, 0, 0.55, 1) both;
 }
 
 @keyframes theme-curtain {
   from {
-    -webkit-mask-position: 0% 100%;
     mask-position: 0% 100%;
   }
   to {
-    -webkit-mask-position: 0% 0%;
     mask-position: 0% 0%;
   }
 }

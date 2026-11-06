@@ -23,7 +23,7 @@
     filter: brightness(1.08);
   }
 
-  .vf:not(:disabled):not(.vf--static):hover,
+  .vf:not(:disabled):hover,
   .disclosure:hover,
   .example:hover {
     background: var(--s3);
@@ -334,6 +334,7 @@
   .spin,
   .skel--pulse,
   .eq i,
+  .logo__o,
   .pbtn::after,
   .search.is-scanning .search__icon {
     animation: none !important;
