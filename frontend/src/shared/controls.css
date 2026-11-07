@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------------
    CONTROLES COMPARTIDOS
-   El segmentado (.segs/.seg: Buscar, Descubrir, Ajustes) y el boton secundario
+   El segmentado (.segs/.seg: Descubrir y Ajustes) y el boton secundario
    .vf (avisos de la biblioteca, cookies, el selector de listas, Buscar). Van en
    el arranque y ANTES de motion.css: sus reglas tactiles (44 px) y de hover
    tienen la misma especificidad y ganan por orden.

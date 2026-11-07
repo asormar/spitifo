@@ -84,8 +84,8 @@ function DiscoverView(props) {
   return <View {...props} />;
 }
 const SettingsView = React.lazy(loadSettingsView);
-/* Las paginas de la pila de Buscar (Explorar la biblioteca desde "Ver mas"). */
-const PageHost = React.lazy(() => import("../listen/PageHost.jsx"));
+/* Las paginas de la pila de Buscar (Explorar la biblioteca, «Ver las N canciones»). */
+const SearchPage = React.lazy(() => import("../download/SearchPage.jsx"));
 
 /* Mientras la pantalla esta oculta no se reconcilia su arbol: los cambios de
    pestana y de "Ahora suena" no recorren las cuatro pantallas que no se ven. Lo
@@ -519,7 +519,7 @@ export default function App() {
                 </div>
                 {searchPage && (
                   <Suspense fallback={null}>
-                    <PageHost view={searchPage} tab="search" active={activeId === "search"} />
+                    <SearchPage view={searchPage} active={activeId === "search"} />
                   </Suspense>
                 )}
               </Screen>

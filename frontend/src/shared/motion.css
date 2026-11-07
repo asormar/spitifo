@@ -5,7 +5,6 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .search__go:not(:disabled):hover,
   .pv.is-playing .pbtn:hover {
     filter: brightness(1.08);
   }
@@ -20,8 +19,7 @@
   }
 
   .vf:not(:disabled):hover,
-  .disclosure:hover,
-  .example:hover {
+  .disclosure:hover {
     background: var(--s3);
   }
 
@@ -48,13 +46,6 @@
     box-shadow: 0 14px 28px rgba(var(--shadow-rgb), 0.22);
   }
 
-  .example:not(:active):hover {
-    transform: translateY(-2px);
-  }
-
-  .example:hover svg {
-    animation: wiggle var(--t-scene) var(--ease);
-  }
 }
 
 /* Feedback al presionar para los botones que no tenian ninguno y que no usan
@@ -114,57 +105,17 @@
     position: relative;
   }
 
-  .finder {
-    margin-top: 24px;
-    padding: 10px;
-    border-radius: var(--r-card);
-  }
-
-  .search {
-    height: 60px;
-    gap: 8px;
-    padding-left: 16px;
-  }
-
-  .search__go {
-    height: 48px;
-    padding: 0 20px;
-  }
-
-  .controls {
-    padding: 0;
-  }
-
-  .controls > .segs,
-  .fmts {
-    width: 100%;
-  }
-
-  .controls > .segs .seg {
-    flex: 1;
-    padding: 8px 8px;
-  }
-
-  .fmts .segs {
-    flex: 1;
-  }
-
-  .fmts .seg {
-    flex: 1;
-    padding: 0 8px;
-  }
-
   .results__head {
     padding-top: 32px;
   }
 
-  .results__head .segs {
+  .results__head .chips {
     width: 100%;
   }
 
-  .results__head .seg {
+  .results__head .chip {
     flex: 1;
-    padding: 8px 10px;
+    padding: 0 10px;
   }
 
   .card--wide {
@@ -178,10 +129,6 @@
 
   .panel__path {
     display: none;
-  }
-
-  .intro {
-    padding: 28px 18px 24px;
   }
 }
 
@@ -271,19 +218,6 @@
   }
 }
 
-@keyframes wiggle {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  30% {
-    transform: rotate(-14deg);
-  }
-  65% {
-    transform: rotate(10deg);
-  }
-}
-
 @keyframes breathe {
   0%,
   100% {
@@ -320,7 +254,7 @@
   .eq i,
   .logo__o,
   .pbtn::after,
-  .search.is-scanning .search__icon {
+  .sfield.is-scanning .sfield__icon {
     animation: none !important;
   }
 

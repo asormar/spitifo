@@ -1,5 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
+import SearchField from "../shared/SearchField.jsx";
+import { usePc } from "../shared/viewport.js";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import PageHost from "./PageHost.jsx";
@@ -55,6 +57,7 @@ function LibraryRoot({ model, ctx, active }) {
 
 export default function LibraryScreen({ ready, error, errorCode, health, active, onRetry }) {
   const nav = useNav();
+  const pc = usePc();
   const { ctx, model } = useListen();
   const [q, setQ] = useState("");
   /* Escribir no tiene que esperar a que se filtre y se pinte. */
@@ -80,11 +83,6 @@ export default function LibraryScreen({ ready, error, errorCode, health, active,
     const has = nav.getStack().some((v) => v.type === "search");
     if (value.trim() && !has) nav.open({ type: "search" });
     else if (!value.trim() && has) nav.back();
-  };
-
-  const clearSearch = () => {
-    onSearch("");
-    searchRef.current?.focus({ preventScroll: true });
   };
 
   if (page && ready) return <PageHost view={page} tab="library" active={active} results={results} />;
@@ -125,29 +123,19 @@ export default function LibraryScreen({ ready, error, errorCode, health, active,
         </div>
       </header>
       <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry}>
-        <div className="hsearch">
-          <div className="hsearch__box">
-            <Icon name="MagnifyingGlass" size={22} aria-hidden="true" />
-            <input
-              ref={searchRef}
-              type="text"
-              inputMode="search"
-              enterKeyHint="search"
-              data-field="search"
+        {!pc && (
+          <div className="lstick">
+            <SearchField
+              big
+              inputRef={searchRef}
               value={q}
+              onChange={onSearch}
               placeholder="¿Qué quieres escuchar?"
-              aria-label="Buscar en tu biblioteca"
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(e) => onSearch(e.target.value)}
+              label="Buscar en tu biblioteca"
+              clearLabel="Borrar búsqueda"
             />
-            {q && (
-              <button type="button" className="hsearch__clear" aria-label="Borrar búsqueda" onClick={clearSearch}>
-                <Icon name="X" size={16} />
-              </button>
-            )}
           </div>
-        </div>
+        )}
         {searching ? (
           <SearchResults r={results} query={dq} byKey={model.byKey} ctx={ctx} />
         ) : (

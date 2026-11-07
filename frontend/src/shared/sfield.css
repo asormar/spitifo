@@ -1,0 +1,93 @@
+/* ---------------------------------------------------------------------------
+   CAMPO DE BUSQUEDA (.sfield)
+   El unico: barra de arriba en escritorio, Buscar y Tu biblioteca en telefono.
+   El aro lo dibuja la caja entera (no el input) y se enciende con :focus-within.
+   ------------------------------------------------------------------------- */
+
+.sfield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 6px 0 16px;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+  color: var(--dim);
+  transition: box-shadow var(--t-quick) var(--ease);
+}
+
+/* La version de pantalla (telefono): mas alta, con sombra en vez de aro. */
+.sfield--big {
+  gap: 10px;
+  height: 54px;
+  padding-left: 18px;
+  box-shadow: var(--shadow);
+}
+
+.sfield:focus-within {
+  box-shadow: 0 0 0 3px var(--acc);
+}
+
+.sfield--big:focus-within {
+  box-shadow: 0 0 0 3px var(--acc), var(--shadow);
+}
+
+.sfield__icon {
+  flex: none;
+  transition: color var(--t-quick) var(--ease);
+}
+
+.sfield.is-scanning .sfield__icon {
+  color: var(--acc);
+  animation: scan 1.2s linear infinite;
+}
+
+/* 16 px en la pantalla: por debajo, iOS hace zoom al enfocar el campo. */
+.sfield input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ink);
+  font: 600 14.5px var(--font-body);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sfield--big input {
+  font-size: 16px;
+}
+
+.sfield input::placeholder {
+  color: var(--dim);
+  font-weight: 500;
+  opacity: 1;
+}
+
+.sfield__go {
+  flex: none;
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 13.5px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.sfield--big .sfield__go {
+  height: 42px;
+  padding: 0 20px;
+  font-size: 14.5px;
+}
+
+.sfield__go:active {
+  transform: scale(0.96);
+}

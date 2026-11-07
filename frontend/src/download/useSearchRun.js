@@ -100,6 +100,14 @@ export default function useSearchRun() {
     window.history.replaceState(window.history.state, "", qs || window.location.pathname);
   }, []);
 
+  /* Un solo camino para borrar: el boton X del telefono, Escape en el campo de
+     arriba y borrar hasta dejarlo vacio terminan igual, en la pantalla de reposo.
+     Se mira el almacen (no `q`): el arranque y los pedidos escriben el texto y
+     lanzan la busqueda en el mismo instante. */
+  useEffect(() => {
+    if (searched && !q && !searchDraft.get()) reset();
+  }, [q, searched, reset]);
+
   /* Cambiar de modo tiene que volver a consultar la API, no solo repintar el
      control. La firma evita el loop y el doble fetch del arranque. */
   useEffect(() => {

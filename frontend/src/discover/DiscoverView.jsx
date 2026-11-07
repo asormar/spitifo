@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
+import { subscribeGenre, takeGenre } from "./genreRequest.js";
 import { useNotice } from "../listen/Notice.jsx";
 import { engine } from "../player/engine.js";
 import ForYouSlot from "./ForYouSlot.jsx";
@@ -53,6 +54,9 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
   const [focus, setFocus] = useState(NONE);
   const [preview, setPreview] = useState(NONE);
   const genres = useReco((s) => s.genres);
+  /* Un genero pedido desde Buscar (un atajo). Se guarda hasta que el mapa esta
+     a la vista y con tamano; entonces GenreMap vuela a el y lo suelta. */
+  const [want, setWant] = useState(null);
 
   const ready = state.status === "ready";
   useEffect(() => (active && ready ? reco.watch() : undefined), [active, ready]);
@@ -69,6 +73,16 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
       alive = false;
     };
   }, [attempt]);
+
+  useEffect(() => {
+    const take = () => {
+      const name = takeGenre();
+      if (name) setWant({ name });
+    };
+    take();
+    return subscribeGenre(take);
+  }, []);
+  const wanted = useCallback(() => setWant(null), []);
 
   const retry = useCallback(() => {
     setState({ status: "loading", data: null });
@@ -148,6 +162,8 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
           highlight={mineSet}
           focus={focus}
           preview={preview}
+          want={active ? want : null}
+          onWanted={wanted}
           onSearchGenre={searchGenre}
           onPlaySample={playSample}
           panel={panel}

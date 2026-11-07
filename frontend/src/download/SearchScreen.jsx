@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { rowKey } from "../shared/api.js";
+import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
+import { usePc } from "../shared/viewport.js";
 import {
-  EXAMPLES,
+  FORMATS,
   JOB_DISMISS_MS,
+  MEDIA_OPTIONS,
+  MODES,
   ORIGINAL_HINT,
   ORIGINAL_HINT_YT,
   PLACEHOLDER,
@@ -12,9 +16,10 @@ import {
 import { noticeFromError, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
-import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
+import Choice from "./Choice.jsx";
+import Idle from "./Idle.jsx";
+import LibraryHits from "./LibraryHits.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
-import { LibraryLink, RecentSection } from "./RecentList.jsx";
 import "./search.css";
 import "./results.css";
 import "./cards.css";
@@ -29,13 +34,17 @@ import "./notices.css";
    pintan y se cuida el foco y el scroll de los avisos.
    ------------------------------------------------------------------------- */
 
+const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
+
 export default function SearchScreen({
+  active,
   health,
   files,
   onLibraryChanged,
   onImportCookies,
   onOpenLibrary,
 }) {
+  const pc = usePc();
   const run = useSearchRun();
   const { q, setQ, mode, setMode, query, results, loading, searched, err, filter, setFilter } = run;
 
@@ -47,21 +56,6 @@ export default function SearchScreen({
      en cada tarjeta para que abrir uno cierre el anterior: un menú a la vez. */
   const [menuKey, setMenuKey] = useState(null);
   const dl = useDownloads({ query, mode, fmt, media, runs: run.runs, onLibraryChanged });
-
-  /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
-     hasta cerrar la vuelta en curso (la orbita empieza y acaba en reposo), asi
-     que se detiene sin saltar. El timeout es la red de seguridad para
-     prefers-reduced-motion, donde no hay animacion ni evento que esperar. */
-  const [scanning, setScanning] = useState(false);
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    if (loading) {
-      setScanning(true);
-      return undefined;
-    }
-    const id = setTimeout(() => setScanning(false), 1500);
-    return () => clearTimeout(id);
-  }, [loading]);
 
   const inputRef = useRef();
   /* Aviso visible en cada momento: se usa para traerlo a pantalla si una
@@ -128,19 +122,10 @@ export default function SearchScreen({
 
   const { full: fullCount, shown } = useMemo(() => summarize(results, filter), [results, filter]);
 
-  const healthByName = useMemo(() => {
-    const m = {};
-    (health?.sources || []).forEach((s) => {
-      m[s.name] = s;
-    });
-    return m;
-  }, [health]);
-
   /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
      pero se marca para que el 0 de resultados no parezca un fallo. */
-  const ytOn = healthByName.ytdlp?.active;
-  const ytDead = health !== null && !ytOn;
+  const ytDead = health !== null && !health?.sources?.some((s) => s.name === "ytdlp" && s.active);
 
   /* Con yt-dlp apagado, el modo Música es el que se abre por defecto y
      devuelve "30 resultados, 0 descargables" sin decir por que: iTunes solo
@@ -163,60 +148,64 @@ export default function SearchScreen({
       : "Sin resultados"
     : "";
 
-  const recent =
-    !loading && !results.length ? <RecentSection files={files} onOpen={onOpenLibrary} /> : null;
+  const modeOptions = MODES.map((m) =>
+    m.id === "ytdlp" && ytDead
+      ? { ...m, dead: true, title: "YouTube está apagado en este servidor: no devolverá resultados" }
+      : m
+  );
 
   return (
-    <>
+    <div className="sscr">
       <p className="sr-only" role="status" aria-live="polite">
         {srMsg}
       </p>
 
-      <section className="hero">
-        <h1 className="hero__title">Buscar</h1>
+      <header className="lhead">
+        <h1 className="lhead__h">Buscar</h1>
+      </header>
 
-        <div className="finder">
-          <form
-            onSubmit={onSubmit}
-            role="search"
-            className={cx("search", scanning && "is-scanning", focused && "is-focus")}
-            onAnimationIteration={(e) => {
-              if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
-            }}
-          >
-            <Icon name="MagnifyingGlass" size={22} className="search__icon" />
-            <input
-              ref={inputRef}
-              type="search"
-              name="q"
-              data-field="search"
-              enterKeyHint="search"
-              autoComplete="off"
-              spellCheck={false}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
-              aria-label="Qué quieres escuchar"
-            />
-            <button type="submit" className="search__go">
-              {loading ? "Buscando" : "Buscar"}
-            </button>
-          </form>
+      {/* En escritorio el campo es el de la barra de arriba. */}
+      {!pc && (
+        <SearchField
+          big
+          className="sscr__field"
+          inputRef={inputRef}
+          value={q}
+          onChange={setQ}
+          onSubmit={onSubmit}
+          go="Buscar"
+          busy={loading}
+          placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
+          label="Qué quieres escuchar"
+        />
+      )}
 
-          <section className="controls" aria-label="Cómo buscar">
-            <ModePicker value={mode} onChange={setMode} ytDead={ytDead} />
-            {mode === "ytdlp" && <MediaPicker value={media} onChange={setMedia} />}
-            {audioOnly && <FmtPicker value={fmt} onChange={setFmt} />}
-          </section>
-          {audioOnly && fmt === "original" && (
-            <p className="finder__hint" key={mode === "ytdlp" ? "yt" : "any"}>
-              {mode === "ytdlp" ? ORIGINAL_HINT_YT : ORIGINAL_HINT}
-            </p>
-          )}
-        </div>
-      </section>
+      <div className="tbar" role="group" aria-label="Cómo buscar">
+        <Choice options={modeOptions} value={mode} onChange={setMode} ariaLabel="Modo de búsqueda" />
+        {mode === "ytdlp" && (
+          <Choice
+            label="Contenido"
+            options={MEDIA_OPTIONS}
+            value={media}
+            onChange={setMedia}
+            ariaLabel="Qué se descarga de YouTube"
+          />
+        )}
+        {audioOnly && (
+          <Choice
+            label="Formato"
+            options={FMT_OPTIONS}
+            value={fmt}
+            onChange={setFmt}
+            ariaLabel="Formato de descarga"
+          />
+        )}
+      </div>
+      {audioOnly && fmt === "original" && (
+        <p className="shint" key={mode === "ytdlp" ? "yt" : "any"}>
+          {mode === "ytdlp" ? ORIGINAL_HINT_YT : ORIGINAL_HINT}
+        </p>
+      )}
 
       {notice?.tone === "err" && (
         <div className="msg msg--err" role="alert" ref={msgRef} tabIndex={-1}>
@@ -261,9 +250,14 @@ export default function SearchScreen({
         </div>
       )}
 
+      <LibraryHits active={active} />
+
+      {!searched && (
+        <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
+      )}
+
       {results.length > 0 && (
         <>
-          <LibraryLink count={files.length} onOpen={onOpenLibrary} />
           <div
             ref={resultsRef}
             tabIndex={-1}
@@ -273,11 +267,15 @@ export default function SearchScreen({
               <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
               <b>{fullCount} descargables</b>
             </span>
-            <FilterSegs
-              filter={filter}
+            <Choice
+              kind="toggle"
+              options={[
+                { id: "all", label: "Todos", n: results.length },
+                { id: "full", label: "Descarga completa", n: fullCount },
+              ]}
+              value={filter}
               onChange={setFilter}
-              total={results.length}
-              full={fullCount}
+              ariaLabel="Filtrar resultados"
             />
           </div>
           <ul
@@ -332,38 +330,6 @@ export default function SearchScreen({
         </ul>
       )}
 
-      {/* En la pantalla de inicio la biblioteca reciente va antes que la
-          bienvenida (es lo que mas se vuelve a abrir). Tras una busqueda sin
-          resultados va despues, para no apartar el aviso. Con resultados queda
-          solo el enlace de una linea. */}
-      {!searched && recent}
-
-      {!loading && !results.length && !err && !searched && (
-        <section className="intro">
-          <Icon name="Sparkle" size={26} weight="fill" className="intro__mark" />
-          <h2 className="intro__h">Escribe un tema y descárgalo completo</h2>
-          <p className="intro__p">
-            Spitifo busca a la vez en varias fuentes de música libre y te dice, resultado
-            por resultado, si el archivo se descarga completo.
-          </p>
-          <p className="intro__lbl">Prueba con alguno de estos</p>
-          <ul className="examples">
-            {EXAMPLES.map((ex, i) => (
-              <li key={ex} style={{ "--i": i }}>
-                <button type="button" className="example" onClick={() => runExample(ex)}>
-                  <Icon name="Waveform" size={13} />
-                  {ex}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="intro__fine">
-            Internet Archive y Wikimedia liberan los archivos. iTunes sirve para
-            encontrar la ficha y la portada. De YouTube sale el audio completo del tema.
-          </p>
-        </section>
-      )}
-
       {!loading && !results.length && searched && !err && (
         <div className="none" ref={resultsRef} tabIndex={-1}>
           <h3 className="none__h">No encontré nada para "{query}"</h3>
@@ -373,8 +339,6 @@ export default function SearchScreen({
           </p>
         </div>
       )}
-
-      {searched && recent}
-    </>
+    </div>
   );
 }

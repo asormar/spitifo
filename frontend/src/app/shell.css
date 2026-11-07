@@ -603,58 +603,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
   background: var(--bg);
 }
 
-.topbar__search {
-  display: flex;
+.topbar__field {
   flex: 1;
-  align-items: center;
-  gap: 8px;
   max-width: 600px;
-  height: 44px;
-  padding: 0 6px 0 16px;
-  border-radius: var(--r-pill);
-  background: var(--s1);
-  box-shadow: inset 0 0 0 1.5px var(--s3);
-  color: var(--mut);
-  transition: box-shadow var(--t-quick) var(--ease);
-}
-
-.topbar__search:focus-within {
-  box-shadow: 0 0 0 3px var(--acc);
-}
-
-.topbar__search input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: none;
-  color: var(--ink);
-  font: 600 14.5px var(--font-body);
-}
-
-.topbar__search input::placeholder {
-  color: var(--mut);
-  font-weight: 500;
-  opacity: 1;
-}
-
-.topbar__go {
-  flex: none;
-  height: 34px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: 800 13.5px var(--font-body);
-  cursor: pointer;
-  transition: var(--tr-press);
-}
-
-.topbar__go:active {
-  transform: scale(0.96);
 }
 
 .topbar__theme {
@@ -815,7 +766,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
    de Buscar sobran, los pone el menu o la barra de arriba. El prefijo .app
    gana a las reglas base de las hojas de cada pantalla, que cargan despues. */
 @media (min-width: 960px) {
-  .app :is(.hback, .vback, .dhead__back, .settings__back, .apphead, .finder > .search) {
+  .app :is(.hback, .vback, .dhead__back, .settings__back, .apphead) {
     display: none;
   }
 }

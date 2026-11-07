@@ -72,9 +72,9 @@
 
 /* --- Buscador ----------------------------------------------------------------- */
 
-/* Pegajoso arriba (bajo la barra de escritorio, --top-h) con un velo del color
-   de la pagina que se desvanece hacia abajo. */
-.hsearch {
+/* El campo de Tu biblioteca (telefono): pegajoso arriba con un velo del color de
+   la pagina que se desvanece hacia abajo. El campo es .sfield (shared). */
+.lstick {
   position: sticky;
   top: var(--top-h);
   z-index: 30;
@@ -82,7 +82,7 @@
   padding: 8px 10px 10px;
 }
 
-.hsearch::before {
+.lstick::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -90,56 +90,8 @@
   pointer-events: none;
 }
 
-.hsearch__box {
-  border: 0;
+.lstick .sfield {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 56px;
-  padding: 0 6px 0 18px;
-  border-radius: var(--r-field);
-  background: var(--s1);
-  box-shadow: var(--shadow);
-  color: var(--dim);
-}
-
-/* El aro lo dibuja el contenedor, como en Buscar. */
-.hsearch__box:focus-within {
-  box-shadow: 0 0 0 3px var(--acc), var(--shadow);
-}
-
-/* 17 px: por debajo de 16, iOS hace zoom al enfocar el campo. */
-.hsearch__box input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: 500 17px var(--font-body);
-  outline: none;
-  box-shadow: none;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.hsearch__box input::placeholder {
-  color: var(--dim);
-}
-
-.hsearch__clear {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--s2);
-  color: var(--mut);
-  cursor: pointer;
 }
 
 /* --- Secciones ------------------------------------------------------------------- */
@@ -219,11 +171,11 @@
 }
 
 /* Todos los botones del inicio comparten la presion de 150 ms. */
-:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it) {
+:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .lres__it) {
   transition: var(--tr-press);
 }
 
-:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it):active {
+:is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .lres__it):active {
   transform: scale(0.96);
 }
 
