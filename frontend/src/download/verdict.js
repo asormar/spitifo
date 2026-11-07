@@ -49,6 +49,12 @@ export function verdictOf(t, rec) {
   return (rec?.phase === "done" && FROM_MATCH[rec.match]) || "unv";
 }
 
+/* La pastilla de un archivo de la biblioteca recien bajado. Sin registro (un
+   archivo de antes, o de otra sesion) no hay pastilla: la ausencia es
+   «desconocido», nunca «Coincide». */
+export const libVerdict = (rec) => (rec?.phase === "done" ? FROM_MATCH[rec.match] || "unv" : null);
+export const libVerdictKey = (key) => `lib|${key}`;
+
 /* `untested`: nunca se comprobo (distinto de «no se pudo identificar»). */
 export function vText(key, { untested = false } = {}) {
   return key === "unv" && untested ? "Todavía no se ha comprobado el audio." : V_TEXT[key];
@@ -79,17 +85,21 @@ export function createVerdictStore(fetchImpl = (...a) => fetch(...a)) {
     get: (key) => recs.get(key),
 
     /* La descarga termino: el backend ya comparo con el titulo (o las
-       etiquetas). Una verificacion que SI identifico el audio no se pisa. */
+       etiquetas). Una verificacion que SI identifico el audio no se pisa.
+       `libKey`: la clave del archivo nuevo en la biblioteca; su fila de
+       «Descargado hace poco» lleva la misma pastilla hasta que se reinicia la
+       app (el veredicto no se guarda en el archivo). */
     setFromDownload(t, query, d) {
       const key = verdictKey(t, query);
-      if (known(recs.get(key))) return;
-      put(key, {
+      const rec = {
         phase: "done",
         from: "download",
         match: d.match,
         real: d.real_title || null,
         by: byVideo(t) ? "video" : "file",
-      });
+      };
+      if (d.libKey) put(libVerdictKey(d.libKey), rec);
+      if (!known(recs.get(key))) put(key, rec);
     },
 
     /* Lee las etiquetas del audio sin bajarlo. Una sola peticion por clave. */

@@ -16,6 +16,7 @@ import { noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
 import Choice from "./Choice.jsx";
+import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
 import LibraryHits from "./LibraryHits.jsx";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
@@ -64,16 +65,22 @@ export default function SearchScreen({
   const focusPending = useRef(false);
   const resultsRef = useRef(null);
 
-  /* El menu de resoluciones vive en la pila de navegacion: atras, Escape y el
-     atras de Android lo cierran. Solo hay uno, el de arriba de la pila. */
+  /* La ficha y el menu de resoluciones viven en la pila de navegacion: atras,
+     Escape y el atras de Android los cierran. El menu es el de arriba de la
+     pila; encima de la ficha, si se abre desde ella. */
   const nav = useNav();
-  const top = nav.stackOf("search").at(-1);
-  const menuAt = top?.type === "resmenu" ? top : null;
+  const stack = nav.stackOf("search");
+  const menuAt = stack.at(-1)?.type === "resmenu" ? stack.at(-1) : null;
+  const fichaAt = stack.find((e) => e.type === "ficha");
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
-  /* Una busqueda nueva se lleva el resultado: el menu ya no apunta a nada. */
+  const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
+  /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
   useEffect(() => {
     if (menuAt && !menuT) nav.back();
   }, [menuAt, menuT, nav.back]);
+  useEffect(() => {
+    if (fichaAt && !fichaT) nav.back();
+  }, [fichaAt, fichaT, nav.back]);
 
   /* Con video el boton abre el menu de resoluciones en vez de bajar; pulsar otra
      vez el mismo lo cierra. */
@@ -333,6 +340,7 @@ export default function SearchScreen({
                   busy={dl.busyIds.has(rowKey(t))}
                   downloaded={dl.downloadedIds.has(rowKey(t))}
                   onDl={onDl}
+                  onOpen={nav.open}
                 />
               )
             )}
@@ -361,9 +369,22 @@ export default function SearchScreen({
         </div>
       )}
 
+      {fichaT && (
+        <Ficha
+          key={`f${fichaAt.key}`}
+          t={fichaT}
+          query={query}
+          anchor={fichaAt.anchor}
+          busy={dl.busyIds.has(fichaAt.key)}
+          downloaded={dl.downloadedIds.has(fichaAt.key)}
+          onDl={onDl}
+          onClose={nav.back}
+        />
+      )}
+
       {menuT && (
         <ResolutionMenu
-          key={menuAt.key}
+          key={`m${menuAt.key}`}
           t={menuT}
           anchor={menuAt.anchor}
           onPick={(height) => pickHeight(menuT, height)}

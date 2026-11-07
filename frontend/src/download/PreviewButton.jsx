@@ -11,7 +11,8 @@ import Ico from "./ico.jsx";
    sonar uno no repinte las otras filas.
    ------------------------------------------------------------------------- */
 
-export default function PreviewButton({ t }) {
+/* `text`: la version de la ficha, un boton con su etiqueta. */
+export default function PreviewButton({ t, text = false }) {
   const key = `preview:${t.preview_url}`;
   const current = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -39,14 +40,15 @@ export default function PreviewButton({ t }) {
   return (
     <button
       type="button"
-      className="pre"
+      className={text ? "btn btn--ghost" : "pre"}
       disabled={failed}
       aria-pressed={playing}
-      aria-label={`Escuchar 30 s de ${title}`}
-      title="Escuchar 30 s"
+      aria-label={text ? undefined : `Escuchar 30 s de ${title}`}
+      title={text ? undefined : "Escuchar 30 s"}
       onClick={toggle}
     >
       <Ico n={playing ? "pause" : "hp"} size={20} />
+      {text && "Escuchar 30 s"}
     </button>
   );
 }

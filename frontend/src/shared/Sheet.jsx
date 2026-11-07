@@ -13,7 +13,8 @@ import "./sheet.css";
    cierran sin teclas propias.
 
    Foco: entra en `[data-autofocus]` o, si no hay, en el primer control; Tab no
-   sale de la hoja; al desmontarse vuelve a quien lo tenia. Sin animacion de
+   sale de la hoja; al desmontarse vuelve a `anchor` (el boton que la abrio: el
+   toque no siempre lo enfoca) o, sin el, a quien lo tenia. Sin animacion de
    salida: se desmonta al instante.
    ------------------------------------------------------------------------- */
 
@@ -30,7 +31,7 @@ export function lockScroll() {
   };
 }
 
-export default function Sheet({ title, onClose, children }) {
+export default function Sheet({ title, onClose, anchor, children }) {
   const pc = usePc();
   const box = useRef(null);
 
@@ -41,7 +42,8 @@ export default function Sheet({ title, onClose, children }) {
     const unlock = pc ? null : lockScroll();
     return () => {
       unlock?.();
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      const back = anchor?.isConnected ? anchor : opener;
+      if (back?.isConnected) back.focus({ preventScroll: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

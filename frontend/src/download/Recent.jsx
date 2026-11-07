@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { normalizeLibrary } from "../listen/library.js";
 import { useListen } from "../listen/ListenProvider.jsx";
 import { SongRow } from "../listen/rows.jsx";
+import { VerdictPill } from "./ResultRow.jsx";
+import { libVerdict, libVerdictKey, useVerdict } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------
    DESCARGADO HACE POCO
@@ -14,6 +16,12 @@ import { SongRow } from "../listen/rows.jsx";
    ------------------------------------------------------------------------- */
 
 const RECENT = 5;
+
+/* La pastilla solo existe si esta sesion bajo el archivo y supo su veredicto. */
+function RecentRow({ entry, enter, onPlay }) {
+  const v = libVerdict(useVerdict(libVerdictKey(entry.key)));
+  return <SongRow entry={entry} enter={enter} onPlay={onPlay} badge={v && <VerdictPill v={v} />} />;
+}
 
 export default function Recent({ files, onOpen }) {
   const { ctx } = useListen();
@@ -38,7 +46,7 @@ export default function Recent({ files, onOpen }) {
       </header>
       <div className="lpanel">
         {recent.map((entry, i) => (
-          <SongRow key={entry.key} entry={entry} enter={i} onPlay={(e, el) => ctx.play(e, el, recent)} />
+          <RecentRow key={entry.key} entry={entry} enter={i} onPlay={(e, el) => ctx.play(e, el, recent)} />
         ))}
       </div>
     </section>

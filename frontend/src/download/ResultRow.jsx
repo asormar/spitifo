@@ -1,8 +1,9 @@
 import { memo, useRef, useState } from "react";
 import { initial } from "../listen/rows.jsx";
+import { rowKey } from "../shared/api.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { fmtSize, fmtTime } from "../shared/format.js";
-import { ExtLink, cx } from "../shared/ui.jsx";
+import { cx } from "../shared/ui.jsx";
 import { NODL_TITLE, SOURCE_CODE, provenance, trackState } from "./constants.js";
 import DlRing from "./DlRing.jsx";
 import Ico from "./ico.jsx";
@@ -64,7 +65,7 @@ export const subOf = (t) =>
     .filter(Boolean)
     .join(", ");
 
-export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl }) {
+export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen }) {
   const st = trackState(t);
   const v = verdictOf(t, useVerdict(verdictKey(t, query)));
   const title = t.title || "sin título";
@@ -76,7 +77,12 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       <span className="res__n num" aria-hidden="true">
         {i + 1}
       </span>
-      <div className="res__main">
+      <button
+        type="button"
+        className="res__main"
+        aria-label={`Ver la ficha de ${title}`}
+        onClick={(e) => onOpen({ type: "ficha", key: rowKey(t), anchor: e.currentTarget })}
+      >
         <Thumb t={t} />
         <span className="res__txt">
           <span className="res__t">{title}</span>
@@ -90,15 +96,9 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
               {SOURCE_CODE[t.source] || prov.ficha}
             </span>
             {facts && <span className="num">{facts}</span>}
-            <ExtLink className="ext" url={t.extra?.webpage_url}>
-              vídeo ↗
-            </ExtLink>
-            <ExtLink className="ext" url={t.extra?.item_url}>
-              procedencia ↗
-            </ExtLink>
           </span>
         </span>
-      </div>
+      </button>
       <span className="res__src">
         <b>{prov.ficha}</b>
         {prov.split && <span>audio: {prov.archivo}</span>}

@@ -679,7 +679,7 @@
 }
 
 /* Escritorio: popover junto al boton, fuera del flujo (portal a <body>). Sin las
-   medidas todavia (primer fotograma) existe pero no se ve ni se anuncia. */
+   medidas todavia (primer fotograma) no se ve ni se toca, pero ya admite el foco. */
 .pop {
   position: fixed;
   z-index: 70;
@@ -693,7 +693,8 @@
 }
 
 .pop:not(.is-placed) {
-  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .pop.is-placed {

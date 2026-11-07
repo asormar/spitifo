@@ -97,3 +97,57 @@
     display: none;
   }
 }
+
+/* --- Botones de las hojas ----------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  font: 800 14px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn[aria-disabled] {
+  cursor: progress;
+}
+
+.btn[aria-disabled]:active {
+  transform: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--acc {
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+
+.btn--ghost {
+  background: var(--s2);
+  color: var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn--acc:hover {
+    filter: brightness(1.08);
+  }
+
+  .btn--ghost:hover {
+    background: var(--s3);
+  }
+}

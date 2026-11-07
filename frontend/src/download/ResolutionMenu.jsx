@@ -243,7 +243,7 @@ export default function ResolutionMenu({ t, anchor, onPick, onClose, onBotCheck 
     );
   }
   return (
-    <Sheet title="Elige la resolución de la descarga" onClose={onClose}>
+    <Sheet title="Elige la resolución de la descarga" onClose={onClose} anchor={anchor}>
       <div className="sh__bar">
         <h2 className="sh__bt">Elige la resolución de la descarga</h2>
         <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
