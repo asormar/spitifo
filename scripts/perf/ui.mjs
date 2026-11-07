@@ -271,7 +271,7 @@ function pageKit() {
  *  library, and reports the start-up timings. */
 function pageStartup() {
   const k = window.__k;
-  const CHUNK = { home: /HomeScreen-/, search: /DownloadView-/, library: /LibraryScreen-/, discover: /DiscoverView-/ };
+  const CHUNK = { home: /HomeScreen-/, search: /SearchScreen-/, library: /LibraryScreen-/, discover: /DiscoverView-/ };
   const find = (re) => performance.getEntriesByType("resource").filter((e) => re.test(e.name));
   return (async () => {
     // The mode bar marks the mode the app opened on.

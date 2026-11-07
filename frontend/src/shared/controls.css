@@ -1,0 +1,103 @@
+/* ---------------------------------------------------------------------------
+   CONTROLES COMPARTIDOS
+   El segmentado (.segs/.seg: Buscar, Descubrir, Ajustes) y el boton secundario
+   .vf (avisos de la biblioteca, cookies, el selector de listas, Buscar). Van en
+   el arranque y ANTES de motion.css: sus reglas tactiles (44 px) y de hover
+   tienen la misma especificidad y ganan por orden.
+   ------------------------------------------------------------------------- */
+
+.segs {
+  position: relative;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+}
+
+/* La pastilla blanca del activo NO es el fondo del boton: es una sola pieza que
+   se desliza hasta la opcion elegida (useSlidingPill publica --ix y --iw).
+   `data-ready` llega un frame despues de medir para que no vuele desde 0 al
+   montar. */
+.segs::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--iw, 0px);
+  transform: translateX(var(--ix, 0px));
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  pointer-events: none;
+}
+
+.segs[data-ready]::before {
+  transition: transform var(--t-enter) var(--ease), width var(--t-enter) var(--ease);
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--mut);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.seg:active {
+  transform: scale(0.96);
+}
+
+.seg {
+  position: relative;
+  z-index: 1;
+}
+
+.seg.is-on {
+  color: var(--on);
+}
+
+
+/* --- Boton secundario -------------------------------------------------------- */
+
+.vf {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 36px;
+  margin-top: 10px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.vf:active {
+  transform: scale(0.97);
+}
+
+.vf:disabled {
+  cursor: progress;
+}
+
+/* Error con salida: pulsable, en el tono de fallo. */
+.vf--retry {
+  background: var(--bad-bg);
+  color: var(--bad-t);
+}

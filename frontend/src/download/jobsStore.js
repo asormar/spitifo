@@ -61,5 +61,10 @@ export const jobsStore = createJobsStore();
 /* El mapa clave -> job; cambia de identidad solo cuando cambia un job. */
 export const useJobs = () => useSyncExternalStore(jobsStore.subscribe, jobsStore.getJobs);
 
+/* Un solo job: setJobFor solo reemplaza el objeto del job tocado, asi que el
+   sondeo de 700 ms vuelve a pintar UNA fila y no todas. */
+export const useJob = (key) =>
+  useSyncExternalStore(jobsStore.subscribe, () => jobsStore.getJobs()[key]);
+
 /* Lo que reciben pollJob y onDownload. */
 export const setJobFor = jobsStore.setJobFor;

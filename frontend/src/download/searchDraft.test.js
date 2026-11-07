@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSearchDraft } from "./searchDraft.js";
+import { createSearchDraft, createStore, searchBusy } from "./searchDraft.js";
 
 describe("searchDraft", () => {
   it("empieza vacio y guarda lo escrito", () => {
@@ -40,5 +40,24 @@ describe("searchDraft", () => {
     off();
     d.set("x");
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("createStore guarda cualquier valor y avisa solo si cambia", () => {
+    const st = createStore(false, Boolean);
+    const fn = vi.fn();
+    st.subscribe(fn);
+    st.set(true);
+    st.set(true);
+    st.set(0);
+    expect(st.get()).toBe(false);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("searchBusy empieza apagado y solo guarda booleanos", () => {
+    expect(searchBusy.get()).toBe(false);
+    searchBusy.set("buscando");
+    expect(searchBusy.get()).toBe(true);
+    searchBusy.set(false);
+    expect(searchBusy.get()).toBe(false);
   });
 });

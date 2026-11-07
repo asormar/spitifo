@@ -4,16 +4,13 @@ import App from "./app/App.jsx";
 import "./shared/tokens.css";
 import "./app/base.css";
 import "./app/nav.css";
-import "./download/search.css";
 import "./download/progress.css";
 import "./listen/listen.css";
 import "./player/player.css";
 import "./player/video.css";
-import "./download/results.css";
-import "./download/cards.css";
+import "./shared/controls.css";
 import "./shared/motion.css";
 import "./settings/storage.css";
-import "./download/resolution-menu.css";
 /* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
 import "./app/shell.css";
 

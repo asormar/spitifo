@@ -52,7 +52,7 @@ const writeLibCache = (files) => {
    emite un chunk compartido y cada una solo suma su pantalla. */
 const loadHomeScreen = () => import("../listen/HomeScreen.jsx");
 const loadLibraryScreen = () => import("../listen/LibraryScreen.jsx");
-const loadSearchView = () => import("../download/DownloadView.jsx");
+const loadSearchView = () => import("../download/SearchScreen.jsx");
 /* Descubrir se guarda ya resuelto cuando su chunk llega (se adelanta con la app
    ociosa): si el usuario lo abre despues, la pantalla se pinta dentro de la
    transicion y no tras una pasada de Suspense. Mismo motivo que "Ahora suena". */
@@ -509,6 +509,7 @@ export default function App() {
                     descargas. */}
                 <div hidden={searchPage ? true : undefined}>
                   <SearchView
+                    active={activeId === "search"}
                     health={health}
                     files={libFiles}
                     onLibraryChanged={loadLib}
