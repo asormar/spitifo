@@ -30,7 +30,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry })
         <BrandLogo />
         <button
           type="button"
-          className="apphead__gear"
+          className="cbtn cbtn--l apphead__gear"
           onClick={() => nav.openSettings()}
           aria-label="Ajustes"
           title="Abrir los ajustes"

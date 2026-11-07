@@ -109,7 +109,7 @@
   font: 600 15px var(--font-body);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .pick__it:active {

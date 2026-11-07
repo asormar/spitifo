@@ -23,6 +23,30 @@ const REPEAT = {
 /* Iconos laterales, de saltar y de reproducir. */
 const SIZES = { np: [24, 28, 30], dock: [20, 22, 22] };
 
+/* Boton de reproducir/pausar/cargando (tres iconos, los muestra CSS segun
+   data-icon). Lo comparten el mini-reproductor y los controles. */
+export function PlayButton({ className, icon, playing, label, size }) {
+  return (
+    <button
+      type="button"
+      className={cx("pbtn", className)}
+      data-icon={icon}
+      onClick={() => engine.toggle()}
+      aria-label={`${playing ? "Pausar" : "Reproducir"} ${label}`}
+    >
+      <span className="pbtn__ico pbtn__ico--play">
+        <Icon name="Play" size={size} weight="fill" />
+      </span>
+      <span className="pbtn__ico pbtn__ico--pause">
+        <Icon name="Pause" size={size} weight="fill" />
+      </span>
+      <span className="pbtn__ico pbtn__ico--load">
+        <Icon name="CircleNotch" size={size} weight="bold" className="spin" />
+      </span>
+    </button>
+  );
+}
+
 export function Controls({ dock = false }) {
   const shuffle = useEngine((s) => s.shuffle);
   const repeat = useEngine((s) => s.repeat);
@@ -32,7 +56,7 @@ export function Controls({ dock = false }) {
   const canNext = useEngine((s) => (s.index >= 0 && s.index + 1 < s.queue.length) || s.repeat === "all");
   const [repeatLabel, repeatIcon] = REPEAT[repeat];
   const [side, skip, big] = SIZES[dock ? "dock" : "np"];
-  const btn = dock ? "cbtn" : "np__btn";
+  const btn = dock ? "cbtn" : "cbtn cbtn--w";
 
   return (
     <div className={dock ? "dock__ctl" : "np__ctl"}>
@@ -49,23 +73,13 @@ export function Controls({ dock = false }) {
       <button type="button" className={btn} onClick={() => engine.prev()} aria-label="Anterior" title="Anterior">
         <Icon name="SkipBack" size={skip} weight="fill" />
       </button>
-      <button
-        type="button"
-        className={cx("pbtn", dock ? "dock__play" : "np__play")}
-        data-icon={icon}
-        onClick={() => engine.toggle()}
-        aria-label={`${playing ? "Pausar" : "Reproducir"} ${label}`}
-      >
-        <span className="pbtn__ico pbtn__ico--play">
-          <Icon name="Play" size={big} weight="fill" />
-        </span>
-        <span className="pbtn__ico pbtn__ico--pause">
-          <Icon name="Pause" size={big} weight="fill" />
-        </span>
-        <span className="pbtn__ico pbtn__ico--load">
-          <Icon name="CircleNotch" size={big} weight="bold" className="spin" />
-        </span>
-      </button>
+      <PlayButton
+        className={dock ? undefined : "np__play"}
+        icon={icon}
+        playing={playing}
+        label={label}
+        size={big}
+      />
       <button
         type="button"
         className={btn}

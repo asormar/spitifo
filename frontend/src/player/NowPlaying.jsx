@@ -261,7 +261,7 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
               <button
                 ref={addRef}
                 type="button"
-                className="np__btn"
+                className="cbtn cbtn--w"
                 onClick={() => setAdding(true)}
                 aria-label="Añadir a una lista"
                 aria-haspopup="dialog"

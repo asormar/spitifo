@@ -149,7 +149,7 @@ body.has-mini .gmap {
 /* Botones del mapa y del panel: mismo tiempo de pulsacion y de color, y la
    misma escala al pulsar los de la misma clase. */
 :is(.gmap__btn, .gmap__chip, .gmap__go, .fy-ghost, .fy__fold) {
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 :is(.gmap__btn, .fy__fold):active {
@@ -456,7 +456,7 @@ body.has-mini .gmap {
   bottom: 8px;
   border-radius: var(--r-card);
   box-shadow: 0 -6px 40px rgba(var(--shadow-rgb), 0.2);
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
   will-change: transform;
 }
 
@@ -504,7 +504,7 @@ body.has-mini .gmap {
 }
 
 .fy__caret svg {
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
 }
 
 .fy--sheet[data-snap="peek"] .fy__caret svg {
@@ -518,7 +518,7 @@ body.has-mini .gmap {
   width: 360px;
   border-radius: var(--r-card);
   background: var(--s1);
-  transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
+  transition: var(--tr-move), opacity var(--t-quick) var(--ease);
 }
 
 .fy__head {

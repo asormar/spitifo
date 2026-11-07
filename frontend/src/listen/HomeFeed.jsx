@@ -142,6 +142,9 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
   const topEntries = useMemo(() => top.map((i) => i.entry), [top]);
 
   const open = (what) => () => ctx.open({ type: "all", what });
+  /* La seccion con el menu de una fila abierto queda por encima de las siguientes. */
+  const menuKey = ctx.menu?.key;
+  const topUp = menuKey != null && top.slice(0, TOP_HOME).some((t) => t.entry.key === menuKey);
 
   return (
     <div className="hfeed">
@@ -192,7 +195,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
 
       <div className="hcol hcol--side">
         {top.length > 0 && (
-          <section className="hsec hsec--top" aria-labelledby="h-top">
+          <section className={`hsec hsec--top${topUp ? " hsec--up" : ""}`} aria-labelledby="h-top">
             <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
             <div className="lpanel">
               {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>

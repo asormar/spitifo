@@ -66,3 +66,27 @@ button {
 body.has-mini .app {
   padding-bottom: calc(128px + var(--mini-h) + var(--nav-h));
 }
+
+/* Cifras de ancho fijo: contadores, tiempos y pesos no bailan al cambiar. Los
+   que ya traen un `font:` propio la declaran en su regla (el atajo la borra). */
+:is(
+    .count,
+    .fy-card__n,
+    .fy-gen__pct,
+    .vfbox__score,
+    .tr__n,
+    .tr__meta,
+    .prog__state,
+    .recent__n,
+    .rsvm__meta,
+    .meta,
+    .seg__n,
+    .ccard__left,
+    .srow__d,
+    .np__times,
+    .pv__time,
+    .quota__legend,
+    .store__cookies-state
+  ) {
+  font-variant-numeric: tabular-nums;
+}

@@ -1,7 +1,7 @@
 import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { engine } from "./engine.js";
-import { DockArt } from "./controls.jsx";
+import { DockArt, PlayButton } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
 
@@ -49,26 +49,10 @@ function MiniPlayer({ onOpen, npOpen }) {
             </span>
           </span>
         </button>
+        <PlayButton icon={d.icon} playing={d.playing} label={d.label} size={18} />
         <button
           type="button"
-          className="pbtn"
-          data-icon={d.icon}
-          onClick={() => engine.toggle()}
-          aria-label={`${d.playing ? "Pausar" : "Reproducir"} ${d.label}`}
-        >
-          <span className="pbtn__ico pbtn__ico--play">
-            <Icon name="Play" size={18} weight="fill" />
-          </span>
-          <span className="pbtn__ico pbtn__ico--pause">
-            <Icon name="Pause" size={18} weight="fill" />
-          </span>
-          <span className="pbtn__ico pbtn__ico--load">
-            <Icon name="CircleNotch" size={18} weight="bold" className="spin" />
-          </span>
-        </button>
-        <button
-          type="button"
-          className="mini__btn"
+          className="cbtn cbtn--l"
           onClick={() => engine.next()}
           disabled={!d.hasNext}
           aria-label="Siguiente"
@@ -78,7 +62,7 @@ function MiniPlayer({ onOpen, npOpen }) {
         </button>
         <button
           type="button"
-          className="mini__btn"
+          className="cbtn cbtn--l"
           onClick={d.close}
           aria-label="Cerrar reproductor"
           title="Cerrar reproductor"

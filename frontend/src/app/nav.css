@@ -94,6 +94,5 @@ html[data-vt="theme"]::view-transition-new(root) {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
-  font-variant-numeric: tabular-nums;
 }
 

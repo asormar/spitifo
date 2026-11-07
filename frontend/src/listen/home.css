@@ -148,11 +148,11 @@
   position: relative;
   margin-top: 10px;
   --rise: 10px;
-  animation: rise var(--t-move) var(--ease) backwards;
+  animation: var(--sec-move);
 }
 
 /* La seccion con el menu de una fila abierto queda por encima de las siguientes. */
-.hsec:has(.rmenu) {
+.hsec--up {
   z-index: 6;
 }
 
@@ -220,7 +220,7 @@
 
 /* Todos los botones del inicio comparten la presion de 150 ms. */
 :is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it) {
-  transition: transform var(--t-press) var(--ease);
+  transition: var(--tr-press);
 }
 
 :is(.hcard, .hsec__all, .acard, .alb, .art-c, .best__main, .best__play, .hback, .vback, .dhead__back, .hsearch__clear, .lres__it):active {
@@ -371,7 +371,6 @@
 .ccard__left {
   color: var(--dim);
   font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 /* --- Añadido hace poco -------------------------------------------------------------------- */
@@ -783,7 +782,7 @@
   max-width: 860px;
   margin: 0 auto;
   --rise: 10px;
-  animation: rise var(--t-move) var(--ease) backwards;
+  animation: var(--rise-move);
 }
 
 .lpage--detail {
@@ -927,7 +926,7 @@
   box-shadow: 0 22px 44px rgba(var(--shadow-rgb), 0.22);
 }
 
-.dhead__art:has(.cv--round) {
+.dhead__art--round {
   border-radius: 50%;
 }
 

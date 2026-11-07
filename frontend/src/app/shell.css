@@ -95,6 +95,14 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   display: none;
 }
 
+/* Volver a una pantalla ya vista entra con el deslizamiento de la pantalla: sus
+   secciones no repiten el fundido (display:none -> block reinicia las
+   animaciones CSS). */
+.screen[data-seen] {
+  --sec-move: none;
+  --sec-enter: none;
+}
+
 /* --- Cambio de pantalla (View Transitions) -------------------------------- */
 
 /* Solo hay una pantalla visible a la vez (las demas son display:none), asi que
@@ -131,7 +139,7 @@ html[data-vt="mode"] .progstack {
   view-transition-name: vt-toasts;
 }
 
-html[data-vt="mode"] .vhost {
+html[data-vt="mode"] .vhost:not([data-mode="closed"]) {
   view-transition-name: vt-video;
 }
 
@@ -236,7 +244,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   justify-items: center;
   width: calc((100% - 12px) / 4);
   transform: translateX(calc(var(--i, 0) * 100%));
-  transition: transform var(--t-move) var(--ease-spring);
+  transition: transform var(--t-enter) var(--ease);
 }
 
 .tabbar__ind::before {
@@ -264,7 +272,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   font-weight: 700;
   line-height: 1.2;
   cursor: pointer;
-  transition: color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
+  transition: var(--tr-press), color var(--t-quick) var(--ease);
 }
 
 /* El icono mide 24 y la pastilla 30: queda centrado en ella (3 px de relleno
@@ -336,8 +344,10 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 /* --- Boton redondo del chrome --------------------------------------------- */
 
-/* Volver, tema, "+" de las listas y los botones de la barra del reproductor.
-   `is-on`: activado (aleatorio, repetir), en rosa con tinta. */
+/* Volver, tema, "+" de las listas, los botones de la barra del reproductor, los
+   del mini-reproductor y el engranaje de Inicio (--l). Sobre la portada de
+   "Ahora suena" va --w (nowplaying.css). `is-on`: activado (aleatorio,
+   repetir), en rosa con tinta. */
 .cbtn {
   display: grid;
   flex: none;
@@ -350,8 +360,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   background: transparent;
   color: var(--mut);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc);
 }
 
 .cbtn:active {
@@ -381,6 +390,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .cbtn--sm {
   width: 34px;
   height: 34px;
+}
+
+.cbtn--l {
+  width: 44px;
+  height: 44px;
 }
 
 /* --- Menu lateral (escritorio) -------------------------------------------- */
@@ -425,8 +439,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   font: 700 15px var(--font-body);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc);
 }
 
 .leftnav__item:active,
@@ -490,7 +503,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .nlist b,
@@ -637,7 +650,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   color: var(--acc-ink);
   font: 800 13.5px var(--font-body);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
+  transition: var(--tr-press);
 }
 
 .topbar__go:active {
@@ -667,22 +680,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .apphead__gear {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
   margin-right: -8px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: transparent;
   color: var(--ink);
-  cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
-}
-
-.apphead__gear:active {
-  transform: scale(0.92);
 }
 
 /* --- Pantallas vacias ------------------------------- */
@@ -723,8 +722,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   background: var(--s1);
   color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .settings__back:active {

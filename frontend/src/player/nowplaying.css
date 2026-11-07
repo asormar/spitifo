@@ -76,8 +76,7 @@
   gap: 4px;
 }
 
-.np__close,
-.np__btn {
+.np__close {
   display: grid;
   flex: none;
   place-items: center;
@@ -89,11 +88,11 @@
   background: transparent;
   color: #fff;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .np__close:active,
-.np__btn:active,
+.cbtn--w:active,
 .np__go:active,
 .np__tab:active {
   transform: scale(0.94);
@@ -124,7 +123,7 @@
   color: #fff;
   font: 600 13px var(--font-body);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease);
+  transition: var(--tr-press);
 }
 
 .np__go:disabled {
@@ -159,8 +158,7 @@
   color: var(--dim);
   font: 600 14px var(--font-body);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc);
 }
 
 .np__tab.is-on {
@@ -183,7 +181,7 @@
   display: flex;
   width: 200%;
   height: 100%;
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
 }
 
 .np__pages[data-page="1"] .np__track {
@@ -262,7 +260,6 @@
   justify-content: space-between;
   color: var(--dim);
   font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .np__ctl {
@@ -274,22 +271,28 @@
   margin: 8px auto 12px;
 }
 
-.np__btn {
+/* Boton redondo (.cbtn) sobre la portada: blanco, sin tinte al pasar el raton y
+   el activo en blanco translucido en vez de rosa. */
+.cbtn--w {
   width: 48px;
   height: 48px;
+  color: #fff;
 }
 
-.np__btn.is-on {
+.cbtn--w.is-on {
   background: rgba(255, 255, 255, 0.18);
+  color: #fff;
 }
 
-.np__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+@media (hover: hover) {
+  .cbtn--w:not(:disabled):hover {
+    background: transparent;
+    color: #fff;
+  }
 
-.np__btn:disabled:active {
-  transform: none;
+  .cbtn--w.is-on:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
 }
 
 .np__play {
@@ -382,7 +385,7 @@ html[data-vt="np"] .dock {
 html[data-vt="np"]::view-transition-group(vt-mini),
 html[data-vt="np"]::view-transition-group(vt-np-art) {
   animation-duration: var(--t-move);
-  animation-timing-function: var(--ease-io);
+  animation-timing-function: var(--drawer);
 }
 
 /* Las dos fotos conservan su tamano y la caja se abre sobre ellas, en vez de

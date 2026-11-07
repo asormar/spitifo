@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { API } from "../shared/api.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
@@ -87,17 +87,36 @@ const SettingsView = React.lazy(loadSettingsView);
 /* Las paginas de la pila de Buscar (Explorar la biblioteca desde "Ver mas"). */
 const PageHost = React.lazy(() => import("../listen/PageHost.jsx"));
 
+/* Mientras la pantalla esta oculta no se reconcilia su arbol: los cambios de
+   pestana y de "Ahora suena" no recorren las cuatro pantallas que no se ven. Lo
+   que cambia en contextos sigue llegando a sus consumidores. */
+const Hold = memo(
+  ({ children }) => children,
+  (a, b) => a.hold && b.hold
+);
+
 /* Una pantalla sigue montada aunque no se vea: `hidden` la saca del layout y
-   `inert` del foco, pero su estado (scroll, resultados, reproductores) queda. */
+   `inert` del foco, pero su estado (scroll, resultados, reproductores) queda.
+   `data-seen` marca la que ya se mostro una vez: los fundidos de entrada de sus
+   secciones solo corren la primera vez (volver ya entra con el de la pantalla). */
 function Screen({ id, active, children }) {
+  const [seen, setSeen] = useState(false);
+  const shown = useRef(false);
+  useEffect(() => {
+    if (active) shown.current = true;
+    else if (shown.current) setSeen(true);
+  }, [active]);
   return (
     <section
       className="screen"
       data-screen={id}
+      data-seen={seen ? "" : undefined}
       hidden={!active}
       inert={active ? undefined : ""}
     >
-      <Suspense fallback={null}>{children}</Suspense>
+      <Suspense fallback={null}>
+        <Hold hold={!active}>{children}</Hold>
+      </Suspense>
     </section>
   );
 }

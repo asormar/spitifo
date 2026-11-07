@@ -61,6 +61,7 @@ export default function DownloadView({
      que se detiene sin saltar. El timeout es la red de seguridad para
      prefers-reduced-motion, donde no hay animacion ni evento que esperar. */
   const [scanning, setScanning] = useState(false);
+  const [focused, setFocused] = useState(false);
   useEffect(() => {
     if (loading) {
       setScanning(true);
@@ -455,7 +456,7 @@ export default function DownloadView({
           <form
             onSubmit={doSearch}
             role="search"
-            className={cx("search", scanning && "is-scanning")}
+            className={cx("search", scanning && "is-scanning", focused && "is-focus")}
             onAnimationIteration={(e) => {
               if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
             }}
@@ -471,6 +472,8 @@ export default function DownloadView({
               spellCheck={false}
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
               placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
               aria-label="Qué quieres escuchar"
             />

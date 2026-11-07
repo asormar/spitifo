@@ -54,7 +54,7 @@
   box-shadow: var(--shadow);
   /* `backwards` y no `both`: con `both` el ultimo keyframe (transform: none)
      se queda aplicado para siempre y le gana al transform del hover. */
-  animation: rise var(--t-enter) var(--ease) backwards;
+  animation: var(--rise-enter);
   animation-delay: calc(min(var(--i, 0), 8) * var(--stagger));
   transition: transform var(--t-enter) var(--ease), box-shadow var(--t-enter) var(--ease);
 }
@@ -127,10 +127,6 @@
 
 .src {
   font-weight: 500;
-}
-
-.meta {
-  font-variant-numeric: tabular-nums;
 }
 
 .meta--mute {
@@ -218,7 +214,7 @@
   background: var(--acc);
   color: var(--acc-ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
+  transition: var(--tr-press), opacity var(--t-press) var(--ease);
 }
 
 .dl:active {

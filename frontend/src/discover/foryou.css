@@ -117,7 +117,7 @@
   touch-action: none;
   --pop: 0.9;
   animation: pop var(--t-enter) var(--ease) both;
-  transition: transform var(--t-press) var(--ease);
+  transition: var(--tr-press);
 }
 
 .fy__pill svg {
@@ -223,7 +223,6 @@
   color: var(--mut);
   font-size: 14px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
 .fy-card__p {
@@ -250,7 +249,7 @@
   border-radius: inherit;
   background: var(--acc);
   transform-origin: left center;
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
 }
 
 .fy-ghost {
@@ -437,8 +436,7 @@
   padding: 0;
   border-radius: 50%;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc), border-color var(--t-quick) var(--ease);
 }
 
 .fy-btn--play {
@@ -565,7 +563,6 @@ button.fy-gen {
   color: var(--mut);
   font-size: 13px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
 .fy-gen__bar {

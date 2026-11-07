@@ -44,6 +44,9 @@ const ListenContext = createContext(null);
 export const useListen = () => useContext(ListenContext);
 
 export default function ListenProvider({ files, nav, children }) {
+  /* Solo se leen open/back (estables): depender de `nav` entero reconstruiria el
+     contexto en cada cambio de pestana. */
+  const { open: navOpen, back: navBack } = nav;
   /* { key, el }: la fila con el menu abierto y su boton. Solo hay uno. */
   const [menu, setMenu] = useState(null);
   /* { key, title, el }: la cancion de la hoja "Añadir a una lista". */
@@ -141,7 +144,7 @@ export default function ListenProvider({ files, nav, children }) {
     const deleteList = (pl) => {
       setMenu(null);
       playlists.remove(pl.id);
-      nav.back();
+      navBack();
       show(`Lista «${pl.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(pl) });
     };
 
@@ -198,8 +201,8 @@ export default function ListenProvider({ files, nav, children }) {
       tap,
       playGroup,
       resume,
-      open: nav.open,
-      back: nav.back,
+      open: navOpen,
+      back: navBack,
       deleteList,
       song: (entry, list, extra) => (
         <SongRow
@@ -214,7 +217,7 @@ export default function ListenProvider({ files, nav, children }) {
       ),
     };
     return { ctx, model, show };
-  }, [menu, model, show, nav]);
+  }, [menu, model, show, navOpen, navBack]);
 
   const closePicker = useCallback(() => {
     if (picker?.el?.isConnected) picker.el.focus({ preventScroll: true });

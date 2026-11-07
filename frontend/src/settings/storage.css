@@ -17,7 +17,7 @@
   color: var(--mut);
   font: inherit;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
+  transition: var(--tr-press), background-color var(--t-press) var(--ease);
 }
 
 .panel__store:hover {
@@ -71,7 +71,8 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), box-shadow var(--t-quick) var(--ease),
+  transition: var(--tr-press),
+    box-shadow var(--t-quick) var(--ease),
     background-color var(--t-press) var(--ease);
 }
 
@@ -157,7 +158,6 @@
   list-style: none;
   color: var(--mut);
   font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .quota__legend li {
@@ -212,7 +212,6 @@
 .store__cookies-state {
   color: var(--mut);
   font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .store__cookies-actions {

@@ -56,6 +56,7 @@ export default function QueueList({ active, scroller }) {
           count={upcoming.length}
           className={sort.dragging ? "is-sorting" : undefined}
           getKey={(i) => upcoming[i].key}
+          dragged={(i) => sort.isDragged(first + i)}
           renderRow={(i, enter) => {
             const item = upcoming[i];
             const pos = first + i;

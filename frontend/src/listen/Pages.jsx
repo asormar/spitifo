@@ -210,6 +210,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
             active={active}
             count={page.items.length}
             getKey={(i) => itemKey(page.items[i])}
+            menuKey={ctx.menu?.key}
             renderRow={(i, enter) => row(page.items[i], i, enter)}
           />
         </div>
@@ -269,6 +270,7 @@ export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort
           active={active}
           count={rows.length}
           getKey={(i) => rows[i].key}
+          menuKey={ctx.menu?.key}
           renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
         />
       </div>
@@ -387,7 +389,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
           </div>
         )}
         <div className="dhead__body">
-          <span className="dhead__art">{art}</span>
+          <span className={cx("dhead__art", view.type === "artist" && "dhead__art--round")}>{art}</span>
           <div className="dhead__info">
             <p className="dhead__kind">{kind}</p>
             {naming && pl ? (
@@ -468,6 +470,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
               active={active}
               count={rows.length}
               getKey={(i) => rows[i].key}
+              menuKey={ctx.menu?.key}
               renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
             />
           )}

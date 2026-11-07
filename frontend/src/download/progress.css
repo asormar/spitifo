@@ -44,7 +44,7 @@
   /* Entra desde arriba y sale por donde entro. */
   --rise: -4px;
   --leave: -4px;
-  animation: rise var(--t-enter) var(--ease) both;
+  animation: var(--rise-both);
 }
 
 /* El aviso de exito se retira solo a los 5 s (JOB_DISMISS_MS, que llega como
@@ -52,7 +52,7 @@
    antes de que React lo desmonte. Error y "esto no es lo que buscabas" NO se
    retiran. */
 .msg--ok {
-  animation: rise var(--t-enter) var(--ease) both,
+  animation: var(--rise-both),
     leave var(--t-quick) var(--ease) calc(var(--dismiss, 5000ms) - var(--t-quick))
       forwards;
 }
@@ -147,7 +147,7 @@ body.has-mini .progstack {
   box-shadow: var(--shadow);
   overflow: hidden;
   --rise: 12px;
-  animation: rise var(--t-enter) var(--ease) both;
+  animation: var(--rise-both);
 }
 
 .prog__top {
@@ -199,7 +199,6 @@ body.has-mini .progstack {
 .prog__state {
   flex: 0 1 auto;
   color: var(--mut);
-  font-variant-numeric: tabular-nums;
 }
 
 /* Barra de 4 px pegada al borde inferior de la tarjeta. */
