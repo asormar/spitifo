@@ -40,10 +40,13 @@ const LIST_ITEMS = [
   ["delete", "Borrar lista"],
 ];
 
-/* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi. */
+/* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi.
+   En escritorio el de la pagina no se ve y el foco va al de la barra de arriba. */
 function useFocusBack(ref, on = true) {
   useEffect(() => {
-    if (on) ref.current?.focus({ preventScroll: true });
+    if (!on) return;
+    const back = ref.current?.getClientRects().length ? ref.current : document.querySelector(".topbar .cbtn--soft");
+    back?.focus({ preventScroll: true });
   }, [ref, on]);
 }
 

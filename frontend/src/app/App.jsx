@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useR
 import { flushSync } from "react-dom";
 import { API } from "../shared/api.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
+import PlayerBar from "../player/PlayerBar.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { createListenTracker } from "../player/listens.js";
@@ -20,7 +21,10 @@ import {
   writePhoneNav,
 } from "./navigation.js";
 import useNavController, { NavContext } from "./useNav.js";
-import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
+import { SwipeDots, TabBar } from "./Nav.jsx";
+import LeftNav from "./LeftNav.jsx";
+import TopBar from "./TopBar.jsx";
+import { isPc, usePc } from "../shared/viewport.js";
 import { swapNowPlaying } from "./screenSwap.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
@@ -132,7 +136,8 @@ const typing = () => {
    biblioteca: Escape tambien cierra su menu de fila.
    Escape, de lo mas pequeno a lo mas grande (gana el primero que actua):
    "Ahora suena", el menu de fila, la pagina de arriba (o Ajustes).
-   "/" lleva el foco al buscador de la pantalla a la vista, si lo tiene. */
+   "/" lleva el foco al buscador de la pantalla a la vista o al de la barra
+   de arriba. */
 function Hotkeys({ nav, escapeNp, npOpen }) {
   const { ctx } = useListen();
   useEffect(() => {
@@ -143,9 +148,12 @@ function Hotkeys({ nav, escapeNp, npOpen }) {
         if (nav.getStack().length) nav.back();
       } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
         if (npOpen || typing()) return;
+        /* El de la pantalla, si se ve (el de Buscar esta oculto en escritorio);
+           si no, el de la barra de arriba. */
         const field =
-          document.querySelector('[data-screen]:not([hidden]) [data-field="search"]') ||
-          document.querySelector('.topbar [data-field="search"]');
+          [...document.querySelectorAll('[data-screen]:not([hidden]) [data-field="search"]')].find(
+            (f) => f.getClientRects().length
+          ) || document.querySelector('.topbar [data-field="search"]');
         if (!field) return;
         e.preventDefault();
         field.focus();
@@ -168,6 +176,7 @@ export default function App() {
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
 
+  const pc = usePc();
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
   const screensRef = useRef(null);
 
@@ -178,6 +187,8 @@ export default function App() {
      (ya se pidio el back; un segundo cierre no puede dar otro). */
   const [np, setNp] = useState(false);
   const npEntry = useRef(0);
+  /* Pagina con la que abre: la cola si viene de "Cola" de la barra. */
+  const npPage = useRef(0);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -260,9 +271,10 @@ export default function App() {
     warm: (tab) => tab === "discover" && warmDiscover(),
   });
 
-  const openNp = useCallback(() => {
+  const openNp = useCallback((page) => {
     if (npEntry.current || !engine.getState().track) return;
     npEntry.current = 1;
+    npPage.current = page === 1 ? 1 : 0;
     loadNowPlaying()
       .then(() => {
         window.history.pushState({ spitifo: "np" }, "", window.location.href);
@@ -314,7 +326,7 @@ export default function App() {
   const wasNp = useRef(false);
   useLayoutEffect(() => {
     if (wasNp.current && !np) {
-      document.querySelector(".mini__txt")?.focus({ preventScroll: true });
+      document.querySelector(".mini__txt, .lcd__cv")?.focus({ preventScroll: true });
     }
     wasNp.current = np;
   }, [np]);
@@ -344,7 +356,7 @@ export default function App() {
     let start = null;
 
     const onStart = (e) => {
-      if (window.innerWidth >= 720 || e.touches.length !== 1) {
+      if (isPc() || e.touches.length !== 1) {
         start = null;
         return;
       }
@@ -406,7 +418,7 @@ export default function App() {
   }, [tab]);
 
   /* Saltar a una cancion desde "Ahora suena": se abre Tu biblioteca con la
-     lista completa y la fila centrada. Una lista del riel, igual. */
+     lista completa y la fila centrada. */
   const revealSong = useCallback(
     (key) => {
       requestReveal(key);
@@ -414,7 +426,6 @@ export default function App() {
     },
     [nav.goTab]
   );
-  const openPlaylist = useCallback((id) => nav.goTo("library", { type: "list", id }), [nav.goTo]);
 
   /* "Ver mas" de Buscar: Explorar la biblioteca, lo ultimo que llego primero. */
   const openLibrary = useCallback(
@@ -443,19 +454,19 @@ export default function App() {
   const libReady = lib !== null;
 
   const { activeId, visited } = nav;
-  const settingsOpen = nav.settings !== null;
   const searchPage = nav.pageOf("search");
 
   return (
     <NavContext.Provider value={nav}>
       <main className="app" inert={np ? "" : undefined}>
-        <Rail
-          tab={nav.tab}
-          settingsOpen={settingsOpen}
-          onTab={nav.goTab}
-          onSettings={nav.toggleSettings}
-          onPlaylist={openPlaylist}
-        />
+        {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
+            arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
+        {pc && (
+          <>
+            <LeftNav npOpen={np} />
+            <TopBar />
+          </>
+        )}
 
         <ListenProvider files={libFiles} nav={nav}>
           <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
@@ -532,22 +543,28 @@ export default function App() {
         </ListenProvider>
 
         {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
-            marcha. */}
-        <ProgressStack />
-
-        <MiniPlayer onOpen={openNp} npOpen={np} />
+            marcha. En escritorio las tarjetas van en el menu lateral. */}
+        {pc ? <PlayerBar onOpen={openNp} npOpen={np} /> : (
+          <>
+            <ProgressStack />
+            <MiniPlayer onOpen={openNp} npOpen={np} />
+          </>
+        )}
         {/* Montado una sola vez: es el dueno del <video> y por eso la
             reproduccion no se corta al cambiar de pestana. */}
         <VideoHost />
 
-        {phoneNav === "tabs" ? (
-          <TabBar tab={nav.tab} onTab={nav.goTab} />
-        ) : (
-          <SwipeDots tab={nav.tab} onTab={nav.goTab} />
-        )}
+        {!pc &&
+          (phoneNav === "tabs" ? (
+            <TabBar tab={nav.tab} onTab={nav.goTab} />
+          ) : (
+            <SwipeDots tab={nav.tab} onTab={nav.goTab} />
+          ))}
       </main>
       {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
-      {np && NowPlaying && <NowPlaying onClose={closeNp} onReveal={revealFromNp} />}
+      {np && NowPlaying && (
+        <NowPlaying onClose={closeNp} onReveal={revealFromNp} initialPage={npPage.current} />
+      )}
     </NavContext.Provider>
   );
 }

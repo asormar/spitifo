@@ -360,19 +360,22 @@
    en pantalla lleva el nombre y la otra no. El nombre solo existe mientras dura
    la transicion (App pone data-vt="np"). */
 html[data-vt="np"] .np,
-html[data-vt="np"] .mini[data-state="open"] {
+html[data-vt="np"] .mini[data-state="open"],
+html[data-vt="np"] .dock[data-state="open"] {
   view-transition-name: vt-mini;
 }
 
 /* Si las dos tienen portada, la imagen viaja por su cuenta de una a otra. */
 html[data-vt="np"] img.np__art,
-html[data-vt="np"] .mini[data-state="open"] .mini__art {
+html[data-vt="np"] .mini[data-state="open"] .mini__art,
+html[data-vt="np"] .dock[data-state="open"] .lcd__art {
   view-transition-name: vt-np-art;
 }
 
 /* Sin la subida del mini-reproductor: la foto nueva tiene que salir ya en su
    sitio. */
-html[data-vt="np"] .mini {
+html[data-vt="np"] .mini,
+html[data-vt="np"] .dock {
   transition: none;
 }
 

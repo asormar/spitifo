@@ -1,8 +1,7 @@
 import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
-import { coverTone, toneClass, toneVars } from "../shared/cover.js";
-import { initial } from "../listen/rows.jsx";
 import { engine } from "./engine.js";
+import { DockArt } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
 
@@ -12,7 +11,7 @@ import Scrub from "./Scrub.jsx";
    Pastilla de cristal flotante sobre la barra inferior. Es una vista del
    motor, como las filas: no tiene <audio> propio. Se ve siempre que hay una
    pista (ver useDock.js y dock.js), en cualquier pestana; la X la pausa y la
-   esconde hasta la siguiente pista.
+   esconde hasta la siguiente pista. En escritorio la barra es PlayerBar.
 
    Tocar la portada o el titulo abre "Ahora suena" (onOpen); mientras esta
    abierta la pastilla se oculta, porque esa vista ya es el reproductor.
@@ -20,11 +19,7 @@ import Scrub from "./Scrub.jsx";
 
 function MiniPlayer({ onOpen, npOpen }) {
   const d = useDock(npOpen);
-  const { info, show } = d;
-  const meta = info?.meta ?? "";
-  const at = meta.indexOf(" · ");
-  const artist = at < 0 ? meta : meta.slice(0, at);
-  const tone = coverTone(artist, at < 0 ? "" : meta.slice(at + 3));
+  const { info, show, meta } = d;
 
   return (
     <section
@@ -41,20 +36,10 @@ function MiniPlayer({ onOpen, npOpen }) {
         <button
           type="button"
           className="mini__txt"
-          onClick={onOpen}
+          onClick={() => onOpen()}
           aria-label={`Abrir el reproductor: ${info?.title ?? ""}`}
         >
-          {d.art ? (
-            <img className="mini__art" src={d.art} alt="" loading="lazy" onError={d.onArtError} />
-          ) : (
-            <span
-              className={cx("cv mini__art", toneClass(tone))}
-              style={{ ...toneVars(tone), "--s": "44px" }}
-              aria-hidden="true"
-            >
-              <span>{initial(artist || info?.title)}</span>
-            </span>
-          )}
+          <DockArt d={d} size={44} className="mini__art" />
           <span className="mini__tx">
             <span className="mini__title" title={info?.title}>
               {info?.title}

@@ -1,11 +1,9 @@
-import { Suspense, lazy, useSyncExternalStore } from "react";
-import { cx } from "../shared/ui.jsx";
 import { TABS } from "./navigation.js";
 import { NavIcon } from "./navIcons.jsx";
 
-/* Una sola lista para las tres piezas: el orden de TABS manda en el
-   indicador deslizante y en las etiquetas. */
-const ITEMS = [
+/* Una sola lista para las piezas de la navegacion (barra, puntos y menu
+   lateral): el orden de TABS manda en el indicador y en las etiquetas. */
+export const ITEMS = [
   { id: "home", label: "Inicio" },
   { id: "search", label: "Buscar" },
   { id: "library", label: "Tu biblioteca" },
@@ -13,17 +11,6 @@ const ITEMS = [
 ];
 
 const indexOf = (tab) => Math.max(0, TABS.indexOf(tab));
-
-/* La lista de listas del riel se carga aparte (pide /api/playlists) y solo
-   donde hay riel: en telefono no se monta ni se descarga. */
-const RailLists = lazy(() => import("../listen/RailLists.jsx"));
-const DESKTOP = "(min-width: 720px)";
-const watchDesktop = (cb) => {
-  const mq = window.matchMedia(DESKTOP);
-  mq.addEventListener("change", cb);
-  return () => mq.removeEventListener("change", cb);
-};
-const isDesktop = () => window.matchMedia(DESKTOP).matches;
 
 export function TabBar({ tab, onTab }) {
   const index = indexOf(tab);
@@ -77,54 +64,6 @@ export function SwipeDots({ tab, onTab }) {
         {ITEMS[index].label}
       </span>
       {ITEMS.slice(2).map(dot)}
-    </nav>
-  );
-}
-
-/* Riel del escritorio. El hueco flexible de abajo de las pestanas es para las
-   listas de reproduccion: scrollea si hay muchas. */
-export function Rail({ tab, settingsOpen, onTab, onSettings, onPlaylist }) {
-  const desktop = useSyncExternalStore(watchDesktop, isDesktop);
-  /* La barra sigue a la pestana, no a la pantalla: con Ajustes abierto se
-     queda donde estaba. */
-  const index = indexOf(tab);
-  return (
-    <nav className="rail" aria-label="Modos" style={{ "--i": index }}>
-      <span className="rail__bar" aria-hidden="true" />
-      {ITEMS.map(({ id, label }) => {
-        const active = tab === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            className={cx("rail__btn", active && "is-on")}
-            aria-current={active ? "page" : undefined}
-            aria-label={label}
-            title={label}
-            onClick={() => onTab(id)}
-          >
-            <NavIcon name={id} filled={active} />
-          </button>
-        );
-      })}
-      <span className="rail__sep" aria-hidden="true" />
-      <div className="rail__lists" role="group" aria-label="Listas">
-        {desktop && (
-          <Suspense fallback={null}>
-            <RailLists onOpen={onPlaylist} />
-          </Suspense>
-        )}
-      </div>
-      <button
-        type="button"
-        className={cx("rail__btn", settingsOpen && "is-on")}
-        aria-label="Ajustes"
-        aria-pressed={settingsOpen}
-        title="Ajustes"
-        onClick={onSettings}
-      >
-        <NavIcon name="settings" filled={settingsOpen} />
-      </button>
     </nav>
   );
 }

@@ -381,7 +381,10 @@ export default function DownloadView({
       const text = takeSearch();
       if (!text) return;
       setQ(text);
-      runSearch(text, modeRef.current);
+      /* Igual que el formulario: un enlace de YouTube lleva a su modo. */
+      const m = isYouTubeUrl(text) ? "ytdlp" : modeRef.current;
+      if (m !== modeRef.current) setMode(m);
+      runSearch(text, m);
     };
     take();
     return subscribeSearch(take);

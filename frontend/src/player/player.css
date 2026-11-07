@@ -4,7 +4,8 @@
    la interfaz que se ve (las filas de la biblioteca viven en listen/). Mismo
    vocabulario que el resto: pildoras (--r-pill), rosa (--pink) para
    "suena" y reproducir, cifras tabulares. Solo transform y opacity.
-   Dos piezas: .pv (preview discreto de tarjeta) y .mini (pastilla flotante).
+   Tres piezas: .pv (preview discreto de tarjeta), .mini (pastilla flotante del
+   telefono) y .dock (barra flotante del escritorio).
    ------------------------------------------------------------------------- */
 
 /* Boton de reproducir: los tres iconos (play, pausa, cargando) viven apilados y
@@ -66,9 +67,15 @@
   color: var(--acc);
 }
 
+/* El cargando solo gira cuando se ve: apilado y oculto seguiria dibujando. */
+.pbtn:not([data-icon="load"]) .spin {
+  animation: none;
+}
+
 /* Reproducir: rosa con glifo de tinta y un brillo suave. */
 .pv.is-playing .pbtn,
-.mini .pbtn {
+.mini .pbtn,
+.dock .pbtn {
   background: var(--pink);
   color: var(--on-pink);
   box-shadow: 0 6px 16px color-mix(in srgb, var(--pink) 40%, transparent);
@@ -259,32 +266,24 @@
   height: 34px;
 }
 
-/* --- Mini-reproductor (telefono): pastilla de cristal flotante sobre la barra
-   inferior, izquierda y derecha a 10 px. Siempre montada; data-state decide si
-   se ve: entra subiendo (transform + opacity) y sale rapido. El desenfoque es
-   de 14 px a proposito: es la capa mas cara al hacer scroll en Android. */
+/* --- Reproductor flotante: pastilla de cristal (telefono) y barra (escritorio).
+   Siempre montados; data-state decide si se ven: entran subiendo (transform +
+   opacity) y salen rapido. El desenfoque es de 14 px a proposito: es la capa mas
+   cara al hacer scroll en Android. */
 
 :root {
-  /* Alto de la pastilla mas su aire. Lo usan el hueco de la pagina y la subida
-     de los avisos. */
+  /* Alto del reproductor mas su aire. Lo usan el hueco de la pagina y la subida
+     de los avisos (96 en escritorio, ver shell.css). */
   --mini-h: 74px;
 }
 
-.mini {
+.mini,
+.dock {
   position: fixed;
   z-index: 45;
-  left: 10px;
-  right: 10px;
-  bottom: calc(var(--nav-h) + 10px);
-  max-width: 560px;
-  height: 62px;
-  margin: 0 auto;
-  padding: 0 6px 0 8px;
   overflow: hidden;
   border: 0;
-  border-radius: 22px;
   background: var(--glass);
-  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
   backdrop-filter: blur(14px);
   opacity: 0;
   visibility: hidden;
@@ -294,12 +293,46 @@
     visibility 0s linear var(--t-quick);
 }
 
-.mini[data-state="open"] {
+.mini[data-state="open"],
+.dock[data-state="open"] {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
   transform: none;
   transition: opacity 260ms var(--ease), transform 260ms var(--ease), visibility 0s;
+}
+
+/* Pastilla del telefono: izquierda y derecha a 10 px sobre la barra inferior. */
+.mini {
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--nav-h) + 10px);
+  max-width: 560px;
+  height: 62px;
+  margin: 0 auto;
+  padding: 0 6px 0 8px;
+  border-radius: 22px;
+  box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+}
+
+/* Barra del escritorio: a la derecha del menu lateral. Transporte, pantallita
+   (.lcd) y volumen en tres columnas. */
+.dock {
+  left: var(--dock-l);
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  height: 72px;
+  padding: 0 12px;
+  border-radius: 24px;
+  box-shadow: 0 14px 36px rgba(var(--shadow-rgb), 0.2), 0 0 0 1px var(--hair);
+}
+
+:root[data-theme="dark"] .dock {
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--hair);
 }
 
 .mini__row {
@@ -385,7 +418,8 @@
   transform: none;
 }
 
-.mini .pbtn:active {
+.mini .pbtn:active,
+.dock .pbtn:active {
   transform: scale(0.93);
 }
 
@@ -404,19 +438,144 @@
   height: 12px;
 }
 
-.mini .scrub {
+.mini .scrub,
+.lcd .scrub {
   height: 12px;
   align-items: flex-end;
 }
 
-.mini .scrub__rail {
+.mini .scrub__rail,
+.lcd .scrub__rail {
   height: 3px;
   border-radius: 0;
   background: var(--s3);
 }
 
-.mini .scrub__knob {
+.mini .scrub__knob,
+.lcd .scrub__knob {
   display: none;
+}
+
+/* --- Barra del escritorio -------------------------------------------------- */
+
+.dock__ctl,
+.dock__end,
+.dock__vol {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dock__end {
+  justify-content: flex-end;
+}
+
+.dock .pbtn {
+  width: 46px;
+  height: 46px;
+  margin: 0 2px;
+}
+
+.dock .pl__mute {
+  width: 40px;
+  height: 40px;
+}
+
+.dock .vol {
+  width: 88px;
+  margin-right: 6px;
+}
+
+/* La pantallita: portada, tiempo, titulo, lo que falta y el hilo de progreso
+   pegado al borde de abajo (el Scrub, que cubre todo el ancho). */
+.lcd {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  height: 52px;
+  padding: 0 12px 0 6px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.lcd .scrub {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+.lcd .scrub:focus-visible {
+  outline-offset: -3px;
+}
+
+.lcd__cv {
+  display: block;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  box-shadow: 0 3px 10px rgba(17, 17, 28, 0.22);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.lcd__cv:active {
+  transform: scale(0.95);
+}
+
+.lcd .lcd__art {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.lcd__time {
+  flex: none;
+  width: 38px;
+  color: var(--mut);
+  font: 700 12px var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.lcd__time--r {
+  text-align: right;
+}
+
+.lcd__tx {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  gap: 1px;
+  text-align: center;
+}
+
+.lcd__t,
+.lcd__s {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lcd__t {
+  font: 800 14px / 1.3 var(--font-body);
+}
+
+.lcd__s {
+  color: var(--mut);
+  font-size: 12.5px;
+  line-height: 1.3;
 }
 
 .pv .pbtn__ico--play {

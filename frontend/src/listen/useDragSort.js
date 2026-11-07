@@ -90,7 +90,11 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
         y: e.clientY,
         s0: scrolled(),
         inset: sc ? sc.getBoundingClientRect().top : document.querySelector(".ltool")?.getBoundingClientRect().bottom ?? 0,
-        bottom: sc ? sc.getBoundingClientRect().bottom : window.innerHeight,
+        /* Sin contenedor, hasta el borde de arriba del reproductor flotante. */
+        bottom: sc
+          ? sc.getBoundingClientRect().bottom
+          : document.querySelector('.dock[data-state="open"], .mini[data-state="open"]')?.getBoundingClientRect().top ??
+            window.innerHeight,
       };
       setDragged({ from: pos, dy: 0 });
     },

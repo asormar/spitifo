@@ -22,8 +22,6 @@ export default function useDock(npOpen) {
   const track = useEngine((s) => s.track);
   const playing = useEngine((s) => s.playing);
   const buffering = useEngine((s) => s.buffering);
-  const quiet = useEngine((s) => s.muted || s.volume === 0);
-  const volume = useEngine((s) => s.volume);
   const duration = useEngine((s) => s.duration);
   const hasNext = useEngine((s) => s.index >= 0 && s.index + 1 < s.queue.length);
   const vhost = useVideoHost();
@@ -50,6 +48,10 @@ export default function useDock(npOpen) {
 
   const show = dockVisible({ track, npOpen, vhostMode: vhost.mode, dismissed });
 
+  /* "Artista · Album", como lo arma la biblioteca. */
+  const meta = info?.meta ?? "";
+  const at = meta.indexOf(" · ");
+
   /* Reserva sitio en la pagina y aparta los avisos (CSS: body.has-mini). */
   useEffect(() => {
     document.body.classList.toggle("has-mini", show);
@@ -59,11 +61,12 @@ export default function useDock(npOpen) {
   return {
     show,
     info,
+    meta,
+    artist: at < 0 ? meta : meta.slice(0, at),
+    album: at < 0 ? "" : meta.slice(at + 3),
     playing,
     icon: buffering ? "load" : playing ? "pause" : "play",
     label: info?.label || "la canción",
-    quiet,
-    volPct: Math.round((quiet ? 0 : volume) * 100),
     hasNext,
     dur: duration || info?.duration || 0,
     art: info?.artwork && badArt !== info.artwork ? info.artwork : null,

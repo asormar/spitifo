@@ -109,7 +109,8 @@ body.has-mini .progstack {
   transform: translateY(calc(-1 * (var(--mini-h) + 10px)));
 }
 
-.progstack .prog {
+.progstack .prog,
+.jobs .prog {
   /* relative (no static): la barra de 4 px se ancla a la tarjeta; sin offsets
      heredados de la version fija. */
   position: relative;
@@ -118,6 +119,18 @@ body.has-mini .progstack {
   width: 100%;
   margin: 0;
   pointer-events: auto;
+}
+
+/* En el menu lateral (escritorio): tarjetas compactas, sin sombra. */
+.jobs .prog {
+  padding: 10px 12px 14px;
+  border-radius: 16px;
+  background: var(--s2);
+  box-shadow: none;
+}
+
+.jobs .prog__top {
+  font-size: 13px;
 }
 
 .prog {

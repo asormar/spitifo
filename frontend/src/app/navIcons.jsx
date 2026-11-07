@@ -1,6 +1,7 @@
-/* Iconos de la navegacion. Las cuatro pestanas son trazos propios (24 px,
-   linea redondeada; mas gruesa en la activa); Ajustes es el engranaje de
-   shared/icons.jsx, que va en el script inicial. */
+/* Iconos de la navegacion. Las cuatro pestanas y las acciones del chrome
+   (volver, mas, cola) son trazos propios (24 px, linea redondeada; mas gruesa en
+   la activa); Ajustes es el engranaje de shared/icons.jsx, que va en el script
+   inicial. */
 import { Icon } from "../shared/icons.jsx";
 
 const PATHS = {
@@ -18,6 +19,10 @@ const PATHS = {
       <path d="m15.5 8.5-2 5-5 2 2-5z" />
     </>
   ),
+  /* Acciones del menu lateral, la barra de arriba y la del reproductor. */
+  back: <path d="m15 5-7 7 7 7" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  queue: <path d="M4 6h16M4 12h16M4 18h10" />,
 };
 
 export function NavIcon({ name, filled = false, size = 22 }) {
