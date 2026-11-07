@@ -165,7 +165,7 @@ function Popover({ anchor, onClose, rev, children }) {
     const gap = 6;
     const below = vh - (r.bottom + gap) - 8;
     const above = r.top - gap - 8;
-    const up = natural > below && (natural <= above || above > below);
+    const up = natural > below && above > below;
     setPos({
       top: Math.max(8, up ? r.top - gap - Math.min(natural, above) : r.bottom + gap),
       left: clamp(r.right - width, 8, Math.max(8, vw - width - 8)),

@@ -1,7 +1,7 @@
 import { rowKey } from "../shared/api.js";
 import Ico from "./ico.jsx";
 import { useJob } from "./jobsStore.js";
-import { dlState, dlText } from "./searchPlan.js";
+import { dlState, dlText, dlWaiting } from "./searchPlan.js";
 
 /* El estado de descarga de un resultado: el job del jobsStore (solo yt-dlp) y
    los Sets de la pantalla. useJob repinta SOLO esta fila con cada sondeo. */
@@ -21,10 +21,10 @@ export function useDl(t, busy, downloaded) {
 
 export default function DlRing({ t, name, busy, downloaded, onDl, small = false }) {
   const s = useDl(t, busy, downloaded);
-  const wait = s.id === "queued" || s.id === "down" || s.id === "proc" || s.id === "direct";
+  const wait = dlWaiting(s);
   const title = name || t.title || "este resultado";
-  const idle = s.id === "idle" || s.id === "err";
-  const label = idle ? `Descargar ${title}` : s.id === "done" ? `Descargado: ${title}` : dlText(s);
+  const done = s.id === "done";
+  const idle = !wait && !done;
 
   return (
     <button
@@ -32,27 +32,17 @@ export default function DlRing({ t, name, busy, downloaded, onDl, small = false 
       className={small ? "dlr dlr--sm" : "dlr"}
       data-s={s.id}
       aria-disabled={wait || undefined}
-      aria-label={label}
-      title={
-        idle
-          ? s.id === "err"
-            ? dlText(s)
-            : "Descargar a la biblioteca"
-          : s.id === "done"
-          ? "Descargado: pulsa para volver a descargarlo"
-          : dlText(s)
-      }
+      aria-label={idle ? `Descargar ${title}` : done ? `Descargado: ${title}` : dlText(s)}
+      title={idle ? "Descargar a la biblioteca" : done ? "Descargado: pulsa para volver a descargarlo" : undefined}
       style={wait ? { "--p": `${s.pct}%` } : undefined}
       onClick={(e) => !wait && onDl(t, e.currentTarget)}
     >
-      {idle ? (
-        <Ico n="dl" size={small ? 18 : 22} />
-      ) : s.id === "done" ? (
-        <Ico n="check" size={small ? 18 : 22} />
-      ) : (
+      {wait ? (
         <span className="ring">
           <i />
         </span>
+      ) : (
+        <Ico n={done ? "check" : "dl"} size={small ? 18 : 22} />
       )}
     </button>
   );

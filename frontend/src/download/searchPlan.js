@@ -94,6 +94,9 @@ export function dlState({ busy = false, job, downloaded = false }) {
   return busy ? { id: "direct", pct: 0 } : { id: "idle", pct: 0 };
 }
 
+/* Hay una descarga en curso (el boton no se pulsa hasta que acabe). */
+export const dlWaiting = ({ id }) => id === "queued" || id === "down" || id === "proc" || id === "direct";
+
 /* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
    de la fila. */
 export function dlText({ id, pct }) {

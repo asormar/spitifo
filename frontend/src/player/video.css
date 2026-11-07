@@ -275,10 +275,10 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   font-size: 13px;
 }
 
-/* Bloqueo del scroll mientras esta la ventana centrada o el menu de
-   resoluciones. Clases distintas: cada una se quita sola al cerrarse. */
+/* Bloqueo del scroll mientras esta la ventana centrada del video o una hoja
+   (la ficha, las resoluciones). Clases distintas: cada una se quita sola. */
 html.vscroll-lock,
-html.rsvm-lock {
+html.sheet-lock {
   overflow: hidden;
 }
 

@@ -6,7 +6,7 @@ import { useDl } from "./DlRing.jsx";
 import Ico from "./ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { Thumb, VerdictPill, factsOf } from "./ResultRow.jsx";
-import { dlText } from "./searchPlan.js";
+import { dlText, dlWaiting } from "./searchPlan.js";
 import { useVerdict, verdictKey, verdictOf, verdictStore, vText } from "./verdict.js";
 import "./ficha.css";
 
@@ -26,32 +26,19 @@ function Verify({ t, query }) {
   const rec = useVerdict(verdictKey(t, query));
   const run = () => verdictStore.verify(t, query);
 
-  if (rec?.phase === "loading") {
+  /* Sin hacer, haciendose o fallida: un solo boton que dice en que esta. */
+  if (rec?.from !== "verify") {
+    const wait = rec?.phase === "loading";
+    const fail = rec?.phase === "error";
     return (
       <div className="ver" aria-live="polite">
-        <span className="vbtn vbtn--wait">
-          <span className="sp" aria-hidden="true" />
-          Leyendo las etiquetas del audio
-        </span>
-      </div>
-    );
-  }
-  if (rec?.phase === "error") {
-    return (
-      <div className="ver">
-        <button type="button" className="vbtn" onClick={run}>
-          <Ico n="retry" size={16} />
-          No pude verificar: {rec.error}. Reintentar
-        </button>
-      </div>
-    );
-  }
-  if (rec?.from !== "verify") {
-    return (
-      <div className="ver">
-        <button type="button" className="vbtn" onClick={run}>
-          <Ico n="spark" size={16} />
-          ¿Es esta la canción?
+        <button type="button" className={wait ? "vbtn vbtn--wait" : "vbtn"} aria-disabled={wait || undefined} onClick={() => !wait && run()}>
+          {wait ? <span className="sp" aria-hidden="true" /> : <Ico n={fail ? "retry" : "spark"} size={16} />}
+          {wait
+            ? "Leyendo las etiquetas del audio"
+            : fail
+            ? `No pude verificar: ${rec.error}. Reintentar`
+            : "¿Es esta la canción?"}
         </button>
       </div>
     );
@@ -108,7 +95,7 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
   const done = rec?.phase === "done" ? rec : null;
   const v = verdictOf(t, done);
   const dls = useDl(t, busy, downloaded);
-  const wait = ["queued", "down", "proc", "direct"].includes(dls.id);
+  const wait = dlWaiting(dls);
   const prov = provenance(t);
   const title = t.title || "sin título";
   const sub = [t.artist, t.album && t.album !== t.title ? t.album : null].filter(Boolean).join(" · ");

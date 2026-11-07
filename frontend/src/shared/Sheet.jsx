@@ -25,9 +25,9 @@ const FOCUSABLE = 'button:not(:disabled), a[href], input, [tabindex]:not([tabind
 let locks = 0;
 export function lockScroll() {
   const root = document.documentElement;
-  if (!locks++) root.classList.add("rsvm-lock");
+  if (!locks++) root.classList.add("sheet-lock");
   return () => {
-    if (!--locks) root.classList.remove("rsvm-lock");
+    if (!--locks) root.classList.remove("sheet-lock");
   };
 }
 

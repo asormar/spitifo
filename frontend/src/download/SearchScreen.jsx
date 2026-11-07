@@ -75,12 +75,10 @@ export default function SearchScreen({
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
   const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
   /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
+  const gone = (menuAt && !menuT) || (fichaAt && !fichaT);
   useEffect(() => {
-    if (menuAt && !menuT) nav.back();
-  }, [menuAt, menuT, nav.back]);
-  useEffect(() => {
-    if (fichaAt && !fichaT) nav.back();
-  }, [fichaAt, fichaT, nav.back]);
+    if (gone) nav.back();
+  }, [gone, stack.length, nav.back]);
 
   /* Con video el boton abre el menu de resoluciones en vez de bajar; pulsar otra
      vez el mismo lo cierra. */

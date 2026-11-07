@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 376,500 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 377,700 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -368,6 +368,20 @@ script and 166 B of style; only the script needed a new limit:
 | --- | --- | --- | --- | --- |
 | JavaScript | 370,415 B | 375,032 B (+4,617) | 371,000 B | 376,500 B |
 | CSS | 98,055 B | 98,221 B (+166) | 103,000 B | 103,000 B |
+
+The unified Buscar (one search field, library hits as you type, result rows
+that become a table on a desktop, truthful verdict pills, the download ring, the
+result ficha and the resolution menu as sheets on the navigation stack) replaces
+the old cards, controls, status chip, per-card preview player and verify panel.
+Net of the deletions it adds 2,213 B of script and 820 B of style; only the
+script needed a new limit. Buscar's stylesheets also left the render-blocking
+first stylesheet: it went from 59,397 B to 43,372 B, and the lazy Buscar chunk
+now carries 18,949 B of style and 36,226 B of script:
+
+| Bundle | Before Buscar | After | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 375,032 B | 377,245 B (+2,213) | 376,500 B | 377,700 B |
+| CSS | 98,221 B | 99,041 B (+820) | 103,000 B | 103,000 B |
 
 ### Windows installer: 22,707,225 B
 
