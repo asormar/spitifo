@@ -635,18 +635,6 @@ html[data-vt="mode"]::view-transition-new(screen) {
   color: var(--ink);
 }
 
-/* --- Pantallas vacias ------------------------------- */
-
-.empty {
-  max-width: 640px;
-  margin: 48px auto 0;
-  padding: 44px 32px;
-  border-radius: var(--r-panel);
-  background: var(--s1);
-  box-shadow: var(--shadow);
-  text-align: center;
-}
-
 /* --- Ajustes -------------------------------------------------------------- */
 
 .settings {

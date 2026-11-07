@@ -58,7 +58,9 @@ export function ProgressBar({ job }) {
               : "Sigue descargando en el servidor"
             : job.status === "pending"
             ? "En cola"
-            : `Descargando, ${pct}%`}
+            : job.status === "processing"
+            ? "Procesando el archivo…"
+            : `Descargando, ${pct} %`}
         </span>
       </div>
       <div

@@ -4,6 +4,7 @@ import { JOB_DISMISS_MS } from "./constants.js";
 import { pollJob } from "./api.js";
 import { setJobFor } from "./jobsStore.js";
 import { noticeFromError, noticeFromJob, noticeFromSuccess } from "./searchPlan.js";
+import { verdictStore } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------
    DESCARGAS DE LA PANTALLA
@@ -97,12 +98,11 @@ export default function useDownloads({ query, mode, fmt, media, runs, onLibraryC
         if (!rd.ok) throw Object.assign(new Error(errMsg(j, "falló la descarga")), { cookies: j.code === "youtube_bot_check" });
 
         const done = (d) => {
-          setNotice(
-            noticeFromSuccess(
-              { filename: d.filename, size_mb: d.size_mb, match: d.match || vmatch, real_title: d.real_title || vtitle },
-              query
-            )
-          );
+          const match = d.match || vmatch;
+          const real = d.real_title || vtitle;
+          setNotice(noticeFromSuccess({ filename: d.filename, size_mb: d.size_mb, match, real_title: real }, query));
+          /* Sin veredicto (fuente que no lo calcula) la fila sigue «Sin verificar». */
+          if (match) verdictStore.setFromDownload(t, query, { match, real_title: real });
           setDownloadedIds((cur) => new Set(cur).add(key));
           onLibraryChanged();
         };

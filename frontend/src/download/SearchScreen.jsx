@@ -1,29 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "./icons.jsx";
+import { useNav } from "../app/useNav.js";
 import { rowKey } from "../shared/api.js";
 import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import {
   FORMATS,
-  JOB_DISMISS_MS,
   MEDIA_OPTIONS,
   MODES,
   ORIGINAL_HINT,
   ORIGINAL_HINT_YT,
   PLACEHOLDER,
 } from "./constants.js";
-import { noticeFromError, summarize } from "./searchPlan.js";
+import { noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
 import Choice from "./Choice.jsx";
 import Idle from "./Idle.jsx";
 import LibraryHits from "./LibraryHits.jsx";
-import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
+import { ResultRow, Skeleton } from "./ResultRow.jsx";
+import ResolutionMenu from "./ResolutionMenu.jsx";
+import ShowGroup from "./ShowGroup.jsx";
+import Strip from "./Strip.jsx";
 import "./search.css";
-import "./results.css";
-import "./cards.css";
-import "./resolution-menu.css";
+import "./rows.css";
 import "./notices.css";
 
 /* ---------------------------------------------------------------------------
@@ -52,9 +52,6 @@ export default function SearchScreen({
   /* Qué partes se bajan en modo YouTube. Vive acá y no en el selector para que
      cambiar de modo y volver no lo reinicie (como fmt). */
   const [media, setMedia] = useState("audio");
-  /* Clave del resultado cuyo menú de resoluciones está abierto. Vive acá y no
-     en cada tarjeta para que abrir uno cierre el anterior: un menú a la vez. */
-  const [menuKey, setMenuKey] = useState(null);
   const dl = useDownloads({ query, mode, fmt, media, runs: run.runs, onLibraryChanged });
 
   const inputRef = useRef();
@@ -67,11 +64,41 @@ export default function SearchScreen({
   const focusPending = useRef(false);
   const resultsRef = useRef(null);
 
-  /* Abrir/cerrar el menú de resoluciones por clave. Cerrar una clave que ya no
-     es la abierta no pisa a la que sí lo está (dos tarjetas no se pelean). */
-  const setMenuOpen = useCallback((key, open) => {
-    setMenuKey((cur) => (open ? key : cur === key ? null : cur));
-  }, []);
+  /* El menu de resoluciones vive en la pila de navegacion: atras, Escape y el
+     atras de Android lo cierran. Solo hay uno, el de arriba de la pila. */
+  const nav = useNav();
+  const top = nav.stackOf("search").at(-1);
+  const menuAt = top?.type === "resmenu" ? top : null;
+  const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
+  /* Una busqueda nueva se lleva el resultado: el menu ya no apunta a nada. */
+  useEffect(() => {
+    if (menuAt && !menuT) nav.back();
+  }, [menuAt, menuT, nav.back]);
+
+  /* Con video el boton abre el menu de resoluciones en vez de bajar; pulsar otra
+     vez el mismo lo cierra. */
+  const onDl = useCallback(
+    (t, el) => {
+      const key = rowKey(t);
+      const now = nav.getStack().at(-1);
+      if (now?.type === "resmenu" && now.key === key) {
+        nav.back();
+      } else if (mode === "ytdlp" && media !== "audio" && t.extra?.webpage_url) {
+        nav.open({ type: "resmenu", key, anchor: el });
+      } else {
+        dl.onDownload(t);
+      }
+    },
+    [mode, media, nav.open, nav.back, nav.getStack, dl.onDownload]
+  );
+
+  const pickHeight = useCallback(
+    (t, height) => {
+      nav.back();
+      dl.onDownload(t, height);
+    },
+    [nav.back, dl.onDownload]
+  );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
   const notice = dl.notice || (err ? noticeFromError(err) : null);
@@ -120,7 +147,18 @@ export default function SearchScreen({
     (resultsRef.current || msgRef.current)?.focus();
   }, [loading, searched, results, err]);
 
-  const { full: fullCount, shown } = useMemo(() => summarize(results, filter), [results, filter]);
+  const { full: fullCount, shown, filterEmpty } = useMemo(() => summarize(results, filter), [results, filter]);
+
+  /* Las filas entran una tras otra SOLO con resultados nuevos: volver a la
+     pantalla (display:none -> block) no debe repetirlo, y .screen[data-seen] no
+     sirve aqui porque los resultados llegan despues de verla por primera vez. */
+  const [settled, setSettled] = useState(null);
+  const fresh = results.length > 0 && settled !== results;
+  useEffect(() => {
+    if (!fresh) return undefined;
+    const id = setTimeout(() => setSettled(results), 700);
+    return () => clearTimeout(id);
+  }, [fresh, results]);
 
   /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
@@ -208,46 +246,31 @@ export default function SearchScreen({
       )}
 
       {notice?.tone === "err" && (
-        <div className="msg msg--err" role="alert" ref={msgRef} tabIndex={-1}>
-          <Icon name="WarningCircle" size={17} weight="fill" />
-          <span>
-            {notice.text}
-            {notice.cookies && (
-              <button type="button" className="vf vf--retry" onClick={() => onImportCookies()}>
-                Importar cookies
-              </button>
-            )}
-          </span>
-        </div>
+        <Strip tone="err" innerRef={msgRef} onClose={dl.notice ? dl.clearNotice : undefined}>
+          {notice.text}
+          {notice.cookies && (
+            <button type="button" className="vf vf--retry" onClick={() => onImportCookies()}>
+              Importar cookies
+            </button>
+          )}
+        </Strip>
       )}
       {matchedDead && (
-        <div className="msg msg--warn" role="status">
-          <Icon name="WarningCircle" size={17} weight="fill" />
-          <span>
-            YouTube está apagado en el servidor, y es de ahí de donde sale el
-            audio completo. Por eso estos {results.length} resultados no se
-            pueden descargar: iTunes solo tiene previews de 30 segundos.
-          </span>
-        </div>
+        <Strip tone="warn">
+          YouTube está apagado en el servidor, y es de ahí de donde sale el audio completo. Por eso estos{" "}
+          {results.length} resultados no se pueden descargar: iTunes solo tiene previews de 30 segundos.
+        </Strip>
       )}
       {notice && notice.tone !== "err" && (
-        <div
+        <Strip
           key={notice.key || notice.text}
-          className={`msg ${notice.tone === "warn" ? "msg--warn" : "msg--ok"}`}
-          style={{ "--dismiss": `${JOB_DISMISS_MS}ms` }}
-          role="status"
-          ref={msgRef}
+          tone={notice.tone}
+          innerRef={msgRef}
+          onClose={dl.clearNotice}
         >
-          {notice.tone === "warn" ? (
-            <Icon name="WarningCircle" size={17} weight="fill" />
-          ) : (
-            <Icon name="CheckCircle" size={17} weight="fill" />
-          )}
-          <span>
-            {notice.text}
-            {notice.sub && <span className="msg__sub">{notice.sub}</span>}
-          </span>
-        </div>
+          {notice.text}
+          {notice.sub && <b>{notice.sub}</b>}
+        </Strip>
       )}
 
       <LibraryHits active={active} />
@@ -257,16 +280,14 @@ export default function SearchScreen({
       )}
 
       {results.length > 0 && (
-        <>
-          <div
-            ref={resultsRef}
-            tabIndex={-1}
-            className={cx("results__head", loading && "is-stale")}
-          >
-            <span className="results__count">
-              <b>{results.length}</b> resultados para <b>{query}</b>,{" "}
-              <b>{fullCount} descargables</b>
-            </span>
+        <section className={cx("rsec", loading && "is-stale")} aria-labelledby="rs-h">
+          <div className="rhead">
+            <div>
+              <h2 className="sh2" id="rs-h" ref={resultsRef} tabIndex={-1}>
+                Para descargar
+              </h2>
+              <p className="rhead__s">{resultsHead(results.length, fullCount, query)}</p>
+            </div>
             <Choice
               kind="toggle"
               options={[
@@ -278,8 +299,17 @@ export default function SearchScreen({
               ariaLabel="Filtrar resultados"
             />
           </div>
+          {!filterEmpty && (
+            <div className="thead" aria-hidden="true">
+              <span>#</span>
+              <span>Título</span>
+              <span>Fuente</span>
+              <span>Detalles</span>
+            </div>
+          )}
           <ul
-            className={cx("rows", loading && "is-stale")}
+            className="rlist"
+            data-in={fresh ? "" : undefined}
             aria-busy={loading || undefined}
             inert={loading ? "" : undefined}
           >
@@ -288,56 +318,58 @@ export default function SearchScreen({
                 <ShowGroup
                   key={t.source + t.source_id}
                   t={t}
+                  i={i}
                   query={query}
-                  onDownload={dl.onDownload}
+                  onDl={dl.onDownload}
                   busyIds={dl.busyIds}
                   downloadedIds={dl.downloadedIds}
                 />
               ) : (
-                <Track
+                <ResultRow
                   key={t.source + t.source_id}
                   t={t}
+                  i={i}
                   query={query}
-                  media={media}
                   busy={dl.busyIds.has(rowKey(t))}
                   downloaded={dl.downloadedIds.has(rowKey(t))}
-                  onDownload={dl.onDownload}
-                  onBotCheck={dl.onBotCheck}
-                  menuOpen={menuKey === rowKey(t)}
-                  setMenuOpen={setMenuOpen}
-                  index={i}
+                  onDl={onDl}
                 />
               )
             )}
           </ul>
-          {shown.length === 0 && (
-            <div className="none">
-              <h3 className="none__h">Ningún resultado con descarga completa</h3>
-              <p className="none__p">
-                Hay {results.length} resultados, pero todos son previews de 30 segundos o
-                temas que no coinciden con lo que buscaste. Prueba con Todas las fuentes.
+          {filterEmpty && (
+            <div className="empty">
+              <h3>Ningún resultado con descarga completa</h3>
+              <p>
+                Hay {results.length} resultados, pero todos son previews de 30 segundos o temas que no
+                coinciden con lo que buscaste. Prueba con Todas las fuentes.
               </p>
             </div>
           )}
-        </>
+        </section>
       )}
 
-      {loading && !results.length && (
-        <ul className="rows" aria-label="Buscando" aria-busy="true">
-          {[0, 1, 2, 3].map((i) => (
-            <SkeletonRow key={i} i={i} />
-          ))}
-        </ul>
-      )}
+      {loading && !results.length && <Skeleton />}
 
       {!loading && !results.length && searched && !err && (
-        <div className="none" ref={resultsRef} tabIndex={-1}>
-          <h3 className="none__h">No encontré nada para "{query}"</h3>
-          <p className="none__p">
-            Prueba con menos palabras, con el nombre del artista solo, o cambia a Todas
-            las fuentes para buscar en iTunes, Internet Archive, Wikimedia y YouTube.
+        <div className="empty" ref={resultsRef} tabIndex={-1}>
+          <h3>No encontré nada para «{query}»</h3>
+          <p>
+            Prueba con menos palabras, con el nombre del artista solo, o cambia a Todas las fuentes para
+            buscar en iTunes, Internet Archive, Wikimedia y YouTube.
           </p>
         </div>
+      )}
+
+      {menuT && (
+        <ResolutionMenu
+          key={menuAt.key}
+          t={menuT}
+          anchor={menuAt.anchor}
+          onPick={(height) => pickHeight(menuT, height)}
+          onClose={nav.back}
+          onBotCheck={dl.onBotCheck}
+        />
       )}
     </div>
   );

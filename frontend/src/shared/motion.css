@@ -5,63 +5,38 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .pv.is-playing .pbtn:hover {
-    filter: brightness(1.08);
-  }
-
   .seg:not(.is-on):hover {
     background: var(--hover);
     color: var(--ink);
   }
 
-  .dl:not(:disabled):not(.dl--off):hover {
-    filter: brightness(1.08);
-  }
-
-  .vf:not(:disabled):hover,
-  .disclosure:hover {
+  .vf:not(:disabled):hover {
     background: var(--s3);
-  }
-
-  .ext:hover {
-    text-decoration-color: var(--acc);
   }
 
   .scrub:hover .scrub__rail {
     transform: scaleY(1.5);
   }
 
-  .pv:not(.is-playing) .pbtn:not(:disabled):hover {
-    box-shadow: inset 0 0 0 1.5px var(--ink);
-  }
-
   .pl__mute:hover {
     color: var(--ink);
-  }
-
-  /* Tarjeta: se eleva un poco. Las anchas (conciertos) no: llevan botones
-     dentro y moverse bajo el puntero cansa. */
-  .card:not(.card--wide):not(.skel):hover {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 28px rgba(var(--shadow-rgb), 0.22);
   }
 
 }
 
 /* Feedback al presionar para los botones que no tenian ninguno y que no usan
    transform para colocarse. Una sola regla agrupada: mismos tiempos para todos. */
-:is(.dots__btn, .mini__txt, .rsvm__item, .store__link) {
+:is(.dots__btn, .mini__txt, .store__link) {
   transition: var(--tr-press);
 }
 
-:is(.dots__btn, .mini__txt, .rsvm__item, .store__link):active {
+:is(.dots__btn, .mini__txt, .store__link):active {
   transform: scale(0.96);
 }
 
 /* Dedo: los botones secundarios tambien llegan a 44px. */
 @media (pointer: coarse) {
   .seg,
-  .disclosure,
   .vf {
     min-height: 44px;
   }
@@ -70,22 +45,6 @@
     height: 32px;
   }
 
-  .pv .pbtn {
-    width: 44px;
-    height: 44px;
-  }
-
-  /* Enlaces externos: mas area de toque sin mover el diseno (el margen
-     negativo compensa el padding). */
-  .ext {
-    padding: 10px 6px;
-    margin: -10px -6px;
-  }
-
-  .dl--sm {
-    width: 44px;
-    height: 44px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -103,28 +62,6 @@
      Si se deja, apareceria dos veces (una fija, una en el stack). */
   .progstack > .prog {
     position: relative;
-  }
-
-  .results__head {
-    padding-top: 32px;
-  }
-
-  .results__head .chips {
-    width: 100%;
-  }
-
-  .results__head .chip {
-    flex: 1;
-    padding: 0 10px;
-  }
-
-  .card--wide {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
-  }
-
-  .card--wide .card__art {
-    width: min(100%, 260px);
   }
 
   .panel__path {
@@ -250,7 +187,7 @@
   }
 
   .spin,
-  .skel--pulse,
+  .skel,
   .eq i,
   .logo__o,
   .pbtn::after,
@@ -261,7 +198,7 @@
   /* Avisos de exito/fallo: su unica animacion de salida llevaba un delay de
      5 s que aqui se colapsaba a 0 y los ocultaba al instante. React los
      desmonta igualmente. */
-  .msg--ok,
+  .strip--ok,
   .prog.is-done,
   .prog.is-failed {
     animation: none !important;

@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
    BUSCAR: pantalla, chips, reposo y lo de tu biblioteca
    El campo es .sfield (shared/sfield.css) y las filas de resultados siguen en
-   results.css / cards.css. Solo se animan transform y opacity.
+   rows.css. Solo se animan transform y opacity.
    ------------------------------------------------------------------------- */
 
 .sscr {

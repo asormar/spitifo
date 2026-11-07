@@ -72,6 +72,42 @@ export function summarize(results, filter) {
   };
 }
 
+/* «12 resultados para «q», 5 descargables». */
+export function resultsHead(total, full, query) {
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  return `${n(total, "resultado", "resultados")} para «${query}», ${n(full, "descargable", "descargables")}`;
+}
+
+/* --- La descarga de una fila ---------------------------------------------------
+   `job` es el del jobsStore (solo yt-dlp tiene); `busy` vale desde que se pulsa
+   hasta que termina, tambien en las fuentes directas (sin job). Un job en error
+   se ve como reposo: el aviso ya dice que fallo. */
+export function dlState({ busy = false, job, downloaded = false }) {
+  const s = job?.status;
+  if (s === "error") return { id: "err", pct: 0 };
+  if (s === "pending") return { id: "queued", pct: 0 };
+  if (s === "downloading") {
+    return { id: "down", pct: Math.min(100, Math.max(0, Math.round(job.progress || 0))) };
+  }
+  if (s === "processing") return { id: "proc", pct: 100 };
+  if (s === "done" || (!busy && downloaded)) return { id: "done", pct: 100 };
+  return busy ? { id: "direct", pct: 0 } : { id: "idle", pct: 0 };
+}
+
+/* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
+   de la fila. */
+export function dlText({ id, pct }) {
+  return {
+    idle: "Descargar",
+    err: "Falló la descarga",
+    queued: "En cola",
+    down: `Descargando, ${pct} %`,
+    proc: "Procesando el archivo…",
+    direct: "Descargando…",
+    done: "Descargado",
+  }[id];
+}
+
 /* --- Avisos de la descarga --------------------------------------------------------
    Un solo aviso a la vez: { tone: "ok" | "warn" | "err", text, sub?, cookies?,
    key? }. `cookies`: el fallo fue el muro de verificacion de YouTube y el aviso

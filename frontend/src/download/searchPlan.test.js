@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  dlState,
+  dlText,
   libraryQuery,
   noticeFromError,
   noticeFromJob,
   noticeFromSuccess,
   parseUrl,
   planSubmit,
+  resultsHead,
   searchSig,
   shouldResync,
   summarize,
@@ -192,5 +195,56 @@ describe("avisos de la descarga", () => {
     });
     expect(noticeFromJob({ status: "error" })).toEqual({ tone: "err", text: "la descarga falló", cookies: false });
     expect(noticeFromError("x")).toEqual({ tone: "err", text: "x", cookies: false });
+  });
+});
+
+describe("resultsHead", () => {
+  it("cuenta resultados y descargables, con singular", () => {
+    expect(resultsHead(12, 5, "creep")).toBe("12 resultados para «creep», 5 descargables");
+    expect(resultsHead(1, 1, "creep")).toBe("1 resultado para «creep», 1 descargable");
+    expect(resultsHead(3, 0, "x")).toBe("3 resultados para «x», 0 descargables");
+  });
+});
+
+describe("dlState", () => {
+  it("reposo, y hecho en esta sesion", () => {
+    expect(dlState({})).toEqual({ id: "idle", pct: 0 });
+    expect(dlState({ downloaded: true })).toEqual({ id: "done", pct: 100 });
+  });
+
+  it("los pasos de un job de yt-dlp", () => {
+    const job = (status, progress) => ({ status, progress });
+    expect(dlState({ busy: true, job: job("pending") }).id).toBe("queued");
+    expect(dlState({ busy: true, job: job("downloading", 41.6) })).toEqual({ id: "down", pct: 42 });
+    expect(dlState({ busy: true, job: job("processing", 100) }).id).toBe("proc");
+    expect(dlState({ busy: true, job: job("done", 100) }).id).toBe("done");
+  });
+
+  it("el porcentaje se mantiene entre 0 y 100", () => {
+    expect(dlState({ busy: true, job: { status: "downloading", progress: 140 } }).pct).toBe(100);
+    expect(dlState({ busy: true, job: { status: "downloading", progress: -3 } }).pct).toBe(0);
+    expect(dlState({ busy: true, job: { status: "downloading" } }).pct).toBe(0);
+  });
+
+  it("una fuente directa (sin job) ocupada es indeterminada", () => {
+    expect(dlState({ busy: true })).toEqual({ id: "direct", pct: 0 });
+  });
+
+  it("volver a bajar algo ya bajado muestra el progreso, no el check", () => {
+    expect(dlState({ busy: true, downloaded: true, job: { status: "pending" } }).id).toBe("queued");
+    expect(dlState({ busy: true, downloaded: true }).id).toBe("direct");
+  });
+
+  it("un job en error se ve como reposo con su texto", () => {
+    const s = dlState({ job: { status: "error" } });
+    expect(s.id).toBe("err");
+    expect(dlText(s)).toBe("Falló la descarga");
+  });
+
+  it("los textos del boton", () => {
+    expect(dlText({ id: "idle", pct: 0 })).toBe("Descargar");
+    expect(dlText({ id: "down", pct: 62 })).toBe("Descargando, 62 %");
+    expect(dlText({ id: "proc", pct: 100 })).toBe("Procesando el archivo…");
+    expect(dlText({ id: "done", pct: 100 })).toBe("Descargado");
   });
 });

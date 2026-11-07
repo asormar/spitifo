@@ -7,6 +7,18 @@ export const SOURCE_LABEL = {
   wikimedia: "Wikimedia",
   ytdlp: "YouTube",
 };
+/* La etiqueta corta del telefono (el nombre entero va en el title). */
+export const SOURCE_CODE = { itunes: "iT", archive: "IA", jamendo: "J", wikimedia: "W", ytdlp: "YT" };
+
+/* De donde sale la FICHA y de donde sale el ARCHIVO. En modo Musica no son la
+   misma cosa: iTunes pone los datos y la portada, YouTube el audio que se
+   descarga. Sin esto, "iTunes | 3:07" se lee como si el archivo entero fuera de
+   iTunes, y es falso. */
+export function provenance(t) {
+  const ficha = SOURCE_LABEL[t.source] || t.source;
+  const archivo = t.extra?.webpage_url ? SOURCE_LABEL.ytdlp : ficha;
+  return { ficha, archivo, split: ficha !== archivo };
+}
 
 /* Los tres modos que ve el usuario. Los nombres internos (matched, sources,
    ytdlp) no salen nunca a la pantalla. La explicacion que vivia debajo del
@@ -68,7 +80,7 @@ export const EXAMPLES = [
   "Radiohead Creep",
   "Miles Davis So What",
 ];
-/* El estado que domina la fila: se baja entero / solo preview / no coincide.
+/* El estado que domina la fila: se baja entero / solo preview / nada.
 
    OJO con el campo `downloadable` en modo Música: el backend lo deja en
    False aunque el archivo exista, porque la descarga sale de webpage_url. Por
@@ -85,13 +97,8 @@ export function trackState(t) {
   return "none";
 }
 
-export const STATE_UI = {
-  full: { label: "Completo", tone: "ok" },
-  preview: { label: "Solo preview", tone: "warn" },
-  none: { label: "No coincide", tone: "bad" },
-};
-/* El "30 s" ya no cabe en el chip: sale como linea de texto junto al icono sin
-   descarga (y como title, por si se recorta). */
+/* Por que no hay descarga: texto visible en la fila (el tactil no tiene
+   tooltip) y nombre accesible del circulo tachado. */
 export const NODL_TITLE = {
   preview: "Solo hay 30 s de esta fuente",
   none: "No hay versión completa",
