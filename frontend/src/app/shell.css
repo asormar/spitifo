@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------------
-   APP SHELL: modos, navegacion fija y pantallas
+   APP SHELL: pestanas, navegacion fija y pantallas
 
    Cuatro pestanas viven a la vez (Inicio, Buscar, Tu biblioteca, Descubrir) y
    Ajustes es una pagina mas, no un modal. En el telefono manda una barra
@@ -685,7 +685,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   transform: scale(0.92);
 }
 
-/* --- Pantallas vacias (Escuchar, Descubrir) ------------------------------- */
+/* --- Pantallas vacias ------------------------------- */
 
 .empty {
   max-width: 640px;

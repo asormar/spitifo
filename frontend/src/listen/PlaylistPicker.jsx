@@ -7,7 +7,7 @@ import "./playlists.css";
    AÑADIR A UNA LISTA
 
    Hoja para elegir a que lista va una cancion. Es la misma desde el menu de una
-   fila (Escuchar) y desde "Ahora suena", que la pinta dentro de su capa para
+   fila (la biblioteca) y desde "Ahora suena", que la pinta dentro de su capa para
    que quede por encima. En telefono sube desde abajo; desde 720 px es una
    tarjeta centrada.
 

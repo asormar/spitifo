@@ -1,4 +1,4 @@
-/* Iconos de Descargar: solo los que no estan ya en el script inicial
+/* Iconos de Buscar: solo los que no estan ya en el script inicial
    (shared/icons.jsx), con el peso exacto que usa cada llamada. */
 import { createIcon } from "../shared/icons.jsx";
 

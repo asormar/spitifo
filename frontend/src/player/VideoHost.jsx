@@ -86,7 +86,7 @@ function VideoHost() {
   }, []);
 
   /* El src se escribe a mano y SOLO cuando cambia el archivo. Atado al render,
-     cada cambio de modo volveria a pedir el video (y mataria la reproduccion). */
+     cada cambio de estado volveria a pedir el video (y mataria la reproduccion). */
   useEffect(() => {
     const v = vidRef.current;
     if (!v) return;
@@ -261,7 +261,7 @@ function VideoHost() {
       >
         <div ref={frameRef} className="vhost__frame">
           {/* El <video> NO cambia de nodo entre modal y mini: por eso la
-              reproduccion no se corta al cambiar de modo. */}
+              reproduccion no se corta al pasar de modal a mini. */}
           <video
             ref={vidRef}
             className="vhost__video"

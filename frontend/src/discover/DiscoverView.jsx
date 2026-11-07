@@ -75,7 +75,7 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
     setAttempt((n) => n + 1);
   }, []);
 
-  /* Primero el pedido y luego el cambio de pantalla: Descargar lo toma al
+  /* Primero el pedido y luego el cambio de pantalla: Buscar lo toma al
      montarse o en cuanto se avisa. */
   const searchGenre = useCallback(
     (name) => {

@@ -22,7 +22,7 @@ export const videoHost = {
   item: null,
   /* Boton (la miniatura) que lo abrio: ahi vuelve el foco al cerrar. */
   opener: null,
-  /* A que modo vuelve el video cuando se cierra la ventana flotante: al entrar
+  /* A que estado vuelve el video cuando se cierra la ventana flotante: al entrar
      en PiP se recuerda el que estaba. */
   pipReturn: "modal",
 };

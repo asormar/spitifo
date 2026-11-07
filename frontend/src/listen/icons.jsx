@@ -1,4 +1,4 @@
-/* Iconos de Escuchar y de la pantalla de reproduccion: los que no estan ya en
+/* Iconos de la biblioteca y de la pantalla de reproduccion: los que no estan ya en
    el script inicial (shared/icons.jsx). Nombres de Phosphor; el peso por
    defecto es regular (los puntos del menu, bold). */
 import { createIcon } from "../shared/icons.jsx";

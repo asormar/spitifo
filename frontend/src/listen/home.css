@@ -3,7 +3,7 @@
 
    El buscador grande, las secciones del inicio, los resultados agrupados y las
    paginas (Ver todo, Explorar, ficha de album/artista/lista). Las filas, el
-   menu y el aviso son de listen.css. Se carga con el chunk de Escuchar. El
+   menu y el aviso son de listen.css. Se carga con los chunks de Inicio y Tu biblioteca. El
    telefono es la base; desde 960 px el inicio pasa a dos columnas. Solo se
    animan transform y opacity.
    ------------------------------------------------------------------------- */
@@ -104,7 +104,7 @@
   color: var(--dim);
 }
 
-/* El aro lo dibuja el contenedor, como en Descargar. */
+/* El aro lo dibuja el contenedor, como en Buscar. */
 .hsearch__box:focus-within {
   box-shadow: 0 0 0 3px var(--acc), var(--shadow);
 }

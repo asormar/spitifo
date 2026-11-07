@@ -25,8 +25,8 @@ const DATA_SOURCES = [
   ["ListenBrainz", "Los artistas similares que se recomiendan."],
 ];
 
-/* Ajustes es una pantalla del shell, no un modal: se abre desde el riel o la
-   cabecera y el boton atras del telefono la cierra (App escucha popstate). */
+/* Ajustes es una pantalla del shell, no un modal: se abre desde el menu lateral o la
+   cabecera de Inicio y el boton atras del telefono la cierra (App escucha popstate). */
 export default function SettingsView({ active, focus, onClose, onChanged, phoneNav, onPhoneNav }) {
   const storageRef = useRef(null);
   const storageHeadRef = useRef(null);

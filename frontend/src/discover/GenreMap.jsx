@@ -53,7 +53,7 @@ function Icon({ name, size = 18, className }) {
    - `highlight`: Set de indices de genero a resaltar con un anillo ("Tus
      generos"). `focus` los marca con un anillo grueso (la fila elegida de "Para
      ti") y `preview` con uno suave (la fila bajo el puntero).
-   - `onSearchGenre(nombre)`: lleva el genero a Descargar.
+   - `onSearchGenre(nombre)`: lleva el genero a Buscar.
    - `onPlaySample(nombre)`: hace sonar una muestra; devuelve una promesa con
      cuantas pistas puso en la cola (0 = no habia previews).
    - `panel(ctx)`: pinta el panel "Para ti" dentro del mapa. Recibe el tamano

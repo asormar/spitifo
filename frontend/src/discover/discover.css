@@ -49,7 +49,7 @@ body.has-mini .gmap {
   width: 100%;
   height: 100%;
   cursor: grab;
-  /* El dedo mueve el mapa, no la pagina; el swipe entre modos no nace aca
+  /* El dedo mueve el mapa, no la pagina; el swipe entre pestanas no nace aca
      (data-no-swipe). */
   touch-action: none;
   user-select: none;

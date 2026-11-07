@@ -1,5 +1,5 @@
 /* Pedido de busqueda desde otra pantalla (el mapa de generos de Descubrir).
-   Descargar vive montado aunque no se vea, o todavia no se montó: un valor a
+   Buscar vive montado aunque no se vea, o todavia no se montó: un valor a
    nivel de modulo sobrevive a las dos situaciones. Quien pide lo deja aca y
    DownloadView lo consume al montarse o en cuanto se avisa. */
 

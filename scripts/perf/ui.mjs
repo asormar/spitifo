@@ -227,11 +227,7 @@ function pageKit() {
   };
   k.navKind = () => {
     const nav = k.nav();
-    return nav.classList.contains("rail") || nav.classList.contains("leftnav")
-      ? "leftnav"
-      : nav.classList.contains("tabbar")
-        ? "tabbar"
-        : "dots";
+    return nav.classList.contains("leftnav") ? "leftnav" : nav.classList.contains("tabbar") ? "tabbar" : "dots";
   };
 
   // Each mode's "first content rendered". `base` (Descubrir): the draw count

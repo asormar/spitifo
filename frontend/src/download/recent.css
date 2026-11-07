@@ -1,12 +1,12 @@
 /* ---------------------------------------------------------------------------
    DESCARGADO HACE POCO
-   Las filas son las de Escuchar (.srow, .art, .lpanel de listen.css); aqui solo
+   Las filas son las de la biblioteca (.srow, .art, .lpanel de listen.css); aqui solo
    el marco, la cabecera y los dos accesos a la biblioteca. Solo se animan
    transform y opacity; prefers-reduced-motion lo recorta motion.css.
    ------------------------------------------------------------------------- */
 
 .recent {
-  /* Mismo alto que las filas de Escuchar (.listen lo define para su pantalla). */
+  /* Mismo alto que las filas de la biblioteca (.listen lo define para su pantalla). */
   --row-h: 56px;
   max-width: 860px;
   margin: 28px auto 0;

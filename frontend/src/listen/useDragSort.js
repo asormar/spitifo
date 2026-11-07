@@ -15,7 +15,7 @@ import { ROW_H } from "./VirtualList.jsx";
    movio algo. Mientras se arrastra, los datos reales no cambian: cancelar es
    soltar y ya.
 
-   Dentro de Escuchar la pagina es quien scrollea; en "Ahora suena" lo hace su
+   Dentro de la biblioteca la pagina es quien scrollea; en "Ahora suena" lo hace su
    propio contenedor, que llega como `scroller` (una ref). Todo lo que mira el
    scroll (el arrastre y su desplazamiento automatico) pasa por `scrollEl`.
    `watch` es lo que cambia cuando el orden cambia (el arreglo de datos): con

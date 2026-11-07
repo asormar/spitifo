@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
-   8. ESCUCHAR: filas, menu y aviso
+   8. BIBLIOTECA: filas, menu y aviso
 
-   Lo comun de Escuchar: la fila de cancion, su menu, la cola y el aviso. El
+   Lo comun de la biblioteca: la fila de cancion, su menu, la cola y el aviso. El
    inicio, las tarjetas y las paginas estan en home.css. Solo se animan
    transform y opacity.
    ------------------------------------------------------------------------- */
@@ -217,7 +217,7 @@
 /* Portada generada (receta Giro), para .cv (home.css) y .art (filas). El JSX
    pone --c (color de genero) y una de las clases cv-p0..3 (trama); --s es el
    lado del .cv. En oscuro el fondo es el color tal cual y la letra, tinta. Vive
-   aqui, en la hoja eager, porque las filas de Descargar tambien la usan. */
+   aqui, en la hoja eager, porque las filas de Buscar tambien la usan. */
 .cv,
 .art {
   position: relative;

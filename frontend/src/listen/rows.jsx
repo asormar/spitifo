@@ -65,7 +65,7 @@ const SONG_ITEMS = [
   ["list", "Añadir a una lista…"],
 ];
 
-/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). `rank`
+/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
    pone el numero de puesto delante (los rankings) y `sub` cambia la segunda
    linea (por defecto artista y album). */
 export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub }) {

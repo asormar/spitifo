@@ -8,7 +8,7 @@
 
 .np {
   /* Alto de fila de la cola: DEBE coincidir con ROW_H de VirtualList.jsx (en
-     Escuchar lo define .listen). */
+     las pantallas de la biblioteca lo definen en .listen). */
   --row-h: 56px;
   --ink: #fff;
   --on: #11111c;
@@ -69,7 +69,7 @@
   touch-action: none;
 }
 
-/* El boton de listas y "Ver en Escuchar" comparten la tercera columna. */
+/* El boton de listas y "Ver en tu biblioteca" comparten la tercera columna. */
 .np__tools {
   display: flex;
   align-items: center;

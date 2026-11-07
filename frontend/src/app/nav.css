@@ -52,7 +52,7 @@
    mascara el borde sube por toda la pantalla, sin arista. 550 ms con
    ease-in-out simetrica: arranca y frena despacio. Sirve igual de claro a oscuro
    que al reves, porque siempre es la foto "nueva" la que se descubre. */
-/* Solo cuando la transicion la abrio el tema (data-vt): un cambio de modo no
+/* Solo cuando la transicion la abrio el tema (data-vt): un cambio de pestana no
    debe recibir la cortina. */
 html[data-vt="theme"]::view-transition-old(root),
 html[data-vt="theme"]::view-transition-new(root) {
