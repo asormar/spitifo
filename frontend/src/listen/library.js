@@ -112,6 +112,10 @@ export function groupAlbums(entries) {
   );
 }
 
+/* La imagen de una fila: la misma regla que `toTrack`, o null si el archivo no
+   tiene miniatura (el audio casi nunca la tiene; los videos si). */
+export const rowArt = (entry, keyUrl) => (entry.thumbKey ? keyUrl(entry.thumbKey) : null);
+
 /* `keyUrl` se recibe para no fijar aqui el prefijo de la API: el motor solo
    necesita una URL de audio ya resuelta. La portada es el .jpg que el backend
    deja junto a la pista (`thumb_key`) y se pide por el mismo endpoint; sin
@@ -124,7 +128,7 @@ export function toTrack(entry, keyUrl) {
     title: entry.title,
     meta,
     duration: entry.duration,
-    artwork: entry.thumbKey ? keyUrl(entry.thumbKey) : null,
+    artwork: rowArt(entry, keyUrl),
     kind: "library",
     label: `${entry.title}, ${entry.artist}`,
   };

@@ -13,6 +13,7 @@ import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { normalizeLibrary, toQueue, toTrack } from "./library.js";
 import { buildIndex } from "./home.js";
+import { mixEntries } from "./mixes.js";
 import { history, useHistory } from "./history.js";
 import { playlists, usePlaylists } from "./playlists.js";
 import { useNotice } from "./Notice.jsx";
@@ -181,6 +182,22 @@ export default function ListenProvider({ files, nav, children }) {
       engine.play(queue[i], { queue, index: i, restart: true });
     };
 
+    /* La Mezcla de Inicio: una cola barajada y sin fin con las canciones de
+       esa mezcla. La cola es una foto: no se vacia a medida que se oyen. */
+    const playMix = (key) => {
+      const queue = toQueue(mixEntries(key, model.entries, history.getState()), keyUrl);
+      if (!queue.length) return;
+      engine.setShuffle(true);
+      const i = Math.floor(Math.random() * queue.length);
+      engine.play(queue[i], {
+        queue,
+        index: i,
+        restart: true,
+        source: `mix:${key}`,
+        endless: true,
+      });
+    };
+
     /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
        donde se quedo. */
     const resume = (item, items) => {
@@ -200,6 +217,7 @@ export default function ListenProvider({ files, nav, children }) {
       play,
       tap,
       playGroup,
+      playMix,
       resume,
       open: navOpen,
       back: navBack,

@@ -556,3 +556,128 @@ describe("repeat", () => {
     expect(engine.getState().repeat).toBe("off");
   });
 });
+
+describe("endless and source", () => {
+  const mix = { source: "mix:top", endless: true };
+
+  it("wraps with repeat off and keeps the source", () => {
+    const { engine, audio } = setup();
+    engine.play(B, { queue: [A, B], index: 1, ...mix });
+    audio().dispatchEvent(new Event("ended"));
+    const s = engine.getState();
+    expect(s.track).toBe(A);
+    expect(s.index).toBe(0);
+    expect(s.repeat).toBe("off");
+    expect(s.source).toBe("mix:top");
+    expect(s.endless).toBe(true);
+  });
+
+  it("reshuffles every lap and never opens with the track just heard", () => {
+    const { engine } = setup({ random: () => 0 });
+    engine.setShuffle(true);
+    engine.play(A, { queue: [A, B, C, D], ...mix });
+    for (let lap = 0; lap < 6; lap += 1) {
+      const last = engine.getState().queue.at(-1);
+      engine.playAt(3);
+      expect(engine.getState().track).toBe(last);
+      expect(engine.next()).toBe(true);
+      const s = engine.getState();
+      expect(s.index).toBe(0);
+      expect(s.track).not.toBe(last);
+      expect(s.queue.at(-1)).toBe(last);
+      expect(new Set(s.queue.map((t) => t.key))).toEqual(
+        new Set(["a", "b", "c", "d"])
+      );
+      expect(s.source).toBe("mix:top");
+    }
+  });
+
+  it("changes the order of the next lap when the random source changes", () => {
+    const values = [0.9, 0.9, 0.9, 0, 0, 0, 0.1, 0.1];
+    let n = 0;
+    const { engine } = setup({ random: () => values[n++ % values.length] });
+    engine.setShuffle(true);
+    engine.play(A, { queue: [A, B, C, D], ...mix });
+    const first = engine.getState().queue.map((t) => t.key);
+    engine.playAt(3);
+    engine.next();
+    expect(engine.getState().queue.map((t) => t.key)).not.toEqual(first);
+  });
+
+  it("restarts a one-track queue", () => {
+    const { engine, audio } = setup();
+    engine.setShuffle(true);
+    engine.play(A, { queue: [A], ...mix });
+    const sets = audio().srcSets;
+    audio().dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(A);
+    expect(audio().srcSets).toBe(sets + 1);
+  });
+
+  it("with shuffle off loops in order", () => {
+    const { engine } = setup();
+    engine.play(C, { queue: [A, B, C], index: 2, ...mix });
+    engine.next();
+    expect(engine.getState().queue.map((t) => t.key)).toEqual(["a", "b", "c"]);
+    expect(engine.getState().track).toBe(A);
+  });
+
+  it("keeps the source across next, prev, playAt, playNext and enqueue", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B, C], ...mix });
+    engine.next();
+    expect(engine.getState().source).toBe("mix:top");
+    engine.seek(0);
+    engine.prev();
+    engine.playAt(2);
+    engine.playNext(D);
+    engine.enqueue(PREVIEW);
+    const s = engine.getState();
+    expect(s.source).toBe("mix:top");
+    expect(s.endless).toBe(true);
+  });
+
+  it("a plain play clears source and endless, and resuming keeps them", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B], ...mix });
+    engine.play(A);
+    expect(engine.getState().source).toBe("mix:top");
+    engine.play(B);
+    expect(engine.getState().source).toBeNull();
+    expect(engine.getState().endless).toBe(false);
+  });
+
+  it("without endless the list ends as before", () => {
+    const { engine, audio } = setup();
+    engine.play(B, { queue: [A, B], index: 1, source: "mix:all" });
+    audio().dispatchEvent(new Event("ended"));
+    const s = engine.getState();
+    expect(s.track).toBe(B);
+    expect(s.playing).toBe(false);
+    expect(s.source).toBe("mix:all");
+  });
+
+  it("repeat one still wins over endless", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { queue: [A, B], ...mix });
+    engine.setRepeat("one");
+    const sets = audio().srcSets;
+    audio().dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(A);
+    expect(audio().srcSets).toBe(sets);
+  });
+
+  it("does not prefetch the wrap candidate while shuffled, and does in order", () => {
+    const shuffled = setup({ random: () => 0 });
+    shuffled.engine.setShuffle(true);
+    shuffled.engine.play(A, { queue: [A, B], ...mix });
+    shuffled.engine.playAt(1);
+    const before = shuffled.fetches.length;
+    shuffled.audio().dispatchEvent(new Event("playing"));
+    expect(shuffled.fetches.length).toBe(before);
+
+    const plain = setup();
+    plain.engine.play(B, { queue: [A, B], index: 1, ...mix });
+    expect(plain.fetches.map((f) => JSON.parse(f.init.body).key)).toEqual(["a"]);
+  });
+});

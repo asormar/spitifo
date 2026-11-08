@@ -25,8 +25,10 @@ const DEFAULT_VOLUME = 0.8;
    - key identifica la pista en la cola (es lo que mueve prev/next).
    - kind es "library" o "preview"; solo las de biblioteca se prefetchean.
    - label es el nombre accesible que usan los botones ("Reproducir X").
-   `play(track, { queue, index, restart, at })`: `at` son los segundos desde los
-   que se retoma ("Seguir escuchando"). */
+   `play(track, { queue, index, restart, at, source, endless })`: `at` son los
+   segundos desde los que se retoma ("Seguir escuchando"); `source` etiqueta
+   quien pidio la reproduccion (la Mezcla de Inicio) y `endless` hace que la
+   cola de la vuelta sola, barajada de nuevo en cada vuelta. */
 export function createEngine({
   createAudio = () => new Audio(),
   fetchFn = (...a) => fetch(...a),
@@ -46,6 +48,10 @@ export function createEngine({
     muted: false,
     shuffle: false,
     repeat: "off",
+    /* Quien lanzo la cola ("mix:top") y si da la vuelta sin repeat. Solo los
+       fija play(); next/prev/playAt/enqueue los conservan. */
+    source: null,
+    endless: false,
   };
 
   const listeners = new Set();
@@ -61,6 +67,9 @@ export function createEngine({
   let original = [];
 
   const REPEAT_MODES = ["off", "all", "one"];
+
+  /* Al final de la cola se da la vuelta con repeat all o con una cola sin fin. */
+  const wraps = () => state.repeat === "all" || state.endless;
 
   /* Fisher-Yates sobre una copia. `random` se inyecta para que los tests
      puedan fijar el orden sin depender del azar del navegador. */
@@ -137,8 +146,9 @@ export function createEngine({
      el guardia evita repetir la misma clave dos veces seguidas. */
   const prefetchNext = () => {
     let candidate = state.queue[state.index + 1];
-    /* Con repeat all la ultima pista tendra continuacion: la primera. */
-    if (!candidate && state.repeat === "all" && state.queue.length) {
+    /* Con repeat all (o sin fin) la ultima pista tendra continuacion: la
+       primera. Barajado no se sabe cual sera: la vuelta se baraja al llegar. */
+    if (!candidate && wraps() && !state.shuffle && state.queue.length) {
       candidate = state.queue[0];
     }
     if (
@@ -207,7 +217,7 @@ export function createEngine({
 
   /* Cargar una pista SIEMPRE pasa por aqui: es el unico sitio que escribe
      `src`, asi que la cola y el indice no pueden quedar desfasados del audio. */
-  const load = (track, queue, index, reason = "change", at = 0) => {
+  const load = (track, queue, index, reason = "change", at = 0, meta = {}) => {
     const q = queue && queue.length ? queue : [track];
     const i = index >= 0 && index < q.length ? index : 0;
     const a = ensureAudio();
@@ -227,6 +237,7 @@ export function createEngine({
       failed: false,
       buffering: true,
       playing: false,
+      ...meta,
     });
     a.src = track.src;
     /* Retomar: con el src recien puesto el navegador guarda la posicion y la
@@ -265,7 +276,10 @@ export function createEngine({
     const at = Number(opts.at);
     const from =
       at > 0 && (!track.duration || at < track.duration - 1) ? at : 0;
-    load(track, queue, index, "change", from);
+    load(track, queue, index, "change", from, {
+      source: opts.source || null,
+      endless: Boolean(opts.endless),
+    });
   };
 
   const resume = () => {
@@ -305,10 +319,19 @@ export function createEngine({
       load(state.queue[state.index + 1], state.queue, state.index + 1, reason);
       return true;
     }
-    /* repeat all da la vuelta tambien con una cola de una sola pista; repeat
-       one no interviene aqui: el boton manual siempre avanza. */
-    if (state.repeat === "all" && state.queue.length) {
-      load(state.queue[0], state.queue, 0, reason);
+    /* repeat all (o sin fin) da la vuelta tambien con una cola de una sola
+       pista; repeat one no interviene aqui: el boton manual siempre avanza. */
+    if (wraps() && state.queue.length) {
+      if (!state.shuffle) {
+        load(state.queue[0], state.queue, 0, reason);
+        return true;
+      }
+      /* Barajado, cada vuelta es un orden nuevo y la ultima pista oida queda
+         al final: la vuelta nunca abre repitiendo lo que acaba de sonar. */
+      const last = state.queue[state.index] || state.track;
+      const rest = shuffled(state.queue.filter((t) => t.key !== last.key));
+      if (rest.length) load(rest[0], [...rest, last], 0, reason);
+      else load(last, [last], 0, reason);
       return true;
     }
     return false;
