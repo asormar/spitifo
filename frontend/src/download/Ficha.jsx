@@ -21,6 +21,13 @@ import "./ficha.css";
    reabrir no pierde nada y la fila de debajo se entera sola.
    ------------------------------------------------------------------------- */
 
+/* Pares termino/valor; las filas sin valor no se pintan. [clave, valor, clase]. */
+const Facts = ({ rows }) => (
+  <dl className="facts">
+    {rows.map(([k, v, cls]) => v && [<dt key={k}>{k}</dt>, <dd key={k + 1} className={cls}>{v}</dd>])}
+  </dl>
+);
+
 /* «¿Es esta la cancion?»: lee las etiquetas del audio sin bajarlo. */
 function Verify({ t, query }) {
   const rec = useVerdict(verdictKey(t, query));
@@ -53,37 +60,19 @@ function Verify({ t, query }) {
         <VerdictPill v={verdictOf(t, rec)} />
         {rec.score != null && <span className="num">{Math.round(rec.score * 100)} % de coincidencia</span>}
       </div>
-      <dl className="facts">
-        {other && (
-          <>
-            <dt>Artista</dt>
-            <dd>{x.real_artist}</dd>
-          </>
-        )}
-        {x.filename && (
-          <>
-            <dt>Archivo</dt>
-            <dd className="mono">{x.filename}</dd>
-          </>
-        )}
-        {audio && (
-          <>
-            <dt>Audio</dt>
-            <dd className="num">{audio}</dd>
-          </>
-        )}
-        {x.uploader && (
-          <>
-            <dt>Subido por</dt>
-            <dd>{x.uploader}</dd>
-          </>
-        )}
-      </dl>
+      <Facts
+        rows={[
+          ["Artista", other && x.real_artist],
+          ["Archivo", x.filename, "mono"],
+          ["Audio", audio, "num"],
+          ["Subido por", x.uploader],
+        ]}
+      />
       {x.title_source === "item-title" && (
         <p className="note">El archivo no trae etiquetas: el título viene de la ficha del item.</p>
       )}
       <ExtLink className="fl__a" url={x.item_url}>
-        ver en Internet Archive ↗
+        ver en Internet Archive <Ico n="ext" size={12} />
       </ExtLink>
     </section>
   );
@@ -118,43 +107,29 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
           <div className="vcard">
             <VerdictPill v={v} />
             <p>{vText(v, { untested: !done })}</p>
-            <dl className="facts">
-              <dt>Buscaste</dt>
-              <dd>«{query}»</dd>
-              {done?.real && (
-                <>
-                  <dt>{done.by === "video" ? "Título del vídeo" : "En el archivo"}</dt>
-                  <dd>«{done.real}»</dd>
-                </>
-              )}
-            </dl>
+            <Facts
+              rows={[
+                ["Buscaste", `«${query}»`],
+                [done?.by === "video" ? "Título del vídeo" : "En el archivo", done?.real && `«${done.real}»`],
+              ]}
+            />
           </div>
         )}
-        <dl className="facts">
-          <dt>Ficha</dt>
-          <dd>{prov.ficha}</dd>
-          <dt>Archivo</dt>
-          <dd>{st === "full" ? prov.archivo : "Sin archivo completo"}</dd>
-          {audio && (
-            <>
-              <dt>Audio</dt>
-              <dd className="num">{audio}</dd>
-            </>
-          )}
-          {t.album && (
-            <>
-              <dt>Álbum</dt>
-              <dd>{t.album}</dd>
-            </>
-          )}
-        </dl>
+        <Facts
+          rows={[
+            ["Ficha", prov.ficha],
+            ["Archivo", st === "full" ? prov.archivo : "Sin archivo completo"],
+            ["Audio", audio, "num"],
+            ["Álbum", t.album],
+          ]}
+        />
         {t.source === "archive" && <Verify t={t} query={query} />}
         <p className="fl">
           <ExtLink className="fl__a" url={t.extra?.webpage_url}>
-            vídeo ↗
+            vídeo <Ico n="ext" size={12} />
           </ExtLink>
           <ExtLink className="fl__a" url={t.extra?.item_url}>
-            procedencia ↗
+            procedencia <Ico n="ext" size={12} />
           </ExtLink>
         </p>
         <div className="fa">

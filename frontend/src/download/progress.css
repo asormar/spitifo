@@ -95,8 +95,13 @@ body.has-mini .progstack {
   color: var(--acc);
 }
 
-/* El giro del spinner se queda en .spin; el icono final (check o aviso) entra
+/* El giro del spinner es .sp; el icono final (check o aviso) entra
    con rebote, que es el unico momento de celebracion de la app. */
+.prog__ico .sp {
+  width: 19px;
+  height: 19px;
+}
+
 .prog.is-done .prog__ico svg,
 .prog.is-failed .prog__ico svg {
   --pop: 0.5;
@@ -109,6 +114,17 @@ body.has-mini .progstack {
 
 .prog.is-failed .prog__ico {
   color: var(--bad-t);
+}
+
+/* Rueda de espera: el toast de progreso y los botones de Buscar. */
+.sp {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--s3);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
 }
 
 .prog__title {

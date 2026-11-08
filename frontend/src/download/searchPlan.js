@@ -1,3 +1,4 @@
+import { rowKey } from "../shared/api.js";
 import { fmtSize } from "../shared/format.js";
 import { MODE_IDS, isYouTubeUrl, trackState } from "./constants.js";
 
@@ -14,6 +15,16 @@ const DEFAULT_MODE = "matched";
 const LIBRARY_MIN = 2;
 
 export const searchSig = (mode, text) => `${mode}|${text}`;
+
+/* Un resultado una sola vez por fuente+id: yt-dlp a veces devuelve el mismo
+   video dos veces y la fila repetida compartiria estado y la clave de React. */
+export function uniqueResults(list) {
+  const seen = new Set();
+  return (list || []).filter((t) => {
+    const k = rowKey(t);
+    return !seen.has(k) && seen.add(k);
+  });
+}
 
 /* Lo que hace Enter: el texto recortado y el modo con que se busca. Un enlace
    de YouTube fuerza ese modo (es el unico que lo entiende). null = no hay nada

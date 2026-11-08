@@ -12,6 +12,7 @@ import {
   searchSig,
   shouldResync,
   summarize,
+  uniqueResults,
   urlFor,
 } from "./searchPlan.js";
 
@@ -246,5 +247,18 @@ describe("dlState", () => {
     expect(dlText({ id: "down", pct: 62 })).toBe("Descargando, 62 %");
     expect(dlText({ id: "proc", pct: 100 })).toBe("Procesando el archivo…");
     expect(dlText({ id: "done", pct: 100 })).toBe("Descargado");
+  });
+});
+
+describe("uniqueResults", () => {
+  it("quita el resultado repetido y conserva el orden", () => {
+    const a = full("a");
+    const b = { source: "ytdlp", source_id: "a" };
+    const out = uniqueResults([a, b, { ...a }, full("c")]);
+    expect(out).toEqual([a, b, full("c")]);
+  });
+
+  it("acepta una lista ausente", () => {
+    expect(uniqueResults(undefined)).toEqual([]);
   });
 });

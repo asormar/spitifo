@@ -4,6 +4,7 @@ import { useSlidingPill } from "../shared/ui.jsx";
 import { useTheme } from "../shared/theme.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
+import "./storage.css";
 
 const THEME_OPTIONS = [
   { id: "light", label: "Claro" },

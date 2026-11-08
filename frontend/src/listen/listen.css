@@ -60,8 +60,41 @@
   transform: scale(0.92);
 }
 
-/* La ruta que muestra el boton de almacenamiento (el boton es .panel__store,
-   de storage.css). En movil solo queda el icono (motion.css la oculta). */
+/* El boton de almacenamiento de la biblioteca y la ruta que muestra. En movil
+   solo queda el icono (motion.css oculta la ruta). */
+.panel__store {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--mut);
+  font: inherit;
+  cursor: pointer;
+  transition: var(--tr-press), background-color var(--t-press) var(--ease);
+}
+
+.panel__store:hover {
+  background: var(--hover);
+}
+
+.panel__store:active {
+  transform: scale(0.97);
+}
+
+.panel__store svg {
+  flex: none;
+  color: var(--acc);
+}
+
+.panel__store .panel__path {
+  color: inherit;
+}
+
 .panel__path {
   min-width: 0;
   max-width: 46ch;

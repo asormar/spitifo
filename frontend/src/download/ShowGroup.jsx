@@ -90,7 +90,7 @@ export default memo(function ShowGroup({ t, i, query, onDl, busyIds, downloadedI
               {SOURCE_CODE[t.source] || prov.ficha}
             </span>
             <ExtLink className="ext" url={t.extra?.item_url}>
-              procedencia ↗
+              procedencia <Ico n="ext" size={12} />
             </ExtLink>
           </span>
         </span>

@@ -158,6 +158,12 @@
   font-weight: 700;
 }
 
+.fl__a svg,
+.ext svg {
+  margin-left: 3px;
+  vertical-align: -1px;
+}
+
 .ver .fl__a {
   display: inline-block;
   margin-top: 10px;

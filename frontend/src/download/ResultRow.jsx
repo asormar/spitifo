@@ -5,6 +5,7 @@ import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { fmtSize, fmtTime } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
 import { NODL_TITLE, SOURCE_CODE, provenance, trackState } from "./constants.js";
+import { thumbUrl } from "./artwork.js";
 import DlRing from "./DlRing.jsx";
 import Ico from "./ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
@@ -38,7 +39,7 @@ export function Thumb({ t }) {
     <span className={cx("thumb", video && "thumb--wide")}>
       {t.artwork_url && !broken ? (
         <img
-          src={t.artwork_url}
+          src={thumbUrl(t.artwork_url)}
           alt=""
           loading="lazy"
           decoding="async"

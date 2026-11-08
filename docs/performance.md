@@ -373,15 +373,16 @@ The unified Buscar (one search field, library hits as you type, result rows
 that become a table on a desktop, truthful verdict pills, the download ring, the
 result ficha and the resolution menu as sheets on the navigation stack) replaces
 the old cards, controls, status chip, per-card preview player and verify panel.
-Net of the deletions it adds 2,213 B of script and 820 B of style; only the
-script needed a new limit. Buscar's stylesheets also left the render-blocking
-first stylesheet: it went from 59,397 B to 43,372 B, and the lazy Buscar chunk
-now carries 18,949 B of style and 36,226 B of script:
+Net of the deletions (and of its size, performance and motion review) it adds
+1,643 B of script and 1,014 B of style; only the script needed a new limit.
+Buscar's stylesheets and the storage section's (now loaded with Ajustes) also
+left the render-blocking first stylesheet: it went from 59,397 B to 40,678 B,
+and the lazy Buscar chunk now carries 18,957 B of style and 34,766 B of script:
 
 | Bundle | Before Buscar | After | Old limit | New limit |
 | --- | --- | --- | --- | --- |
-| JavaScript | 375,032 B | 377,245 B (+2,213) | 376,500 B | 377,700 B |
-| CSS | 98,221 B | 99,041 B (+820) | 103,000 B | 103,000 B |
+| JavaScript | 375,032 B | 376,675 B (+1,643) | 376,500 B | 377,700 B |
+| CSS | 98,221 B | 99,235 B (+1,014) | 103,000 B | 103,000 B |
 
 ### Windows installer: 22,707,225 B
 

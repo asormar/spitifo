@@ -10,7 +10,6 @@ import "./player/player.css";
 import "./player/video.css";
 import "./shared/controls.css";
 import "./shared/motion.css";
-import "./settings/storage.css";
 /* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
 import "./app/shell.css";
 

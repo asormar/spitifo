@@ -1,6 +1,7 @@
 /* Iconos de trazo de Buscar (24 px, linea redondeada), los del prototipo. El
-   pausa va relleno. Los de Phosphor que usa el toast de progreso viven en
-   icons.jsx, que va en el arranque. */
+   pausa va relleno. Tambien los usa el toast de progreso, que va en el arranque.
+   `ext` sustituye a la flecha de texto: esa no esta en la fuente y obligaba a
+   buscar otra en el sistema al abrir la ficha. */
 
 const D = {
   dl: "M12 5v11M7.5 11.5l4.5 4.5 4.5-4.5",
@@ -13,6 +14,7 @@ const D = {
   spark: "M12 3c.6 4.5 2.5 6.4 7 7-4.5.6-6.4 2.5-7 7-.6-4.5-2.5-6.4-7-7 4.5-.6 6.4-2.5 7-7z",
   retry: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5",
   caret: "m9 6 6 6-6 6",
+  ext: "M7 17 17 7M9 7h8v8",
 };
 
 export default function Ico({ n, size = 20 }) {

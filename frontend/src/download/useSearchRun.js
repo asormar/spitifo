@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg } from "../shared/api.js";
 import { buildSearchParams } from "./api.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
-import { parseUrl, planSubmit, searchSig, shouldResync, urlFor } from "./searchPlan.js";
+import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
 
 /* ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ export default function useSearchRun() {
       const d = await r.json();
       if (!r.ok) throw new Error(errMsg(d, "error de búsqueda"));
       if (seq !== searchSeq.current) return;
-      setResults(d.results || []);
+      setResults(uniqueResults(d.results));
       setQuery(t);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;

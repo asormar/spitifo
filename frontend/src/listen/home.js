@@ -84,6 +84,26 @@ function pickBest(query, songs, artists, albums) {
   return null;
 }
 
+/* Las canciones que casan con todas las palabras, de mas a menos parecidas al
+   titulo y, a igualdad, de mas a menos reproducidas. La relevancia se calcula
+   una vez por cancion (no por comparacion): con la biblioteca grande es lo que
+   mas pesa al escribir. */
+function rankSongs(index, terms, plays) {
+  const q = terms.join(" ");
+  return index.entries
+    .filter((e) => hasAll(e.search, terms))
+    .map((e) => [relevance(e.title, q), e])
+    .sort((a, b) => b[0] - a[0] || (plays[b[1].key] || 0) - (plays[a[1].key] || 0))
+    .map((p) => p[1]);
+}
+
+/* Solo las canciones de una consulta: lo que necesita Buscar, sin agrupar
+   artistas, albumes ni listas. */
+export function searchSongs(index, query, plays = {}) {
+  const terms = queryTerms(query);
+  return terms.length ? rankSongs(index, terms, plays) : [];
+}
+
 /* Resultados agrupados de una consulta sobre toda la biblioteca. `plays`
    (clave -> reproducciones) desempata las canciones; `lists` son las listas de
    reproduccion. Una consulta vacia no devuelve nada. */
@@ -93,13 +113,7 @@ export function searchLibrary(index, query, { lists = [], plays = {} } = {}) {
   if (!terms.length) return empty;
   const q = terms.join(" ");
 
-  const songs = index.entries
-    .filter((e) => hasAll(e.search, terms))
-    .sort(
-      (a, b) =>
-        relevance(b.title, q) - relevance(a.title, q) ||
-        (plays[b.key] || 0) - (plays[a.key] || 0)
-    );
+  const songs = rankSongs(index, terms, plays);
   const artists = index.artists.filter((a) => hasAll(a.search, terms));
   const albums = index.albums.filter((a) => hasAll(a.search, terms));
   const found = lists.filter((p) => hasAll(fold(p.name), terms));

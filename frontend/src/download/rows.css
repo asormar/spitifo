@@ -59,9 +59,11 @@
   transition: background-color var(--t-quick) ease;
 }
 
-/* Solo los resultados recien llegados entran en cascada (SearchScreen). */
-.rlist[data-in] .res,
-.rlist[data-in] .grp {
+/* Solo los resultados recien llegados entran en cascada (SearchScreen), y solo
+   los nueve primeros: el resto esta fuera de pantalla y animarlo solo promueve
+   capas de mas. */
+.rlist[data-in] .res:nth-child(-n + 9),
+.rlist[data-in] .grp:nth-child(-n + 9) {
   animation: var(--rise-enter);
   animation-delay: calc(min(var(--i, 0), 8) * var(--stagger));
 }
@@ -78,6 +80,11 @@
   color: inherit;
   font: inherit;
   text-align: left;
+  transition: var(--tr-press);
+}
+
+.res__main:active {
+  transform: scale(0.985);
 }
 
 .res__n,
@@ -666,16 +673,6 @@
 
 .rm__msg--err {
   color: var(--bad-t);
-}
-
-.sp {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border: 2.5px solid var(--s3);
-  border-top-color: var(--acc);
-  border-radius: 50%;
-  animation: spin 700ms linear infinite;
 }
 
 /* Escritorio: popover junto al boton, fuera del flujo (portal a <body>). Sin las
