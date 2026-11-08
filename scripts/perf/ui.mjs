@@ -471,8 +471,8 @@ async function pageCloseLibrary() {
   const k = window.__k;
   const root = k.q('[data-screen="home"]:not([hidden])', "the Inicio screen");
   const bar = [...document.querySelectorAll('.topbar [aria-label="Volver"]')].find((b) => b.getClientRects().length > 0);
-  const back = bar || root.querySelector(".lpage .vback");
-  if (!back) throw new Error('missing selector: .topbar [aria-label="Volver"] or [data-screen="home"] .lpage .vback');
+  const back = bar || root.querySelector('.lpage .vback, .lpage [aria-label="Volver"]');
+  if (!back) throw new Error('missing selector: .topbar [aria-label="Volver"] or [data-screen="home"] .lpage [aria-label="Volver"]');
   back.click();
   await k.waitFor(() => root.querySelector(".hfeed"), 'the Inicio feed (.hfeed) after "Volver"');
   await k.frame();

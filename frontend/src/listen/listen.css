@@ -275,8 +275,8 @@
 }
 
 .art {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--r-sm);
   font: 800 16px / 1 var(--font-display);
 }
@@ -289,6 +289,39 @@
 
 .cv.cv--round {
   border-radius: 50%;
+}
+
+/* Portada real encima de la inicial (que queda debajo como fondo y respaldo). */
+.cv__img,
+.art__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* La pista que suena sobre una portada: el ecualizador en una pastilla. */
+.cv__now {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cv__now .eq {
+  width: 12px;
+  height: 12px;
+}
+
+.art .cv__now {
+  left: 4px;
+  bottom: 4px;
+  padding: 3px 4px;
+  border-radius: 6px;
 }
 
 .cv--round > span:first-child {

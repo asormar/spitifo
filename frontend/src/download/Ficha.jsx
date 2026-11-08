@@ -3,7 +3,7 @@ import Sheet from "../shared/Sheet.jsx";
 import { ExtLink } from "../shared/ui.jsx";
 import { provenance, trackState } from "./constants.js";
 import { useDl } from "./DlRing.jsx";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { Thumb, VerdictPill, factsOf } from "./ResultRow.jsx";
 import { dlText, dlWaiting } from "./searchPlan.js";

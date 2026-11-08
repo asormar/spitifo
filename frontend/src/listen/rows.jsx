@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
+import { keyUrl } from "../shared/api.js";
 import { clock } from "../shared/format.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
+import { rowArt } from "./library.js";
 
 /* ---------------------------------------------------------------------------
    FILAS DE ESCUCHAR
@@ -65,11 +67,16 @@ const SONG_ITEMS = [
   ["list", "Añadir a una lista…"],
 ];
 
+/* Miniaturas que dieron error: una fila que se vuelve a montar (lista
+   virtual) no reintenta un 404. */
+const BAD_ART = new Set();
+
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
    pone el numero de puesto delante (los rankings), `sub` cambia la segunda
    linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
-   de la duracion. */
-export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge }) {
+   de la duracion. `table` (escritorio) reparte la fila en celdas: puesto, titulo,
+   album, duracion y menu, alineadas con el encabezado de su tabla. */
+export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge, table }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -78,12 +85,20 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
   const meta = sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
+  const src = rowArt(entry, keyUrl);
+  const img = src && !BAD_ART.has(src);
+  const rankCell = rank != null && (
+    <span className={cx("srow__rank", rank <= 3 && "is-top")} aria-hidden="true">
+      {rank}
+    </span>
+  );
 
   return (
     <div
-      className={cx("srow", isCurrent && "is-current", enter != null && "is-in")}
+      className={cx("srow", table && "srow--t", isCurrent && "is-current", enter != null && "is-in")}
       style={enter != null ? { "--i": enter } : undefined}
     >
+      {table && rankCell}
       <button
         type="button"
         className="srow__main"
@@ -94,13 +109,30 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
         }
         onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget))}
       >
-        {rank != null && (
-          <span className={cx("srow__rank", rank <= 3 && "is-top")} aria-hidden="true">
-            {rank}
-          </span>
-        )}
+        {!table && rankCell}
         <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
-          {isCurrent ? <Bars on={playing} /> : initial(artist)}
+          {isCurrent && !img ? <Bars on={playing} /> : initial(artist)}
+          {img && (
+            <img
+              className="art__img"
+              src={src}
+              alt=""
+              width="48"
+              height="48"
+              loading="lazy"
+              decoding="async"
+              fetchpriority="low"
+              onError={(e) => {
+                BAD_ART.add(src);
+                e.currentTarget.hidden = true;
+              }}
+            />
+          )}
+          {isCurrent && img && (
+            <span className="cv__now">
+              <Bars on={playing} />
+            </span>
+          )}
         </span>
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
@@ -109,10 +141,12 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
             {meta}
           </span>
         </span>
-        {badge}
-        {dur && <span className="srow__d">{dur}</span>}
+        {!table && badge}
+        {!table && dur && <span className="srow__d">{dur}</span>}
       </button>
-      {!video && onMenu && (
+      {table && <span className="srow__c">{album}</span>}
+      {table && <span className="srow__c srow__d">{dur}</span>}
+      {!video && onMenu ? (
         <button
           type="button"
           className="srow__more"
@@ -124,6 +158,8 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
         >
           <Icon name="DotsThree" weight="bold" size={22} />
         </button>
+      ) : (
+        table && <span />
       )}
       {menuOpen && <RowMenu items={SONG_ITEMS} onPick={(kind) => onPick(entry, kind)} />}
     </div>

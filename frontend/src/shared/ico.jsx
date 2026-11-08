@@ -1,5 +1,6 @@
-/* Iconos de trazo de Buscar (24 px, linea redondeada), los del prototipo. El
-   pausa va relleno. Tambien los usa el toast de progreso, que va en el arranque.
+/* Iconos de trazo (24 px, linea redondeada), los del prototipo: Buscar, Inicio y
+   Tu biblioteca. El pausa va relleno. Tambien los usa el toast de progreso, que
+   va en el arranque.
    `ext` sustituye a la flecha de texto: esa no esta en la fuente y obligaba a
    buscar otra en el sistema al abrir la ficha. */
 
@@ -15,6 +16,7 @@ const D = {
   retry: "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5",
   caret: "m9 6 6 6-6 6",
   ext: "M7 17 17 7M9 7h8v8",
+  music: "M9 18V6l10-2v12M4 18a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0M14 16a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0",
 };
 
 export default function Ico({ n, size = 20 }) {

@@ -7,7 +7,7 @@ import { cx } from "../shared/ui.jsx";
 import { NODL_TITLE, SOURCE_CODE, provenance, trackState } from "./constants.js";
 import { thumbUrl } from "./artwork.js";
 import DlRing from "./DlRing.jsx";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { V_LABEL, V_TONE, useVerdict, verdictKey, verdictOf } from "./verdict.js";
 

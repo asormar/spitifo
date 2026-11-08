@@ -71,19 +71,59 @@ export function Mosaic({ tones, className }) {
   );
 }
 
+/* "Ver todo": se ve de 34 px y se toca en 44 (home.css). */
+export const More = ({ onClick, label }) => (
+  <button type="button" className="more" onClick={onClick} aria-label={label}>
+    Ver todo
+  </button>
+);
+
 /* Titulo de seccion con su "Ver todo". `id` enlaza la seccion con su titulo. */
 export function SectionHead({ id, title, onAll, label }) {
   return (
-    <div className="hsec__head">
-      <h2 id={id} className="hsec__h">
+    <div className="shead">
+      <h2 id={id} className="sh2">
         {title}
       </h2>
-      {onAll && (
-        <button type="button" className="hsec__all" onClick={onAll} aria-label={label || `Ver todo: ${title}`}>
-          Ver todo
-          <Icon name="CaretRight" size={14} />
-        </button>
-      )}
+      {onAll && <More onClick={onAll} label={label || `Ver todo: ${title}`} />}
     </div>
   );
 }
+
+/* Una tarjeta es UN boton: portada (o mosaico), titulo y subtitulo. La portada
+   la arma quien llama (con su barra de progreso o su boton de reproducir como
+   hijos). `round` = artista. */
+export function Card({ cover, title, sub, round, current, label, onClick }) {
+  return (
+    <button
+      type="button"
+      className={cx("card", round && "card--art", current && "is-current")}
+      aria-label={label}
+      onClick={onClick}
+    >
+      {cover}
+      <span className="card__t">{title}</span>
+      {sub != null && <span className="card__s">{sub}</span>}
+    </button>
+  );
+}
+
+/* Telefono: carrusel horizontal. Escritorio (`grid`): rejilla de cinco; los
+   artistas, de seis (`wide`). */
+export const Shelf = ({ grid, wide, children }) => (
+  <div className={grid ? cx("grid", wide && "grid--6") : "shelf"}>{children}</div>
+);
+
+/* Progreso de "Seguir escuchando" sobre la portada: solo transform. */
+export const Prog = ({ p }) => (
+  <span className="pbar">
+    <i style={{ transform: `scaleX(${p})` }} />
+  </span>
+);
+
+/* Boton rosa que aparece sobre la portada con el raton (solo escritorio). */
+export const PlayOverlay = () => (
+  <span className="po" aria-hidden="true">
+    <Icon name="Play" weight="fill" size={22} />
+  </span>
+);

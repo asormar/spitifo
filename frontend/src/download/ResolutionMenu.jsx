@@ -6,7 +6,7 @@ import Sheet, { lockScroll } from "../shared/Sheet.jsx";
 import { clamp, cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { fetchFormats, formatsCache } from "./api.js";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 
 /* ---------------------------------------------------------------------------
    RESOLUCIONES DE UN VIDEO DE YOUTUBE
