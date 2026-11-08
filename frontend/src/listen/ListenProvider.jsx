@@ -17,8 +17,10 @@ import { SongRow } from "./rows.jsx";
 
    Inicio, Tu biblioteca y Buscar pintan las mismas filas y comparten el menu
    de fila, la hoja "Añadir a una lista", el aviso y las funciones de
-   reproducir. Viven aqui, montadas UNA vez alrededor de las pantallas: una
-   pantalla oculta (display:none) ya no se lleva su aviso ni su hoja.
+   reproducir. Viven aqui, montadas UNA vez alrededor de las pantallas y de
+   "Ahora suena" (que lee el mapa de la biblioteca para los mosaicos de su hoja
+   de listas): una pantalla oculta (display:none) ya no se lleva su aviso ni su
+   hoja. El proveedor no pinta DOM propio.
 
    `useListen()` devuelve:
      ctx    lo que reciben las vistas (openMenu, play, open, goTo, show, song...).
@@ -72,7 +74,9 @@ export default function ListenProvider({ files, nav, storage, children }) {
   }, [show]);
 
   const value = useMemo(() => {
-    const play = (entry, el, list) => {
+    /* `from` es el origen ("album:X", "library:", ...): lo que dice "Sonando
+       desde" en Ahora suena. Una cadena estable, no un objeto: SongRow es memo. */
+    const play = (entry, el, list, from) => {
       if (entry.kind === "video") {
         /* Un video no entra en la cola: se abre en el VideoHost. */
         openVideo(
@@ -85,24 +89,25 @@ export default function ListenProvider({ files, nav, storage, children }) {
       engine.play(toTrack(entry, keyUrl), {
         queue,
         index: queue.findIndex((t) => t.key === entry.key),
+        source: from,
       });
     };
 
     /* Pulsar la que suena la pausa o la reanuda; otra, la pone. */
-    const tap = (entry, el, list) => {
+    const tap = (entry, el, list, from) => {
       if (engine.getState().track?.key === entry.key) engine.toggle();
-      else play(entry, el, list);
+      else play(entry, el, list, from);
     };
 
     /* "Reproducir" / "Aleatorio" de un grupo. Con aleatorio se empieza por una
        al azar, no siempre por la primera; restart: aunque ya suene esa pista,
        el grupo nuevo sustituye a la cola. */
-    const playGroup = (group, shuffle = false) => {
+    const playGroup = (group, shuffle = false, from) => {
       const queue = toQueue(group, keyUrl);
       if (!queue.length) return;
       if (shuffle) engine.setShuffle(true);
       const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
-      engine.play(queue[i], { queue, index: i, restart: true });
+      engine.play(queue[i], { queue, index: i, restart: true, source: from });
     };
 
     /* La Mezcla de Inicio: una cola barajada y sin fin con las canciones de
@@ -123,13 +128,13 @@ export default function ListenProvider({ files, nav, storage, children }) {
 
     /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
        donde se quedo. */
-    const resume = (item, items) => {
+    const resume = (item, items, from) => {
       const queue = toQueue(
         items.map((i) => i.entry),
         keyUrl
       );
       const at = queue.findIndex((t) => t.key === item.entry.key);
-      engine.play(queue[at], { queue, index: at, at: item.at });
+      engine.play(queue[at], { queue, index: at, at: item.at, source: from });
     };
 
     /* Espera al chunk que hace falta (la pantalla actual sigue a la vista en vez

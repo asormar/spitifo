@@ -5,6 +5,7 @@ import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
+import { panel, usePanel } from "../player/panel.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
@@ -202,11 +203,12 @@ export default function App() {
      historial para que el atras de Android y del navegador la cierren, y
      cerrarla (con la X, Escape o un arrastre) hace history.back() y deja que
      popstate cierre de verdad. npEntry: 0 cerrada, 1 abierta, 2 cerrandose
-     (ya se pidio el back; un segundo cierre no puede dar otro). */
-  const [np, setNp] = useState(false);
+     (ya se pidio el back; un segundo cierre no puede dar otro). El estado
+     abierto/cerrado y la pestana viven en el almacen del panel. */
+  const np = usePanel((s) => s.open);
   const npEntry = useRef(0);
-  /* Pagina con la que abre: la cola si viene de "Cola" de la barra. */
-  const npPage = useRef(0);
+  /* Pestana con la que abre: la cola si viene de "Cola" de la barra. */
+  const npTab = usePanel((s) => s.tab);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -292,19 +294,24 @@ export default function App() {
   const openNp = useCallback((page) => {
     if (npEntry.current || !engine.getState().track) return;
     npEntry.current = 1;
-    npPage.current = page === 1 ? 1 : 0;
+    const tab = page === 1 ? 1 : 0;
     loadNowPlaying()
       .then(() => {
         window.history.pushState({ spitifo: "np" }, "", window.location.href);
-        swapNowPlaying(() => setNp(true), true);
+        swapNowPlaying(() => panel.show(tab, nav.getKey()), true);
       })
       .catch(() => {
         npEntry.current = 0;
       });
-  }, []);
+  }, [nav.getKey]);
 
   const closeNp = useCallback((morph = true) => {
-    if (npEntry.current !== 1) return;
+    if (npEntry.current === 2) return;
+    /* Abierto sin entrada de historial: se cierra sin back. */
+    if (npEntry.current === 0) {
+      panel.close();
+      return;
+    }
     npEntry.current = 2;
     npMorph.current = morph;
     window.history.back();
@@ -328,12 +335,12 @@ export default function App() {
       npThen.current = null;
       npMorph.current = true;
       if (then) {
-        flushSync(() => setNp(false));
+        flushSync(() => panel.close());
         then();
       } else if (morph) {
-        swapNowPlaying(() => setNp(false), false);
+        swapNowPlaying(() => panel.close(), false);
       } else {
-        setNp(false);
+        panel.close();
       }
     };
     window.addEventListener("popstate", onNpPop);
@@ -479,17 +486,19 @@ export default function App() {
 
   return (
     <NavContext.Provider value={nav}>
-      <main className="app" inert={np ? "" : undefined}>
-        {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
-            arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
-        {pc && (
-          <>
-            <LeftNav npOpen={np} />
-            <TopBar />
-          </>
-        )}
+      {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
+          mosaicos de su hoja de listas); no pinta DOM propio. */}
+      <ListenProvider files={libFiles} nav={nav} storage={storage}>
+        <main className="app" inert={np ? "" : undefined}>
+          {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
+              arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
+          {pc && (
+            <>
+              <LeftNav npOpen={np} />
+              <TopBar />
+            </>
+          )}
 
-        <ListenProvider files={libFiles} nav={nav} storage={storage}>
           <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
           <div className="screens" ref={screensRef}>
             {visited.has("home") && (
@@ -561,31 +570,31 @@ export default function App() {
               </Screen>
             )}
           </div>
-        </ListenProvider>
 
-        {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
-            marcha. En escritorio las tarjetas van en el menu lateral. */}
-        {pc ? <PlayerBar onOpen={openNp} npOpen={np} /> : (
-          <>
-            <ProgressStack />
-            <MiniPlayer onOpen={openNp} npOpen={np} />
-          </>
+          {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
+              marcha. En escritorio las tarjetas van en el menu lateral. */}
+          {pc ? <PlayerBar onOpen={openNp} npOpen={np} /> : (
+            <>
+              <ProgressStack />
+              <MiniPlayer onOpen={openNp} npOpen={np} />
+            </>
+          )}
+          {/* Montado una sola vez: es el dueno del <video> y por eso la
+              reproduccion no se corta al cambiar de pestana. */}
+          <VideoHost />
+
+          {!pc &&
+            (phoneNav === "tabs" ? (
+              <TabBar tab={nav.tab} onTab={nav.goTab} />
+            ) : (
+              <SwipeDots tab={nav.tab} onTab={nav.goTab} />
+            ))}
+        </main>
+        {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
+        {np && NowPlaying && (
+          <NowPlaying onClose={closeNp} onReveal={revealFromNp} initialPage={npTab} />
         )}
-        {/* Montado una sola vez: es el dueno del <video> y por eso la
-            reproduccion no se corta al cambiar de pestana. */}
-        <VideoHost />
-
-        {!pc &&
-          (phoneNav === "tabs" ? (
-            <TabBar tab={nav.tab} onTab={nav.goTab} />
-          ) : (
-            <SwipeDots tab={nav.tab} onTab={nav.goTab} />
-          ))}
-      </main>
-      {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
-      {np && NowPlaying && (
-        <NowPlaying onClose={closeNp} onReveal={revealFromNp} initialPage={npPage.current} />
-      )}
+      </ListenProvider>
     </NavContext.Provider>
   );
 }

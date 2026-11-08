@@ -3,6 +3,7 @@ import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "../listen/icons.jsx";
+import { useListen } from "../listen/ListenProvider.jsx";
 import QueueList from "../listen/QueueList.jsx";
 import { useNotice } from "../listen/Notice.jsx";
 import PlaylistPicker from "../listen/PlaylistPicker.jsx";
@@ -81,6 +82,9 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
   const engineDuration = useEngine((s) => s.duration);
   const vhost = useVideoHost();
   const wide = usePc();
+  /* Esta vista vive dentro del proveedor de la biblioteca: de ahi salen los
+     mosaicos de la hoja de listas. */
+  const { byKey } = useListen().model;
   /* Pagina con la que abre: la cola si viene de "Cola" de la barra. */
   const [page, setPage] = useState(initialPage);
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
@@ -369,6 +373,7 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
         <PlaylistPicker
           songKey={track.key}
           title={track.title}
+          byKey={byKey}
           onNotice={show}
           onClose={() => {
             setAdding(false);

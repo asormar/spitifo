@@ -100,15 +100,22 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
 
   const isTop = what === "top";
   const isSongs = isTop || what === "recent" || what === "r-songs";
+  /* Origen de la cola: la etiqueta de la lista o lo que se busco. */
+  const from = isTop
+    ? "library:Lo que más escuchas"
+    : what === "recent"
+      ? "library:Añadido hace poco"
+      : `search:${view.q ?? ""}`;
   const row = (i, enter) =>
     isTop
       ? ctx.song(items[i].entry, topEntries, {
           enter,
           rank: i + 1,
+          from,
           table: pc,
           sub: `${items[i].entry.artist} · ${plural(items[i].plays, "reproducción", "reproducciones")}`,
         })
-      : ctx.song(items[i], items, { enter, table: pc && "lib" });
+      : ctx.song(items[i], items, { enter, from, table: pc && "lib" });
 
   const isLists = what === "lists";
   const endNaming = () => {
@@ -205,8 +212,8 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
   useReveal(rows, active, listRef);
 
-  const play = () => ctx.playGroup(rows);
-  const shuffle = () => ctx.playGroup(rows, true);
+  const play = () => ctx.playGroup(rows, false, "library:");
+  const shuffle = () => ctx.playGroup(rows, true, "library:");
 
   return (
     <div className="lpage">
@@ -265,7 +272,7 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
         active={active}
         count={rows.length}
         getKey={(i) => rows[i].key}
-        renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, table: pc && "lib" })}
+        renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, from: "library:", table: pc && "lib" })}
       />
     </div>
   );

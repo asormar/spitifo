@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { engine } from "../player/engine.js";
+import { queueNote } from "../player/nowInfo.js";
 import { useEngine } from "../player/useEngine.js";
 import VirtualList from "./VirtualList.jsx";
 import { QueueRow } from "./rows.jsx";
@@ -25,6 +26,7 @@ export default function QueueList({ active, scroller }) {
   const index = useEngine((s) => s.index);
   const track = useEngine((s) => s.track);
   const repeat = useEngine((s) => s.repeat);
+  const endless = useEngine((s) => s.endless);
 
   const upcoming = useMemo(() => (index >= 0 ? queue.slice(index + 1) : []), [queue, index]);
   const first = index + 1;
@@ -74,9 +76,7 @@ export default function QueueList({ active, scroller }) {
           }}
         />
       ) : (
-        <p className="lnote">
-          {repeat === "all" ? "Al terminar vuelve a empezar." : "No hay nada más en la cola."}
-        </p>
+        <p className="lnote">{queueNote({ repeat, endless })}</p>
       )}
     </>
   );

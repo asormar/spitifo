@@ -7,7 +7,7 @@ import { cx } from "../shared/ui.jsx";
    El aviso pasajero de la biblioteca y de "Ahora suena": un texto que se retira
    solo, con un boton opcional (Deshacer). La biblioteca lo pinta una vez en
    ListenProvider, fuera de las pantallas; "Ahora suena" y Descubrir pintan el
-   suyo, porque viven fuera de ese provider.
+   suyo (el de la biblioteca queda debajo de ellos).
    ------------------------------------------------------------------------- */
 
 /* El aviso se retira solo; la salida dura --t-quick (180 ms). Con boton se

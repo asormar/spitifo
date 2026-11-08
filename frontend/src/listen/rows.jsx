@@ -48,7 +48,8 @@ const BAD_ART = new Set();
    "trk" (# titulo duracion menu) y "lst" (asa # titulo duracion quitar menu).
    Las listas pasan ademas `drag` ({ transform, dragging, handleRef, handleProps },
    las del arrastre de useDragSort: esas filas no son memo, son pocas) y
-   `onRemove(entry)`. */
+   `onRemove(entry)`. `from` es el origen de la cola ("album:X", "library:"...):
+   una cadena, para que la fila siga siendo memo. */
 export const SongRow = memo(function SongRow({
   entry,
   list,
@@ -62,6 +63,7 @@ export const SongRow = memo(function SongRow({
   badge,
   table,
   drag,
+  from,
 }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
@@ -124,7 +126,7 @@ export const SongRow = memo(function SongRow({
             ? `Abrir el vídeo ${title}`
             : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}`
         }
-        onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list))}
+        onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list, from))}
       >
         {!table && (rankCell || numCell)}
         {num == null && (
@@ -257,7 +259,7 @@ export function QueueRow({
         aria-label={
           now
             ? `${playing ? "Pausar" : "Reproducir"} ${track.title}`
-            : `Reproducir ${track.title}`
+            : `Reproducir ahora ${track.title}`
         }
         onClick={() => (now ? engine.toggle() : engine.playAt(pos))}
       >

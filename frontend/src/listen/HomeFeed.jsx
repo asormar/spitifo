@@ -73,7 +73,7 @@ function ContinueCard({ item, items, ctx, active, pc }) {
     <Card
       current={current}
       label={`${playing ? "Pausar" : "Seguir con"} ${entry.title}, ${entry.artist}`}
-      onClick={() => (current ? engine.toggle() : ctx.resume(item, items))}
+      onClick={() => (current ? engine.toggle() : ctx.resume(item, items, "library:Seguir escuchando"))}
       cover={
         <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
           <Prog p={dur > 0 ? Math.min(1, pos / dur) : 0} />
@@ -94,7 +94,7 @@ function AddedCard({ entry, list, ctx, pc }) {
     <Card
       current={current}
       label={`${playing ? "Pausar" : "Reproducir"} ${entry.title}, ${entry.artist}`}
-      onClick={(e) => (current ? engine.toggle() : ctx.play(entry, e.currentTarget, list))}
+      onClick={(e) => (current ? engine.toggle() : ctx.play(entry, e.currentTarget, list, "library:Añadido hace poco"))}
       cover={
         <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
           {current && <NowBadge on={playing} />}
@@ -159,6 +159,7 @@ export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, ac
             ctx.song(entry, topEntries, {
               rank: i + 1,
               table: pc,
+              from: "library:Lo que más escuchas",
               sub: `${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`,
             })
           )}
