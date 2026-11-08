@@ -1,0 +1,201 @@
+/* ---------------------------------------------------------------------------
+   FICHA DE UN RESULTADO (Ficha.jsx), dentro de shared/Sheet.
+   ------------------------------------------------------------------------- */
+
+.fh {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 14px 18px;
+}
+
+.fh .thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-md);
+}
+
+.fh .thumb--wide {
+  width: 100px;
+}
+
+.fh__t {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fh__t h2 {
+  margin: 0;
+  font: 700 15px / 1.25 var(--font-body);
+  overflow-wrap: anywhere;
+}
+
+.fh__t span {
+  margin-top: 1px;
+  color: var(--mut);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.fb {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Veredicto: la pastilla y lo que significa. */
+.vcard {
+  padding: 16px;
+  border-radius: var(--r-field);
+  background: var(--s2);
+}
+
+/* La pastilla neutra se perderia sobre el mismo gris. */
+.vcard .vb--mute {
+  background: var(--s1);
+}
+
+.vcard p {
+  margin: 8px 0 0;
+  color: var(--mut);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 16px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.vcard + .facts {
+  margin-top: 14px;
+}
+
+.facts dt {
+  color: var(--mut);
+  font-weight: 600;
+}
+
+.facts dd {
+  min-width: 0;
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.facts .mono {
+  font: 500 12px ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+/* Verificacion de Internet Archive. */
+.ver {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-field);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+}
+
+.vbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc);
+  font: 800 14.5px / 1.3 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vbtn--wait {
+  color: var(--mut);
+  cursor: progress;
+}
+
+.ver__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ver .facts {
+  margin-top: 10px;
+}
+
+.note {
+  margin: 10px 0 0;
+  color: var(--mut);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.fl {
+  display: flex;
+  gap: 16px;
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+
+.fl:empty {
+  display: none;
+}
+
+.fl__a {
+  color: var(--acc);
+  font-weight: 700;
+}
+
+.fl__a svg,
+.ext svg {
+  margin-left: 3px;
+  vertical-align: -1px;
+}
+
+.ver .fl__a {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.fa {
+  display: flex;
+  gap: 10px;
+  padding: 16px 0 4px;
+}
+
+.fb > .note {
+  padding-bottom: 4px;
+}
+
+@media (min-width: 960px) {
+  .fh {
+    gap: 14px;
+    padding: 22px 20px 14px 24px;
+  }
+
+  .fh .thumb {
+    width: 60px;
+    height: 60px;
+  }
+
+  .fh .thumb--wide {
+    width: 106px;
+  }
+
+  .fb {
+    padding: 0 24px 22px;
+  }
+}

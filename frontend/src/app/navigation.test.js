@@ -158,6 +158,14 @@ describe("pageOf", () => {
     expect(pageOf([search, settings])).toBeNull();
     expect(pageOf([search, album])).toBe(album);
   });
+
+  it("skips the Buscar sheets (ficha and resolution menu)", () => {
+    const ficha = { type: "ficha", key: "itunes1" };
+    const menu = { type: "resmenu", key: "itunes1" };
+    expect(pageOf([ficha])).toBeNull();
+    expect(pageOf([ficha, menu])).toBeNull();
+    expect(pageOf([album, ficha])).toBe(album);
+  });
 });
 
 describe("stackFor", () => {
@@ -195,6 +203,12 @@ describe("viewKey", () => {
     expect(viewKey("home", [album])).toBe("home/album:a1");
     expect(viewKey("home", [{ type: "all", what: "albums" }])).toBe("home/all:albums");
     expect(viewKey("library", [album])).not.toBe(viewKey("home", [album]));
+  });
+
+  it("ignores the sheets on top of a page or a root", () => {
+    const ficha = { type: "ficha", key: "k" };
+    expect(viewKey("search", [ficha])).toBe("search");
+    expect(viewKey("home", [album, ficha])).toBe("home/album:a1");
   });
 
   it("is settings while Ajustes is on top", () => {

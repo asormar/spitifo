@@ -458,7 +458,12 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
           {pl
             ? pl.keys.length
               ? "Ninguna canción de esta lista sigue en tu biblioteca."
-              : "Esta lista está vacía. Añade canciones desde el menú ⋯ de cualquier canción."
+              : (
+                <>
+                  Esta lista está vacía. Añade canciones desde el menú{" "}
+                  <Icon name="DotsThree" weight="bold" size={18} style={{ verticalAlign: "-4px" }} /> de cualquier canción.
+                </>
+              )
             : "No hay canciones."}
         </p>
       ) : (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { cx } from "../shared/ui.jsx";
-import { placeCard, related, searchGenres } from "./map.js";
+import { normalize, placeCard, related, searchGenres } from "./map.js";
 import { createMapCanvas } from "./mapCanvas.js";
 
 /* Por debajo de este ancho la tarjeta pasa a hoja inferior. */
@@ -53,6 +53,9 @@ function Icon({ name, size = 18, className }) {
    - `highlight`: Set de indices de genero a resaltar con un anillo ("Tus
      generos"). `focus` los marca con un anillo grueso (la fila elegida de "Para
      ti") y `preview` con uno suave (la fila bajo el puntero).
+   - `want` ({ name }): un genero pedido desde fuera (un atajo de Buscar). En
+     cuanto el mapa tiene tamano vuela a el y lo elige; `onWanted()` avisa de
+     que ya se atendio, para que no se repita al volver a la pantalla.
    - `onSearchGenre(nombre)`: lleva el genero a Buscar.
    - `onPlaySample(nombre)`: hace sonar una muestra; devuelve una promesa con
      cuantas pistas puso en la cola (0 = no habia previews).
@@ -67,6 +70,8 @@ export default function GenreMap({
   highlight = NO_HIGHLIGHT,
   focus = NO_HIGHLIGHT,
   preview = NO_HIGHLIGHT,
+  want,
+  onWanted,
   onSearchGenre,
   onPlaySample,
   panel,
@@ -133,6 +138,15 @@ export default function GenreMap({
     if (i >= 0 && how === "tap") engine.reveal(i);
   }, []);
   pickRef.current = (i) => choose(i, "tap");
+
+  /* Un genero pedido desde fuera: se espera a que el mapa tenga tamano (la
+     primera visita) y se vuela a el, igual que al elegirlo en el buscador. */
+  useEffect(() => {
+    if (!want || box.w <= 0) return;
+    const i = data.norm.indexOf(normalize(want.name));
+    if (i >= 0) choose(i, "fly");
+    onWanted?.();
+  }, [want, box.w, data, choose, onWanted]);
 
   const setObstacle = useCallback((o) => {
     const next = clean(o);

@@ -312,7 +312,7 @@ class MainActivity : Activity() {
 
         // Same host rule as YT_URL in frontend/src/download/constants.js: a
         // YouTube link is only searchable as YouTube (iTunes cannot search a
-        // URL), and the boot path in download/DownloadView.jsx does not switch
+        // URL), and the boot path in download/useSearchRun.js does not switch
         // modes on its own.
         val YOUTUBE_PATTERN = Regex(
             """^https?://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)/\S+$""",

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
+import { percent } from "../shared/format.js";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { becauseText } from "./reco.js";
@@ -238,11 +239,6 @@ export function ArtistRow({
 }
 
 /* --- Generos ---------------------------------------------------------------- */
-
-const percent = (share) => {
-  const n = Math.round(share * 100);
-  return n < 1 ? "<1 %" : `${n} %`;
-};
 
 /* "Tus generos" (con su barra) y "Para explorar" (vecinos que aun no son tuyos). */
 export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {

@@ -1,4 +1,4 @@
-import { Icon } from "./icons.jsx";
+import Ico from "./ico.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";
 
@@ -38,11 +38,11 @@ export function ProgressBar({ job }) {
       <div className="prog__top">
         <span className="prog__ico">
           {failed || halted ? (
-            <Icon name="WarningCircle" size={19} weight="fill" />
+            <Ico n="warn" size={19} />
           ) : done ? (
-            <Icon name="CheckCircle" size={19} weight="fill" />
+            <Ico n="check" size={19} />
           ) : (
-            <Icon name="CircleNotch" size={19} className="spin" />
+            <span className="sp" aria-hidden="true" />
           )}
         </span>
         <span className="prog__title">{job.title}</span>
@@ -58,7 +58,9 @@ export function ProgressBar({ job }) {
               : "Sigue descargando en el servidor"
             : job.status === "pending"
             ? "En cola"
-            : `Descargando, ${pct}%`}
+            : job.status === "processing"
+            ? "Procesando el archivo…"
+            : `Descargando, ${pct} %`}
         </span>
       </div>
       <div

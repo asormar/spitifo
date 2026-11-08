@@ -21,3 +21,8 @@ export function clock(s) {
   const t = Math.max(0, Math.floor(s || 0));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
+/* 0.34 -> "34 %"; menos de uno por ciento -> "<1 %". */
+export function percent(share) {
+  const n = Math.round(share * 100);
+  return n < 1 ? "<1 %" : `${n} %`;
+}

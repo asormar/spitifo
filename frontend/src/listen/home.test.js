@@ -14,6 +14,7 @@ import {
   recentEntries,
   relevance,
   searchLibrary,
+  searchSongs,
   sortEntries,
   topArtists,
   topItems,
@@ -123,6 +124,27 @@ describe("searchLibrary", () => {
 
     const tie2 = searchLibrary(INDEX, "rosalia", { plays: { "rosalia/candy": 5 } });
     expect(tie2.songs[0].key).toBe("rosalia/candy");
+  });
+
+  describe("searchSongs", () => {
+    it("is empty for a blank query", () => {
+      expect(searchSongs(INDEX, "  ")).toEqual([]);
+    });
+
+    it("returns the same ordered songs as searchLibrary", () => {
+      const plays = { "zoe/video": 9, "zoe/azul": 1, "rosalia/candy": 5 };
+      for (const q of ["azul", "rosalia", "signos", "motomami saoko", "xyzzy"]) {
+        expect(searchSongs(INDEX, q, plays)).toEqual(searchLibrary(INDEX, q, { plays }).songs);
+      }
+    });
+
+    it("orders by title relevance, then by plays", () => {
+      expect(searchSongs(INDEX, "azul", { "zoe/video": 9, "zoe/azul": 1 }).map((s) => s.key)).toEqual([
+        "zoe/azul",
+        "zoe/video",
+      ]);
+      expect(searchSongs(INDEX, "rosalia", { "rosalia/candy": 5 })[0].key).toBe("rosalia/candy");
+    });
   });
 
   describe("best result", () => {

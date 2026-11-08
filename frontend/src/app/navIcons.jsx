@@ -29,9 +29,10 @@ const PATHS = {
   queue: <path d="M4 6h16M4 12h16M4 18h10" />,
 };
 
-export function NavIcon({ name, filled = false, size = 22 }) {
+export function NavIcon({ name, filled = false, size = 22, className }) {
   return (
     <svg
+      className={className}
       width={size}
       height={size}
       viewBox="0 0 24 24"

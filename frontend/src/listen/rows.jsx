@@ -66,9 +66,10 @@ const SONG_ITEMS = [
 ];
 
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
-   pone el numero de puesto delante (los rankings) y `sub` cambia la segunda
-   linea (por defecto artista y album). */
-export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub }) {
+   pone el numero de puesto delante (los rankings), `sub` cambia la segunda
+   linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
+   de la duracion. */
+export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -108,6 +109,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
             {meta}
           </span>
         </span>
+        {badge}
         {dur && <span className="srow__d">{dur}</span>}
       </button>
       {!video && onMenu && (

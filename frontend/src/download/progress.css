@@ -1,80 +1,4 @@
 /* ---------------------------------------------------------------------------
-   6. AVISOS: error, descarga terminada, combinacion que degrada el resultado
-   Cada tono trae su par tinte/texto (tokens --*-bg y --*-t).
-   ------------------------------------------------------------------------- */
-
-.st--ok,
-.msg--ok {
-  --tone-bg: var(--ok-bg);
-  --tone-fg: var(--ok-t);
-}
-
-.st--warn,
-.msg--warn {
-  --tone-bg: var(--near-bg);
-  --tone-fg: var(--near-t);
-}
-
-.st--bad,
-.msg--err {
-  --tone-bg: var(--bad-bg);
-  --tone-fg: var(--bad-t);
-}
-
-.st--mute {
-  --tone-bg: var(--s2);
-  --tone-fg: var(--mut);
-}
-
-.msg {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  max-width: 860px;
-  margin: 20px auto 0;
-  padding: 14px 18px;
-  border-radius: var(--r-field);
-  background: linear-gradient(var(--tone-bg), var(--tone-bg)), var(--s1);
-  color: var(--tone-fg);
-  font-size: 14px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-  /* Al traerlo a la vista, que no quede bajo la barra ni bajo el toast. */
-  scroll-margin-block: calc(var(--top-h) + 16px) 120px;
-  /* Entra desde arriba y sale por donde entro. */
-  --rise: -4px;
-  --leave: -4px;
-  animation: var(--rise-both);
-}
-
-/* El aviso de exito se retira solo a los 5 s (JOB_DISMISS_MS, que llega como
-   --dismiss): antes desaparecia de golpe. La salida arranca una salida corta
-   antes de que React lo desmonte. Error y "esto no es lo que buscabas" NO se
-   retiran. */
-.msg--ok {
-  animation: var(--rise-both),
-    leave var(--t-quick) var(--ease) calc(var(--dismiss, 5000ms) - var(--t-quick))
-      forwards;
-}
-
-.msg svg {
-  flex: none;
-  margin-top: 2px;
-}
-
-.msg--ok svg {
-  --pop: 0.5;
-  animation: pop var(--t-move) var(--ease-spring) 120ms both;
-}
-
-.msg__sub {
-  display: block;
-  margin-top: 2px;
-  color: var(--mut);
-  font-weight: 500;
-}
-
-/* ---------------------------------------------------------------------------
    7. PROGRESO DE DESCARGA
    Toast fijo abajo al centro. Sin transform para centrarlo (left/right/auto),
    asi la animacion de entrada puede usar transform. El relleno se mueve con
@@ -171,8 +95,13 @@ body.has-mini .progstack {
   color: var(--acc);
 }
 
-/* El giro del spinner se queda en .spin; el icono final (check o aviso) entra
+/* El giro del spinner es .sp; el icono final (check o aviso) entra
    con rebote, que es el unico momento de celebracion de la app. */
+.prog__ico .sp {
+  width: 19px;
+  height: 19px;
+}
+
 .prog.is-done .prog__ico svg,
 .prog.is-failed .prog__ico svg {
   --pop: 0.5;
@@ -185,6 +114,17 @@ body.has-mini .progstack {
 
 .prog.is-failed .prog__ico {
   color: var(--bad-t);
+}
+
+/* Rueda de espera: el toast de progreso y los botones de Buscar. */
+.sp {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--s3);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
 }
 
 .prog__title {

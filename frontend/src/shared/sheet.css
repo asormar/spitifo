@@ -1,0 +1,153 @@
+/* ---------------------------------------------------------------------------
+   HOJA (shared/Sheet.jsx)
+   Telefono: hoja desde abajo, translateY 320 ms con --drawer y fondo a 200 ms.
+   Desde 960 px: tarjeta centrada de 560, escala .96 -> 1 y fundido a 220 ms.
+   Solo transform y opacity.
+   ------------------------------------------------------------------------- */
+
+.sh {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+}
+
+.sh__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: sh-fade 200ms ease both;
+}
+
+.sh__box {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 24px);
+  padding: 10px 0 16px;
+  border-radius: var(--r-panel);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  animation: sh-up 320ms var(--drawer) both;
+}
+
+.sh__grab {
+  flex: none;
+  width: 40px;
+  height: 5px;
+  margin: 0 auto 10px;
+  border-radius: 3px;
+  background: var(--s3);
+}
+
+/* Barra de titulo de una hoja: texto y cerrar. */
+.sh__bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px 6px 18px;
+}
+
+.sh__bt {
+  margin: 0;
+  font: 700 16px / 1.25 var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+@keyframes sh-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sh-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sh-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (min-width: 960px) {
+  .sh {
+    display: grid;
+    place-items: center;
+  }
+
+  .sh__box {
+    position: relative;
+    inset: auto;
+    width: min(560px, calc(100% - 32px));
+    max-height: 88%;
+    padding: 0;
+    overflow: hidden;
+    animation: sh-pop 220ms var(--ease) both;
+  }
+
+  .sh__grab {
+    display: none;
+  }
+}
+
+/* --- Botones de las hojas ----------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  font: 800 14px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn[aria-disabled] {
+  cursor: progress;
+}
+
+.btn[aria-disabled]:active {
+  transform: none;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn--acc {
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+
+.btn--ghost {
+  background: var(--s2);
+  color: var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn--acc:hover {
+    filter: brightness(1.08);
+  }
+
+  .btn--ghost:hover {
+    background: var(--s3);
+  }
+}

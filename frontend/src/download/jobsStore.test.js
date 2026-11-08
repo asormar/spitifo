@@ -95,4 +95,14 @@ describe("jobsStore", () => {
     vi.advanceTimersByTime(5000);
     expect(s.getJobs()).toEqual({});
   });
+
+  it("un job sin tocar conserva su identidad (lo que lee useJob)", () => {
+    const s = createJobsStore(5000);
+    s.setJobFor("a", { status: "pending", progress: 0 });
+    s.setJobFor("b", { status: "pending", progress: 0 });
+    const before = s.getJobs().b;
+    s.setJobFor("a", { progress: 50 });
+    expect(s.getJobs().b).toBe(before);
+    expect(s.getJobs().a).not.toBe(s.getJobs().b);
+  });
 });

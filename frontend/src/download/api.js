@@ -28,23 +28,6 @@ export async function fetchFormats(url, signal) {
   formatsCache.set(url, data);
   return data;
 }
-/* El aviso de identidad, en un solo lugar. Antes vivia inline en el camino sin
-   job_id, asi que el camino CON job_id (modo Música, que es el default)
-   salia con `return` antes de llegar y nunca avisaba: te bajabas la cancion
-   equivocada con un cartel verde.
-
-   "unknown" tambien avisa, y a proposito: significa que nadie pudo leer de
-   donde viene el audio. "No se pudo verificar" es mas honesto que un visto
-   bueno que nadie emitio. */
-export function mismatchNotice(d, match, realTitle, query) {
-  if (match === "mismatch" || match === "unknown") {
-    const donde = realTitle
-      ? `en el archivo dice "${realTitle}"`
-      : "no se pudo verificar de donde viene el audio";
-    return { ...d, warning: `Ojo: ${donde} y tu buscaste "${query}".` };
-  }
-  return d;
-}
 /* Arma la query contra /api/search respetando los comportamientos reales:
    - YouTube solo filtra con mode=ytdlp&source=ytdlp (mode solo no filtra).
    - mode=matched con un source degrada el emparejamiento, asi que la fuente
