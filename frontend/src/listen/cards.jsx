@@ -3,9 +3,10 @@ import { keyUrl } from "../shared/api.js";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
+import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
-import { albumTone, mosaicTones, plural, toneOf } from "./home.js";
+import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
 import { useMore } from "./useMore.js";
 
 /* ---------------------------------------------------------------------------
@@ -138,7 +139,7 @@ export const AlbumCard = ({ g, ctx, sub = g.artist }) => (
 export function ListCard({ list, byKey, ctx, sub }) {
   const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
   const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
-  const text = plural(count, "canción", "canciones");
+  const text = songs(count);
   return (
     <Card
       label={`${list.name}, ${text}`}
@@ -156,7 +157,7 @@ export const NewListCard = ({ ctx }) => (
     onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
     cover={
       <span className="cv card__add">
-        <Icon name="Plus" size={28} />
+        <NavIcon name="plus" size={28} />
       </span>
     }
     title="Crear tu primera lista"
@@ -178,7 +179,7 @@ export function Cards({ cards, byKey, ctx, tag }) {
             key={item.id}
             g={item}
             ctx={ctx}
-            sub={`${tag ? "Artista · " : ""}${plural(item.entries.length, "canción", "canciones")}`}
+            sub={`${tag ? "Artista · " : ""}${songs(item.entries.length)}`}
           />
         ) : (
           <AlbumCard key={item.id} g={item} ctx={ctx} sub={tag ? `Álbum · ${item.artist}` : undefined} />

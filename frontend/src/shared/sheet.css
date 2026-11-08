@@ -1,14 +1,16 @@
 /* ---------------------------------------------------------------------------
    HOJA (shared/Sheet.jsx)
    Telefono: hoja desde abajo, translateY 320 ms con --drawer y fondo a 200 ms.
-   Desde 960 px: tarjeta centrada de 560, escala .96 -> 1 y fundido a 220 ms.
-   Solo transform y opacity.
+   Desde 960 px: tarjeta centrada de 560 (400 con --sm), escala .96 -> 1 y
+   fundido a 220 ms. Solo transform y opacity.
    ------------------------------------------------------------------------- */
 
+/* 56: por encima de "Ahora suena" (55, su hoja de listas) y por debajo del
+   video (60) y de los popovers (70). */
 .sh {
   position: fixed;
   inset: 0;
-  z-index: 52;
+  z-index: 56;
 }
 
 .sh__scrim {
@@ -93,8 +95,47 @@
     animation: sh-pop 220ms var(--ease) both;
   }
 
+  .sh__box--sm {
+    width: min(400px, calc(100% - 32px));
+  }
+
   .sh__grab {
     display: none;
+  }
+}
+
+/* --- Popover (shared/Sheet.jsx) ---------------------------------------------- */
+
+/* Escritorio: junto al boton, fuera del flujo (portal a <body>). Sin las medidas
+   todavia (primer fotograma) no se ve ni se toca, pero ya admite el foco. */
+.pop {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-radius: var(--r-field);
+  background: var(--s1);
+  box-shadow: var(--shadow), 0 0 0 1px var(--line);
+  transform-origin: top right;
+}
+
+.pop.is-up {
+  transform-origin: bottom right;
+}
+
+.pop:not(.is-placed) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pop.is-placed {
+  animation: pop var(--t-quick) var(--ease) both;
+}
+
+@media (min-width: 960px) {
+  .sh__box--sm .sh__bar {
+    padding: 20px 14px 10px 24px;
   }
 }
 

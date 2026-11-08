@@ -4,6 +4,8 @@ import {
   fold,
   groupAlbums,
   groupArtists,
+  albumId,
+  artistId,
   normalizeEntry,
   normalizeLibrary,
   rowArt,
@@ -294,5 +296,34 @@ describe("visibleRange", () => {
     expect(
       visibleRange({ scrollTop: 100, viewport: 200, rowHeight: 20, count: 0 })
     ).toEqual({ start: 0, end: 0 });
+  });
+});
+
+describe("albumId and artistId", () => {
+  const entries = [
+    normalizeEntry(file({ key: "1", filename: "a.mp3", folder: "Édith Piaf", album: "La Vie en Rose" })),
+    normalizeEntry(file({ key: "2", filename: "b.mp3", folder: "édith piaf", album: "la vie en rose" })),
+    normalizeEntry(file({ key: "3", filename: "c.mp3", folder: "Otro", album: "Compartido" })),
+    normalizeEntry(file({ key: "4", filename: "d.mp3", folder: "Otro" })),
+  ];
+
+  it("match the ids of the album and artist pages, ignoring case and accents", () => {
+    const albums = groupAlbums(entries);
+    const artists = groupArtists(entries);
+    expect(albumId(entries[0])).toBe(albumId(entries[1]));
+    expect(albums.map((a) => a.id)).toContain(albumId(entries[0]));
+    expect(albums.map((a) => a.id)).toContain(albumId(entries[2]));
+    expect(artistId(entries[0])).toBe(artistId(entries[1]));
+    expect(artists.map((a) => a.id)).toContain(artistId(entries[0]));
+    expect(artists.map((a) => a.id)).toContain(artistId(entries[3]));
+  });
+
+  it("have no album id without an album", () => {
+    expect(albumId(entries[3])).toBeNull();
+  });
+
+  it("tell apart the same album of two artists", () => {
+    const other = normalizeEntry(file({ key: "5", filename: "e.mp3", folder: "Alguien", album: "Compartido" }));
+    expect(albumId(other)).not.toBe(albumId(entries[2]));
   });
 });

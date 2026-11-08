@@ -19,9 +19,22 @@ const D = {
   stats: "M4 19h16M7 16V9M12 16V5M17 16v-4",
   clock: "M3.5 12a8.5 8.5 0 1 0 17 0 8.5 8.5 0 1 0-17 0M12 7.5V12l3 2",
   music: "M9 18V6l10-2v12M4 18a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0M14 16a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0",
+  dots: "M5 12h.01M12 12h.01M19 12h.01",
+  grip: "M9 7h.01M9 12h.01M9 17h.01M15 7h.01M15 12h.01M15 17h.01",
+  pen: "M4 20h4L19 9l-4-4L4 16z",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  next: "M4 6h12M4 12h8M4 18h8M15 14l5 4-5 4z",
+  queue: "M4 6h12M4 12h12M4 18h7M17 15v6l4.5-3z",
+  addlist: "M4 6h11M4 12h11M4 18h7M18 15v6M15 18h6",
+  disc: "M3.5 12a8.5 8.5 0 1 0 17 0 8.5 8.5 0 1 0-17 0M9.5 12a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0",
+  user: "M8 8a4 4 0 1 0 8 0 4 4 0 1 0-8 0M4.5 20a7.5 7.5 0 0 1 15 0",
 };
 
-export default function Ico({ n, size = 20 }) {
+/* Los puntos son trazos de largo cero: con punta redonda y trazo grueso salen
+   como el prototipo. */
+const SW = { dots: 3.4, grip: 3 };
+
+export default function Ico({ n, size = 20, sw = SW[n] ?? 2 }) {
   const fill = n === "pause";
   return (
     <svg
@@ -30,7 +43,7 @@ export default function Ico({ n, size = 20 }) {
       height={size}
       fill={fill ? "currentColor" : "none"}
       stroke={fill ? "none" : "currentColor"}
-      strokeWidth="2"
+      strokeWidth={sw}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

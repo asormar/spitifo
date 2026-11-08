@@ -1,26 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { NavIcon } from "../app/navIcons.jsx";
 import { cx } from "../shared/ui.jsx";
-import { toneVars } from "../shared/cover.js";
 import { usePc } from "../shared/viewport.js";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
-import { groupAlbums } from "./library.js";
 import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
-import PlaylistSongs from "./PlaylistSongs.jsx";
 import VirtualList from "./VirtualList.jsx";
-import { RowMenu, Thead } from "./rows.jsx";
-import { AllSongs, Cards, Cover, Mosaic, coverOf } from "./cards.jsx";
+import { Thead } from "./rows.jsx";
+import { AllSongs, Cards } from "./cards.jsx";
 import {
   SORTS,
   TOP_ALL,
-  albumTone,
-  albumOrder,
-  entryTone,
-  toneOf,
-  minutes,
-  mosaicTones,
   plural,
   sortEntries,
   topItems,
@@ -31,22 +22,15 @@ import { subscribeReveal, takeReveal } from "./revealRequest.js";
    PAGINAS DE LA BIBLIOTECA
 
    Lo que se apila sobre una pestana (la pila de useNav): una pagina de "Ver
-   todo", Todas tus canciones y la ficha de un album, un artista o una lista.
-   Todas llevan su "Volver". Las canciones van en una lista virtual (filas en el
-   telefono, tabla en escritorio); artistas, albumes y listas, en una rejilla de
-   tarjetas que se pinta de a poco.
+   todo" y Todas tus canciones (la ficha de un album, un artista o una lista es
+   Detail.jsx). Todas llevan su "Volver". Las canciones van en una lista virtual
+   (filas en el telefono, tabla en escritorio); artistas, albumes y listas, en una
+   rejilla de tarjetas que se pinta de a poco.
    ------------------------------------------------------------------------- */
-
-const songs = (n) => plural(n, "canción", "canciones");
-
-const LIST_ITEMS = [
-  ["rename", "Renombrar"],
-  ["delete", "Borrar lista"],
-];
 
 /* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi.
    En escritorio el de la pagina no se ve y el foco va al de la barra de arriba. */
-function useFocusBack(ref, on = true) {
+export function useFocusBack(ref, on = true) {
   useEffect(() => {
     if (!on) return;
     const back = ref.current?.getClientRects().length ? ref.current : document.querySelector(".topbar .cbtn--soft");
@@ -54,8 +38,8 @@ function useFocusBack(ref, on = true) {
   }, [ref, on]);
 }
 
-const Back = ({ bref, onClick }) => (
-  <button ref={bref} type="button" className="hback" aria-label="Volver" onClick={onClick}>
+export const Back = ({ bref, onClick, className = "hback" }) => (
+  <button ref={bref} type="button" className={className} aria-label="Volver" onClick={onClick}>
     <NavIcon name="back" size={22} />
   </button>
 );
@@ -74,7 +58,7 @@ const TITLES = {
   "r-lists": "Listas",
 };
 
-export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
+export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
   const { what } = view;
   const pc = usePc();
   const hist = useHistory();
@@ -83,9 +67,9 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
   const [naming, setNaming] = useState(Boolean(view.naming));
   useFocusBack(backRef);
 
-  /* Lo que se lista, sin depender de `ctx` (que se rehace en cada render con el
-     menu abierto): ordenar miles de canciones no puede repetirse por eso. El
-     historial solo cuenta en "top": las demas no se reordenan con cada escucha. */
+  /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
+     repetirse por eso. El historial solo cuenta en "top": las demas no se
+     reordenan con cada escucha. */
   const items = useMemo(() => {
     switch (what) {
       case "recent":
@@ -148,13 +132,14 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
               submit="Crear"
               onSubmit={(name) => {
                 playlists.create(name);
+                ctx.show(`Lista «${name}» creada`);
                 endNaming();
               }}
               onCancel={endNaming}
             />
           ) : (
             <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming(true)}>
-              <Icon name="Plus" size={16} />
+              <NavIcon name="plus" size={16} />
               Nueva lista
             </button>
           )}
@@ -172,7 +157,6 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
             active={active}
             count={items.length}
             getKey={(i) => (isTop ? items[i].entry.key : items[i].key)}
-            menuKey={ctx.menu?.key}
             renderRow={row}
           />
         </>
@@ -183,7 +167,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
       )}
     </div>
   );
-}
+});
 
 /* --- Todas tus canciones ----------------------------------------------------------------- */
 
@@ -281,216 +265,8 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
         active={active}
         count={rows.length}
         getKey={(i) => rows[i].key}
-        menuKey={ctx.menu?.key}
         renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, table: pc && "lib" })}
       />
-    </div>
-  );
-}
-
-/* --- Album, artista o lista ----------------------------------------------------------------- */
-
-export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx }) {
-  const backRef = useRef(null);
-  const [naming, setNaming] = useState(false);
-  useFocusBack(backRef);
-
-  const group =
-    view.type === "album"
-      ? index.albums.find((g) => g.id === view.id)
-      : view.type === "artist"
-        ? index.artists.find((g) => g.id === view.id)
-        : null;
-  const pl = view.type === "list" ? lists.find((p) => p.id === view.id) : null;
-
-  const rows = useMemo(() => {
-    if (pl) return pl.keys.map((k) => byKey.get(k)).filter(Boolean);
-    if (!group) return [];
-    return view.type === "album" ? albumOrder(group.entries) : sortEntries(group.entries, "az");
-  }, [pl, group, view.type, byKey]);
-
-  const albums = useMemo(
-    () => (view.type === "artist" && group ? groupAlbums(group.entries) : []),
-    [view.type, group]
-  );
-
-  const loading = view.type === "list" && !pl && !listsReady;
-  const missing = view.type === "list" ? !pl : !group;
-  if (missing) {
-    return (
-      <div className="lpage">
-        <div className="phead">
-          <button ref={backRef} type="button" className="hback" aria-label="Volver" onClick={ctx.back}>
-            <Icon name="ArrowLeft" size={20} />
-          </button>
-        </div>
-        <p className="lnote">
-          {loading
-            ? "Cargando la lista…"
-            : view.type === "list"
-              ? "Esta lista ya no existe."
-              : "Ya no está en tu biblioteca."}
-        </p>
-      </div>
-    );
-  }
-
-  const name = pl ? pl.name : group ? group.name : "";
-  const kind = view.type === "album" ? "Álbum" : view.type === "artist" ? "Artista" : "Lista";
-  const mins = minutes(rows);
-  const tone = pl
-    ? rows.length
-      ? entryTone(rows[0])
-      : toneOf(pl.name)
-    : view.type === "album"
-      ? albumTone(group?.artist, name)
-      : toneOf(name);
-  const meta = pl
-    ? `Lista · ${songs(rows.length)}${mins ? ` · ${mins} min` : ""}`
-    : view.type === "album"
-      ? `${group?.artist} · ${songs(rows.length)}${mins ? ` · ${mins} min` : ""}`
-      : `${plural(albums.length, "álbum", "álbumes")} · ${songs(rows.length)}`;
-
-  const art = pl ? (
-    <Mosaic tones={mosaicTones(pl.keys, byKey)} className="mos--big" />
-  ) : (
-    <Cover
-      tone={tone}
-      label={view.type === "album" ? group?.artist : name}
-      src={view.type === "album" ? coverOf(rows) : null}
-      round={view.type === "artist"}
-      className="dhead__cv"
-    />
-  );
-
-  const endNaming = () => {
-    setNaming(false);
-    requestAnimationFrame(() => backRef.current?.focus({ preventScroll: true }));
-  };
-
-  return (
-    <div className="lpage lpage--detail">
-      <header className="dhead" style={toneVars(tone)}>
-        <button ref={backRef} type="button" className="dhead__back" onClick={ctx.back}>
-          <Icon name="ArrowLeft" size={16} />
-          Volver
-        </button>
-        {pl && !naming && (
-          <div className="dhead__tools">
-            <button
-              type="button"
-              className="srow__more"
-              aria-label={`Más opciones de ${pl.name}`}
-              title="Más opciones"
-              aria-haspopup="menu"
-              aria-expanded={ctx.menu?.key === pl.id}
-              onClick={(e) => ctx.onMenu(pl.id, e.currentTarget)}
-            >
-              <Icon name="DotsThree" weight="bold" size={22} />
-            </button>
-            {ctx.menu?.key === pl.id && (
-              <RowMenu
-                items={LIST_ITEMS}
-                onPick={(kindPicked) =>
-                  kindPicked === "rename" ? (ctx.closeMenu(false), setNaming(true)) : ctx.deleteList(pl)
-                }
-              />
-            )}
-          </div>
-        )}
-        <div className="dhead__body">
-          <span className={cx("dhead__art", view.type === "artist" && "dhead__art--round")}>{art}</span>
-          <div className="dhead__info">
-            <p className="dhead__kind">{kind}</p>
-            {naming && pl ? (
-              <NameField
-                value={pl.name}
-                label="Nuevo nombre de la lista"
-                submit="Guardar"
-                onSubmit={(next) => {
-                  playlists.rename(pl.id, next);
-                  endNaming();
-                }}
-                onCancel={endNaming}
-              />
-            ) : (
-              <h1 className="dhead__h">{name}</h1>
-            )}
-            <p className="dhead__meta">{meta}</p>
-            <div className="dhead__acts">
-              <button
-                type="button"
-                className="lbtn lbtn--go"
-                disabled={!rows.length}
-                onClick={() => ctx.playGroup(rows)}
-              >
-                <Icon name="Play" size={18} weight="fill" />
-                Reproducir
-              </button>
-              <button
-                type="button"
-                className="lbtn"
-                disabled={!rows.length}
-                onClick={() => ctx.playGroup(rows, true)}
-              >
-                <Icon name="Shuffle" size={18} />
-                Aleatorio
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {albums.length > 0 && (
-        <section className="hsec dalbums" aria-labelledby="h-dalb">
-          <h2 id="h-dalb" className="hsec__h hsec__h--solo">
-            Álbumes
-          </h2>
-          <div className="hs">
-            {albums.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                className="alb alb--det"
-                aria-label={`Abrir álbum ${g.name}`}
-                onClick={() => ctx.open({ type: "album", id: g.id })}
-              >
-                <Cover tone={albumTone(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
-                <span className="alb__t">{g.name}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!rows.length ? (
-        <p className="lnote">
-          {pl
-            ? pl.keys.length
-              ? "Ninguna canción de esta lista sigue en tu biblioteca."
-              : (
-                <>
-                  Esta lista está vacía. Añade canciones desde el menú{" "}
-                  <Icon name="DotsThree" weight="bold" size={18} style={{ verticalAlign: "-4px" }} /> de cualquier canción.
-                </>
-              )
-            : "No hay canciones."}
-        </p>
-      ) : (
-        <div className="lpanel dlist">
-          {pl ? (
-            <PlaylistSongs playlist={pl} rows={rows} active={active} onPlay={ctx.play} />
-          ) : (
-            <VirtualList
-              active={active}
-              count={rows.length}
-              getKey={(i) => rows[i].key}
-              menuKey={ctx.menu?.key}
-              renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 }

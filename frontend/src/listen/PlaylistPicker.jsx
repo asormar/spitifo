@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from "react";
+import { NavIcon } from "../app/navIcons.jsx";
+import Ico from "../shared/ico.jsx";
+import Sheet from "../shared/Sheet.jsx";
+import { Mosaic } from "./cards.jsx";
+import { mosaicTones, songs } from "./home.js";
 import { playlists, usePlaylists } from "./playlists.js";
-import { Icon } from "./icons.jsx";
+import "./menus.css";
 import "./playlists.css";
 
 /* ---------------------------------------------------------------------------
    AÑADIR A UNA LISTA
 
-   Hoja para elegir a que lista va una cancion. Es la misma desde el menu de una
-   fila (la biblioteca) y desde "Ahora suena", que la pinta dentro de su capa para
-   que quede por encima. En telefono sube desde abajo; desde 720 px es una
-   tarjeta centrada.
+   Hoja para elegir a que lista va una cancion (shared/Sheet.jsx: sube desde
+   abajo en telefono; desde 960 px, tarjeta centrada de 400). La misma desde el
+   menu de una fila (la biblioteca, donde vive en la pila de navegacion y la
+   cierra nav.back) y desde "Ahora suena", que la abre con su propio estado y,
+   fuera del proveedor de la biblioteca, sin `byKey`: sus listas llevan el
+   mosaico neutro.
 
    No guarda nada propio: elige con playlists.addKeys / playlists.create y
    avisa al que la abrio (`onNotice`) para que lo diga en SU aviso, porque el
@@ -55,19 +62,29 @@ export function NameField({ value = "", label, submit, onSubmit, onCancel }) {
   );
 }
 
-const plural = (n) => `${n} ${n === 1 ? "canción" : "canciones"}`;
+function Row({ p, byKey, onPick }) {
+  const tones = byKey ? mosaicTones(p.keys, byKey) : [];
+  return (
+    <button type="button" className="mi pl" onClick={() => onPick(p)}>
+      <Mosaic tones={tones} className="mos--pl" />
+      <span className="pl__x">
+        <span className="pl__n">{p.name}</span>
+        <span className="pl__c">{songs(p.keys.length)}</span>
+      </span>
+    </button>
+  );
+}
 
-export default function PlaylistPicker({ songKey, title, onClose, onNotice }) {
+export default function PlaylistPicker({ songKey, title, onClose, onNotice, anchor, byKey }) {
   const list = usePlaylists((s) => s.list);
   const ready = usePlaylists((s) => s.ready);
   const error = usePlaylists((s) => s.error);
   const errorCode = usePlaylists((s) => s.errorCode);
   const [naming, setNaming] = useState(false);
-  const ref = useRef(null);
+  const newRef = useRef(null);
   const label = `Añadir «${title}» a…`;
 
   useEffect(() => {
-    ref.current.querySelector("button, input")?.focus();
     playlists.load();
   }, []);
 
@@ -84,16 +101,6 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice }) {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
-  /* El foco no sale de la hoja con Tab. */
-  const onKeyDown = (e) => {
-    if (e.key !== "Tab") return;
-    const items = [...ref.current.querySelectorAll("button:not(:disabled), input")];
-    const edge = e.shiftKey ? 0 : items.length - 1;
-    if (items.indexOf(document.activeElement) !== edge) return;
-    e.preventDefault();
-    items[e.shiftKey ? items.length - 1 : 0].focus();
-  };
-
   const done = (text) => {
     onNotice(text);
     onClose();
@@ -108,58 +115,51 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice }) {
   };
 
   return (
-    <div className="pick" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        ref={ref}
-        className="pick__sheet"
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        onKeyDown={onKeyDown}
-      >
-        <h2 className="pick__h">{label}</h2>
-        {!ready ? (
-          <p className="lnote">
-            {!error
-              ? "Cargando listas…"
-              : errorCode === "reconnect_required"
-                ? "Tu sesión de Google Drive ha caducado."
-                : "No se pudieron cargar las listas."}
-            {error && errorCode !== "reconnect_required" && (
-              <>
-                <br />
-                <button type="button" className="vf" onClick={() => playlists.load(true)}>
-                  Reintentar
-                </button>
-              </>
-            )}
-          </p>
-        ) : (
-          <>
-            <div className="pick__list">
-              {list.map((p) => (
-                <button key={p.id} type="button" className="pick__it" onClick={() => add(p)}>
-                  <span className="pick__n">{p.name}</span>
-                  <span className="pick__c">{plural(p.keys.length)}</span>
-                </button>
-              ))}
-            </div>
-            {naming ? (
-              <NameField
-                label="Nombre de la nueva lista"
-                submit="Crear"
-                onSubmit={create}
-                onCancel={() => setNaming(false)}
-              />
-            ) : (
-              <button type="button" className="pick__it pick__new" onClick={() => setNaming(true)}>
-                <Icon name="Plus" size={18} />
-                Nueva lista
-              </button>
-            )}
-          </>
-        )}
+    <Sheet title={label} onClose={onClose} anchor={anchor} sm>
+      <div className="sh__bar">
+        <h2 className="sh__bt">{label}</h2>
+        <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
+          <Ico n="x" size={18} />
+        </button>
       </div>
-    </div>
+      {!ready ? (
+        <p className="lnote">
+          {!error
+            ? "Cargando listas…"
+            : errorCode === "reconnect_required"
+              ? "Tu sesión de Google Drive ha caducado."
+              : "No se pudieron cargar las listas."}
+          {error && errorCode !== "reconnect_required" && (
+            <>
+              <br />
+              <button type="button" className="vf" data-autofocus="" onClick={() => playlists.load(true)}>
+                Reintentar
+              </button>
+            </>
+          )}
+        </p>
+      ) : (
+        <div className="mlist">
+          <button ref={newRef} type="button" className="mi" data-autofocus="" onClick={() => setNaming(true)}>
+            <NavIcon name="plus" size={22} />
+            Nueva lista
+          </button>
+          {naming && (
+            <NameField
+              label="Nombre de la nueva lista"
+              submit="Crear"
+              onSubmit={create}
+              onCancel={() => {
+                setNaming(false);
+                requestAnimationFrame(() => newRef.current?.focus({ preventScroll: true }));
+              }}
+            />
+          )}
+          {list.map((p) => (
+            <Row key={p.id} p={p} byKey={byKey} onPick={add} />
+          ))}
+        </div>
+      )}
+    </Sheet>
   );
 }

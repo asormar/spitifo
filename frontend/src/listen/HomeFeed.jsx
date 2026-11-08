@@ -1,9 +1,8 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { usePc } from "../shared/viewport.js";
 import Ico from "../shared/ico.jsx";
-import { cx } from "../shared/ui.jsx";
 import { useHistory } from "./history.js";
 import {
   AlbumCard,
@@ -108,7 +107,9 @@ function AddedCard({ entry, list, ctx, pc }) {
   );
 }
 
-export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active }) {
+/* Memo: un menu abierto cambia la pila de navegacion y repinta la pantalla; el
+   feed no cambia con ello. */
+export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, active }) {
   const pc = usePc();
   const hist = useHistory();
   const entries = index.entries;
@@ -123,9 +124,6 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
   const topEntries = useMemo(() => top.map((i) => i.entry), [top]);
 
   const open = (what) => () => ctx.open({ type: "all", what });
-  /* La seccion con el menu de una fila abierto queda por encima de las siguientes. */
-  const menuKey = ctx.menu?.key;
-  const topUp = menuKey != null && top.slice(0, TOP_HOME).some((t) => t.entry.key === menuKey);
 
   return (
     <div className="hfeed">
@@ -154,7 +152,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
       )}
 
       {top.length > 0 && (
-        <section className={cx("sec", topUp && "sec--up")} aria-labelledby="h-top">
+        <section className="sec" aria-labelledby="h-top">
           <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
           {pc && <Thead />}
           {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
@@ -214,4 +212,4 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
       </button>
     </div>
   );
-}
+});

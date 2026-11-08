@@ -4,81 +4,9 @@
    Lo que se apila sobre una pestana: "Ver todo", Todas tus canciones y la ficha
    de un album, un artista o una lista. Se carga con el chunk de PageHost (no
    con Inicio). Las tarjetas, la rejilla, la tabla y los chips son de home.css y
-   shared/chips.css. Solo se animan transform y opacity.
+   shared/chips.css; los botones (.btn), de shared/sheet.css. Solo se animan
+   transform y opacity.
    ------------------------------------------------------------------------- */
-
-/* --- Secciones (ficha de album, artista o lista) ------------------------------------ */
-
-.hsec {
-  position: relative;
-  margin-top: 10px;
-  --rise: 10px;
-  animation: var(--sec-move);
-}
-
-.hsec__h {
-  margin: 0;
-  font: 700 20px / 1.15 var(--font-display);
-  letter-spacing: -0.03em;
-}
-
-.hsec__h--solo {
-  margin: 0 4px 10px;
-}
-
-/* Carrusel horizontal a sangre: el relleno deja sitio a sombras y aros de foco. */
-.hs {
-  display: flex;
-  gap: 12px;
-  margin: 0 calc(var(--gutter) * -1);
-  padding: 6px var(--gutter) 12px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  scroll-padding: 0 var(--gutter);
-  scrollbar-width: none;
-}
-
-.hs > * {
-  scroll-snap-align: start;
-}
-
-/* Presion de 150 ms de los botones de la pagina. */
-:is(.alb, .hback, .dhead__back) {
-  transition: var(--tr-press);
-}
-
-:is(.alb, .hback, .dhead__back):active {
-  transform: scale(0.96);
-}
-
-/* --- Albumes -------------------------------------------------------------------------------- */
-
-.alb {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.alb__cv {
-  --s: 130px;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-  border-radius: var(--r-cover);
-  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
-}
-
-.alb__t {
-  margin-top: 8px;
-  font-size: 14.5px;
-  font-weight: 600;
-  line-height: 1.3;
-}
 
 /* --- Paginas -------------------------------------------------------------------------------------------- */
 
@@ -87,10 +15,6 @@
   margin: 0 auto;
   --rise: 10px;
   animation: var(--rise-move);
-}
-
-.lpage--detail {
-  max-width: 1000px;
 }
 
 .phead {
@@ -116,6 +40,11 @@
   background: var(--s1);
   color: var(--ink);
   cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.hback:active {
+  transform: scale(0.96);
 }
 
 .phead__h {
@@ -129,123 +58,214 @@
   white-space: nowrap;
 }
 
-/* --- Ficha de album, artista o lista --------------------------------------------------------------------- */
+/* --- Ficha de album, artista o lista (Detail.jsx) ---------------------------------------------- */
 
-.dhead {
-  position: relative;
-  padding: 8px 16px 18px;
-  border-radius: var(--r-panel);
-  background: linear-gradient(160deg, color-mix(in oklab, var(--c) 22%, var(--s1)), var(--s1) 72%);
-  box-shadow: var(--shadow);
+/* Telefono: barra con "Volver" y, en una lista, sus puntos. */
+.dbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  margin: 0 -8px;
+}
+
+.dside {
+  min-width: 0;
   text-align: center;
 }
 
-.dhead__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 44px;
-  padding: 0 14px 0 10px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--s1) 55%, transparent);
-  color: var(--ink);
-  font: 600 14px var(--font-body);
-  cursor: pointer;
-}
-
-.dhead__tools {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-}
-
-.dhead__body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.dhead__art {
-  display: block;
-  width: 164px;
-  height: 164px;
-  margin-top: 6px;
-  overflow: hidden;
-  border-radius: var(--r-card);
+.dcv {
+  --s: 236px;
+  width: var(--s);
+  height: var(--s);
+  margin: 0 auto;
+  border-radius: 26px;
   box-shadow: 0 22px 44px rgba(var(--shadow-rgb), 0.22);
 }
 
-.dhead__art--round {
-  border-radius: 50%;
+.dtrow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
 }
 
-.dhead__cv {
-  --s: 164px;
+.dtl {
+  flex: 1;
+  min-width: 0;
+  margin: 20px 0 0;
+  font: 800 24px / 1.1 var(--font-display);
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.dtrow .nfield {
+  margin-top: 16px;
+}
+
+/* Un boton de texto de 44 px de alto con el texto de 16. */
+.dby {
+  position: relative;
+  display: inline-flex;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc);
+  font: 700 16px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dby::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -8px;
+  left: -8px;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+.dside .dmeta {
+  margin: 4px 0 0;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.dacts {
+  display: flex;
+  gap: 10px;
+  padding: 18px 0 0;
+}
+
+.btn--pink {
+  background: var(--pink);
+  color: var(--on-pink);
+}
+
+/* La tarjeta de las canciones: el filete empieza bajo el numero y no hay en la
+   primera fila (la lista es virtual: nunca :first-child). */
+.tcard {
+  margin: 14px 0 0;
+  overflow: hidden;
+  border-radius: 24px;
+  background: var(--s1);
+  box-shadow: var(--shadow);
+}
+
+.tcard .srow {
+  padding-left: 8px;
+}
+
+.tcard .vrow:not([aria-posinset="1"]) .srow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 16px;
+  left: 56px;
+  height: 1px;
+  background: var(--line);
+}
+
+.srow__n {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  color: var(--dim);
+  font: 700 13.5px / 1 var(--font-display);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.srow--n .srow__main {
+  gap: 10px;
+}
+
+.liner {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--s1);
+  color: var(--mut);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.liner b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.ghead {
+  margin: 0;
+  padding: 20px 6px 0;
+  color: var(--mut);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* Artista, telefono: la portada llena la cabecera, sin desenfoque, con un
+   degradado para el texto blanco. */
+.ahero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 340px;
+  margin: -12px calc(var(--gutter) * -1) 0;
+  overflow: hidden;
+  border-radius: 0 0 32px 32px;
+  background: var(--s2);
+  color: #fff;
+}
+
+.ahero .cv {
+  --s: 340px;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   border-radius: 0;
 }
 
-.dhead__info {
-  width: 100%;
+.ahero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(14, 14, 24, 0.08) 30%, rgba(14, 14, 24, 0.72));
+}
+
+.ahero__back {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  background: rgba(14, 14, 24, 0.42);
+  box-shadow: none;
+  color: #fff;
+}
+
+.ahero__in {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.ahero h1 {
   min-width: 0;
-}
-
-.dhead__kind {
-  display: none;
-  margin: 0 0 4px;
-  color: var(--mut);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.dhead__h {
-  margin: 14px 0 2px;
-  font: 800 26px / 1.1 var(--font-display);
+  margin: 0;
+  font: 800 clamp(26px, 8.2vw, 32px) / 1.05 var(--font-display);
   letter-spacing: -0.045em;
   overflow-wrap: anywhere;
 }
 
-.dhead__meta {
-  margin: 0;
-  color: var(--mut);
-  font-size: 14px;
-}
-
-.dhead__info .nfield {
-  margin-top: 14px;
-}
-
-.dhead__acts {
-  display: flex;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.dhead__acts .lbtn {
-  flex: 1;
-  justify-content: center;
-  min-height: 48px;
-  font-size: 15px;
-}
-
-.dalbums {
-  margin-top: 18px;
-}
-
-.alb--det {
-  flex: none;
-  width: 120px;
-}
-
-.alb--det .alb__cv {
-  --s: 120px;
-  width: var(--s);
-  height: var(--s);
-}
-
-.dlist {
+.dalb {
   margin-top: 14px;
 }
 
@@ -311,18 +331,25 @@
   --cols: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 56px 40px;
 }
 
+/* Las tablas de una pagina: numero, titulo, duracion y menu (y, en una lista, el
+   asa y quitar). */
+.thd--trk,
+.srow--trk {
+  --cols: 36px minmax(0, 1fr) 64px 40px;
+}
+
+.thd--lst,
+.srow--lst {
+  --cols: 28px 36px minmax(0, 1fr) 64px 40px 40px;
+}
+
+.srow--lst .qrow__grip {
+  width: 28px;
+}
+
 /* --- Escritorio ------------------------------------------------------------------------------------ */
 
 @media (min-width: 960px) {
-  .hsec__h {
-    font-size: 22px;
-  }
-
-  .hs {
-    margin-inline: 0;
-    padding-inline: 0;
-  }
-
   /* Paginas. */
   .phead__h {
     font-size: 34px;
@@ -333,65 +360,134 @@
     margin: 6px 0 14px;
   }
 
-  .dhead {
-    padding: 14px 32px 32px;
+  .dgrid {
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr);
+    align-items: start;
+    gap: 0 40px;
+    margin-top: 6px;
+  }
+
+  .dside {
+    position: sticky;
+    top: calc(var(--top-h) + 6px);
     text-align: left;
   }
 
-  .dhead__body {
+  .dcv {
+    --s: 264px;
+    margin: 0;
+    border-radius: 22px;
+  }
+
+  .dtrow {
+    justify-content: space-between;
+  }
+
+  .dtl {
+    margin-top: 22px;
+    font-size: 26px;
+    letter-spacing: -0.045em;
+  }
+
+  .dtrow .cbtn {
+    margin-top: 16px;
+  }
+
+  .dacts {
+    margin-top: 18px;
+    padding: 0;
+  }
+
+  .liner {
+    margin: 16px 0 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .tcard {
+    margin: 0;
+    overflow: visible;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .tcard .vrow .srow::before {
+    display: none;
+  }
+
+  .srow--n .srow__n {
+    font-size: 14px;
+  }
+
+  /* Artista, escritorio: un banner con la portada redonda. */
+  .ahero {
     flex-direction: row;
-    align-items: flex-end;
+    align-items: center;
     gap: 32px;
-    margin-top: 10px;
+    height: auto;
+    min-height: 216px;
+    margin: 6px 0 0;
+    padding: 30px 40px;
+    border-radius: 36px;
+    background: linear-gradient(
+      120deg,
+      color-mix(in oklab, var(--c) 66%, #11111c),
+      color-mix(in oklab, var(--c) 34%, #11111c)
+    );
   }
 
-  .dhead__art {
-    flex: none;
-    width: 216px;
-    height: 216px;
-    margin-top: 0;
+  :root[data-theme="dark"] .ahero {
+    background: linear-gradient(
+      120deg,
+      color-mix(in oklab, var(--c) 55%, #11111c),
+      color-mix(in oklab, var(--c) 30%, #11111c)
+    );
   }
 
-  .dhead__cv {
-    --s: 216px;
+  .ahero::after {
+    display: none;
   }
 
-  .dhead__kind {
-    display: block;
+  .ahero .cv {
+    --s: 156px;
+    position: static;
+    width: var(--s);
+    height: var(--s);
+    border-radius: 50%;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
   }
 
-  .dhead__h {
-    margin: 0 0 6px;
-    font-size: 52px;
-    line-height: 1.05;
-    letter-spacing: -0.025em;
+  .ahero__t {
+    flex: 1;
+    min-width: 0;
   }
 
-  .dhead__meta {
+  .ahero h1 {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 44px;
+    line-height: 1.06;
+    letter-spacing: -0.05em;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .ahero p {
+    margin: 10px 0 0;
     font-size: 15px;
+    font-weight: 600;
   }
 
-  .dhead__acts {
-    margin-top: 20px;
+  .dpage--artist .dacts {
+    max-width: 380px;
+    margin-top: 18px;
   }
 
-  .dhead__acts .lbtn {
-    flex: none;
-    padding: 0 26px;
-  }
-
-  .alb--det {
-    width: 140px;
-  }
-
-  .alb--det .alb__cv {
-    --s: 140px;
-  }
-
-  .dalbums .hs {
-    padding-inline: 6px;
-    margin-inline: 0;
-    gap: 16px;
+  .dalb {
+    margin-top: 22px;
   }
 }
 

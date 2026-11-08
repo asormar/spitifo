@@ -1,5 +1,5 @@
 import { ProgressStack } from "../download/progress.jsx";
-import { plural } from "../listen/home.js";
+import { songs } from "../listen/home.js";
 import { usePlaylists } from "../listen/playlists.js";
 import BrandLogo from "./BrandLogo.jsx";
 import { ITEMS } from "./Nav.jsx";
@@ -39,7 +39,7 @@ function NavLists({ openId, onOpen, onNew }) {
       onClick={() => onOpen(p.id)}
     >
       <b>{p.name}</b>
-      <span>{plural(p.keys.length, "canción", "canciones")}</span>
+      <span>{songs(p.keys.length)}</span>
     </button>
   ));
 }

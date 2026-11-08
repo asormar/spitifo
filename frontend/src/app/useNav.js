@@ -6,6 +6,7 @@ import {
   modeDirection,
   pageOf,
   readView,
+  replaceTop,
   stackFor,
   truncate,
   viewKey,
@@ -135,16 +136,40 @@ export default function useNavController({ leaveNp, warm } = {}) {
         commit(next);
       });
 
-    const back = () =>
+    /* Quita `n` paginas de arriba de una vez (borrar una lista desde su menu
+       cierra el menu y la pagina). Un solo go(-n): un solo popstate. */
+    const pop = (n = 1) =>
       act(() => {
         const cur = ref.current;
-        if (!cur.stack.length) return;
+        const k = Math.min(n, cur.stack.length);
+        if (k < 1) return;
         remember();
-        const next = { ...cur, stack: cur.stack.slice(0, -1) };
+        const next = { ...cur, stack: cur.stack.slice(0, cur.stack.length - k) };
         commitScreen(next);
         skip.current += 1;
         after.current = null;
-        window.history.go(-1);
+        window.history.go(-k);
+      });
+
+    /* Sin argumentos porque se cablea como onClick. */
+    const back = () => pop(1);
+
+    /* Cambia la entrada de arriba por otra sin dejar entrada nueva en el
+       historial (un menu que pasa a la hoja de listas, o a una pagina): atras
+       sigue quitando una sola. Recuerda el scroll como `open`. */
+    const replace = (view) =>
+      act(() => {
+        const cur = ref.current;
+        if (!cur.stack.length || view.type === "settings") {
+          open(view);
+          return;
+        }
+        remember();
+        const next = { ...cur, stack: replaceTop(cur.stack, view) };
+        const key = viewKey(next.tab, next.stack);
+        if (key !== viewKey(cur.tab, cur.stack)) scrolls.current.delete(key);
+        window.history.replaceState({ [HISTORY_MARK]: next.stack.length }, "", window.location.href);
+        commit(next);
       });
 
     /* Pestana `t` con la pila vacia o, con `view`, con esa unica pagina. Sirve
@@ -246,6 +271,8 @@ export default function useNavController({ leaveNp, warm } = {}) {
     return {
       open,
       back,
+      pop,
+      replace,
       goTab: (t) => goTo(t),
       goTo,
       openSettings,
@@ -266,6 +293,9 @@ export default function useNavController({ leaveNp, warm } = {}) {
      se descarta, y ?view=settings deja Inicio debajo para que Volver no salga
      de la app. */
   useEffect(() => {
+    /* El scroll lo recuerda cada vista (scrolls): sin esto el navegador lo
+       devolvia al cerrar un menu que se cerro porque la pagina se movio. */
+    window.history.scrollRestoration = "manual";
     const boot = readView(window.location.search);
     if (depthOf(window.history.state) > 0) window.history.replaceState(null, "", window.location.href);
     if (boot.settings) {

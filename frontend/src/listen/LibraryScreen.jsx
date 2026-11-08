@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { NavIcon } from "../app/navIcons.jsx";
 import { useNav } from "../app/useNav.js";
 import SearchField from "../shared/SearchField.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -8,7 +9,6 @@ import LibraryHome from "./LibraryHome.jsx";
 import PageHost from "./pageLoader.jsx";
 import SearchResults from "./SearchResults.jsx";
 import { searchLibrary } from "./home.js";
-import { Icon } from "./icons.jsx";
 import "./home.css";
 
 /* ---------------------------------------------------------------------------
@@ -47,7 +47,6 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
 
   const onSearch = (value) => {
     setQ(value);
-    ctx.closeMenu();
     const has = nav.getStack().some((v) => v.type === "search");
     if (value.trim() && !has) nav.open({ type: "search" });
     else if (!value.trim() && has) nav.back();
@@ -68,7 +67,7 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
           title="Nueva lista"
           onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
         >
-          <Icon name="Plus" size={pc ? 16 : 18} />
+          <NavIcon name="plus" size={pc ? 16 : 18} />
           {pc && "Nueva lista"}
         </button>
       </header>

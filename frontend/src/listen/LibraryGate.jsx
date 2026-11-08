@@ -11,7 +11,7 @@ import { useListen } from "./ListenProvider.jsx";
    ------------------------------------------------------------------------- */
 
 /* Filas de esqueleto mientras llega la biblioteca. */
-const skeleton = (n) =>
+export const skeleton = (n) =>
   Array.from({ length: n }, (_, i) => (
     <div key={i} className="lskel skel skel--pulse" style={{ "--i": i }} aria-hidden="true">
       <span className="art" />

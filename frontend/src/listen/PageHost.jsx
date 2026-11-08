@@ -1,5 +1,6 @@
 import { useListen } from "./ListenProvider.jsx";
-import { AllPage, DetailPage, LibraryPage } from "./Pages.jsx";
+import DetailPage from "./Detail.jsx";
+import { AllPage, LibraryPage } from "./Pages.jsx";
 import { viewKey } from "../app/navigation.js";
 import "../shared/chips.css";
 import "./home.css";
@@ -39,7 +40,7 @@ export default function PageHost({ view, tab, active, results }) {
   } else if (view.type === "library") {
     page = <LibraryPage key={key} view={view} index={model.index} storage={model.storage} active={active} ctx={ctx} />;
   } else {
-    page = <DetailPage key={key} view={view} {...common} />;
+    page = <DetailPage key={key} view={view} storage={model.storage} {...common} />;
   }
   return (
     <section className="listen" aria-label="Biblioteca">

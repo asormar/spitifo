@@ -70,10 +70,15 @@ export function filterEntries(entries, query) {
   return entries.filter((entry) => terms.every((term) => entry.search.includes(term)));
 }
 
+/* Los ids de las paginas de artista y album: los de groupArtists y
+   groupAlbums, para ir de una cancion a su album o su artista sin agrupar. */
+export const artistId = (entry) => `artist:${fold(entry.artist)}`;
+export const albumId = (entry) => (entry.album ? `album:${fold(entry.artist)}|${fold(entry.album)}` : null);
+
 export function groupArtists(entries) {
   const groups = new Map();
   for (const entry of entries) {
-    const id = `artist:${fold(entry.artist)}`;
+    const id = artistId(entry);
     let group = groups.get(id);
     if (!group) {
       group = { id, name: entry.artist, entries: [], albums: new Set() };
@@ -97,8 +102,7 @@ export function groupAlbums(entries) {
   for (const entry of entries) {
     if (!entry.album) continue;
     /* Mismo nombre con dos artistas son dos discos distintos. */
-    const key = `${fold(entry.artist)}|${fold(entry.album)}`;
-    const id = `album:${key}`;
+    const id = albumId(entry);
     let group = groups.get(id);
     if (!group) {
       group = { id, name: entry.album, artist: entry.artist, entries: [] };

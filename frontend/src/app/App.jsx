@@ -9,8 +9,8 @@ import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
-import ListenProvider, { useListen } from "../listen/ListenProvider.jsx";
-import { loadPageHost } from "../listen/pageLoader.jsx";
+import ListenProvider from "../listen/ListenProvider.jsx";
+import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
@@ -152,19 +152,17 @@ const typing = () => {
   return a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
 };
 
-/* Las dos teclas de toda la app, UNA vez. Va dentro del provider de la
-   biblioteca: Escape tambien cierra su menu de fila.
+/* Las dos teclas de toda la app, UNA vez.
    Escape, de lo mas pequeno a lo mas grande (gana el primero que actua):
-   "Ahora suena", el menu de fila, la pagina de arriba (o Ajustes).
+   "Ahora suena", lo de arriba de la pila (un menu, una hoja, la pagina o
+   Ajustes).
    "/" lleva el foco al buscador de la pantalla a la vista o al de la barra
    de arriba. */
 function Hotkeys({ nav, escapeNp, npOpen }) {
-  const { ctx } = useListen();
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
         if (escapeNp()) return;
-        if (ctx.closeTop()) return;
         if (nav.getStack().length) nav.back();
       } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
         if (npOpen || typing()) return;
@@ -181,7 +179,7 @@ function Hotkeys({ nav, escapeNp, npOpen }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [nav, ctx, escapeNp, npOpen]);
+  }, [nav, escapeNp, npOpen]);
   return null;
 }
 
@@ -427,6 +425,7 @@ export default function App() {
       loadSettingsView();
       loadNowPlaying();
       loadPageHost();
+      loadOverlays();
       MODE_LOADERS[nextGuess(tab)]?.();
       loadDiscoverView();
     };
