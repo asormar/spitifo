@@ -63,10 +63,6 @@
   .progstack > .prog {
     position: relative;
   }
-
-  .panel__path {
-    display: none;
-  }
 }
 
 /* ---------------------------------------------------------------------------

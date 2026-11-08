@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { keyUrl } from "../shared/api.js";
+import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
+import { albumTone, mosaicTones, plural, toneOf } from "./home.js";
 
 /* ---------------------------------------------------------------------------
    PIEZAS DEL INICIO DE ESCUCHAR
@@ -58,7 +60,7 @@ export function Mosaic({ tones, className }) {
   if (!tones.length) {
     return (
       <span className={cx("mos mos--empty", className)} aria-hidden="true">
-        <Icon name="MusicNote" size={22} />
+        <Ico n="music" size={22} />
       </span>
     );
   }
@@ -105,6 +107,89 @@ export function Card({ cover, title, sub, round, current, label, onClick }) {
       <span className="card__t">{title}</span>
       {sub != null && <span className="card__s">{sub}</span>}
     </button>
+  );
+}
+
+/* Las tarjetas de artista, album y lista: las mismas en Inicio, Tu biblioteca,
+   los resultados y las paginas "Ver todo". `sub` solo si la vista lo pide. */
+export const ArtistCard = ({ g, ctx, sub }) => (
+  <Card
+    round
+    label={`Abrir artista ${g.name}`}
+    onClick={() => ctx.open({ type: "artist", id: g.id })}
+    cover={<Cover tone={toneOf(g.name)} label={g.name} round />}
+    title={g.name}
+    sub={sub}
+  />
+);
+
+export const AlbumCard = ({ g, ctx, sub = g.artist }) => (
+  <Card
+    label={`Abrir álbum ${g.name}, ${g.artist}`}
+    onClick={() => ctx.open({ type: "album", id: g.id })}
+    cover={<Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} />}
+    title={g.name}
+    sub={sub}
+  />
+);
+
+/* `sub` por defecto: cuantas canciones suyas siguen en la biblioteca. */
+export function ListCard({ list, byKey, ctx, sub }) {
+  const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
+  const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
+  const text = plural(count, "canción", "canciones");
+  return (
+    <Card
+      label={`${list.name}, ${text}`}
+      onClick={() => ctx.open({ type: "list", id: list.id })}
+      cover={<Mosaic tones={tones} />}
+      title={list.name}
+      sub={sub ? `${sub} · ${text}` : text}
+    />
+  );
+}
+
+/* Sin ninguna lista: la tarjeta que invita a crear la primera. */
+export const NewListCard = ({ ctx }) => (
+  <Card
+    onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
+    cover={
+      <span className="cv card__add">
+        <Icon name="Plus" size={28} />
+      </span>
+    }
+    title="Crear tu primera lista"
+  />
+);
+
+/* Todas tus canciones: cuantas hay y donde estan. El cuerpo abre la pagina
+   (`onOpen`); el boton rosa las baraja y, si se pide, uno suave las reproduce. */
+export function AllSongs({ n, storage, onOpen, onPlay, onShuffle }) {
+  const body = (
+    <>
+      <b className="num">{n}</b>
+      <span>Todas tus canciones</span>
+      <small>En {storage}</small>
+    </>
+  );
+  return (
+    <div className="allsongs">
+      {onOpen ? (
+        <button type="button" className="allsongs__main" onClick={onOpen}>
+          {body}
+        </button>
+      ) : (
+        <div className="allsongs__main">{body}</div>
+      )}
+      {onPlay && (
+        <button type="button" className="cbtn cbtn--soft allsongs__play" aria-label="Reproducir todo" onClick={onPlay}>
+          <Icon name="Play" weight="fill" size={24} />
+        </button>
+      )}
+      <button type="button" className="pk" aria-label="Reproducir en aleatorio" onClick={onShuffle}>
+        <Icon name="Shuffle" size={26} />
+      </button>
+    </div>
   );
 }
 

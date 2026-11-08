@@ -5,21 +5,30 @@ import { usePc } from "../shared/viewport.js";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { useHistory } from "./history.js";
-import { Icon } from "./icons.jsx";
-import { Card, Cover, Mosaic, NowBadge, PlayOverlay, Prog, SectionHead, Shelf, coverOf } from "./cards.jsx";
+import {
+  AlbumCard,
+  ArtistCard,
+  Card,
+  Cover,
+  ListCard,
+  NewListCard,
+  NowBadge,
+  PlayOverlay,
+  Prog,
+  SectionHead,
+  Shelf,
+  coverOf,
+} from "./cards.jsx";
 import Mezcla from "./Mezcla.jsx";
 import {
   TOP_ALL,
   TOP_HOME,
-  albumTone,
   continueItems,
   entryTone,
-  mosaicTones,
   plural,
   progressLabel,
   recentAlbums,
   recentEntries,
-  toneOf,
   topArtists,
   topItems,
 } from "./home.js";
@@ -98,23 +107,6 @@ function AddedCard({ entry, list, ctx, pc }) {
   );
 }
 
-/* --- Listas ------------------------------------------------------------------- */
-
-function ListCard({ list, byKey, ctx }) {
-  const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
-  const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
-  const sub = plural(count, "canción", "canciones");
-  return (
-    <Card
-      label={`${list.name}, ${sub}`}
-      onClick={() => ctx.open({ type: "list", id: list.id })}
-      cover={<Mosaic tones={tones} />}
-      title={list.name}
-      sub={sub}
-    />
-  );
-}
-
 export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active }) {
   const pc = usePc();
   const hist = useHistory();
@@ -189,15 +181,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
             {lists.length ? (
               lists.slice(0, cap.lists).map((p) => <ListCard key={p.id} list={p} byKey={byKey} ctx={ctx} />)
             ) : (
-              <Card
-                onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
-                cover={
-                  <span className="cv card__add">
-                    <Icon name="Plus" size={28} />
-                  </span>
-                }
-                title="Crear tu primera lista"
-              />
+              <NewListCard ctx={ctx} />
             )}
           </Shelf>
         </section>
@@ -208,14 +192,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
           <SectionHead id="h-alb" title="Álbumes" onAll={open("albums")} />
           <Shelf grid={pc}>
             {albums.map((g) => (
-              <Card
-                key={g.id}
-                label={`Abrir álbum ${g.name}, ${g.artist}`}
-                onClick={() => ctx.open({ type: "album", id: g.id })}
-                cover={<Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} />}
-                title={g.name}
-                sub={g.artist}
-              />
+              <AlbumCard key={g.id} g={g} ctx={ctx} />
             ))}
           </Shelf>
         </section>
@@ -226,14 +203,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
           <SectionHead id="h-art" title="Artistas" onAll={open("artists")} />
           <Shelf grid={pc} wide>
             {artists.map((g) => (
-              <Card
-                key={g.id}
-                round
-                label={`Abrir artista ${g.name}`}
-                onClick={() => ctx.open({ type: "artist", id: g.id })}
-                cover={<Cover tone={toneOf(g.name)} label={g.name} round />}
-                title={g.name}
-              />
+              <ArtistCard key={g.id} g={g} ctx={ctx} />
             ))}
           </Shelf>
         </section>

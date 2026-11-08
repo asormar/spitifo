@@ -471,6 +471,7 @@ export default function App() {
      "vacia" mientras todavia pregunta. */
   const libFiles = useMemo(() => lib || [], [lib]);
   const libReady = lib !== null;
+  const storage = /^Google Drive/.test(health?.library) ? "Google Drive" : "este dispositivo";
 
   const { activeId, visited } = nav;
   const searchPage = nav.pageOf("search");
@@ -487,7 +488,7 @@ export default function App() {
           </>
         )}
 
-        <ListenProvider files={libFiles} nav={nav}>
+        <ListenProvider files={libFiles} nav={nav} storage={storage}>
           <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
           <div className="screens" ref={screensRef}>
             {visited.has("home") && (
@@ -531,7 +532,6 @@ export default function App() {
                   ready={libReady}
                   error={libErr}
                   errorCode={libErrCode}
-                  health={health}
                   active={activeId === "library"}
                   onRetry={loadLib}
                 />

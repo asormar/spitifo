@@ -30,8 +30,9 @@ import { SongRow } from "./rows.jsx";
    `useListen()` devuelve:
      ctx    lo que reciben las vistas (menu, play, open, back, song...). Se
             rehace al abrir o cerrar un menu: solo repintan quienes lo leen.
-     model  { entries, index, byKey, plays, lists, listsReady }, calculado
-            una vez para las tres pantallas.
+     model  { entries, index, byKey, plays, lists, listsReady, storage },
+            calculado una vez para las tres pantallas. `storage` es donde
+            se guarda la musica ("Google Drive" o "este dispositivo").
      show   el aviso pasajero.
    `nav` (useNav) pone open/back: la pila de paginas vive en el shell. Un atras
    del navegador o un cambio de pestana cierra tambien el menu abierto.
@@ -44,7 +45,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, children }) {
+export default function ListenProvider({ files, nav, storage, children }) {
   /* Solo se leen open/back (estables): depender de `nav` entero reconstruiria el
      contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack } = nav;
@@ -66,8 +67,8 @@ export default function ListenProvider({ files, nav, children }) {
     [hist.tracks]
   );
   const model = useMemo(
-    () => ({ entries, index, byKey, plays, lists, listsReady }),
-    [entries, index, byKey, plays, lists, listsReady]
+    () => ({ entries, index, byKey, plays, lists, listsReady, storage }),
+    [entries, index, byKey, plays, lists, listsReady, storage]
   );
 
   /* Las listas y el historial se piden una vez al arrancar; los fallos de
