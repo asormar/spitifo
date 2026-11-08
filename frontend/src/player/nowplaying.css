@@ -302,8 +302,13 @@
 
 /* --- Tarjetas ------------------------------------------------------------------ */
 
-.ncard {
+.np__cards {
+  display: grid;
+  gap: 16px;
   margin-top: 16px;
+}
+
+.ncard {
   padding: 16px 18px;
   border-radius: var(--r-card);
   background: rgba(0, 0, 0, 0.28);
@@ -468,6 +473,11 @@
   width: 340px;
   border-radius: 28px;
   box-shadow: 0 14px 40px rgba(17, 17, 28, 0.22);
+}
+
+/* Solo al montarla; NowPlaying la quita al terminar (ampliar y reducir no la
+   repiten). */
+.np--in {
   animation: np-in 340ms var(--drawer) backwards;
 }
 
@@ -479,10 +489,11 @@
   padding: 0;
 }
 
+/* Las tres pestanas, ampliar y cerrar caben en los 314 px de la columna. */
 .np--pane .np__head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   padding: 14px 12px 8px 14px;
   touch-action: auto;
 }
@@ -492,15 +503,24 @@
   padding: 0;
 }
 
+/* Sin salto de linea: «Ahora suena» no se parte. */
 .np--pane .np__tab {
+  flex: none;
   min-height: 34px;
-  padding: 0 14px;
+  padding: 0 12px;
   font-size: 13px;
+  white-space: nowrap;
 }
 
-.np--pane .np__x {
-  width: 40px;
-  height: 40px;
+/* Ampliar/reducir y cerrar, a la derecha de las pestanas. */
+.np--pane .np__x,
+.np--pane .np__wide {
+  width: 36px;
+  height: 36px;
+}
+
+.np--pane .np__tabs + .np__x,
+.np--pane .np__wide {
   margin-left: auto;
 }
 
@@ -540,10 +560,80 @@
   font-size: 14px;
 }
 
+/* Ampliada: ocupa el sitio de las paginas (el menu y la barra de arriba se
+   quedan). Solo la pestana Ahora suena: portada y titulo a la izquierda
+   (pegados), las tarjetas a la derecha. */
+.np--wide {
+  inset: 64px 12px 96px var(--dock-l);
+  width: auto;
+}
+
+.np--wide .np__head {
+  padding-inline: 24px;
+}
+
+.np--wide .np__body {
+  padding: 10px 24px 28px;
+}
+
+.np--wide .np__now {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 44px;
+  align-items: start;
+}
+
+.np--wide .np__col {
+  position: sticky;
+  top: 0;
+}
+
+.np--wide .np__cards {
+  margin-top: 0;
+}
+
+.np--wide .np__title {
+  font-size: 30px;
+  letter-spacing: -0.05em;
+}
+
 @keyframes np-in {
   from {
     transform: translateX(calc(100% + 12px));
   }
+}
+
+/* --- Ampliar y reducir (View Transition "rp") ---------------------------------------- */
+
+/* La columna es la misma caja antes y despues: la foto vieja y la nueva
+   conservan su tamano y la caja crece (o se encoge) sobre ellas. */
+html[data-vt="rp"] .np--pane {
+  view-transition-name: vt-rp;
+}
+
+html[data-vt="rp"]::view-transition-group(vt-rp) {
+  animation-duration: var(--t-move);
+  animation-timing-function: var(--drawer);
+}
+
+html[data-vt="rp"]::view-transition-old(vt-rp),
+html[data-vt="rp"]::view-transition-new(vt-rp) {
+  height: 100%;
+  object-fit: none;
+  object-position: top left;
+}
+
+/* Lo demas no se mueve: las paginas de debajo no son lo que se anima. */
+html[data-vt="rp"]::view-transition-group(root) {
+  animation: none;
+}
+
+html[data-vt="rp"]::view-transition-old(root) {
+  display: none;
+}
+
+html[data-vt="rp"]::view-transition-new(root) {
+  animation: none;
 }
 
 /* --- Transicion desde la pastilla (View Transitions, solo telefono) ----------------- */

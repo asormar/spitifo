@@ -425,6 +425,12 @@
   margin-right: 6px;
 }
 
+/* Cola y Ficha: con su pestana a la vista, una pastilla de acento. */
+.cbtn.cbtn--tab.is-open:not(:disabled) {
+  background: color-mix(in srgb, var(--acc) 14%, transparent);
+  color: var(--acc);
+}
+
 /* La pantallita: portada, tiempo, titulo, lo que falta y el hilo de progreso
    pegado al borde de abajo (el Scrub, que cubre todo el ancho). */
 .lcd {

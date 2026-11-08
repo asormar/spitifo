@@ -4,6 +4,7 @@ import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
 import Ico from "../shared/ico.jsx";
 import { canStartSwipe, swipeTarget } from "../app/navigation.js";
+import { swapPanel } from "../app/screenSwap.js";
 import { Icon } from "../listen/icons.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import QueueList from "../listen/QueueList.jsx";
@@ -33,8 +34,10 @@ import "./nowplaying.css";
      View Transition que la hace crecer desde la pastilla. Un arrastre hacia
      abajo desde la barra o las pestanas la cierra; deslizar el cuerpo de lado
      cambia de pestana al soltar.
-   - el resto (escritorio): columna al lado de las paginas, sin gestos, sin
-     capturar el foco y sin cerrar nada por si sola.
+   - el resto (escritorio): columna al lado de las paginas ("docked"), o
+     ampliada sobre ellas ("wide", solo la pestana Ahora suena), sin gestos, sin
+     capturar el foco y sin cerrar nada por si sola. Ampliar y reducir son una
+     View Transition (swapPanel): la caja se mueve en el compositor.
    Solo se pinta la pestana a la vista: la cola y sus filas no existen mientras
    no se abre Cola.
    ------------------------------------------------------------------------- */
@@ -82,8 +85,14 @@ function usePaint(art, fallback) {
   return [paint, apply, settle];
 }
 
-export default function NowPlaying({ mode, onClose, onReveal }) {
+export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
   const pc = mode !== "full";
+  const wide = mode === "wide";
+  /* Ampliar solo existe en la columna (no flotando sobre Descubrir). */
+  const canWide = mode === "docked" || wide;
+  /* El deslizamiento de entrada de la columna corre una vez, al montarla (no si
+     nace ampliada, y no al volver de ampliada). */
+  const [entering, setEntering] = useState(mode === "docked" || mode === "over");
   const track = useEngine((s) => s.track);
   const playing = useEngine((s) => s.playing);
   const engineDuration = useEngine((s) => s.duration);
@@ -239,11 +248,14 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
   const library = track.kind === "library";
   const caption = sourceCaption(source, track);
 
+  /* Salir de la pestana 0 suelta el ampliado: con su misma transicion. */
+  const go = (i) => (wide && i !== 0 ? swapPanel(() => panel.show(i)) : panel.show(i));
+
   const onTabKey = (e) => {
     const to = { ArrowRight: Math.min(tab + 1, 2), ArrowLeft: Math.max(tab - 1, 0), Home: 0, End: 2 }[e.key];
     if (to === undefined) return;
     e.preventDefault();
-    panel.show(to);
+    go(to);
     e.currentTarget.children[to].focus();
   };
 
@@ -264,7 +276,7 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
           aria-controls="np-panel"
           tabIndex={tab === i ? 0 : -1}
           className={cx("np__tab", tab === i && "is-on")}
-          onClick={() => panel.show(i)}
+          onClick={() => go(i)}
         >
           {label}
         </button>
@@ -286,17 +298,9 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
     </button>
   );
 
-  /* La portada, o la inicial sobre el color de fondo. Cada imagen que carga
-     calcula el color (el de la pista no depende de que pestana la pinta). */
+  /* La portada, o la inicial sobre el color de fondo. */
   const cover = art ? (
-    <img
-      key={art}
-      className="np__art"
-      src={art}
-      alt=""
-      onLoad={(e) => apply(sample(e.currentTarget) || fallback)}
-      onError={() => setBadArt(art)}
-    />
+    <img key={art} className="np__art" src={art} alt="" onError={() => setBadArt(art)} />
   ) : (
     <div className="np__art np__art--ph" aria-hidden="true">
       {initial(artist)}
@@ -339,15 +343,17 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
   } else {
     panelBody = (
       <div className="np__now">
-        <div className="np__cover">{cover}</div>
-        {pc ? (
-          <div className="np__row">
+        <div className="np__col">
+          <div className="np__cover">{cover}</div>
+          {pc ? (
+            <div className="np__row">
+              <div className="np__meta">{title}</div>
+              {addButton}
+            </div>
+          ) : (
             <div className="np__meta">{title}</div>
-            {addButton}
-          </div>
-        ) : (
-          <div className="np__meta">{title}</div>
-        )}
+          )}
+        </div>
         {!pc && (
           <>
             <div className="np__seek">
@@ -363,7 +369,11 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
             <Controls />
           </>
         )}
-        {library && <NowCards track={track} artist={artist} onReveal={onReveal} />}
+        {library && (
+          <div className="np__cards">
+            <NowCards track={track} artist={artist} onReveal={onReveal} />
+          </div>
+        )}
       </div>
     );
   }
@@ -371,14 +381,29 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
   return (
     <div
       ref={rootRef}
-      className={cx("np", pc && "np--pane", playing && "is-playing")}
+      className={cx("np", pc && "np--pane", wide && "np--wide", entering && "np--in", playing && "is-playing")}
       role={pc ? "complementary" : "dialog"}
       aria-modal={pc ? undefined : "true"}
       aria-label="Ahora suena"
       onTransitionEnd={(e) => {
         if (e.target === e.currentTarget && e.propertyName === "transform") runAfterSlide();
       }}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setEntering(false);
+      }}
     >
+      {/* El color sale de esta imagen oculta: no depende de que pestana pinta la
+          portada. */}
+      {art && (
+        <img
+          key={art}
+          hidden
+          src={art}
+          alt=""
+          onLoad={(e) => apply(sample(e.currentTarget) || fallback)}
+          onError={() => setBadArt(art)}
+        />
+      )}
       {paint.prev && <div key={paint.prev} className="np__bg" style={{ "--tint": paint.prev }} />}
       {paint.cur && (
         <div
@@ -393,6 +418,17 @@ export default function NowPlaying({ mode, onClose, onReveal }) {
         {pc ? (
           <div className="np__head">
             {tabs}
+            {canWide && tab === 0 && (
+              <button
+                type="button"
+                className="cbtn cbtn--w np__wide"
+                onClick={() => onWide(!wide)}
+                aria-label={wide ? "Reducir Ahora suena" : "Ampliar Ahora suena"}
+                title={wide ? "Reducir" : "Ampliar"}
+              >
+                <Ico n={wide ? "collapse" : "expand"} size={20} />
+              </button>
+            )}
             <button
               type="button"
               className="cbtn cbtn--w np__x"

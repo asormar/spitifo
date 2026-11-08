@@ -887,3 +887,17 @@
     padding: 8px 0;
   }
 }
+
+/* Con la columna de "Ahora suena" al lado (html[data-rp], ver shell.css) la
+   tabla de resultados pierde la columna de la fuente: cabe en 628 px. */
+@media (min-width: 1200px) {
+  html[data-rp="docked"] .thead,
+  html[data-rp="docked"] .res {
+    grid-template-columns: 32px minmax(0, 1fr) 150px 100px;
+  }
+
+  html[data-rp="docked"] .thead span:nth-child(3),
+  html[data-rp="docked"] .res__src {
+    display: none;
+  }
+}

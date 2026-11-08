@@ -82,3 +82,12 @@ body.has-mini .app {
   ) {
   font-variant-numeric: tabular-nums;
 }
+
+/* Con la columna de "Ahora suena" al lado (App pone html[data-rp], ver
+   shell.css) las paginas dejan sitio a sus 340 px + 12 de aire por lado, en
+   lugar del margen de 56. Por debajo de 1200 px la columna tapa las paginas. */
+@media (min-width: 1200px) {
+  html[data-rp="docked"] .app {
+    padding-right: 364px;
+  }
+}

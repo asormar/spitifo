@@ -961,3 +961,12 @@ button.allsongs__main {
     background: var(--hover);
   }
 }
+
+/* Con la columna de "Ahora suena" al lado (App pone html[data-rp]) las paginas
+   miden 628 px: las rejillas pasan a 4 columnas. */
+@media (min-width: 1200px) {
+  html[data-rp="docked"] .grid,
+  html[data-rp="docked"] .grid--6 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
