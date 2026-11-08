@@ -57,79 +57,15 @@
   }
 }
 
-/* --- Chips (modo, contenido, formato, filtro, ejemplos) ----------------------- */
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--s2);
-  box-shadow: inset 0 0 0 1.5px var(--s3);
-  color: var(--ink);
-  font: 700 13.5px / 1.2 var(--font-body);
-  text-align: center;
-  cursor: pointer;
-  transition: var(--tr-btnc), box-shadow var(--t-quick) var(--ease);
-}
-
-.chip:active {
-  transform: scale(0.96);
-}
-
-.chip.is-on {
-  background: var(--ink);
-  box-shadow: none;
-  color: var(--on);
-}
-
-/* YouTube apagado en el servidor: se marca sin deshabilitar (el usuario puede
-   estar reactivandolo desde otra pestana) para que el title explique el 0 de
-   resultados en vez de dejarlo como un fallo. */
-.chip.is-dead:not(.is-on) {
-  color: var(--dim);
-  text-decoration: underline dotted;
-  text-underline-offset: 4px;
-}
-
-.chip__n {
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
-}
-
-@media (pointer: coarse) {
-  .chip {
-    min-height: 44px;
-  }
-}
+/* --- Campo ---------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:not(.is-on):hover {
-    box-shadow: inset 0 0 0 1.5px var(--ink);
-  }
-
   .sfield__go:hover {
     filter: brightness(1.08);
   }
 }
 
 /* --- Secciones ------------------------------------------------------------------ */
-
-.sh2 {
-  margin: 30px 0 12px;
-  font: 700 19px / 1.15 var(--font-display);
-  letter-spacing: -0.03em;
-}
 
 .try,
 .gsec,

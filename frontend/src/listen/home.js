@@ -1,4 +1,5 @@
 import { coverTone } from "../shared/cover.js";
+import { clock } from "../shared/format.js";
 import { collator, fold, groupAlbums, groupArtists } from "./library.js";
 import { continueListening, mostPlayed } from "./history.js";
 
@@ -225,6 +226,44 @@ export function topItems(state, byKey, n) {
     if (out.length >= n) break;
   }
   return out;
+}
+
+/* "Seguir escuchando": lo que dice la tarjeta bajo el titulo. La que suena
+   nunca esta "escuchada": va contando hacia atras. */
+export function progressLabel({ finished, left }, current = false) {
+  return finished && !current ? "Escuchada" : `${clock(left)} restantes`;
+}
+
+/* --- Tu biblioteca ---------------------------------------------------------------- */
+
+export function libraryCounts(index, lists) {
+  return {
+    songs: index.entries.length,
+    lists: lists.length,
+    albums: index.albums.length,
+    artists: index.artists.length,
+  };
+}
+
+/* Cuantos artistas y albumes entran en "Todo" de la rejilla de PC. */
+export const GRID_ALL = 12;
+
+/* El filtro de la rejilla de PC: pulsar el activo vuelve a "all". */
+export const toggleFilter = (current, pressed) => (current === pressed ? "all" : pressed);
+
+/* Las tarjetas de la rejilla de PC. "all" mezcla todas las listas con los
+   primeros artistas y albumes recientes; un filtro concreto los trae todos (la
+   vista los pinta de a poco). Cada tarjeta es { kind, item }. */
+export function libraryGrid(index, lists, filter = "all", n = GRID_ALL) {
+  const of = (kind) => (item) => ({ kind, item });
+  if (filter === "lists") return lists.map(of("list"));
+  if (filter === "artists") return index.artists.map(of("artist"));
+  if (filter === "albums") return index.albums.map(of("album"));
+  return [
+    ...lists.map(of("list")),
+    ...topArtists(index.artists, n).map(of("artist")),
+    ...recentAlbums(index.albums, n).map(of("album")),
+  ];
 }
 
 /* --- Portadas sin imagen ------------------------------------------------------- */

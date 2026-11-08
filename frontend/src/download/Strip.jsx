@@ -1,5 +1,5 @@
 import { JOB_DISMISS_MS } from "./constants.js";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 
 /* ---------------------------------------------------------------------------
    AVISO DE LA PANTALLA (strip)

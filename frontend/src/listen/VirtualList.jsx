@@ -39,6 +39,13 @@ const OVERSCAN = 6;
 /* Lo que dura la cascada de entrada de la primera pintura. Pasado este margen
    las filas que monta el scroll ya no se animan. */
 const INTRO_MS = 700;
+/* Se mide la velocidad cada FAST_WINDOW ms (no evento a evento: un paso de
+   rueda con scroll suave llega a 2 px/ms un instante pero solo recorre 100 px).
+   Por encima de FAST_PX_MS la lista va a toda prisa y las miniaturas no se
+   pintan hasta FAST_HOLD ms despues del ultimo tramo rapido. */
+const FAST_WINDOW = 60;
+const FAST_PX_MS = 2;
+const FAST_HOLD = 140;
 
 const VirtualList = forwardRef(function VirtualList(
   { count, active, getKey, renderRow, className, scroller, menuKey, dragged },
@@ -47,6 +54,7 @@ const VirtualList = forwardRef(function VirtualList(
   const boxRef = useRef(null);
   const [range, setRange] = useState({ start: 0, end: 0 });
   const intro = useRef({ until: 0, from: 0 });
+  const fast = useRef({ y: 0, t: 0, id: 0 });
 
   const measure = useCallback(() => {
     const box = boxRef.current;
@@ -56,8 +64,24 @@ const VirtualList = forwardRef(function VirtualList(
        de abajo la repite ya con el. */
     const sc = scroller?.current;
     const top = sc ? sc.getBoundingClientRect().top : 0;
+    const st = top - box.getBoundingClientRect().top;
+    /* Cada miniatura que aparece repinta la capa de la lista: a toda prisa no
+       se pintan (data-fast, listen.css). Un salto tras una pausa (volver a la
+       pantalla) no es ir rapido: pasado el doble de la ventana no cuenta. */
+    const f = fast.current;
+    const now = performance.now();
+    const dt = now - f.t;
+    if (dt >= FAST_WINDOW) {
+      if (dt < FAST_WINDOW * 2 && Math.abs(st - f.y) > FAST_PX_MS * dt) {
+        box.dataset.fast = "";
+        clearTimeout(f.id);
+        f.id = setTimeout(() => delete box.dataset.fast, FAST_HOLD);
+      }
+      f.y = st;
+      f.t = now;
+    }
     const next = visibleRange({
-      scrollTop: top - box.getBoundingClientRect().top,
+      scrollTop: st,
       viewport: sc ? sc.clientHeight : window.innerHeight,
       rowHeight: ROW_H,
       count,
@@ -89,6 +113,8 @@ const VirtualList = forwardRef(function VirtualList(
       window.removeEventListener("resize", measure);
     };
   }, [active, measure, scroller]);
+
+  useEffect(() => () => clearTimeout(fast.current.id), []);
 
   useImperativeHandle(
     ref,

@@ -1,5 +1,5 @@
 import { rowKey } from "../shared/api.js";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 import { useJob } from "./jobsStore.js";
 import { dlState, dlText, dlWaiting } from "./searchPlan.js";
 

@@ -6,6 +6,7 @@ import {
   groupArtists,
   normalizeEntry,
   normalizeLibrary,
+  rowArt,
   toQueue,
   visibleRange,
 } from "./library.js";
@@ -246,6 +247,21 @@ describe("toQueue", () => {
     const without = normalizeEntry(file({ key: "b" }));
     expect(toQueue([withThumb], keyUrl)[0].artwork).toBe("/api/media/x/a.jpg");
     expect(toQueue([without], keyUrl)[0].artwork).toBeNull();
+  });
+});
+
+describe("rowArt", () => {
+  const keyUrl = (key) => `/api/media/${encodeURIComponent(key)}`;
+
+  it("is null without a thumbnail and the encoded sidecar URL with one", () => {
+    expect(rowArt(normalizeEntry(file({ key: "a" })), keyUrl)).toBeNull();
+    const entry = normalizeEntry(file({ key: "a", thumb_key: "Artist/a b.jpg" }));
+    expect(rowArt(entry, keyUrl)).toBe("/api/media/Artist%2Fa%20b.jpg");
+  });
+
+  it("matches the artwork of the queue track", () => {
+    const entry = normalizeEntry(file({ key: "a", thumb_key: "x/a.jpg" }));
+    expect(rowArt(entry, keyUrl)).toBe(toQueue([entry], keyUrl)[0].artwork);
   });
 });
 

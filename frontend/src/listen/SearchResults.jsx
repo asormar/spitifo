@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { useNav } from "../app/useNav.js";
+import { requestSearch } from "../download/searchRequest.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
-import { Cover, Mosaic, SectionHead, coverOf } from "./cards.jsx";
+import { AlbumCard, ArtistCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { albumTone, entryTone, toneOf, minutes, mosaicTones, plural } from "./home.js";
 
 /* ---------------------------------------------------------------------------
@@ -18,59 +20,34 @@ const SHOWN = { songs: 5, artists: 6, albums: 6, lists: 3 };
 
 const songs = (n) => plural(n, "canción", "canciones");
 
+const TYPES = { artist: "Artista", album: "Álbum", song: "Canción" };
+
 function Best({ best, all, ctx }) {
   const { kind, item } = best;
   const curKey = useEngine((s) => s.track?.key);
   const sounding = useEngine((s) => s.playing);
 
-  const view =
-    kind === "artist"
-      ? {
-          name: item.name,
-          type: "Artista",
-          sub: songs(item.entries.length),
-          tone: toneOf(item.name),
-          label: item.name,
-          round: true,
-          src: null,
-          entries: item.entries,
-          open: () => ctx.open({ type: "artist", id: item.id }),
-          openLabel: `Abrir artista ${item.name}`,
-          playLabel: `Reproducir canciones de ${item.name}`,
-        }
-      : kind === "album"
-        ? {
-            name: item.name,
-            type: "Álbum",
-            sub: `${item.artist} · ${songs(item.entries.length)}`,
-            tone: albumTone(item.artist, item.name),
-            label: item.name,
-            src: coverOf(item.entries),
-            entries: item.entries,
-            open: () => ctx.open({ type: "album", id: item.id }),
-            openLabel: `Abrir álbum ${item.name}`,
-            playLabel: `Reproducir el álbum ${item.name}`,
-          }
-        : {
-            name: item.title,
-            type: "Canción",
-            sub: item.album ? `${item.artist} · ${item.album}` : item.artist,
-            tone: entryTone(item),
-            label: item.artist,
-            src: coverOf([item]),
-            entries: [item],
-            open: (el) => ctx.tap(item, el, all),
-            openLabel: `Reproducir ${item.title}`,
-            playLabel: `${curKey === item.key && sounding ? "Pausar" : "Reproducir"} ${item.title}`,
-          };
+  const song = kind === "song";
+  const artist = kind === "artist";
+  const name = song ? item.title : item.name;
+  const entries = song ? [item] : item.entries;
+  const sub = artist
+    ? songs(entries.length)
+    : song
+      ? item.album
+        ? `${item.artist} · ${item.album}`
+        : item.artist
+      : `${item.artist} · ${songs(entries.length)}`;
+  const tone = artist ? toneOf(name) : song ? entryTone(item) : albumTone(item.artist, name);
 
-  const inside = view.entries.some((e) => e.key === curKey);
+  const inside = entries.some((e) => e.key === curKey);
   const on = inside && sounding;
 
+  /* Una cancion suena o se pausa; un artista o un album, entero. */
   const play = (e) => {
-    if (kind === "song") ctx.tap(item, e.currentTarget, all);
+    if (song) ctx.tap(item, e.currentTarget, all);
     else if (inside) engine.toggle();
-    else ctx.playGroup(view.entries);
+    else ctx.playGroup(entries);
   };
 
   return (
@@ -78,19 +55,25 @@ function Best({ best, all, ctx }) {
       <button
         type="button"
         className="best__main"
-        aria-label={view.openLabel}
-        onClick={(e) => view.open(e.currentTarget)}
+        aria-label={song ? `Reproducir ${name}` : `Abrir ${TYPES[kind].toLowerCase()} ${name}`}
+        onClick={(e) => (song ? play(e) : ctx.open({ type: kind, id: item.id }))}
       >
-        <Cover tone={view.tone} label={view.label} src={view.src} round={view.round} className="best__cv" />
+        <Cover
+          tone={tone}
+          label={song ? item.artist : name}
+          src={artist ? null : coverOf(entries)}
+          round={artist}
+          size={70}
+          className="best__cv"
+        />
         <span className="best__txt">
-          <span className="best__name">{view.name}</span>
-          <span className="best__row">
-            <span className="best__type">{view.type}</span>
-            <span className="best__sub">{view.sub}</span>
+          <span className="best__name">{name}</span>
+          <span className="best__sub">
+            {TYPES[kind]} · {sub}
           </span>
         </span>
       </button>
-      <button type="button" className="best__play" aria-label={view.playLabel} onClick={play}>
+      <button type="button" className="pk pk--s" aria-label={`${on ? "Pausar" : "Reproducir"} ${name}`} onClick={play}>
         <Icon name={on ? "Pause" : "Play"} weight="fill" size={22} />
       </button>
     </div>
@@ -98,86 +81,76 @@ function Best({ best, all, ctx }) {
 }
 
 export default function SearchResults({ r, query, byKey, ctx }) {
+  const nav = useNav();
   const q = query.trim();
   const open = (what) => () => ctx.open({ type: "all", what });
   const shownSongs = useMemo(() => r.songs.slice(0, SHOWN.songs), [r.songs]);
 
   if (r.empty) {
     return (
-      <div className="hnone" role="status">
-        <p className="hnone__t">Sin resultados para «{q}»</p>
-        <p className="hnone__s">Prueba con otro título, artista o álbum.</p>
+      <div className="hnone">
+        <div role="status">
+          <p className="hnone__t">Sin resultados para «{q}»</p>
+          <p className="hnone__s">Prueba con otro título, artista o álbum.</p>
+        </div>
+        <button
+          type="button"
+          className="lbtn lbtn--go"
+          onClick={() => {
+            requestSearch(q);
+            nav.goTab("search");
+          }}
+        >
+          Buscar para descargar
+        </button>
       </div>
     );
   }
 
   return (
     <div className="hres">
-      <div className="rgrid">
-        {r.best && (
-          <section className="hsec" aria-label="Mejor resultado">
-            <h2 className="hsec__h hsec__h--solo">Mejor resultado</h2>
-            <Best best={r.best} all={r.songs} ctx={ctx} />
-          </section>
-        )}
+      {r.best && (
+        <section aria-label="Mejor resultado">
+          <h2 className="sh2">Mejor resultado</h2>
+          <Best best={r.best} all={r.songs} ctx={ctx} />
+        </section>
+      )}
 
-        {r.songs.length > 0 && (
-          <section className="hsec" aria-label="Canciones">
-            <SectionHead title="Canciones" onAll={open("r-songs")} label="Ver todas las canciones" />
-            <div className="lpanel">{shownSongs.map((e) => ctx.song(e, r.songs))}</div>
-          </section>
-        )}
-      </div>
+      {r.songs.length > 0 && (
+        <section aria-label="Canciones">
+          <SectionHead title="Canciones" onAll={open("r-songs")} label="Ver todas las canciones" />
+          {shownSongs.map((e) => ctx.song(e, r.songs))}
+        </section>
+      )}
 
       {r.artists.length > 0 && (
-        <section className="hsec" aria-label="Artistas">
+        <section aria-label="Artistas">
           <SectionHead title="Artistas" onAll={open("r-artists")} label="Ver todos los artistas" />
-          <div className="hs artists artists--sm">
+          <Shelf>
             {r.artists.slice(0, SHOWN.artists).map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                className="art-c"
-                aria-label={`Abrir artista ${g.name}`}
-                onClick={() => ctx.open({ type: "artist", id: g.id })}
-              >
-                <Cover tone={toneOf(g.name)} label={g.name} round className="art-c__cv" />
-                <span className="art-c__t">{g.name}</span>
-              </button>
+              <ArtistCard key={g.id} g={g} ctx={ctx} />
             ))}
-          </div>
+          </Shelf>
         </section>
       )}
 
       {r.albums.length > 0 && (
-        <section className="hsec" aria-label="Álbumes">
+        <section aria-label="Álbumes">
           <SectionHead title="Álbumes" onAll={open("r-albums")} label="Ver todos los álbumes" />
-          <div className="hs agrid agrid--res">
+          <Shelf>
             {r.albums.slice(0, SHOWN.albums).map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                className="alb"
-                aria-label={`Abrir álbum ${g.name}, ${g.artist}`}
-                onClick={() => ctx.open({ type: "album", id: g.id })}
-              >
-                <Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} className="alb__cv" />
-                <span className="alb__t">{g.name}</span>
-                <span className="alb__a">{g.artist}</span>
-              </button>
+              <AlbumCard key={g.id} g={g} ctx={ctx} />
             ))}
-          </div>
+          </Shelf>
         </section>
       )}
 
       {r.lists.length > 0 && (
-        <section className="hsec" aria-label="Listas">
+        <section aria-label="Listas">
           <SectionHead title="Listas" onAll={open("r-lists")} label="Ver todas las listas" />
-          <div className="lres">
-            {r.lists.slice(0, SHOWN.lists).map((p) => (
-              <ListResult key={p.id} list={p} byKey={byKey} ctx={ctx} />
-            ))}
-          </div>
+          {r.lists.slice(0, SHOWN.lists).map((p) => (
+            <ListResult key={p.id} list={p} byKey={byKey} ctx={ctx} />
+          ))}
         </section>
       )}
     </div>
@@ -190,18 +163,19 @@ function ListResult({ list, byKey, ctx }) {
   const mins = minutes(entries);
   const sub = `${songs(entries.length)}${mins ? ` · ${mins} min` : ""}`;
   return (
-    <button
-      type="button"
-      className="lres__it"
-      aria-label={`${list.name}, ${sub}`}
-      onClick={() => ctx.open({ type: "list", id: list.id })}
-    >
-      <Mosaic tones={tones} className="lres__mos" />
-      <span className="lres__txt">
-        <span className="lres__t">{list.name}</span>
-        <span className="lres__s">{sub}</span>
-      </span>
-      <Icon name="CaretRight" size={18} className="srow__go" />
-    </button>
+    <div className="srow">
+      <button
+        type="button"
+        className="srow__main"
+        aria-label={`${list.name}, ${sub}`}
+        onClick={() => ctx.open({ type: "list", id: list.id })}
+      >
+        <Mosaic tones={tones} className="mos--row" />
+        <span className="srow__txt">
+          <span className="srow__t">{list.name}</span>
+          <span className="srow__m">{sub}</span>
+        </span>
+      </button>
+    </div>
   );
 }

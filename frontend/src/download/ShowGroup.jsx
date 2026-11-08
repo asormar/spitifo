@@ -4,7 +4,7 @@ import { fmtSize, fmtTime } from "../shared/format.js";
 import { ExtLink } from "../shared/ui.jsx";
 import { SOURCE_CODE, provenance } from "./constants.js";
 import DlRing from "./DlRing.jsx";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 import { Thumb, VerdictPill } from "./ResultRow.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 

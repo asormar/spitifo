@@ -1302,6 +1302,8 @@ _UNIT = "bytes"
 
 #: Extensiones que sirve `/api/audio`: audio, video y la miniatura `.jpg`.
 _SERVE_EXTS = AUDIO_EXTS + VIDEO_EXTS + IMAGE_EXTS
+# Una semana: la miniatura `.jpg` de un tema (privada: la API es del usuario).
+_THUMB_CACHE = {"Cache-Control": "private, max-age=604800"}
 #: Extensiones que tiene sentido adelantar con `/api/prefetch` (el video tambien
 #: se reproduce: la UI precarga el proximo tema). Una miniatura no se precarga.
 _PREFETCH_EXTS = AUDIO_EXTS + VIDEO_EXTS
@@ -1363,6 +1365,10 @@ async def audio(request: Request):
     # El MIME sale de la extension; configure_runtime ya registro los tipos de
     # audio, video y `.jpg` que Android no trae.
     ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
+    # La miniatura no cambia mientras el archivo exista: sin esto cada fila que
+    # se monta de nuevo en la lista virtual la vuelve a pedir (con Drive, un
+    # viaje a la red). El audio y el video ya viajan con `Range` y no se cachean.
+    cache = _THUMB_CACHE if Path(key).suffix.lower() in IMAGE_EXTS else {}
     rango = _parse_range(request.headers.get("range"), size)
     if rango == "insatisfacible":
         return Response(status_code=416, headers={
@@ -1374,6 +1380,7 @@ async def audio(request: Request):
             "Accept-Ranges": _UNIT,
             "Content-Range": f"bytes {start}-{end}/{size}",
             "Content-Length": str(end - start + 1),
+            **cache,
         }
         # open_range a un thread: en un adapter remoto abre la descarga (y
         # falla con 503/502 si hace falta) antes de mandar los headers.
@@ -1384,7 +1391,7 @@ async def audio(request: Request):
     body = await asyncio.to_thread(storage.open_range, key)
     return StreamingResponse(
         body, media_type=ctype,
-        headers={"Accept-Ranges": _UNIT, "Content-Length": str(size)})
+        headers={"Accept-Ranges": _UNIT, "Content-Length": str(size), **cache})
 
 
 def _prefetch_bg(fn, key: str) -> None:

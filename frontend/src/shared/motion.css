@@ -63,10 +63,6 @@
   .progstack > .prog {
     position: relative;
   }
-
-  .panel__path {
-    display: none;
-  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -191,6 +187,7 @@
   .eq i,
   .logo__o,
   .pbtn::after,
+  .rec__spin,
   .sfield.is-scanning .sfield__icon {
     animation: none !important;
   }

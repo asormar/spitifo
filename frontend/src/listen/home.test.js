@@ -5,6 +5,11 @@ import {
   buildIndex,
   continueItems,
   entryTone,
+  GRID_ALL,
+  libraryCounts,
+  libraryGrid,
+  progressLabel,
+  toggleFilter,
   toneOf,
   minutes,
   mosaicTones,
@@ -374,5 +379,75 @@ describe("labels", () => {
     expect(minutes([{ duration: 20 }])).toBe(1);
     expect(minutes([{ duration: null }])).toBeNull();
     expect(minutes([])).toBeNull();
+  });
+});
+
+describe("progressLabel", () => {
+  it("says Escuchada for a finished track that is not playing", () => {
+    expect(progressLabel({ finished: true, left: 4 })).toBe("Escuchada");
+  });
+
+  it("counts down the rest otherwise, also for the current finished track", () => {
+    expect(progressLabel({ finished: false, left: 42 })).toBe("0:42 restantes");
+    expect(progressLabel({ finished: true, left: 4 }, true)).toBe("0:04 restantes");
+    expect(progressLabel({ finished: false, left: 125 }, true)).toBe("2:05 restantes");
+  });
+});
+
+describe("libraryCounts", () => {
+  it("counts songs, lists, albums and artists", () => {
+    expect(libraryCounts(INDEX, [{ id: "p1" }, { id: "p2" }])).toEqual({
+      songs: 8,
+      lists: 2,
+      albums: INDEX.albums.length,
+      artists: 4,
+    });
+    expect(libraryCounts(buildIndex([]), [])).toEqual({ songs: 0, lists: 0, albums: 0, artists: 0 });
+  });
+});
+
+describe("libraryGrid", () => {
+  const lists = [{ id: "l1", name: "Una" }, { id: "l2", name: "Dos" }];
+  const many = buildIndex(
+    normalizeLibrary(
+      Array.from({ length: 30 }, (_, i) =>
+        file(`k${i}`, `Artista ${String(i).padStart(2, "0")}`, `Tema ${i}`, {
+          album: `Disco ${i}`,
+          modified: i + 1,
+        })
+      )
+    )
+  );
+  const kinds = (grid) => grid.map((g) => g.kind);
+
+  it("Todo is every list plus the first artists and the newest albums", () => {
+    const grid = libraryGrid(many, lists, "all");
+    expect(kinds(grid).filter((k) => k === "list")).toHaveLength(2);
+    expect(kinds(grid).filter((k) => k === "artist")).toHaveLength(GRID_ALL);
+    expect(kinds(grid).filter((k) => k === "album")).toHaveLength(GRID_ALL);
+    expect(kinds(grid).slice(0, 2)).toEqual(["list", "list"]);
+    expect(grid.find((g) => g.kind === "album").item.name).toBe("Disco 29");
+  });
+
+  it("is the default filter", () => {
+    expect(libraryGrid(many, lists)).toEqual(libraryGrid(many, lists, "all"));
+  });
+
+  it("a single filter brings all of its kind and nothing else", () => {
+    expect(libraryGrid(many, lists, "lists").map((g) => g.item.id)).toEqual(["l1", "l2"]);
+    expect(libraryGrid(many, lists, "artists")).toHaveLength(30);
+    expect(libraryGrid(many, lists, "albums")).toHaveLength(30);
+    expect(kinds(libraryGrid(many, lists, "albums")).every((k) => k === "album")).toBe(true);
+  });
+
+  it("works with no lists and a short library", () => {
+    expect(libraryGrid(INDEX, [], "all", 2)).toHaveLength(4);
+    expect(libraryGrid(buildIndex([]), [], "all")).toEqual([]);
+  });
+
+  it("pressing the active filter goes back to Todo", () => {
+    expect(toggleFilter("all", "lists")).toBe("lists");
+    expect(toggleFilter("lists", "lists")).toBe("all");
+    expect(toggleFilter("lists", "albums")).toBe("albums");
   });
 });

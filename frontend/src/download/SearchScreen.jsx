@@ -23,6 +23,7 @@ import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import ResolutionMenu from "./ResolutionMenu.jsx";
 import ShowGroup from "./ShowGroup.jsx";
 import Strip from "./Strip.jsx";
+import "../shared/chips.css";
 import "./search.css";
 import "./rows.css";
 import "./notices.css";

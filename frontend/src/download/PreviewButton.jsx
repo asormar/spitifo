@@ -1,6 +1,6 @@
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
-import Ico from "./ico.jsx";
+import Ico from "../shared/ico.jsx";
 
 /* ---------------------------------------------------------------------------
    30 S DE UN RESULTADO

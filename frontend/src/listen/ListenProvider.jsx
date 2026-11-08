@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { keyUrl } from "../shared/api.js";
@@ -13,6 +14,8 @@ import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { normalizeLibrary, toQueue, toTrack } from "./library.js";
 import { buildIndex } from "./home.js";
+import { mixEntries } from "./mixes.js";
+import { loadPageHost, pageReady } from "./pageLoader.jsx";
 import { history, useHistory } from "./history.js";
 import { playlists, usePlaylists } from "./playlists.js";
 import { useNotice } from "./Notice.jsx";
@@ -29,8 +32,9 @@ import { SongRow } from "./rows.jsx";
    `useListen()` devuelve:
      ctx    lo que reciben las vistas (menu, play, open, back, song...). Se
             rehace al abrir o cerrar un menu: solo repintan quienes lo leen.
-     model  { entries, index, byKey, plays, lists, listsReady }, calculado
-            una vez para las tres pantallas.
+     model  { entries, index, byKey, plays, lists, listsReady, storage },
+            calculado una vez para las tres pantallas. `storage` es donde
+            se guarda la musica ("Google Drive" o "este dispositivo").
      show   el aviso pasajero.
    `nav` (useNav) pone open/back: la pila de paginas vive en el shell. Un atras
    del navegador o un cambio de pestana cierra tambien el menu abierto.
@@ -43,7 +47,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, children }) {
+export default function ListenProvider({ files, nav, storage, children }) {
   /* Solo se leen open/back (estables): depender de `nav` entero reconstruiria el
      contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack } = nav;
@@ -52,6 +56,8 @@ export default function ListenProvider({ files, nav, children }) {
   /* { key, title, el }: la cancion de la hoja "Añadir a una lista". */
   const [picker, setPicker] = useState(null);
   const [noticeNode, show] = useNotice();
+  /* Aperturas de pagina: solo vale la ultima si el chunk aun no ha llegado. */
+  const opening = useRef(0);
 
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
@@ -65,8 +71,8 @@ export default function ListenProvider({ files, nav, children }) {
     [hist.tracks]
   );
   const model = useMemo(
-    () => ({ entries, index, byKey, plays, lists, listsReady }),
-    [entries, index, byKey, plays, lists, listsReady]
+    () => ({ entries, index, byKey, plays, lists, listsReady, storage }),
+    [entries, index, byKey, plays, lists, listsReady, storage]
   );
 
   /* Las listas y el historial se piden una vez al arrancar; los fallos de
@@ -181,6 +187,22 @@ export default function ListenProvider({ files, nav, children }) {
       engine.play(queue[i], { queue, index: i, restart: true });
     };
 
+    /* La Mezcla de Inicio: una cola barajada y sin fin con las canciones de
+       esa mezcla. La cola es una foto: no se vacia a medida que se oyen. */
+    const playMix = (key) => {
+      const queue = toQueue(mixEntries(key, model.entries, history.getState(), model.byKey), keyUrl);
+      if (!queue.length) return;
+      engine.setShuffle(true);
+      const i = Math.floor(Math.random() * queue.length);
+      engine.play(queue[i], {
+        queue,
+        index: i,
+        restart: true,
+        source: `mix:${key}`,
+        endless: true,
+      });
+    };
+
     /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
        donde se quedo. */
     const resume = (item, items) => {
@@ -200,8 +222,18 @@ export default function ListenProvider({ files, nav, children }) {
       play,
       tap,
       playGroup,
+      playMix,
       resume,
-      open: navOpen,
+      /* Sin el chunk de la pagina se espera a el: la pantalla actual sigue a la
+         vista en vez de quedar en blanco. Si falla la carga se navega igual. */
+      open: (v) => {
+        const n = ++opening.current;
+        if (pageReady()) navOpen(v);
+        else
+          loadPageHost()
+            .catch(() => {})
+            .then(() => n === opening.current && navOpen(v));
+      },
       back: navBack,
       deleteList,
       song: (entry, list, extra) => (
@@ -209,7 +241,8 @@ export default function ListenProvider({ files, nav, children }) {
           key={entry.key}
           entry={entry}
           menuOpen={menu?.key === entry.key}
-          onPlay={(e, el) => play(e, el, list)}
+          list={list}
+          onPlay={play}
           onMenu={onMenu}
           onPick={pick}
           {...extra}

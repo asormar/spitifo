@@ -18,9 +18,9 @@ import { libVerdict, libVerdictKey, useVerdict } from "./verdict.js";
 const RECENT = 5;
 
 /* La pastilla solo existe si esta sesion bajo el archivo y supo su veredicto. */
-function RecentRow({ entry, enter, onPlay }) {
+function RecentRow({ entry, list, enter, onPlay }) {
   const v = libVerdict(useVerdict(libVerdictKey(entry.key)));
-  return <SongRow entry={entry} enter={enter} onPlay={onPlay} badge={v && <VerdictPill v={v} />} />;
+  return <SongRow entry={entry} list={list} enter={enter} onPlay={onPlay} badge={v && <VerdictPill v={v} />} />;
 }
 
 export default function Recent({ files, onOpen }) {
@@ -46,7 +46,7 @@ export default function Recent({ files, onOpen }) {
       </header>
       <div className="lpanel">
         {recent.map((entry, i) => (
-          <RecentRow key={entry.key} entry={entry} enter={i} onPlay={(e, el) => ctx.play(e, el, recent)} />
+          <RecentRow key={entry.key} entry={entry} list={recent} enter={i} onPlay={ctx.play} />
         ))}
       </div>
     </section>

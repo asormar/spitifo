@@ -4,8 +4,7 @@ import { NavIcon } from "../app/navIcons.jsx";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
-import PageHost from "./PageHost.jsx";
-import "./home.css";
+import PageHost from "./pageLoader.jsx";
 
 /* ---------------------------------------------------------------------------
    INICIO
@@ -46,6 +45,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry })
           lists={model.lists}
           listsReady={model.listsReady}
           ctx={ctx}
+          active={active}
         />
       </LibraryGate>
     </section>

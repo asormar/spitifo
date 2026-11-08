@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 377,700 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 376,900 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -383,6 +383,51 @@ and the lazy Buscar chunk now carries 18,957 B of style and 34,766 B of script:
 | --- | --- | --- | --- | --- |
 | JavaScript | 375,032 B | 376,675 B (+1,643) | 376,500 B | 377,700 B |
 | CSS | 98,221 B | 99,235 B (+1,014) | 103,000 B | 103,000 B |
+
+The redesigned Inicio and Tu biblioteca (the Mezcla record with endless mixes,
+shelves and card grids that load in steps, the Todas tus canciones page with a
+table on a desktop, grouped library search with a best-result card, and covers on
+the song rows) replace the old feed, the full-library root and the group rows.
+Net of the deletions (and of its size, performance and motion review) it adds
+4,724 B of script and 1,021 B of style; only the script needed a new limit. The
+stacked pages (`Pages.jsx`, `pages.css`) are now their own lazy chunk, preloaded
+when the app is idle, so Inicio's stylesheet went from 14,123 B to 11,394 B (plus
+893 B of chips shared with Buscar) and the pages chunk carries 11,625 B of script
+and 4,165 B of style; the render-blocking first stylesheet is 40,223 B. Rows with
+a cover (only videos have one in a real library; the test library gives 100 of
+341 tracks one, 480x360, 19 KB) cost frames on a fast scroll: at 4x CPU
+throttling 1.5–4.4% of the frames of a 2,900 px/s scroll took two refreshes
+(one first pass took 83 ms) against none with the images hidden, and none at 1x.
+`/api/audio` now sends `Cache-Control: private, max-age=604800` for the `.jpg`
+so a row that mounts again does not ask for it again; the real fix for covers is
+a ~100 px thumbnail from the backend:
+
+| Bundle | Before Inicio and Tu biblioteca | After | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 376,675 B | 381,399 B (+4,724) | 377,700 B | 381,850 B |
+| CSS | 99,235 B | 100,256 B (+1,021) | 103,000 B | 103,000 B |
+
+The review of that change measured two things on 3,000 rows with a cover on
+every row, at 6x CPU throttling on a desktop viewport. Todas tus canciones
+dropped 5–16% of its frames in a 2,900 px/s scroll: every mounted row rendered
+again on each row crossing (the play callback was a new function each time, so
+nothing could be memoized) and each cover that landed repainted the list. Rows
+are now `memo`ized with stable props, and while the list moves faster than
+2 px/ms (taken over 60 ms, so a 100 px wheel notch cannot reach it) the covers
+are not painted until 140 ms after it slows: 0.3–2.4% dropped, against 0–0.3%
+with no covers at all and 0% on the phone at 4x. Opening a page before its chunk
+had loaded left 6–8 blank frames on a desktop; it now waits for the chunk with
+the screen still showing (0 frames).
+The second lever was the minifier: terser (`build.minify`, two passes) gives
+5,304 B less than esbuild on the same code, 4,883 B from terser itself and 421 B
+from the second pass, for about 2 s more of build time. The JavaScript limit
+now has 518 B of headroom instead of 451 B, with the review fixes (+287 B)
+included:
+
+| Bundle | After Inicio and Tu biblioteca | After the review | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 381,399 B | 376,382 B (−5,017: +287 fixes, −5,304 terser) | 381,850 B | 376,900 B |
+| CSS | 100,256 B | 100,129 B (−127) | 103,000 B | 103,000 B |
 
 ### Windows installer: 22,707,225 B
 

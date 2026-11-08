@@ -1,41 +1,53 @@
 import { useMemo } from "react";
-import { clock } from "../shared/format.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
-import { useNav } from "../app/useNav.js";
+import { usePc } from "../shared/viewport.js";
+import Ico from "../shared/ico.jsx";
+import { cx } from "../shared/ui.jsx";
 import { useHistory } from "./history.js";
-import { Icon } from "./icons.jsx";
-import { Cover, Mosaic, NowBadge, SectionHead, coverOf } from "./cards.jsx";
+import {
+  AlbumCard,
+  ArtistCard,
+  Card,
+  Cover,
+  ListCard,
+  NewListCard,
+  NowBadge,
+  PlayOverlay,
+  Prog,
+  SectionHead,
+  Shelf,
+  coverOf,
+} from "./cards.jsx";
+import Mezcla from "./Mezcla.jsx";
+import { Thead } from "./rows.jsx";
 import {
   TOP_ALL,
   TOP_HOME,
-  albumTone,
   continueItems,
   entryTone,
-  toneOf,
-  mosaicTones,
   plural,
+  progressLabel,
   recentAlbums,
   recentEntries,
   topArtists,
   topItems,
 } from "./home.js";
+import "../shared/chips.css";
+import "./home.css";
 
 /* ---------------------------------------------------------------------------
    INICIO DE ESCUCHAR (consulta vacia)
 
-   Seguir escuchando, Añadido hace poco, Lo que más escuchas, Artistas, Álbumes,
-   Tus listas y la puerta a Explorar la biblioteca. El HTML es uno solo: en
-   telefono las secciones van en una columna con el orden de `order` (home.css)
-   y desde 960 px las dos columnas se vuelven una rejilla. Cuanto hay de mas
-   (10 añadidos, 8 albumes, 5 seguir) lo recorta el CSS segun el ancho.
+   La Mezcla, Seguir escuchando, Añadido hace poco, Lo que más escuchas, Tus
+   listas, Álbumes, Artistas y la puerta a Explorar la biblioteca, en este orden
+   y en un solo HTML. Telefono y escritorio comparten secciones; cuantas
+   tarjetas y que variante (carrusel o rejilla, filas o tabla) lo decide
+   `usePc()` aqui y no el CSS, asi no se montan las que no se ven.
    ------------------------------------------------------------------------- */
 
-/* Cuantos se pintan como maximo: el CSS oculta los que sobran en telefono. */
-const CONTINUE = 5;
-const ADDED = 10;
-const ALBUMS = 8;
-const ARTISTS = 20;
+const PHONE = { cont: 5, added: 8, lists: 8, albums: 8, artists: 12 };
+const PC = { cont: 5, added: 5, lists: 5, albums: 5, artists: 6 };
 
 /* Preguntas al motor como booleanos: con el motor emitiendo cuatro veces por
    segundo, una tarjeta solo se repinta si cambia lo suyo. */
@@ -47,98 +59,67 @@ function useNow(key) {
 
 /* --- Seguir escuchando ------------------------------------------------------- */
 
-function ContinueCard({ item, items, ctx }) {
+function ContinueCard({ item, items, ctx, active, pc }) {
   const { entry } = item;
   const [current, playing] = useNow(entry.key);
-  /* La que suena lleva el progreso en vivo; las demas, el guardado. */
-  const time = useEngine((s) => (s.track?.key === entry.key ? s.time : -1));
-  const live = useEngine((s) => (s.track?.key === entry.key ? s.duration : 0));
-  const dur = current && live ? live : item.dur;
-  const pos = current ? time : item.pos;
-  const pct = dur > 0 ? Math.min(100, Math.round((pos / dur) * 100)) : 0;
+  /* El progreso en vivo solo lo sigue la tarjeta que suena y solo con el
+     inicio a la vista; las demas, el guardado. */
+  const time = useEngine((s) => (active && s.track?.key === entry.key ? s.time : -1));
+  const live = useEngine((s) => (active && s.track?.key === entry.key ? s.duration : 0));
+  const dur = time >= 0 && live ? live : item.dur;
+  const pos = time >= 0 ? time : item.pos;
   const left = Math.max(0, dur - pos);
-  const done = !current && item.finished;
 
   return (
-    <button
-      type="button"
-      className={`hcard ccard${current ? " is-current" : ""}`}
-      aria-label={`${playing ? "Pausar" : "Seguir con"} ${entry.title}, ${entry.artist}`}
+    <Card
+      current={current}
+      label={`${playing ? "Pausar" : "Seguir con"} ${entry.title}, ${entry.artist}`}
       onClick={() => (current ? engine.toggle() : ctx.resume(item, items))}
-    >
-      <span className="ccard__top">
-        <Cover tone={entryTone(entry)} label={entry.artist} src={coverOf([entry])} className="ccard__cv" />
-        <span className={`ccard__go${playing ? " is-on" : ""}`}>
-          <Icon name={playing ? "Pause" : "Play"} weight="fill" size={18} />
-        </span>
-      </span>
-      <span className="ccard__txt">
-        <span className="ccard__t">{entry.title}</span>
-        <span className="ccard__a">{entry.artist}</span>
-        <span className="ccard__prog">
-          <span className="ccard__bar">
-            <span style={{ width: `${pct}%` }} />
-          </span>
-          <span className="ccard__left">{done ? "Escuchada" : `${clock(left)} restantes`}</span>
-        </span>
-      </span>
-    </button>
+      cover={
+        <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
+          <Prog p={dur > 0 ? Math.min(1, pos / dur) : 0} />
+          {pc && <PlayOverlay />}
+        </Cover>
+      }
+      title={entry.title}
+      sub={<span className="num">{progressLabel({ finished: item.finished, left }, current)}</span>}
+    />
   );
 }
 
 /* --- Añadido hace poco -------------------------------------------------------- */
 
-function AddedCard({ entry, list, ctx }) {
+function AddedCard({ entry, list, ctx, pc }) {
   const [current, playing] = useNow(entry.key);
   return (
-    <button
-      type="button"
-      className="acard"
-      aria-label={`${playing ? "Pausar" : "Reproducir"} ${entry.title}, ${entry.artist}`}
+    <Card
+      current={current}
+      label={`${playing ? "Pausar" : "Reproducir"} ${entry.title}, ${entry.artist}`}
       onClick={(e) => (current ? engine.toggle() : ctx.play(entry, e.currentTarget, list))}
-    >
-      <Cover tone={entryTone(entry)} label={entry.artist} src={coverOf([entry])} className="acard__cv">
-        {current && <NowBadge on={playing} />}
-      </Cover>
-      <span className={`acard__t${current ? " is-current" : ""}`}>{entry.title}</span>
-      <span className="acard__a">{entry.artist}</span>
-    </button>
+      cover={
+        <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
+          {current && <NowBadge on={playing} />}
+          {pc && <PlayOverlay />}
+        </Cover>
+      }
+      title={entry.title}
+      sub={entry.artist}
+    />
   );
 }
 
-/* --- Listas ------------------------------------------------------------------- */
-
-function ListCard({ list, byKey, ctx }) {
-  const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
-  const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
-  return (
-    <button
-      type="button"
-      className="hcard lcard"
-      aria-label={`${list.name}, ${plural(count, "canción", "canciones")}`}
-      onClick={() => ctx.open({ type: "list", id: list.id })}
-    >
-      <Mosaic tones={tones} className="lcard__mos" />
-      <span className="lcard__txt">
-        <span className="lcard__t">{list.name}</span>
-        <span className="lcard__c">{plural(count, "canción", "canciones")}</span>
-      </span>
-    </button>
-  );
-}
-
-export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
-  const nav = useNav();
+export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active }) {
+  const pc = usePc();
   const hist = useHistory();
   const entries = index.entries;
+  const cap = pc ? PC : PHONE;
 
-  const cont = useMemo(() => continueItems(hist, byKey, CONTINUE), [hist, byKey]);
+  const cont = useMemo(() => continueItems(hist, byKey, cap.cont), [hist, byKey, cap]);
   const top = useMemo(() => topItems(hist, byKey, TOP_ALL), [hist, byKey]);
-  const added = useMemo(() => recentEntries(entries, ADDED), [entries]);
-  const artists = useMemo(() => topArtists(index.artists, ARTISTS), [index]);
-  const albums = useMemo(() => recentAlbums(index.albums, ALBUMS), [index]);
+  const added = useMemo(() => recentEntries(entries, cap.added), [entries, cap]);
+  const artists = useMemo(() => topArtists(index.artists, cap.artists), [index, cap]);
+  const albums = useMemo(() => recentAlbums(index.albums, cap.albums), [index, cap]);
 
-  const contEntries = useMemo(() => cont.map((i) => i.entry), [cont]);
   const topEntries = useMemo(() => top.map((i) => i.entry), [top]);
 
   const open = (what) => () => ctx.open({ type: "all", what });
@@ -148,118 +129,88 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
 
   return (
     <div className="hfeed">
-      <div className="hcol hcol--main">
-        {cont.length > 0 && (
-          <section className="hsec hsec--cont" aria-labelledby="h-cont">
-            <SectionHead id="h-cont" title="Seguir escuchando" />
-            <div className="hs ccards">
-              {cont.map((item) => (
-                <ContinueCard key={item.entry.key} item={item} items={cont} ctx={ctx} />
-              ))}
-            </div>
-          </section>
-        )}
+      <Mezcla entries={entries} byKey={byKey} ctx={ctx} />
 
-        {added.length > 0 && (
-          <section className="hsec hsec--added" aria-labelledby="h-rec">
-            <SectionHead id="h-rec" title="Añadido hace poco" onAll={open("recent")} />
-            <div className="hs acards">
-              {added.map((entry) => (
-                <AddedCard key={entry.key} entry={entry} list={added} ctx={ctx} />
-              ))}
-            </div>
-          </section>
-        )}
+      {cont.length > 0 && (
+        <section className="sec sec--cont" aria-labelledby="h-cont">
+          <SectionHead id="h-cont" title="Seguir escuchando" />
+          <Shelf grid={pc}>
+            {cont.map((item) => (
+              <ContinueCard key={item.entry.key} item={item} items={cont} ctx={ctx} active={active} pc={pc} />
+            ))}
+          </Shelf>
+        </section>
+      )}
 
-        {albums.length > 0 && (
-          <section className="hsec hsec--albums" aria-labelledby="h-alb">
-            <SectionHead id="h-alb" title="Álbumes" onAll={open("albums")} />
-            <div className="agrid">
-              {albums.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  className="alb"
-                  aria-label={`Abrir álbum ${g.name}, ${g.artist}`}
-                  onClick={() => ctx.open({ type: "album", id: g.id })}
-                >
-                  <Cover tone={albumTone(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
-                  <span className="alb__t">{g.name}</span>
-                  <span className="alb__a">{g.artist}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
+      {added.length > 0 && (
+        <section className="sec" aria-labelledby="h-rec">
+          <SectionHead id="h-rec" title="Añadido hace poco" onAll={open("recent")} />
+          <Shelf grid={pc}>
+            {added.map((entry) => (
+              <AddedCard key={entry.key} entry={entry} list={added} ctx={ctx} pc={pc} />
+            ))}
+          </Shelf>
+        </section>
+      )}
 
-      <div className="hcol hcol--side">
-        {top.length > 0 && (
-          <section className={`hsec hsec--top${topUp ? " hsec--up" : ""}`} aria-labelledby="h-top">
-            <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
-            <div className="lpanel">
-              {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
-                ctx.song(entry, topEntries, {
-                  rank: i + 1,
-                  sub: `${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`,
-                })
-              )}
-            </div>
-          </section>
-        )}
+      {top.length > 0 && (
+        <section className={cx("sec", topUp && "sec--up")} aria-labelledby="h-top">
+          <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
+          {pc && <Thead />}
+          {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
+            ctx.song(entry, topEntries, {
+              rank: i + 1,
+              table: pc,
+              sub: `${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`,
+            })
+          )}
+        </section>
+      )}
 
-        {listsReady && (
-          <section className="hsec hsec--lists" aria-labelledby="h-lis">
-            <SectionHead id="h-lis" title="Tus listas" onAll={lists.length ? open("lists") : undefined} />
+      {listsReady && (
+        <section className="sec" aria-labelledby="h-lis">
+          <SectionHead id="h-lis" title="Tus listas" onAll={lists.length ? open("lists") : undefined} />
+          <Shelf grid={pc}>
             {lists.length ? (
-              <div className="hs lcards">
-                {lists.slice(0, 6).map((p) => (
-                  <ListCard key={p.id} list={p} byKey={byKey} ctx={ctx} />
-                ))}
-              </div>
+              lists.slice(0, cap.lists).map((p) => <ListCard key={p.id} list={p} byKey={byKey} ctx={ctx} />)
             ) : (
-              <button
-                type="button"
-                className="hcard lcta"
-                onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
-              >
-                <Icon name="Plus" size={18} />
-                Crear tu primera lista
-              </button>
+              <NewListCard ctx={ctx} />
             )}
-          </section>
-        )}
-      </div>
+          </Shelf>
+        </section>
+      )}
 
-      <section className="hsec hsec--artists" aria-labelledby="h-art">
-        <SectionHead id="h-art" title="Artistas" onAll={open("artists")} />
-        <div className="hs artists">
-          {artists.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              className="art-c"
-              aria-label={`Abrir artista ${g.name}`}
-              onClick={() => ctx.open({ type: "artist", id: g.id })}
-            >
-              <Cover tone={toneOf(g.name)} label={g.name} round className="art-c__cv" />
-              <span className="art-c__t">{g.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      {albums.length > 0 && (
+        <section className="sec" aria-labelledby="h-alb">
+          <SectionHead id="h-alb" title="Álbumes" onAll={open("albums")} />
+          <Shelf grid={pc}>
+            {albums.map((g) => (
+              <AlbumCard key={g.id} g={g} ctx={ctx} />
+            ))}
+          </Shelf>
+        </section>
+      )}
 
-      <button type="button" className="hcard xcard" onClick={() => nav.goTab("library")}>
+      {artists.length > 0 && (
+        <section className="sec" aria-labelledby="h-art">
+          <SectionHead id="h-art" title="Artistas" onAll={open("artists")} />
+          <Shelf grid={pc} wide>
+            {artists.map((g) => (
+              <ArtistCard key={g.id} g={g} ctx={ctx} />
+            ))}
+          </Shelf>
+        </section>
+      )}
+
+      <button type="button" className="xcard" onClick={() => ctx.open({ type: "library", sort: "recent" })}>
         <span className="xcard__ico">
-          <Icon name="HardDrives" size={22} />
+          <Ico n="music" size={22} />
         </span>
         <span className="xcard__txt">
           <span className="xcard__t">Explorar la biblioteca</span>
-          <span className="xcard__s">
-            {plural(entries.length, "tema", "temas")} · A–Z, recientes, artista
-          </span>
+          <span className="xcard__s">{plural(entries.length, "tema", "temas")} · A–Z, recientes, artista</span>
         </span>
-        <Icon name="CaretRight" size={20} className="xcard__go" />
+        <Ico n="caret" size={18} />
       </button>
     </div>
   );

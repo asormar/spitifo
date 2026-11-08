@@ -1,6 +1,8 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NavIcon } from "../app/navIcons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { toneVars } from "../shared/cover.js";
+import { usePc } from "../shared/viewport.js";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
 import { groupAlbums } from "./library.js";
@@ -8,8 +10,8 @@ import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
 import VirtualList from "./VirtualList.jsx";
-import { RowMenu, GroupRow } from "./rows.jsx";
-import { Cover, Mosaic, coverOf } from "./cards.jsx";
+import { RowMenu, Thead } from "./rows.jsx";
+import { AllSongs, Cards, Cover, Mosaic, coverOf } from "./cards.jsx";
 import {
   SORTS,
   TOP_ALL,
@@ -23,14 +25,16 @@ import {
   sortEntries,
   topItems,
 } from "./home.js";
+import { subscribeReveal, takeReveal } from "./revealRequest.js";
 
 /* ---------------------------------------------------------------------------
    PAGINAS DE LA BIBLIOTECA
 
-   Lo que se apila sobre una pestana (la pila de useNav): una lista de "Ver todo", la
-   biblioteca entera para explorar y la ficha de un album, un artista o una
-   lista. Todas llevan su "Volver"; el cuerpo es una lista virtual de filas, la
-   misma fila (SongRow) que el resto de la biblioteca.
+   Lo que se apila sobre una pestana (la pila de useNav): una pagina de "Ver
+   todo", Todas tus canciones y la ficha de un album, un artista o una lista.
+   Todas llevan su "Volver". Las canciones van en una lista virtual (filas en el
+   telefono, tabla en escritorio); artistas, albumes y listas, en una rejilla de
+   tarjetas que se pinta de a poco.
    ------------------------------------------------------------------------- */
 
 const songs = (n) => plural(n, "canción", "canciones");
@@ -50,46 +54,11 @@ function useFocusBack(ref, on = true) {
   }, [ref, on]);
 }
 
-/* --- Filas de grupos -------------------------------------------------------------- */
-
-function ArtistRow({ g, enter, ctx }) {
-  const albums = g.albumCount > 0 ? ` · ${plural(g.albumCount, "álbum", "álbumes")}` : "";
-  return (
-    <GroupRow
-      title={g.name}
-      meta={`${songs(g.entries.length)}${albums}`}
-      art={<Cover tone={toneOf(g.name)} label={g.name} round />}
-      enter={enter}
-      onOpen={() => ctx.open({ type: "artist", id: g.id })}
-    />
-  );
-}
-
-function AlbumRow({ g, enter, ctx }) {
-  return (
-    <GroupRow
-      title={g.name}
-      meta={`${g.artist} · ${songs(g.entries.length)}`}
-      art={<Cover tone={albumTone(g.artist, g.name)} label={g.artist} />}
-      enter={enter}
-      onOpen={() => ctx.open({ type: "album", id: g.id })}
-    />
-  );
-}
-
-function ListRow({ p, byKey, enter, ctx }) {
-  const tones = useMemo(() => mosaicTones(p.keys, byKey), [p.keys, byKey]);
-  const count = p.keys.filter((k) => byKey.has(k)).length;
-  return (
-    <GroupRow
-      title={p.name}
-      meta={songs(count)}
-      art={<Mosaic tones={tones} className="mos--row" />}
-      enter={enter}
-      onOpen={() => ctx.open({ type: "list", id: p.id })}
-    />
-  );
-}
+const Back = ({ bref, onClick }) => (
+  <button ref={bref} type="button" className="hback" aria-label="Volver" onClick={onClick}>
+    <NavIcon name="back" size={22} />
+  </button>
+);
 
 /* --- Ver todo ------------------------------------------------------------------------ */
 
@@ -107,6 +76,7 @@ const TITLES = {
 
 export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
   const { what } = view;
+  const pc = usePc();
   const hist = useHistory();
   const backRef = useRef(null);
   const newRef = useRef(null);
@@ -114,56 +84,47 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
   useFocusBack(backRef);
 
   /* Lo que se lista, sin depender de `ctx` (que se rehace en cada render con el
-     menu abierto): ordenar miles de canciones no puede repetirse por eso. */
-  const page = useMemo(() => {
+     menu abierto): ordenar miles de canciones no puede repetirse por eso. El
+     historial solo cuenta en "top": las demas no se reordenan con cada escucha. */
+  const items = useMemo(() => {
     switch (what) {
       case "recent":
-        return { items: sortEntries(index.entries, "recent") };
+        return sortEntries(index.entries, "recent");
       case "r-songs":
-        return { items: r.songs };
+        return r.songs;
       case "top":
-        return { items: topItems(hist, byKey, TOP_ALL) };
+        return topItems(hist, byKey, TOP_ALL);
       case "artists":
-        return { items: index.artists };
+        return index.artists;
       case "r-artists":
-        return { items: r.artists };
+        return r.artists;
       case "albums":
-        return { items: index.albums };
+        return index.albums;
       case "r-albums":
-        return { items: r.albums };
+        return r.albums;
       case "lists":
-        return { items: lists };
+        return lists;
       default:
-        return { items: r.lists };
+        return r.lists;
     }
-  }, [what, index, byKey, lists, r, hist]);
+  }, [what, index, byKey, lists, r, what === "top" ? hist : null]);
+  const topEntries = useMemo(() => (what === "top" ? items.map((t) => t.entry) : null), [what, items]);
 
-  const itemKey = (item) => item.key ?? item.id ?? item.entry.key;
-  const row = (item, i, enter) => {
-    switch (what) {
-      case "recent":
-      case "r-songs":
-        return ctx.song(item, page.items, { enter });
-      case "top":
-        return ctx.song(
-          item.entry,
-          page.items.map((t) => t.entry),
-          {
-            enter,
-            rank: i + 1,
-            sub: `${item.entry.artist} · ${plural(item.plays, "reproducción", "reproducciones")}`,
-          }
-        );
-      case "artists":
-      case "r-artists":
-        return <ArtistRow g={item} enter={enter} ctx={ctx} />;
-      case "albums":
-      case "r-albums":
-        return <AlbumRow g={item} enter={enter} ctx={ctx} />;
-      default:
-        return <ListRow p={item} byKey={byKey} enter={enter} ctx={ctx} />;
-    }
-  };
+  /* Artistas, albumes o listas: una tarjeta cada uno. */
+  const kind = what.replace("r-", "").slice(0, -1);
+  const cards = useMemo(() => items.map((item) => ({ kind, item })), [items, kind]);
+
+  const isTop = what === "top";
+  const isSongs = isTop || what === "recent" || what === "r-songs";
+  const row = (i, enter) =>
+    isTop
+      ? ctx.song(items[i].entry, topEntries, {
+          enter,
+          rank: i + 1,
+          table: pc,
+          sub: `${items[i].entry.artist} · ${plural(items[i].plays, "reproducción", "reproducciones")}`,
+        })
+      : ctx.song(items[i], items, { enter, table: pc && "lib" });
 
   const isLists = what === "lists";
   const endNaming = () => {
@@ -174,11 +135,9 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
   return (
     <div className="lpage">
       <div className="phead">
-        <button ref={backRef} type="button" className="hback" aria-label="Volver" onClick={ctx.back}>
-          <Icon name="ArrowLeft" size={20} />
-        </button>
+        <Back bref={backRef} onClick={ctx.back} />
         <h1 className="phead__h">{TITLES[what]}</h1>
-        <span className="count">{page.items.length}</span>
+        <span className="count">{items.length}</span>
       </div>
 
       {isLists && (
@@ -204,79 +163,130 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
 
       {isLists && !listsReady ? (
         <p className="lnote">Cargando listas…</p>
-      ) : page.items.length ? (
-        <div className="lpanel">
+      ) : !items.length ? (
+        <p className="lnote">{isLists ? "Todavía no tienes listas." : "No hay nada que mostrar."}</p>
+      ) : isSongs ? (
+        <>
+          {pc && <Thead lib={!isTop} sticky />}
           <VirtualList
             active={active}
-            count={page.items.length}
-            getKey={(i) => itemKey(page.items[i])}
+            count={items.length}
+            getKey={(i) => (isTop ? items[i].entry.key : items[i].key)}
             menuKey={ctx.menu?.key}
-            renderRow={(i, enter) => row(page.items[i], i, enter)}
+            renderRow={row}
           />
-        </div>
+        </>
       ) : (
-        <p className="lnote">{isLists ? "Todavía no tienes listas." : "No hay nada que mostrar."}</p>
+        <div className={cx("grid", kind === "artist" && "grid--6")}>
+          <Cards cards={cards} byKey={byKey} ctx={ctx} />
+        </div>
       )}
     </div>
   );
 }
 
-/* --- Explorar la biblioteca ------------------------------------------------------------- */
+/* --- Todas tus canciones ----------------------------------------------------------------- */
 
-/* `root`: es la raiz de Tu biblioteca, no una pagina apilada: sin "Volver" ni
-   titulo (los pone la pantalla) y sin animacion de entrada. */
-export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort, active, ctx, root }, listRef) {
+/* "Ver en tu biblioteca" (requestReveal): la pagina centra la fila pedida en
+   cuanto esta a la vista. Se espera un momento: si el pedido llego al cerrar
+   "Ahora suena" (un atras del historial), el navegador restaura despues el
+   scroll de la entrada y pisaria este. */
+function useReveal(rows, active, listRef) {
+  useEffect(() => {
+    if (!active) return undefined;
+    let timer = 0;
+    const run = () => {
+      const key = takeReveal();
+      if (key == null) return;
+      const i = rows.findIndex((e) => e.key === key);
+      if (i < 0) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => listRef.current?.scrollToIndex(i), 120);
+    };
+    run();
+    const off = subscribeReveal(run);
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
+  }, [active, rows, listRef]);
+}
+
+export function LibraryPage({ view, index, storage, active, ctx }) {
+  const pc = usePc();
   const backRef = useRef(null);
-  useFocusBack(backRef, !root);
+  const listRef = useRef(null);
+  const [sort, setSort] = useState(view.sort ?? "recent");
+  useFocusBack(backRef);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
+  useReveal(rows, active, listRef);
+
+  const play = () => ctx.playGroup(rows);
+  const shuffle = () => ctx.playGroup(rows, true);
 
   return (
-    <div className={cx("lpage", root && "lpage--root")}>
-      <div className="libhead">
-        {!root && (
-          <button ref={backRef} type="button" className="vback" onClick={ctx.back}>
-            <span aria-hidden="true">‹</span> Volver
-          </button>
-        )}
-        <div className="libhead__row">
-          {!root && (
-            <div>
-              <h1 className="libhead__h">Biblioteca</h1>
-              <p className="libhead__n">{plural(rows.length, "tema", "temas")}</p>
-            </div>
-          )}
-          <div className="libhead__sort" role="group" aria-label="Ordenar por">
-            <span className="libhead__lbl" aria-hidden="true">
-              Ordenar
-            </span>
-            {SORTS.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className={cx("lbtn", sort === id && "is-on")}
-                aria-pressed={sort === id}
-                onClick={() => onSort(id)}
-              >
-                {label}
-              </button>
-            ))}
+    <div className="lpage">
+      {pc ? (
+        <div className="ph1">
+          <div>
+            <h1 className="phead__h">Todas tus canciones</h1>
+            <p className="dmeta">
+              {plural(rows.length, "tema", "temas")} · En {storage}
+            </p>
+          </div>
+          <div className="ph1__act">
+            <button
+              type="button"
+              className="cbtn cbtn--soft"
+              aria-label="Reproducir en aleatorio"
+              title="Reproducir en aleatorio"
+              onClick={shuffle}
+            >
+              <Icon name="Shuffle" size={24} />
+            </button>
+            <button type="button" className="pk pk--l" aria-label="Reproducir todo" title="Reproducir todo" onClick={play}>
+              <Icon name="Play" weight="fill" size={28} />
+            </button>
           </div>
         </div>
+      ) : (
+        <>
+          <div className="phead">
+            <Back bref={backRef} onClick={ctx.back} />
+            <h1 className="sr-only">Todas tus canciones</h1>
+          </div>
+          <AllSongs n={rows.length} storage={storage} onPlay={play} onShuffle={shuffle} />
+        </>
+      )}
+      <div className="chips chips--sort" role="group" aria-label="Ordenar por">
+        <span className="lbl" aria-hidden="true">
+          Ordenar
+        </span>
+        {SORTS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={cx("chip", sort === id && "is-on")}
+            aria-pressed={sort === id}
+            onClick={() => setSort(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-      <div className="lpanel">
-        <VirtualList
-          key={sort}
-          ref={listRef}
-          active={active}
-          count={rows.length}
-          getKey={(i) => rows[i].key}
-          menuKey={ctx.menu?.key}
-          renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
-        />
-      </div>
+      {pc && <Thead lib sticky />}
+      <VirtualList
+        key={sort}
+        ref={listRef}
+        active={active}
+        count={rows.length}
+        getKey={(i) => rows[i].key}
+        menuKey={ctx.menu?.key}
+        renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, table: pc && "lib" })}
+      />
     </div>
   );
-});
+}
 
 /* --- Album, artista o lista ----------------------------------------------------------------- */
 

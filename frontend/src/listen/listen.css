@@ -32,15 +32,6 @@
   letter-spacing: -0.04em;
 }
 
-/* Lo que va a la derecha del titulo de Tu biblioteca: el almacenamiento y
-   "Nueva lista". */
-.lhead__end {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
 .lhead__new {
   display: grid;
   flex: none;
@@ -58,53 +49,6 @@
 
 .lhead__new:active {
   transform: scale(0.92);
-}
-
-/* El boton de almacenamiento de la biblioteca y la ruta que muestra. En movil
-   solo queda el icono (motion.css oculta la ruta). */
-.panel__store {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: var(--mut);
-  font: inherit;
-  cursor: pointer;
-  transition: var(--tr-press), background-color var(--t-press) var(--ease);
-}
-
-.panel__store:hover {
-  background: var(--hover);
-}
-
-.panel__store:active {
-  transform: scale(0.97);
-}
-
-.panel__store svg {
-  flex: none;
-  color: var(--acc);
-}
-
-.panel__store .panel__path {
-  color: inherit;
-}
-
-.panel__path {
-  min-width: 0;
-  max-width: 46ch;
-  color: var(--dim);
-  font-size: 12.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
 }
 
 /* --- Botones ---------------------------------------------------------------- */
@@ -275,8 +219,8 @@
 }
 
 .art {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--r-sm);
   font: 800 16px / 1 var(--font-display);
 }
@@ -289,6 +233,39 @@
 
 .cv.cv--round {
   border-radius: 50%;
+}
+
+/* Portada real encima de la inicial (que queda debajo como fondo y respaldo). */
+.cv__img,
+.art__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* La pista que suena sobre una portada: el ecualizador en una pastilla. */
+.cv__now {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cv__now .eq {
+  width: 12px;
+  height: 12px;
+}
+
+.art .cv__now {
+  left: 4px;
+  bottom: 4px;
+  padding: 3px 4px;
+  border-radius: 6px;
 }
 
 .cv--round > span:first-child {
@@ -356,11 +333,6 @@
   flex: none;
   color: var(--dim);
   font-size: 12.5px;
-}
-
-.srow__go {
-  flex: none;
-  color: var(--dim);
 }
 
 .tag {
@@ -577,4 +549,8 @@ body.has-mini .lnotice {
 
 .ltoast__act:active {
   transform: scale(0.96);
+}
+
+.vlist[data-fast] .art__img {
+  display: none;
 }

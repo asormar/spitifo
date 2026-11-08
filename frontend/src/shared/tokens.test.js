@@ -100,3 +100,29 @@ describe("theme parity", () => {
     expect(colours.filter((k) => !(k in darkOnly))).toEqual([]);
   });
 });
+
+/* La Mezcla de Inicio es azul #3045ff en los dos temas (home.css fuerza el
+   mismo azul en oscuro) con texto blanco. */
+describe("Mezcla hero", () => {
+  const BLUE = [0x30, 0x45, 0xff, 1];
+  const WHITE = [255, 255, 255, 1];
+  const home = readFileSync(new URL("../listen/home.css", import.meta.url), "utf8");
+
+  it("uses the same blue in both themes", () => {
+    expect(color(light, "--acc")).toEqual(BLUE);
+    expect(home).toMatch(/:root\[data-theme="dark"\] \.mezcla \{\s*--hero: #3045ff;/);
+  });
+
+  it.each([
+    ["white text", WHITE],
+    ["white text at .9 (sub line)", over([255, 255, 255, 0.9], BLUE)],
+    ["white text at .85 (mix name)", over([255, 255, 255, 0.85], BLUE)],
+  ])("%s on the blue reaches 4.5:1", (_name, fg) => {
+    expect(ratio(fg, BLUE)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("white chip text on the translucent chip (PC) and the blue text on the active white chip reach 4.5:1", () => {
+    expect(ratio(WHITE, over([10, 14, 70, 0.32], BLUE))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(BLUE, WHITE)).toBeGreaterThanOrEqual(4.5);
+  });
+});

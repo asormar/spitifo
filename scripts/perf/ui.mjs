@@ -239,7 +239,7 @@ function pageKit() {
     // The hero form is hidden on a desktop (the top bar holds the field), so
     // the screen is ready with its search-mode segments.
     search: () => !!screenOf("search")?.querySelector('[aria-label="Modo de búsqueda"] [role=radio]'),
-    library: () => !!screenOf("library")?.querySelector(".lpage--root, .lnote:not([role=alert])"),
+    library: () => !!screenOf("library")?.querySelector(".lhome, .lnote:not([role=alert])"),
     discover: (base = 0) => {
       const c = screenOf("discover")?.querySelector(".gmap__view canvas");
       return !!c && c.width > 0 && k.draws > base;
@@ -248,7 +248,7 @@ function pageKit() {
   k.WHAT = {
     home: 'the Inicio feed ([data-screen="home"] .hfeed, or .lnote when the library is empty)',
     search: 'the Buscar search modes ([data-screen="search"] [aria-label="Modo de búsqueda"] [role=radio])',
-    library: 'the Tu biblioteca list ([data-screen="library"] .lpage--root, or .lnote when the library is empty)',
+    library: 'the Tu biblioteca list ([data-screen="library"] .lhome, or .lnote when the library is empty)',
     discover: 'the genre map drawn ([data-screen="discover"] .gmap__view canvas, sized and drawn)',
   };
 
@@ -471,8 +471,8 @@ async function pageCloseLibrary() {
   const k = window.__k;
   const root = k.q('[data-screen="home"]:not([hidden])', "the Inicio screen");
   const bar = [...document.querySelectorAll('.topbar [aria-label="Volver"]')].find((b) => b.getClientRects().length > 0);
-  const back = bar || root.querySelector(".lpage .vback");
-  if (!back) throw new Error('missing selector: .topbar [aria-label="Volver"] or [data-screen="home"] .lpage .vback');
+  const back = bar || root.querySelector('.lpage .vback, .lpage [aria-label="Volver"]');
+  if (!back) throw new Error('missing selector: .topbar [aria-label="Volver"] or [data-screen="home"] .lpage [aria-label="Volver"]');
   back.click();
   await k.waitFor(() => root.querySelector(".hfeed"), 'the Inicio feed (.hfeed) after "Volver"');
   await k.frame();
