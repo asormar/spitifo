@@ -74,15 +74,17 @@ const BAD_ART = new Set();
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
    pone el numero de puesto delante (los rankings), `sub` cambia la segunda
    linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
-   de la duracion. `table` (escritorio) reparte la fila en celdas: puesto, titulo,
-   album, duracion y menu, alineadas con el encabezado de su tabla. */
+   de la duracion. `table` (escritorio) reparte la fila en celdas, alineadas con
+   el encabezado de su tabla: puesto, titulo, album, duracion y menu; con
+   "lib", titulo, artista, album, duracion y menu. */
 export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge, table }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
   const video = entry.kind === "video";
 
-  const meta = sub ?? (album ? `${artist} · ${album}` : artist);
+  const lib = table === "lib";
+  const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
   const src = rowArt(entry, keyUrl);
@@ -95,7 +97,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
 
   return (
     <div
-      className={cx("srow", table && "srow--t", isCurrent && "is-current", enter != null && "is-in")}
+      className={cx("srow", table && "srow--t", lib && "srow--lib", isCurrent && "is-current", enter != null && "is-in")}
       style={enter != null ? { "--i": enter } : undefined}
     >
       {table && rankCell}
@@ -136,14 +138,17 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
         </span>
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
-          <span className="srow__m">
-            {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
-            {meta}
-          </span>
+          {(video || meta) && (
+            <span className="srow__m">
+              {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
+              {meta}
+            </span>
+          )}
         </span>
         {!table && badge}
         {!table && dur && <span className="srow__d">{dur}</span>}
       </button>
+      {lib && <span className="srow__c">{artist}</span>}
       {table && <span className="srow__c">{album}</span>}
       {table && <span className="srow__c srow__d">{dur}</span>}
       {!video && onMenu ? (
@@ -166,30 +171,19 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
   );
 }
 
-/* Artista, album o lista en una fila de "Ver todo". La portada (`art`) la pinta
-   quien llama: aqui solo se coloca. */
-export function GroupRow({ title, meta, art, enter, onOpen }) {
-  return (
-    <div
-      className={cx("srow", enter != null && "is-in")}
-      style={enter != null ? { "--i": enter } : undefined}
-    >
-      <button
-        type="button"
-        className="srow__main"
-        aria-label={`${title}, ${meta}`}
-        onClick={onOpen}
-      >
-        {art}
-        <span className="srow__txt">
-          <span className="srow__t">{title}</span>
-          <span className="srow__m">{meta}</span>
-        </span>
-        <Icon name="CaretRight" size={16} className="srow__go" />
-      </button>
-    </div>
-  );
-}
+/* Encabezado de una tabla de canciones: las mismas columnas que sus filas.
+   `lib` (titulo, artista, album...) o, sin ella, la del ranking; `sticky` lo
+   deja pegado bajo la barra de arriba. */
+export const Thead = ({ lib, sticky }) => (
+  <div className={cx("thd", sticky && "thd--s", lib && "thd--lib")} aria-hidden="true">
+    {!lib && <span />}
+    <span>Título</span>
+    {lib && <span>Artista</span>}
+    <span>Álbum</span>
+    <span className="ra">Duración</span>
+    <span />
+  </div>
+);
 
 /* Fila de la cola. `now` = la que suena (sin asa ni quitar). `pos` es su
    posicion en la cola del motor, no en la lista visible. `transform` lo pone

@@ -10,6 +10,7 @@ import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
 import ListenProvider, { useListen } from "../listen/ListenProvider.jsx";
+import { loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
@@ -425,6 +426,7 @@ export default function App() {
     const preload = () => {
       loadSettingsView();
       loadNowPlaying();
+      loadPageHost();
       MODE_LOADERS[nextGuess(tab)]?.();
       loadDiscoverView();
     };
@@ -436,14 +438,14 @@ export default function App() {
     return () => clearTimeout(id);
   }, [tab]);
 
-  /* Saltar a una cancion desde "Ahora suena": se abre Tu biblioteca con la
-     lista completa y la fila centrada. */
+  /* Saltar a una cancion desde "Ahora suena": se abre Todas tus canciones
+     (una pagina de Tu biblioteca) con la fila centrada. */
   const revealSong = useCallback(
     (key) => {
       requestReveal(key);
-      nav.goTab("library");
+      nav.goTo("library", { type: "library", sort: "recent" });
     },
-    [nav.goTab]
+    [nav.goTo]
   );
 
   /* "Ver mas" de Buscar: Explorar la biblioteca, lo ultimo que llego primero. */

@@ -5,7 +5,7 @@ import { usePc } from "../shared/viewport.js";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import LibraryHome from "./LibraryHome.jsx";
-import PageHost from "./PageHost.jsx";
+import PageHost from "./pageLoader.jsx";
 import SearchResults from "./SearchResults.jsx";
 import { searchLibrary } from "./home.js";
 import { Icon } from "./icons.jsx";

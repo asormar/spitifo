@@ -754,7 +754,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
    de Buscar sobran, los pone el menu o la barra de arriba. El prefijo .app
    gana a las reglas base de las hojas de cada pantalla, que cargan despues. */
 @media (min-width: 960px) {
-  .app :is(.hback, .vback, .dhead__back, .settings__back, .apphead) {
+  .app :is(.hback, .dhead__back, .settings__back, .apphead) {
     display: none;
   }
 }

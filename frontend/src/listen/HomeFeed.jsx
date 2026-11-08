@@ -20,6 +20,7 @@ import {
   coverOf,
 } from "./cards.jsx";
 import Mezcla from "./Mezcla.jsx";
+import { Thead } from "./rows.jsx";
 import {
   TOP_ALL,
   TOP_HOME,
@@ -155,15 +156,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
       {top.length > 0 && (
         <section className={cx("sec", topUp && "sec--up")} aria-labelledby="h-top">
           <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
-          {pc && (
-            <div className="thd" aria-hidden="true">
-              <span />
-              <span>Título</span>
-              <span>Álbum</span>
-              <span className="ra">Duración</span>
-              <span />
-            </div>
-          )}
+          {pc && <Thead />}
           {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
             ctx.song(entry, topEntries, {
               rank: i + 1,

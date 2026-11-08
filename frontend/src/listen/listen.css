@@ -335,11 +335,6 @@
   font-size: 12.5px;
 }
 
-.srow__go {
-  flex: none;
-  color: var(--dim);
-}
-
 .tag {
   display: inline-block;
   margin-right: 6px;
