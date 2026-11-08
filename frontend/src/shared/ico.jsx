@@ -28,6 +28,7 @@ const D = {
   addlist: "M4 6h11M4 12h11M4 18h7M18 15v6M15 18h6",
   disc: "M3.5 12a8.5 8.5 0 1 0 17 0 8.5 8.5 0 1 0-17 0M9.5 12a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0",
   user: "M8 8a4 4 0 1 0 8 0 4 4 0 1 0-8 0M4.5 20a7.5 7.5 0 0 1 15 0",
+  file: "M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9.5 13h5M9.5 17h5",
 };
 
 /* Los puntos son trazos de largo cero: con punta redonda y trazo grueso salen

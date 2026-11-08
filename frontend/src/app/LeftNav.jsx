@@ -44,9 +44,7 @@ function NavLists({ openId, onOpen, onNew }) {
   ));
 }
 
-/* `npOpen`: con "Ahora suena" encima el disco de la marca no gira (nadie lo
-   ve y seguiria dibujando). */
-export default function LeftNav({ npOpen }) {
+export default function LeftNav() {
   const nav = useNav();
   const settingsOpen = nav.settings !== null;
   const page = nav.pageOf("library");
@@ -61,7 +59,7 @@ export default function LeftNav({ npOpen }) {
         title="Inicio"
         onClick={() => nav.goTab("home")}
       >
-        <BrandLogo still={npOpen} />
+        <BrandLogo />
       </button>
 
       {ITEMS.map(({ id, label }) => {

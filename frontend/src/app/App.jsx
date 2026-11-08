@@ -5,7 +5,8 @@ import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
-import { panel, usePanel } from "../player/panel.js";
+import { panel, panelMode, usePanel } from "../player/panel.js";
+import { useEngine } from "../player/useEngine.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
@@ -205,10 +206,15 @@ export default function App() {
      popstate cierre de verdad. npEntry: 0 cerrada, 1 abierta, 2 cerrandose
      (ya se pidio el back; un segundo cierre no puede dar otro). El estado
      abierto/cerrado y la pestana viven en el almacen del panel. */
-  const np = usePanel((s) => s.open);
+  const panelState = usePanel();
+  const hasTrack = useEngine((s) => Boolean(s.track));
+  /* Telefono: pantalla completa ("full"). Escritorio: una columna al lado de
+     las paginas ("docked"), sin historial: no es navegacion, el atras no la
+     cierra. */
+  const mode = panelMode(panelState, { key: "", discover: false, pc, track: hasTrack });
+  const full = mode === "full";
+  const np = mode !== "off";
   const npEntry = useRef(0);
-  /* Pestana con la que abre: la cola si viene de "Cola" de la barra. */
-  const npTab = usePanel((s) => s.tab);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -292,9 +298,17 @@ export default function App() {
   });
 
   const openNp = useCallback((page) => {
-    if (npEntry.current || !engine.getState().track) return;
-    npEntry.current = 1;
+    if (!engine.getState().track) return;
+    /* "Cola" de la barra abre la pestana de la cola. */
     const tab = page === 1 ? 1 : 0;
+    if (isPc()) {
+      loadNowPlaying()
+        .then(() => panel.show(tab, nav.getKey()))
+        .catch(() => {});
+      return;
+    }
+    if (npEntry.current) return;
+    npEntry.current = 1;
     loadNowPlaying()
       .then(() => {
         window.history.pushState({ spitifo: "np" }, "", window.location.href);
@@ -464,7 +478,8 @@ export default function App() {
      despues se salta a la fila. */
   const revealFromNp = useCallback(
     (key) => {
-      leaveNp(() => revealSong(key));
+      /* La columna de escritorio no tiene entrada que cerrar: se salta ya. */
+      if (!leaveNp(() => revealSong(key))) revealSong(key);
     },
     [leaveNp, revealSong]
   );
@@ -489,17 +504,17 @@ export default function App() {
       {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
           mosaicos de su hoja de listas); no pinta DOM propio. */}
       <ListenProvider files={libFiles} nav={nav} storage={storage}>
-        <main className="app" inert={np ? "" : undefined}>
+        <main className="app" inert={full ? "" : undefined}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
               arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
           {pc && (
             <>
-              <LeftNav npOpen={np} />
+              <LeftNav />
               <TopBar />
             </>
           )}
 
-          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
+          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={full} />
           <div className="screens" ref={screensRef}>
             {visited.has("home") && (
               <Screen id="home" active={activeId === "home"}>
@@ -573,10 +588,10 @@ export default function App() {
 
           {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
               marcha. En escritorio las tarjetas van en el menu lateral. */}
-          {pc ? <PlayerBar onOpen={openNp} npOpen={np} /> : (
+          {pc ? <PlayerBar onOpen={openNp} npOpen={false} /> : (
             <>
               <ProgressStack />
-              <MiniPlayer onOpen={openNp} npOpen={np} />
+              <MiniPlayer onOpen={openNp} npOpen={full} />
             </>
           )}
           {/* Montado una sola vez: es el dueno del <video> y por eso la
@@ -590,10 +605,9 @@ export default function App() {
               <SwipeDots tab={nav.tab} onTab={nav.goTab} />
             ))}
         </main>
-        {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
-        {np && NowPlaying && (
-          <NowPlaying onClose={closeNp} onReveal={revealFromNp} initialPage={npTab} />
-        )}
+        {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
+            completa. */}
+        {np && NowPlaying && <NowPlaying mode={mode} onClose={closeNp} onReveal={revealFromNp} />}
       </ListenProvider>
     </NavContext.Provider>
   );

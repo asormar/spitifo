@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { queueNote, sourceCaption, splitMeta } from "./nowInfo.js";
+import { fileFacts, queueNote, readReco, relatedTo, sourceCaption, splitMeta } from "./nowInfo.js";
 
 const track = { kind: "library", meta: "Nick Cave · Skeleton Tree" };
 const head = "Sonando desde";
@@ -77,5 +77,155 @@ describe("queueNote", () => {
   it("says it starts over with repeat all or an endless queue", () => {
     expect(queueNote({ repeat: "all", endless: false })).toBe("Al terminar vuelve a empezar.");
     expect(queueNote({ repeat: "off", endless: true })).toBe("Al terminar vuelve a empezar.");
+  });
+});
+
+describe("fileFacts", () => {
+  const entry = {
+    filename: "Nick Cave - Red Right Hand.m4a",
+    sizeMb: 5.9,
+    duration: 370,
+    added: Date.UTC(2026, 9, 2, 12) / 1000,
+  };
+  const now = new Date(Date.UTC(2026, 10, 7, 12));
+  const get = (rows, k) => rows.find((r) => r.k === k)?.v;
+
+  it("joins format, size and duration", () => {
+    expect(get(fileFacts(entry, { now }), "Audio")).toBe("m4a · 5.9 MB · 6:10");
+  });
+
+  it("lowers the extension and keeps only the last dot", () => {
+    expect(get(fileFacts({ filename: "Tema (live).MP3", duration: 65 }), "Audio")).toBe("mp3 · 1:05");
+  });
+
+  it("drops the parts it does not know", () => {
+    expect(get(fileFacts({ filename: "a.flac", sizeMb: null, duration: null }), "Audio")).toBe("flac");
+    expect(get(fileFacts({ filename: "sin-extension", sizeMb: 12, duration: 0 }), "Audio")).toBe("12 MB");
+    expect(fileFacts({ filename: "x", sizeMb: null, duration: null })).toEqual([]);
+  });
+
+  it("capitalises where it is stored", () => {
+    expect(get(fileFacts(entry, { storage: "este dispositivo" }), "Guardado en")).toBe("Este dispositivo");
+    expect(get(fileFacts(entry, { storage: "Google Drive" }), "Guardado en")).toBe("Google Drive");
+    expect(get(fileFacts(entry, {}), "Guardado en")).toBeUndefined();
+  });
+
+  it("counts plays and hides zero", () => {
+    expect(get(fileFacts(entry, { plays: 23 }), "Escuchada")).toBe("23 reproducciones");
+    expect(get(fileFacts(entry, { plays: 1 }), "Escuchada")).toBe("1 reproducción");
+    expect(get(fileFacts(entry, { plays: 0 }), "Escuchada")).toBeUndefined();
+  });
+
+  it("adds name and date only on the full card", () => {
+    const short = fileFacts(entry, { now });
+    expect(get(short, "Nombre")).toBeUndefined();
+    expect(get(short, "Descargado")).toBeUndefined();
+    const full = fileFacts(entry, { now, full: true });
+    expect(full.find((r) => r.k === "Nombre")).toEqual({
+      k: "Nombre",
+      v: "Nick Cave - Red Right Hand.m4a",
+      mono: true,
+    });
+    expect(get(full, "Descargado")).toBe("el 2 de octubre");
+  });
+
+  it("shows the year when it is not the current one", () => {
+    const later = new Date(Date.UTC(2027, 0, 5, 12));
+    expect(get(fileFacts(entry, { now: later, full: true }), "Descargado")).toBe("el 2 de octubre de 2026");
+  });
+
+  it("hides the date when unknown", () => {
+    expect(get(fileFacts({ ...entry, added: 0 }, { now, full: true }), "Descargado")).toBeUndefined();
+  });
+
+  it("is empty without an entry", () => {
+    expect(fileFacts(null)).toEqual([]);
+  });
+});
+
+describe("relatedTo", () => {
+  const reco = {
+    artists: [
+      { name: "PJ Harvey", because: ["Nick Cave & The Bad Seeds"] },
+      { name: "Leonard Cohen", because: ["Nick Cave & The Bad Seeds", "Jorge Drexler"] },
+      { name: "Nick Cave", because: ["Nick Cave & The Bad Seeds"] },
+      { name: "[unknown]", because: ["Nick Cave & The Bad Seeds"] },
+      { name: "C. Tangana", because: ["Rosalía"] },
+      { name: "Tom Waits", because: ["Nick Cave"] },
+      { name: "Iggy Pop", because: ["Nick Cave & The Bad Seeds"] },
+    ],
+  };
+
+  it("finds the candidates whose reason names the artist", () => {
+    expect(relatedTo("Nick Cave & The Bad Seeds", reco).map((r) => r.name)).toEqual([
+      "PJ Harvey",
+      "Leonard Cohen",
+      "Tom Waits",
+    ]);
+  });
+
+  it("finds a credit inside a longer one", () => {
+    const names = relatedTo("Nick Cave", reco).map((r) => r.name);
+    expect(names).toContain("PJ Harvey");
+    expect(names).not.toContain("Nick Cave");
+  });
+
+  it("builds the reason from the first two names", () => {
+    const [, second] = relatedTo("Nick Cave", reco);
+    expect(second.reason).toBe("Porque escuchas Nick Cave & The Bad Seeds y Jorge Drexler");
+    expect(relatedTo("Rosalía", reco)[0].reason).toBe("Porque escuchas Rosalía");
+  });
+
+  it("matches whole words only", () => {
+    const r = { artists: [{ name: "X", because: ["Ecos"] }] };
+    expect(relatedTo("Eco", r)).toEqual([]);
+    expect(relatedTo("Ecos", r)).toHaveLength(1);
+  });
+
+  it("ignores case and accents", () => {
+    expect(relatedTo("rosalia", reco)).toHaveLength(1);
+  });
+
+  it("drops the same artist under another spelling and [unknown]", () => {
+    const names = relatedTo("Nick Cave & The Bad Seeds", reco).map((r) => r.name);
+    expect(names).not.toContain("Nick Cave");
+    expect(names).not.toContain("[unknown]");
+  });
+
+  it("stops at the limit", () => {
+    expect(relatedTo("Nick Cave & The Bad Seeds", reco, 2)).toHaveLength(2);
+    expect(relatedTo("Nick Cave & The Bad Seeds", reco)).toHaveLength(3);
+  });
+
+  it("is empty without data", () => {
+    expect(relatedTo("Nick Cave", null)).toEqual([]);
+    expect(relatedTo("Nick Cave", {})).toEqual([]);
+    expect(relatedTo("Nick Cave", { artists: [{ name: "A" }, null, { because: "x" }] })).toEqual([]);
+    expect(relatedTo("", reco)).toEqual([]);
+  });
+});
+
+describe("readReco", () => {
+  const store = (value) => ({ getItem: () => value });
+
+  it("reads a valid snapshot", () => {
+    expect(readReco(store('{"artists":[{"name":"A"}]}'))).toEqual({ artists: [{ name: "A" }] });
+  });
+
+  it("is null when the key is missing or the JSON is bad", () => {
+    expect(readReco(store(null))).toBeNull();
+    expect(readReco(store("{no"))).toBeNull();
+    expect(readReco(store("5"))).toBeNull();
+  });
+
+  it("is null when the storage throws or does not exist", () => {
+    expect(
+      readReco({
+        getItem: () => {
+          throw new Error("bloqueado");
+        },
+      })
+    ).toBeNull();
+    expect(readReco(null)).toBeNull();
   });
 });

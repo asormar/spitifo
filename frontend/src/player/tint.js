@@ -8,7 +8,7 @@
    aqui solo se calcula, y por eso se puede probar en Node.
    ------------------------------------------------------------------------- */
 
-import { hash32 } from "../shared/cover.js";
+import { toneColor } from "../shared/cover.js";
 
 /* Casi negro del tema oscuro (--bg): hacia el se mezcla el color de la portada. */
 const BASE = [14, 14, 24];
@@ -58,11 +58,11 @@ export function darken(rgb) {
 
 export const rgbCss = ([r, g, b]) => `rgb(${r} ${g} ${b})`;
 
-/* Tono 0-359 estable para un nombre (hash de cadena de 32 bits). */
-export const hashHue = (name) => hash32(name) % 360;
-
-/* Saturacion y luz fijas: el peor tono (amarillo) da mas de 5:1 con blanco. */
-export const fallbackTint = (name) => `hsl(${hashHue(name)} 45% 28%)`;
+/* Sin portada, el fondo es el color de genero de la portada generada (la del
+   artista, ver shared/cover.js) al 50 % sobre el casi negro: el blanco se lee
+   sobre el en las 16 (6:1 como minimo). Va como texto CSS: --genre-N cambia con
+   el tema y lo resuelve el navegador. */
+export const toneTint = (tone) => `color-mix(in oklab, var(--genre-${toneColor(tone)}) 50%, #0e0e18)`;
 
 /* Del ImageData de la portada al color de fondo, o null si no hay pixeles. */
 export function artTint(data) {
