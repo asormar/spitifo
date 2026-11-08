@@ -76,7 +76,9 @@
   transition: var(--tr-press);
 }
 
-.best__main:active {
+.best__main:active,
+.xcard:active,
+button.allsongs__main:active {
   transform: scale(0.98);
 }
 
@@ -190,7 +192,7 @@
   box-shadow: 0 0 0 6px rgba(255, 79, 163, 0.25);
   color: var(--on-pink);
   cursor: pointer;
-  transition: transform 160ms var(--ease);
+  transition: var(--tr-press);
 }
 
 .rec__label:active {
@@ -223,7 +225,8 @@
   background: var(--s1);
 }
 
-.mix::after {
+.mix::after,
+.more::after {
   content: "";
   position: absolute;
   left: 0;
@@ -271,17 +274,8 @@
   transition: var(--tr-btn);
 }
 
-.more::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 44px;
-  transform: translateY(-50%);
-}
-
-.more:active {
+.more:active,
+.card:active {
   transform: scale(0.96);
 }
 
@@ -318,10 +312,6 @@
   text-align: left;
   cursor: pointer;
   transition: var(--tr-press);
-}
-
-.card:active {
-  transform: scale(0.96);
 }
 
 .card > .cv,
@@ -411,7 +401,7 @@
 
 .grid .card > .cv,
 .grid .card > .mos {
-  transition: transform 200ms var(--ease);
+  transition: var(--tr-press);
 }
 
 /* Progreso de Seguir escuchando sobre la portada: solo transform. */
@@ -450,7 +440,7 @@
   color: var(--on-pink);
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 180ms ease, transform 220ms var(--ease);
+  transition: opacity var(--t-quick) var(--ease), var(--tr-press);
 }
 
 .po svg {
@@ -483,10 +473,6 @@
   text-align: left;
   cursor: pointer;
   transition: var(--tr-press);
-}
-
-.xcard:active {
-  transform: scale(0.98);
 }
 
 .xcard > svg {
@@ -621,10 +607,6 @@
 button.allsongs__main {
   cursor: pointer;
   transition: var(--tr-press);
-}
-
-button.allsongs__main:active {
-  transform: scale(0.98);
 }
 
 .allsongs b {

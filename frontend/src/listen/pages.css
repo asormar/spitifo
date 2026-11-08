@@ -123,9 +123,6 @@
   margin: 0;
   font: 700 26px / 1.15 var(--font-display);
   letter-spacing: -0.035em;
-}
-
-.phead__h {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;

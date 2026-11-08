@@ -129,7 +129,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx, active 
 
   return (
     <div className="hfeed">
-      <Mezcla entries={entries} ctx={ctx} />
+      <Mezcla entries={entries} byKey={byKey} ctx={ctx} />
 
       {cont.length > 0 && (
         <section className="sec sec--cont" aria-labelledby="h-cont">

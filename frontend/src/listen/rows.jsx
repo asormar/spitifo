@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
 import { clock } from "../shared/format.js";
@@ -77,7 +77,7 @@ const BAD_ART = new Set();
    de la duracion. `table` (escritorio) reparte la fila en celdas, alineadas con
    el encabezado de su tabla: puesto, titulo, album, duracion y menu; con
    "lib", titulo, artista, album, duracion y menu. */
-export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge, table }) {
+export const SongRow = memo(function SongRow({ entry, list, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge, table }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -109,7 +109,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
             ? `Abrir el vídeo ${title}`
             : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}`
         }
-        onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget))}
+        onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list))}
       >
         {!table && rankCell}
         <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
@@ -169,7 +169,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
       {menuOpen && <RowMenu items={SONG_ITEMS} onPick={(kind) => onPick(entry, kind)} />}
     </div>
   );
-}
+});
 
 /* Encabezado de una tabla de canciones: las mismas columnas que sus filas.
    `lib` (titulo, artista, album...) o, sin ella, la del ranking; `sticky` lo

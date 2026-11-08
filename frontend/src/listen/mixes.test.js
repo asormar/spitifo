@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIXES, RECENT_MIX, TOP_MIX, mixEntries, mixName, mixSub } from "./mixes.js";
+import { MIXES, mixEntries as entriesOf, mixName, mixSub } from "./mixes.js";
 import { normalizeLibrary } from "./library.js";
 
 const file = (key, extra = {}) => ({
@@ -13,6 +13,10 @@ const file = (key, extra = {}) => ({
   ...extra,
 });
 
+/* Las mezclas se calculan con la biblioteca y su mapa por clave, como en la app. */
+const RECENT_MIX = 30;
+const TOP_MIX = 100;
+const mixEntries = (key, lib, hist) => entriesOf(key, lib, hist, new Map(lib.map((e) => [e.key, e])));
 const keys = (list) => list.map((e) => e.key);
 const rec = (plays, last = 0, skips = 0) => ({ plays, skips, last });
 

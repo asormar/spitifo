@@ -23,7 +23,7 @@ let lastKey = "all";
 
 const keyOf = (source) => (source?.startsWith("mix:") ? source.slice(4) : null);
 
-export default function Mezcla({ entries, ctx }) {
+export default function Mezcla({ entries, byKey, ctx }) {
   const pc = usePc();
   const hist = useHistory();
   const [key, setKey] = useState(() => keyOf(engine.getState().source) || lastKey);
@@ -31,7 +31,7 @@ export default function Mezcla({ entries, ctx }) {
   const sounding = useEngine((s) => s.playing);
   const ref = useRef(null);
 
-  const n = useMemo(() => mixEntries(key, entries, hist).length, [key, entries, hist]);
+  const n = useMemo(() => mixEntries(key, entries, hist, byKey).length, [key, entries, hist, byKey]);
   const mine = source === `mix:${key}`;
   const on = mine && sounding;
   const name = mixName(key);

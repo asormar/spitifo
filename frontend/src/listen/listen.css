@@ -550,3 +550,7 @@ body.has-mini .lnotice {
 .ltoast__act:active {
   transform: scale(0.96);
 }
+
+.vlist[data-fast] .art__img {
+  display: none;
+}

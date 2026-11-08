@@ -84,7 +84,8 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
   useFocusBack(backRef);
 
   /* Lo que se lista, sin depender de `ctx` (que se rehace en cada render con el
-     menu abierto): ordenar miles de canciones no puede repetirse por eso. */
+     menu abierto): ordenar miles de canciones no puede repetirse por eso. El
+     historial solo cuenta en "top": las demas no se reordenan con cada escucha. */
   const items = useMemo(() => {
     switch (what) {
       case "recent":
@@ -106,7 +107,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
       default:
         return r.lists;
     }
-  }, [what, index, byKey, lists, r, hist]);
+  }, [what, index, byKey, lists, r, what === "top" ? hist : null]);
   const topEntries = useMemo(() => (what === "top" ? items.map((t) => t.entry) : null), [what, items]);
 
   /* Artistas, albumes o listas: una tarjeta cada uno. */

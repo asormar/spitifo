@@ -10,6 +10,7 @@ export const loadPageHost = () =>
     Ready = m.default;
     return m;
   });
+export const pageReady = () => Ready !== null;
 const Lazy = lazy(loadPageHost);
 
 export default function LazyPageHost(props) {
