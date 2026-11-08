@@ -5,7 +5,7 @@ import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
 import { AlbumCard, ArtistCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
-import { albumTone, entryTone, toneOf, minutes, mosaicTones, plural } from "./home.js";
+import { albumTone, entryTone, toneOf, minutes, mosaicTones, songs } from "./home.js";
 
 /* ---------------------------------------------------------------------------
    RESULTADOS AGRUPADOS
@@ -17,8 +17,6 @@ import { albumTone, entryTone, toneOf, minutes, mosaicTones, plural } from "./ho
    ------------------------------------------------------------------------- */
 
 const SHOWN = { songs: 5, artists: 6, albums: 6, lists: 3 };
-
-const songs = (n) => plural(n, "canción", "canciones");
 
 const TYPES = { artist: "Artista", album: "Álbum", song: "Canción" };
 

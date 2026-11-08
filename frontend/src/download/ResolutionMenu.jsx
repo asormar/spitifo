@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchErr } from "../shared/api.js";
 import { fmtApproxSize } from "../shared/format.js";
-import Popover from "../shared/Popover.jsx";
-import Sheet from "../shared/Sheet.jsx";
+import Sheet, { Popover } from "../shared/Sheet.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { fetchFormats, formatsCache } from "./api.js";

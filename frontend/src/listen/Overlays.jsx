@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import Ico from "../shared/ico.jsx";
-import Popover from "../shared/Popover.jsx";
-import Sheet from "../shared/Sheet.jsx";
+import Sheet, { Popover } from "../shared/Sheet.jsx";
 import { keyUrl } from "../shared/api.js";
 import { coverTone } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
@@ -10,6 +9,7 @@ import { engine } from "../player/engine.js";
 import { Cover } from "./cards.jsx";
 import { albumId, artistId, toTrack } from "./library.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
+import "./menus.css";
 
 /* ---------------------------------------------------------------------------
    MENUS Y HOJAS DE LA BIBLIOTECA

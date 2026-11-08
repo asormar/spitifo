@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 380,900 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 380,850 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -444,8 +444,22 @@ desktop one:
 
 | Bundle | After the review | After the pages and menus | Old limit | New limit |
 | --- | --- | --- | --- | --- |
-| JavaScript | 376,382 B | 380,354 B (+3,972) | 376,900 B | 380,900 B |
-| CSS | 100,129 B | 101,027 B (+898) | 103,000 B | 103,000 B |
+| JavaScript | 376,382 B | 380,348 B (+3,966) | 376,900 B | 380,850 B |
+| CSS | 100,129 B | 100,941 B (+812) | 103,000 B | 103,000 B |
+
+The review of that change found one regression and fixed it with the rest of
+its findings. The rows of a list were not memoized: the drag props were a new
+object per row on every render, so each row that entered the window rendered all
+of them, and a 300-row list scrolled with 23% more main-thread time than the old
+page. They are now the same object between renders while nothing is dragged
+(script time per fling of the 300-row list at 4x: 1,066 ms to 545 ms, main-thread
+task 2,990 ms to 2,550 ms). `Popover` moved into the `Sheet` chunk (one chunk
+less), the `songs` text and the menu and picker styles were written once, and
+the menu styles load only with the menus, not with Buscar. The popover no longer
+locks the scroll: it closes when the page scrolls, so the reserved scrollbar
+gutter, which left a 10 px strip outside every full-screen scrim, is gone. The
+fixes net -6 B of script and -86 B of style, and the JavaScript limit went down
+from 380,900 B.
 
 ### Windows installer: 22,707,225 B
 

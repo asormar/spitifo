@@ -1,5 +1,5 @@
 import { artistId, groupAlbums } from "./library.js";
-import { albumOrder, albumTone, entryTone, minutes, plural, sortEntries, toneOf } from "./home.js";
+import { albumOrder, albumTone, entryTone, minutes, plural, songs, sortEntries, toneOf } from "./home.js";
 
 /* ---------------------------------------------------------------------------
    FICHA DE UN ALBUM, UN ARTISTA O UNA LISTA (logica pura)
@@ -9,8 +9,6 @@ import { albumOrder, albumTone, entryTone, minutes, plural, sortEntries, toneOf 
    no llegaron), "error" (no llegaron), "missing" (ya no existe) u "ok". Detail.jsx
    solo pinta lo que sale de aqui.
    ------------------------------------------------------------------------- */
-
-const songs = (n) => plural(n, "canción", "canciones");
 
 /* ok: { kind, name, artist, artistId, rows, albums, mins, tone, pl, gone }.
    `rows` son las canciones que siguen en la biblioteca, en el orden de la

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placePop } from "./Popover.jsx";
+import { placePop } from "./Sheet.jsx";
 
 const rect = (top, bottom, right) => ({ top, bottom, right });
 

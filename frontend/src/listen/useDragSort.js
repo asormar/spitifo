@@ -36,6 +36,10 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
   const pointer = useRef(null);
   const handles = useRef(new Map());
   const refocus = useRef(null);
+  /* Los manejadores guardados de un render viejo leen el `onMove` de ahora. */
+  const move = useRef(null);
+  move.current = onMove;
+  const still = useRef({ watch: null, rows: [] });
 
   const scrollEl = () => scroller?.current || window;
   const scrolled = () => scroller?.current?.scrollTop ?? window.scrollY;
@@ -108,7 +112,7 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
       if (!d) return;
       setDragged(null);
       const dest = landing(d);
-      if (dest !== d.from) onMove(d.from, dest);
+      if (dest !== d.from) move.current(d.from, dest);
     },
     onPointerCancel() {
       setDragged(null);
@@ -117,7 +121,7 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
       const step = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
       if (!step) return;
       e.preventDefault();
-      if (onMove(pos, pos + step)) refocus.current = id;
+      if (move.current(pos, pos + step)) refocus.current = id;
     },
   });
 
@@ -131,11 +135,29 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
     return undefined;
   };
 
+  const isDragged = (pos) => dragging && drag.from === pos;
+
+  /* El objeto `drag` de una fila ({ transform, dragging, handleRef, handleProps }).
+     Fuera de un arrastre es el mismo entre renders (se rehace al cambiar `watch`),
+     asi una fila memo no se repinta cuando otra entra en la ventana al scrollear. */
+  const dragFor = (id, pos) => {
+    const make = () => ({
+      transform: transformFor(pos),
+      dragging: isDragged(pos),
+      handleRef: handleRef(id),
+      handleProps: handlePropsFor(id, pos),
+    });
+    if (dragging) return make();
+    if (still.current.watch !== watch) still.current = { watch, rows: [] };
+    return (still.current.rows[pos] ??= make());
+  };
+
   return {
     dragging,
-    isDragged: (pos) => dragging && drag.from === pos,
+    isDragged,
     handleRef,
     handlePropsFor,
     transformFor,
+    dragFor,
   };
 }

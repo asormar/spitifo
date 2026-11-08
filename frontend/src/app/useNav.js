@@ -293,6 +293,9 @@ export default function useNavController({ leaveNp, warm } = {}) {
      se descarta, y ?view=settings deja Inicio debajo para que Volver no salga
      de la app. */
   useEffect(() => {
+    /* El scroll lo recuerda cada vista (scrolls): sin esto el navegador lo
+       devolvia al cerrar un menu que se cerro porque la pagina se movio. */
+    window.history.scrollRestoration = "manual";
     const boot = readView(window.location.search);
     if (depthOf(window.history.state) > 0) window.history.replaceState(null, "", window.location.href);
     if (boot.settings) {

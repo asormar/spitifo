@@ -13,6 +13,7 @@ import { continueListening, mostPlayed } from "./history.js";
    ------------------------------------------------------------------------- */
 
 export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+export const songs = (n) => plural(n, "canción", "canciones");
 
 /* Los ordenes de "Explorar la biblioteca": [clave, texto del chip]. */
 export const SORTS = [

@@ -14,10 +14,9 @@ import { useDragSort } from "./useDragSort.js";
    ------------------------------------------------------------------------- */
 
 export default function PlaylistSongs({ playlist, rows, active, ctx, table, onRemove }) {
-  const keys = rows.map((e) => e.key);
-
   const move = (from, to) => {
     if (to < 0 || to >= rows.length) return false;
+    const keys = rows.map((e) => e.key);
     const [a, b] = visibleToKeyIndex(playlist.keys, keys, from, to);
     return playlists.move(playlist.id, a, b);
   };
@@ -36,12 +35,7 @@ export default function PlaylistSongs({ playlist, rows, active, ctx, table, onRe
           num: i + 1,
           table,
           onRemove,
-          drag: {
-            transform: sort.transformFor(i),
-            dragging: sort.isDragged(i),
-            handleRef: sort.handleRef(rows[i].key),
-            handleProps: sort.handlePropsFor(rows[i].key, i),
-          },
+          drag: sort.dragFor(rows[i].key, i),
         })
       }
     />

@@ -3,8 +3,9 @@ import { NavIcon } from "../app/navIcons.jsx";
 import Ico from "../shared/ico.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import { Mosaic } from "./cards.jsx";
-import { mosaicTones } from "./home.js";
+import { mosaicTones, songs } from "./home.js";
 import { playlists, usePlaylists } from "./playlists.js";
+import "./menus.css";
 import "./playlists.css";
 
 /* ---------------------------------------------------------------------------
@@ -61,8 +62,6 @@ export function NameField({ value = "", label, submit, onSubmit, onCancel }) {
   );
 }
 
-const plural = (n) => `${n} ${n === 1 ? "canción" : "canciones"}`;
-
 function Row({ p, byKey, onPick }) {
   const tones = byKey ? mosaicTones(p.keys, byKey) : [];
   return (
@@ -70,7 +69,7 @@ function Row({ p, byKey, onPick }) {
       <Mosaic tones={tones} className="mos--pl" />
       <span className="pl__x">
         <span className="pl__n">{p.name}</span>
-        <span className="pl__c">{plural(p.keys.length)}</span>
+        <span className="pl__c">{songs(p.keys.length)}</span>
       </span>
     </button>
   );

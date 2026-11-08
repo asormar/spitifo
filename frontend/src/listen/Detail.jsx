@@ -7,7 +7,7 @@ import { usePc } from "../shared/viewport.js";
 import { useNav } from "../app/useNav.js";
 import { AlbumCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
-import { mosaicTones, plural } from "./home.js";
+import { mosaicTones, songs } from "./home.js";
 import { skeleton } from "./LibraryGate.jsx";
 import { ListMenu } from "./Overlays.jsx";
 import { Back, useFocusBack } from "./Pages.jsx";
@@ -32,8 +32,6 @@ import "../shared/sheet.css";
    renombrar, el menu de la lista (que es la entrada `lmenu` de la pila), borrar
    y quitar, los dos con "Deshacer".
    ------------------------------------------------------------------------- */
-
-const songs = (n) => plural(n, "canción", "canciones");
 
 /* Una pagina que no puede pintarse: esperando a las listas, sin ellas o ya sin
    su contenido. */
@@ -92,9 +90,15 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
   const [naming, setNaming] = useState(false);
   useFocusBack(backRef);
 
+  /* Un album o un artista no dependen de las listas: no se recalcula con cada
+     cambio de ellas. */
+  const forList = view.type === "list";
+  const ls = forList ? lists : null;
+  const ready = forList && listsReady;
+  const failed = forList && listsError;
   const d = useMemo(
-    () => detailOf(view, { index, byKey, lists, listsReady, listsError }),
-    [view, index, byKey, lists, listsReady, listsError]
+    () => detailOf(view, { index, byKey, lists: ls, listsReady: ready, listsError: failed }),
+    [view, index, byKey, ls, ready, failed]
   );
   if (d.state !== "ok") return <Gone d={d} backRef={backRef} ctx={ctx} nav={nav} pc={pc} />;
 

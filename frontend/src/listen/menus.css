@@ -1,0 +1,164 @@
+/* ---------------------------------------------------------------------------
+   MENUS Y HOJA DE LISTAS (listen/Overlays.jsx, listen/PlaylistPicker.jsx)
+   Aparte de sheet.css para que Buscar, que solo usa la hoja y el popover, no
+   cargue estas reglas.
+   ------------------------------------------------------------------------- */
+
+/* Cabecera del menu de una cancion: portada, titulo y artista (en telefono,
+   artista y album). */
+.mhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 4px 18px 14px;
+}
+
+.mhead__x {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mhead__t,
+.mhead__s {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mhead__t {
+  font: 700 15px / 1.3 var(--font-body);
+}
+
+.mhead__s {
+  color: var(--dim);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+/* El relleno deja sitio al aro de foco, que el scroll recortaria. */
+.mlist {
+  min-height: 0;
+  padding: 3px 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.mi {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: calc(100% - 16px);
+  min-height: 54px;
+  margin: 0 8px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: var(--ink);
+  font: 700 15px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.mi:active {
+  transform: scale(0.98);
+}
+
+.mi > svg {
+  flex: none;
+  color: var(--acc);
+}
+
+.mi--bad > svg {
+  color: var(--bad);
+}
+
+/* Una lista en la hoja: mosaico, nombre y cuantas canciones tiene. */
+.pl {
+  gap: 12px;
+  min-height: 64px;
+}
+
+.pl__x {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pl__n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl__c {
+  color: var(--dim);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mos--pl {
+  width: 44px;
+  height: 44px;
+  gap: 1px;
+  border-radius: var(--r-sm);
+}
+
+.mlist .nfield {
+  margin: 4px 12px 8px;
+}
+
+.mlist .nfield input {
+  min-height: 48px;
+}
+
+/* En el popover: cabecera con linea y items de 44. */
+.pop .mhead {
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 6px 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pop .mi {
+  gap: 14px;
+  width: calc(100% - 12px);
+  min-height: 44px;
+  margin: 0 6px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.pop .mi > svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mi:hover {
+    background: var(--hover);
+  }
+}
+
+@media (min-width: 960px) {
+  .sh__box--sm .mlist {
+    padding-bottom: 14px;
+  }
+
+  .sh__box--sm .pl {
+    min-height: 60px;
+  }
+
+  .sh__box--sm .mos--pl {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+  }
+}

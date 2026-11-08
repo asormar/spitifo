@@ -17,13 +17,6 @@
   border-radius: var(--r-sm);
 }
 
-.mos--big {
-  width: 100%;
-  height: 100%;
-  gap: 2px;
-  border-radius: 0;
-}
-
 /* --- Buscador ----------------------------------------------------------------- */
 
 /* El campo de Tu biblioteca (telefono): pegajoso arriba con un velo del color de

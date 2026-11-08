@@ -54,14 +54,6 @@ button {
   }
 }
 
-/* Un popover bloquea el scroll (html.sheet-lock) y con ello quita la barra de la
-   ventana: sin el hueco reservado la pagina se correria unos pixeles. */
-@media (min-width: 960px) {
-  html {
-    scrollbar-gutter: stable;
-  }
-}
-
 .app {
   max-width: 1280px;
   margin: 0 auto;
