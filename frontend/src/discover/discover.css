@@ -1,9 +1,10 @@
 /* ---------------------------------------------------------------------------
    DESCUBRIR: el mapa de generos
 
-   El mapa ocupa lo que queda de la pantalla bajo la cabecera, sin scroll de
-   pagina: el alto resta la cabecera (96 px con su aire) y la barra inferior
-   del telefono (--nav-h), y un margen negativo anula el relleno inferior de
+   El mapa ocupa lo que queda de la pantalla bajo la barra de arriba, sin scroll
+   de pagina: el alto resta esa barra (--top-h, solo escritorio) con el aire de
+   arriba (24 px) y la barra inferior del telefono (--nav-h), y un margen
+   negativo anula el relleno inferior de
    .app para que el documento no crezca por encima de la ventana. Con el
    mini-reproductor visible el mapa se acorta lo que este mide.
    Los controles flotan sobre el lienzo; el lienzo dibuja solo (ver
@@ -15,7 +16,7 @@
   --gmap-pad: 128px;
 
   position: relative;
-  height: calc(100dvh - 96px - var(--nav-h) - var(--gmap-below));
+  height: calc(100dvh - var(--top-h) - 24px - var(--nav-h) - var(--gmap-below));
   min-height: 300px;
   margin: 12px 0 calc(var(--gmap-below) - var(--gmap-pad) - 1px);
   overflow: hidden;
@@ -48,7 +49,7 @@ body.has-mini .gmap {
   width: 100%;
   height: 100%;
   cursor: grab;
-  /* El dedo mueve el mapa, no la pagina; el swipe entre modos no nace aca
+  /* El dedo mueve el mapa, no la pagina; el swipe entre pestanas no nace aca
      (data-no-swipe). */
   touch-action: none;
   user-select: none;
@@ -148,7 +149,7 @@ body.has-mini .gmap {
 /* Botones del mapa y del panel: mismo tiempo de pulsacion y de color, y la
    misma escala al pulsar los de la misma clase. */
 :is(.gmap__btn, .gmap__chip, .gmap__go, .fy-ghost, .fy__fold) {
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 :is(.gmap__btn, .fy__fold):active {
@@ -455,7 +456,7 @@ body.has-mini .gmap {
   bottom: 8px;
   border-radius: var(--r-card);
   box-shadow: 0 -6px 40px rgba(var(--shadow-rgb), 0.2);
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
   will-change: transform;
 }
 
@@ -503,7 +504,7 @@ body.has-mini .gmap {
 }
 
 .fy__caret svg {
-  transition: transform var(--t-move) var(--ease);
+  transition: var(--tr-move);
 }
 
 .fy--sheet[data-snap="peek"] .fy__caret svg {
@@ -517,7 +518,7 @@ body.has-mini .gmap {
   width: 360px;
   border-radius: var(--r-card);
   background: var(--s1);
-  transition: transform var(--t-move) var(--ease), opacity var(--t-quick) var(--ease);
+  transition: var(--tr-move), opacity var(--t-quick) var(--ease);
 }
 
 .fy__head {

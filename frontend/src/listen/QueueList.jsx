@@ -46,7 +46,7 @@ export default function QueueList({ active, scroller }) {
     <>
       <h2 className="llabel">Sonando</h2>
       <div className="qnow">
-        <QueueRow track={track} pos={index} now reg={!scroller} />
+        <QueueRow track={track} pos={index} now />
       </div>
       <h2 className="llabel">A continuación</h2>
       {upcoming.length ? (
@@ -56,6 +56,7 @@ export default function QueueList({ active, scroller }) {
           count={upcoming.length}
           className={sort.dragging ? "is-sorting" : undefined}
           getKey={(i) => upcoming[i].key}
+          dragged={(i) => sort.isDragged(first + i)}
           renderRow={(i, enter) => {
             const item = upcoming[i];
             const pos = first + i;

@@ -1,8 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./icons.jsx";
 import { useSlidingPill } from "../shared/ui.jsx";
+import { useTheme } from "../shared/theme.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
+
+const THEME_OPTIONS = [
+  { id: "light", label: "Claro" },
+  { id: "dark", label: "Oscuro" },
+];
 
 const NAV_OPTIONS = [
   { id: "tabs", label: "Pestañas" },
@@ -19,8 +25,8 @@ const DATA_SOURCES = [
   ["ListenBrainz", "Los artistas similares que se recomiendan."],
 ];
 
-/* Ajustes es una pantalla del shell, no un modal: se abre desde el riel o la
-   cabecera y el boton atras del telefono la cierra (App escucha popstate). */
+/* Ajustes es una pantalla del shell, no un modal: se abre desde el menu lateral o la
+   cabecera de Inicio y el boton atras del telefono la cierra (App escucha popstate). */
 export default function SettingsView({ active, focus, onClose, onChanged, phoneNav, onPhoneNav }) {
   const storageRef = useRef(null);
   const storageHeadRef = useRef(null);
@@ -28,6 +34,9 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const cookiesHeadRef = useRef(null);
   const segsRef = useRef(null);
   useSlidingPill(segsRef, phoneNav);
+  const themeRef = useRef(null);
+  const [theme, chooseTheme] = useTheme();
+  useSlidingPill(themeRef, theme);
 
   /* Al abrir Ajustes con un destino (el aviso de cookies o el boton de la
      biblioteca) se trae esa seccion y se deja el foco en su titulo, para que
@@ -71,6 +80,32 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         <h2 id="settings-interface" className="settings__h">
           Interfaz
         </h2>
+        <div className="settings__row">
+          <div>
+            <p className="settings__label">Tema</p>
+            <p className="settings__note">Se guarda en este dispositivo.</p>
+          </div>
+          <div
+            ref={themeRef}
+            className="segs settings__segs"
+            role="radiogroup"
+            aria-label="Tema"
+          >
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={theme === option.id}
+                tabIndex={theme === option.id ? 0 : -1}
+                className={`seg ${theme === option.id ? "is-on" : ""}`}
+                onClick={() => chooseTheme(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="settings__row">
           <div>
             <p className="settings__label">Navegación en el teléfono</p>

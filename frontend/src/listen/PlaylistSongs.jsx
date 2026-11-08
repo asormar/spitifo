@@ -82,6 +82,7 @@ export default function PlaylistSongs({ playlist, rows, active, onPlay }) {
       count={rows.length}
       className={sort.dragging ? "is-sorting" : undefined}
       getKey={(i) => rows[i].key}
+      dragged={sort.isDragged}
       renderRow={(i, enter) => (
         <PlaylistSongRow
           entry={rows[i]}

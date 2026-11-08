@@ -13,8 +13,9 @@ import {
   isYouTubeUrl,
   trackState,
 } from "./constants.js";
-import { buildSearchParams, isTerminal, mismatchNotice, pollJob } from "./api.js";
-import { ProgressStack } from "./progress.jsx";
+import { buildSearchParams, mismatchNotice, pollJob } from "./api.js";
+import { setJobFor } from "./jobsStore.js";
+import { useSearchDraft } from "./searchDraft.js";
 import { FilterSegs, FmtPicker, MediaPicker, ModePicker } from "./pickers.jsx";
 import { ShowGroup, SkeletonRow, Track } from "./cards.jsx";
 import { LibraryLink, RecentSection } from "./RecentList.jsx";
@@ -27,7 +28,7 @@ export default function DownloadView({
   onImportCookies,
   onOpenLibrary,
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,9 +54,6 @@ export default function DownloadView({
   /* Claves de lo que ya se bajo en esta sesion: la tarjeta lo marca con un
      check (sigue siendo pulsable para volver a descargar). */
   const [downloadedIds, setDownloadedIds] = useState(() => new Set());
-  /* Un solo `job` tambien se pisaba entre descargas simultaneas. Ahora es un
-     mapa clave -> job, y ProgressBar dibuja uno por descarga en curso. */
-  const [jobs, setJobs] = useState({});
   const [mode, setMode] = useState("matched");
   const [searched, setSearched] = useState(false);
   /* La lupa orbita mientras busca. Al llegar la respuesta NO se corta: sigue
@@ -63,6 +61,7 @@ export default function DownloadView({
      que se detiene sin saltar. El timeout es la red de seguridad para
      prefers-reduced-motion, donde no hay animacion ni evento que esperar. */
   const [scanning, setScanning] = useState(false);
+  const [focused, setFocused] = useState(false);
   useEffect(() => {
     if (loading) {
       setScanning(true);
@@ -84,47 +83,6 @@ export default function DownloadView({
      de resultados (o el bloque de "sin resultados"). */
   const focusPending = useRef(false);
   const resultsRef = useRef(null);
-
-  /* Un job terminal (done/error/timeout/gone) se retira solo a los 5 s. Con
-     varias descargas en curso cada uno tiene su propio temporizador: el de la
-     primera no puede borrar el toast de la segunda, que es justo lo que
-     pasaba antes. */
-  const dismissTimers = useRef(new Map());
-  useEffect(() => {
-    /* Un temporizador POR job, creado una sola vez cuando el job pasa a
-       terminal. Antes habia uno global que se reiniciaba en cada cambio de
-       `jobs`: con otra descarga todavia sondeando (un tick cada 700 ms) el
-       toast ya terminado no se retiraba nunca, y el CSS de salida (que cuenta
-       los mismos 5 s) lo dejaba invisible pero ocupando su hueco en la pila. */
-    Object.entries(jobs).forEach(([k, j]) => {
-      if (!isTerminal(j) || dismissTimers.current.has(k)) return;
-      dismissTimers.current.set(
-        k,
-        setTimeout(() => {
-          dismissTimers.current.delete(k);
-          setJobs((cur) => {
-            /* Si la misma cancion se volvio a bajar en estos 5 s, el job ya no
-               es terminal y NO se toca: no se le retira una descarga viva. */
-            if (!isTerminal(cur[k])) return cur;
-            const next = { ...cur };
-            delete next[k];
-            return next;
-          });
-        }, JOB_DISMISS_MS)
-      );
-    });
-  }, [jobs]);
-
-  useEffect(() => {
-    const timers = dismissTimers.current;
-    return () => timers.forEach((id) => clearTimeout(id));
-  }, []);
-
-  /* Actualiza UN job sin tocar los demas. El setJob viejo pisaba el estado
-     entero en cada tick del polling. */
-  const setJobFor = useCallback((key, patch) => {
-    setJobs((cur) => ({ ...cur, [key]: { ...cur[key], ...patch, key } }));
-  }, []);
 
   /* Abrir/cerrar el menú de resoluciones por clave. Cerrar una clave que ya no
      es la abierta no pisa a la que sí lo está (dos tarjetas no se pelean). */
@@ -160,24 +118,12 @@ export default function DownloadView({
     const el = msgRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    /* 72 px: la barra sticky tapa la parte de arriba. */
-    if (r.top >= 72 && r.bottom <= window.innerHeight) return;
+    /* La barra de arriba (escritorio, --top-h) tapa el borde de la pagina. */
+    const bar = parseFloat(getComputedStyle(document.body).getPropertyValue("--top-h")) || 0;
+    if (r.top >= bar + 16 && r.bottom <= window.innerHeight) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [err, done]);
-
-  /* "/" lleva el foco al buscador salvo que ya se este escribiendo en algo. */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
-      const a = document.activeElement;
-      if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
-      e.preventDefault();
-      inputRef.current?.focus();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
 
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi el form, los ejemplos de la pantalla vacia y el resync
@@ -384,7 +330,7 @@ export default function DownloadView({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fmt, media, mode, query, setQuery, setJobFor]
+    [fmt, media, mode, query, setQuery]
   );
 
   /* El estado vive en la URL: el link se puede compartir y sobrevive al F5.
@@ -397,7 +343,8 @@ export default function DownloadView({
     if (text) p.set("q", text);
     else p.delete("q");
     const qs = p.toString();
-    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+    /* El estado del historial es de useNav (cuantas paginas hay): se conserva. */
+    window.history.replaceState(window.history.state, "", qs ? `?${qs}` : window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -435,7 +382,10 @@ export default function DownloadView({
       const text = takeSearch();
       if (!text) return;
       setQ(text);
-      runSearch(text, modeRef.current);
+      /* Igual que el formulario: un enlace de YouTube lleva a su modo. */
+      const m = isYouTubeUrl(text) ? "ytdlp" : modeRef.current;
+      if (m !== modeRef.current) setMode(m);
+      runSearch(text, m);
     };
     take();
     return subscribeSearch(take);
@@ -500,13 +450,13 @@ export default function DownloadView({
       </p>
 
       <section className="hero">
-        <h1 className="hero__title">Descarga contenido libremente</h1>
+        <h1 className="hero__title">Buscar</h1>
 
         <div className="finder">
           <form
             onSubmit={doSearch}
             role="search"
-            className={cx("search", scanning && "is-scanning")}
+            className={cx("search", scanning && "is-scanning", focused && "is-focus")}
             onAnimationIteration={(e) => {
               if (!loading && e.target.classList.contains("search__icon")) setScanning(false);
             }}
@@ -516,11 +466,14 @@ export default function DownloadView({
               ref={inputRef}
               type="search"
               name="q"
+              data-field="search"
               enterKeyHint="search"
               autoComplete="off"
               spellCheck={false}
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
               placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
               aria-label="Qué quieres escuchar"
             />
@@ -561,7 +514,6 @@ export default function DownloadView({
           </span>
         </div>
       )}
-      <ProgressStack jobs={jobs} />
       {matchedDead && (
         <div className="msg msg--warn" role="status">
           <Icon name="WarningCircle" size={17} weight="fill" />

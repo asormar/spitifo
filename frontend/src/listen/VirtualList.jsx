@@ -23,6 +23,10 @@ import { visibleRange } from "./library.js";
    animacion de entrada (que tambien usa transform) y el desplazamiento de la
    cola al reordenar no pisan la posicion.
 
+   `menuKey` (la fila con el menu abierto) y `dragged(i)` (la que se arrastra)
+   suben su caja por encima de las siguientes: cada una es su propio contexto de
+   apilado.
+
    `scroller` (una ref a un elemento) cambia quien scrollea: la cola de "Ahora
    suena" vive en su propio contenedor, y entonces se escucha ESE scroll y se
    mide contra su caja en vez de contra la ventana.
@@ -37,7 +41,7 @@ const OVERSCAN = 6;
 const INTRO_MS = 700;
 
 const VirtualList = forwardRef(function VirtualList(
-  { count, active, getKey, renderRow, className, scroller },
+  { count, active, getKey, renderRow, className, scroller, menuKey, dragged },
   ref
 ) {
   const boxRef = useRef(null);
@@ -64,10 +68,13 @@ const VirtualList = forwardRef(function VirtualList(
     setRange((cur) => (cur.start === next.start && cur.end === next.end ? cur : next));
   }, [count, scroller]);
 
-  /* Oculta (otra pantalla) la caja mide 0: no hay nada que calcular. */
+  /* Oculta (otra pantalla) la caja mide 0: no hay nada que calcular. Solo una
+     lista que nunca se midio necesita medir antes de pintar; al volver, el
+     scroll aun es el de la otra pantalla y el effect de abajo re-mide ya
+     restaurado. */
   useLayoutEffect(() => {
-    if (active) measure();
-  }, [active, measure]);
+    if (active && range.end === 0) measure();
+  }, [active, measure]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!active) return undefined;
@@ -113,10 +120,11 @@ const VirtualList = forwardRef(function VirtualList(
 
   const rows = [];
   for (let i = start; i < end; i++) {
+    const key = getKey(i);
     rows.push(
       <div
-        key={getKey(i)}
-        className="vrow"
+        key={key}
+        className={cx("vrow", menuKey != null && key === menuKey && "vrow--menu", dragged?.(i) && "vrow--drag")}
         role="listitem"
         aria-posinset={i + 1}
         aria-setsize={count}

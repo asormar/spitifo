@@ -60,6 +60,7 @@
   --shadow-rgb: 30, 30, 80;
   --shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.13);
   --shadow-sm: 0 2px 8px rgba(var(--shadow-rgb), 0.16);
+  --dock-a: 0.2;
   --scrim: rgba(17, 17, 28, 0.38);
   --glass: rgba(255, 255, 255, 0.76);
   /* Accion de un toast (el toast es --ink: oscuro en claro, claro en oscuro). */
@@ -111,15 +112,25 @@
   --t-scene: 550ms;
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
   --drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  /* Ease-in-out simetrica para superficies grandes que empujan el contenido
-     (la biblioteca): arranca y frena despacio, sin tiron al principio. */
-  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
   /* Con un poco de rebote: SOLO para momentos raros y con carga emocional
      (descarga terminada, contador que sube). Nunca en controles de uso
      continuo. */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   /* Retardo de cada fila en una cascada; a partir de la octava ya no espera. */
   --stagger: 30ms;
+  /* Transiciones que se repiten: presion, boton (con fondo), boton con color y
+     caja que se mueve. */
+  --tr-press: transform var(--t-press) var(--ease);
+  --tr-btn: var(--tr-press), background-color var(--t-quick) var(--ease);
+  --tr-btnc: var(--tr-btn), color var(--t-quick) var(--ease);
+  --tr-move: transform var(--t-move) var(--ease);
+  /* Entradas con rise. Las --sec-* son las de las secciones de una pantalla:
+     `.screen[data-seen]` las apaga, asi solo corren la primera vez que se ve. */
+  --rise-move: rise var(--t-move) var(--ease) backwards;
+  --rise-enter: rise var(--t-enter) var(--ease) backwards;
+  --rise-both: rise var(--t-enter) var(--ease) both;
+  --sec-move: var(--rise-move);
+  --sec-enter: var(--rise-enter);
 }
 
 :root[data-theme="dark"] {
@@ -155,6 +166,7 @@
   --shadow-rgb: 0, 0, 0;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --dock-a: 0.5;
   --scrim: rgba(0, 0, 0, 0.6);
   --glass: rgba(24, 24, 38, 0.74);
   --toast-act: #b8126f;

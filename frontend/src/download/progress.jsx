@@ -1,16 +1,19 @@
 import { Icon } from "./icons.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
+import { useJobs } from "./jobsStore.js";
 
 /* Un toast por descarga en curso. Con dos a la vez se apilan en columna: el
    primero se apila pegado al borde inferior. Cada uno se retira solo a los 5 s
-   de terminar, con su propio temporizador. */
-export function ProgressStack({ jobs }) {
-  const lista = Object.values(jobs || {});
+   de terminar, con su propio temporizador (jobsStore). Lo monta el shell: la
+   pantalla de Buscar puede estar oculta mientras la descarga sigue. `inline`:
+   en escritorio las mismas tarjetas van dentro del menu lateral, sin flotar. */
+export function ProgressStack({ inline = false }) {
+  const lista = Object.values(useJobs());
   const varios = lista.length > 1;
   /* Siempre montado: una region viva que aparece junto con su contenido no se
      anuncia de forma fiable. Vacia no pinta nada. */
   return (
-    <div className={`progstack ${varios ? "is-multi" : ""}`} aria-live="polite">
+    <div className={inline ? "jobs" : `progstack ${varios ? "is-multi" : ""}`} aria-live="polite">
       {lista.map((j, i) => (
         <ProgressBar key={j.key || j.title + i} job={j} />
       ))}

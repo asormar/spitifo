@@ -1,26 +1,32 @@
 /* ---------------------------------------------------------------------------
-   APP SHELL: modos, navegacion fija y pantallas
+   APP SHELL: pestanas, navegacion fija y pantallas
 
-   Tres modos viven a la vez (Descargar, Escuchar, Descubrir) y Ajustes es una
-   pantalla mas, no un modal. En el telefono manda una barra inferior; desde
-   720 px, un riel a la izquierda. Las dos piezas usan el mismo cristal que la
-   pildora de la cabecera (.top) para que el shell se lea como una sola cosa.
+   Cuatro pestanas viven a la vez (Inicio, Buscar, Tu biblioteca, Descubrir) y
+   Ajustes es una pagina mas, no un modal. En el telefono manda una barra
+   inferior y la pastilla del reproductor; desde 960 px (shared/viewport.js), el
+   menu lateral, la barra de arriba y la barra del reproductor, todo fijo
+   alrededor de una columna que scrollea con la ventana.
    ------------------------------------------------------------------------- */
 
 :root {
-  /* Ancho del riel. Lo usan el propio riel y el hueco que deja a su derecha. */
-  --rail-w: 72px;
+  /* Ancho del menu lateral (escritorio). */
+  --nav-w: 232px;
   /* Alto de la barra inferior. En escritorio no existe; el body lo redefine
-     solo por debajo de 720 px y segun la preferencia de navegacion. */
+     solo por debajo de 960 px y segun la preferencia de navegacion. */
   --nav-h: 0px;
-  /* Recorrido del cambio de pantalla: en el telefono se desliza en X; desde
-     720 px (riel), en Y. Las variables llegan a los pseudo-elementos de la
+  /* Alto de la barra de arriba (solo escritorio). */
+  --top-h: 0px;
+  /* Borde izquierdo del reproductor flotante y de los avisos: pegado al menu
+     lateral en escritorio. */
+  --dock-l: 0px;
+  /* Recorrido del cambio de pantalla: en el telefono se desliza en X; en
+     escritorio, en Y. Las variables llegan a los pseudo-elementos de la
      View Transition por herencia desde <html>. */
   --vt-dx: 24px;
   --vt-dy: 0px;
 }
 
-@media (max-width: 719.98px) {
+@media (max-width: 959.98px) {
   body {
     --nav-h: calc(64px + env(safe-area-inset-bottom, 0px));
   }
@@ -30,28 +36,41 @@
   }
 }
 
-/* En escritorio el contenido se centra en el area que queda a la DERECHA del
-   riel: el ancho extra del .app (rail + 1280) compensa el padding izquierdo,
-   asi el bloque mantiene el centro optico y no se pega al riel. */
-@media (min-width: 720px) {
+/* Escritorio: la ventana scrollea (no una columna interior), asi que el menu,
+   la barra y el reproductor son fijos y el contenido pasa por debajo del
+   cristal. El bloque se centra en el area que queda a la derecha del menu. */
+@media (min-width: 960px) {
   :root {
     --vt-dx: 0px;
     --vt-dy: 16px;
+    --top-h: 64px;
+    --dock-l: calc(var(--nav-w) + 12px);
+    --mini-h: 96px;
+  }
+
+  html {
+    scroll-padding-top: calc(var(--top-h) + 8px);
+    scroll-padding-bottom: var(--mini-h);
   }
 
   .app {
-    max-width: calc(1280px + var(--rail-w));
-    padding-left: calc(var(--rail-w) + var(--gutter));
+    max-width: none;
+    margin: 0;
+    padding-left: calc(var(--nav-w) + var(--gutter));
   }
 
-  .mini {
-    left: calc(var(--rail-w) + 16px);
+  .screens {
+    max-width: 1280px;
+    margin: 0 auto;
   }
-}
 
-@media (max-width: 719.98px) {
-  .mini {
-    bottom: calc(var(--nav-h) + 12px);
+  .lnotice {
+    left: var(--dock-l);
+    right: 12px;
+  }
+
+  body.has-mini .lnotice {
+    bottom: 96px;
   }
 }
 
@@ -76,6 +95,14 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   display: none;
 }
 
+/* Volver a una pantalla ya vista entra con el deslizamiento de la pantalla: sus
+   secciones no repiten el fundido (display:none -> block reinicia las
+   animaciones CSS). */
+.screen[data-seen] {
+  --sec-move: none;
+  --sec-enter: none;
+}
+
 /* --- Cambio de pantalla (View Transitions) -------------------------------- */
 
 /* Solo hay una pantalla visible a la vez (las demas son display:none), asi que
@@ -87,10 +114,6 @@ html[data-vt="mode"] .screen:not([hidden]) {
 /* Las capas de la transicion se pintan por encima de la raiz: si solo la
    pantalla tuviera nombre, taparia la cabecera y la barra mientras entra. Lo
    que flota sobre la pantalla lleva nombre propio para quedar encima. */
-html[data-vt="mode"] .top {
-  view-transition-name: vt-top;
-}
-
 html[data-vt="mode"] .tabbar {
   view-transition-name: vt-tabbar;
 }
@@ -99,11 +122,16 @@ html[data-vt="mode"] .dots {
   view-transition-name: vt-dots;
 }
 
-html[data-vt="mode"] .rail {
-  view-transition-name: vt-rail;
+html[data-vt="mode"] .leftnav {
+  view-transition-name: vt-leftnav;
 }
 
-html[data-vt="mode"] .mini {
+html[data-vt="mode"] .topbar {
+  view-transition-name: vt-topbar;
+}
+
+html[data-vt="mode"] .mini,
+html[data-vt="mode"] .dock {
   view-transition-name: vt-mini;
 }
 
@@ -111,7 +139,7 @@ html[data-vt="mode"] .progstack {
   view-transition-name: vt-toasts;
 }
 
-html[data-vt="mode"] .vhost {
+html[data-vt="mode"] .vhost:not([data-mode="closed"]) {
   view-transition-name: vt-video;
 }
 
@@ -165,11 +193,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 /* --- Navegacion fija ------------------------------------------------------ */
 
-/* Las tres piezas comparten el cristal de la cabecera. Las de telefono viven
-   abajo y se turnan; el riel vive a la izquierda desde 720 px. */
+/* Las tres piezas comparten el fondo. Las de telefono viven abajo y se
+   turnan; el menu lateral vive a la izquierda en escritorio. */
 .tabbar,
 .dots,
-.rail {
+.leftnav {
   position: fixed;
   z-index: 44;
   background: var(--s1);
@@ -188,11 +216,13 @@ html[data-vt="mode"]::view-transition-new(screen) {
 /* --- Barra inferior (telefono) ------------------------------------------- */
 
 .tabbar {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  align-items: start;
   height: calc(64px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 6px env(safe-area-inset-bottom, 0px);
 }
 
-@media (max-width: 719.98px) {
+@media (max-width: 959.98px) {
   .tabbar {
     display: grid;
   }
@@ -202,19 +232,27 @@ html[data-vt="mode"]::view-transition-new(screen) {
   }
 }
 
-/* Pastilla del activo: una sola pieza que se desliza. Se deja 8 px a cada lado
-   y el paso es el ancho de la propia pastilla (100 %), no el del contenedor. */
+/* Pastilla del icono activo: una sola pieza que se desliza. El elemento mide
+   una columna y su pastilla de 52 x 30 va centrada arriba; el paso es el ancho
+   de la propia columna (100 %), no el del contenedor. */
 .tabbar__ind {
   position: absolute;
   z-index: 0;
-  top: 6px;
-  bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  left: 8px;
-  width: calc((100% - 16px) / 3);
+  top: 8px;
+  left: 6px;
+  display: grid;
+  justify-items: center;
+  width: calc((100% - 12px) / 4);
+  transform: translateX(calc(var(--i, 0) * 100%));
+  transition: transform var(--t-enter) var(--ease);
+}
+
+.tabbar__ind::before {
+  content: "";
+  width: 52px;
+  height: 30px;
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--acc) 13%, transparent);
-  transform: translateX(calc(var(--i, 0) * 100%));
-  transition: transform var(--t-move) var(--ease-spring);
 }
 
 .tabbar__btn {
@@ -223,18 +261,24 @@ html[data-vt="mode"]::view-transition-new(screen) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 0;
+  padding: 3px 0 0;
   border: 0;
   background: transparent;
   color: var(--mut);
   font: inherit;
   font-size: 11px;
   font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
-  transition: color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
+  transition: var(--tr-press), color var(--t-quick) var(--ease);
+}
+
+/* El icono mide 24 y la pastilla 30: queda centrado en ella (3 px de relleno
+   arriba) y la etiqueta empieza bajo la pastilla. */
+.tabbar__btn svg {
+  margin-bottom: 3px;
 }
 
 .tabbar__btn:active {
@@ -254,30 +298,22 @@ html[data-vt="mode"]::view-transition-new(screen) {
 /* --- Puntos del modo deslizable ------------------------------------------ */
 
 .dots {
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
   height: calc(44px + env(safe-area-inset-bottom, 0px));
 }
 
-@media (max-width: 719.98px) {
+@media (max-width: 959.98px) {
   body.nav-swipe .dots {
     display: flex;
   }
 }
 
-.dots__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .dots__btn {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 22px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -287,12 +323,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 .dots__dot {
   display: block;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: var(--r-pill);
   background: var(--s3);
-  transition: width var(--t-enter) var(--ease-spring),
-    background-color var(--t-quick) var(--ease);
+  transition: width var(--t-enter) var(--ease), background-color var(--t-quick) var(--ease);
 }
 
 .dots__btn[aria-current="page"] .dots__dot {
@@ -301,164 +336,355 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .dots__name {
-  color: var(--mut);
-  font-size: 10.5px;
-  font-weight: 600;
+  min-width: 84px;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-align: center;
 }
 
-/* --- Riel lateral (escritorio) -------------------------------------------- */
+/* --- Boton redondo del chrome --------------------------------------------- */
 
-.rail {
-  top: 0;
-  left: 0;
-  bottom: 0;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: var(--rail-w);
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 0
-    calc(12px + env(safe-area-inset-bottom, 0px));
-  border-right: 1px solid var(--line);
-}
-
-@media (min-width: 720px) {
-  .rail {
-    display: flex;
-  }
-}
-
-.rail__btn {
-  position: relative;
+/* Volver, tema, "+" de las listas, los botones de la barra del reproductor, los
+   del mini-reproductor y el engranaje de Inicio (--l). Sobre la portada de
+   "Ahora suena" va --w (nowplaying.css). `is-on`: activado (aleatorio,
+   repetir), en rosa con tinta. */
+.cbtn {
   display: grid;
   flex: none;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--mut);
-  cursor: pointer;
-  transition: background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
-}
-
-.rail__btn:active {
-  transform: scale(0.94);
-}
-
-.rail__btn.is-on {
-  background: color-mix(in srgb, var(--acc) 12%, transparent);
-  color: var(--acc);
-}
-
-/* Barra cobalto de 4 px pegada al borde del riel. Una sola pieza que viaja con
-   --i: el paso es el boton (44) mas el gap del riel (6). Nace centrada en el
-   primer boton (10 px desde su borde superior). */
-.rail__bar {
-  position: absolute;
-  left: 0;
-  top: calc(12px + env(safe-area-inset-top, 0px) + 10px);
-  width: 4px;
-  height: 24px;
-  border-radius: 0 4px 4px 0;
-  background: var(--acc);
-  pointer-events: none;
-  transform: translateY(calc(var(--i, 0) * (44px + 6px)));
-  transition: transform var(--t-move) var(--ease-spring);
-}
-
-/* Etiqueta accesible: `title` da el tooltip nativo y `aria-label` el nombre. */
-.rail__sep {
-  flex: none;
-  width: 24px;
-  height: 1px;
-  margin: 6px 0;
-  background: var(--line);
-}
-
-/* Las listas de reproduccion: nombres cortos bajo los modos; scrollea si hay
-   muchas. El nombre completo va en el title. */
-.rail__lists {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.rail__list {
-  flex: none;
-  width: 60px;
-  min-height: 36px;
-  padding: 4px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--mut);
-  font: 600 11px / 1.2 var(--font-body);
-  overflow-wrap: anywhere;
-  text-align: center;
-  cursor: pointer;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
-    color var(--t-quick) var(--ease);
-}
-
-.rail__list:active {
-  transform: scale(0.94);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .rail__list:hover {
-    background: var(--s1);
-    color: var(--ink);
-  }
-}
-
-/* --- Ajustes en la cabecera (solo telefono; en escritorio lo lleva el riel) */
-
-.top__gear {
-  display: none;
   place-items: center;
   width: 40px;
   height: 40px;
   padding: 0;
   border: 0;
-  border-radius: var(--r-pill);
+  border-radius: 50%;
   background: transparent;
   color: var(--mut);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc);
 }
 
-@media (max-width: 719.98px) {
-  .top__gear {
-    display: grid;
-  }
+.cbtn:active {
+  transform: scale(0.92);
 }
 
-.top__gear:active {
-  transform: scale(0.94);
+.cbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.top__gear.is-on {
-  background: var(--s2);
+.cbtn:disabled:active {
+  transform: none;
+}
+
+.cbtn.is-on {
+  background: var(--pink);
+  color: var(--on-pink);
+}
+
+.cbtn--soft {
+  background: var(--s1);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.cbtn--sm {
+  width: 34px;
+  height: 34px;
+}
+
+.cbtn--l {
+  width: 44px;
+  height: 44px;
+}
+
+/* --- Menu lateral (escritorio) -------------------------------------------- */
+
+.leftnav {
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--nav-w);
+  padding: 0 12px 12px;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.leftnav__brand {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 72px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.leftnav .logo {
+  font-size: 26px;
+}
+
+.leftnav__item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--mut);
+  font: 700 15px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.leftnav__item:active,
+.nlist:active {
+  transform: scale(0.97);
+}
+
+.leftnav__item:is([aria-current="page"], [aria-pressed="true"]),
+.nlist[aria-current="page"] {
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
   color: var(--acc);
 }
 
-/* --- Pantallas vacias (Escuchar, Descubrir) ------------------------------- */
+/* "Tus listas": una raya, el titulo y el "+" de Nueva lista. */
+.leftnav__head {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  margin-top: 18px;
+  padding: 0 2px 0 14px;
+}
+
+.leftnav__head::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 8px;
+  left: 8px;
+  height: 1px;
+  background: var(--line);
+}
+
+.leftnav__head h2 {
+  margin: 0;
+  font: 700 13px / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Lo que sobra de alto es de las listas: scrollean si son muchas. */
+.leftnav__lists {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.nlist {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.nlist b,
+.nlist span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nlist b {
+  font: 700 14px / 1.3 var(--font-body);
+}
+
+.nlist span {
+  color: var(--mut);
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
+.nlist[aria-current="page"] b {
+  color: var(--acc);
+}
+
+.nlist__empty {
+  padding: 4px 14px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.nlist__empty p {
+  margin: 0 0 6px;
+}
+
+.nlist__empty button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc);
+  font: 800 13px var(--font-body);
+  cursor: pointer;
+}
+
+/* Descargas en curso (ProgressStack inline): tarjetas pequenas sobre Ajustes,
+   que queda siempre al final. */
+.jobs {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.jobs:empty {
+  margin: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .leftnav__item:hover,
+  .nlist:hover {
+    background: var(--hover);
+  }
+
+  .leftnav__item:is([aria-current="page"], [aria-pressed="true"]):hover,
+  .nlist[aria-current="page"]:hover {
+    background: color-mix(in srgb, var(--acc) 16%, transparent);
+  }
+
+  .cbtn:not(:disabled):hover {
+    background: var(--hover);
+    color: var(--ink);
+  }
+
+  .cbtn.is-on:hover {
+    background: var(--pink);
+  }
+
+  .cbtn--soft:hover {
+    background: var(--s1);
+  }
+}
+
+/* --- Barra de arriba (escritorio) ----------------------------------------- */
+
+/* Opaca: el contenido de la ventana pasa por debajo. */
+.topbar {
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  left: var(--nav-w);
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--top-h);
+  padding: 0 24px 0 20px;
+  background: var(--bg);
+}
+
+.topbar__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  max-width: 600px;
+  height: 44px;
+  padding: 0 6px 0 16px;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+  color: var(--mut);
+  transition: box-shadow var(--t-quick) var(--ease);
+}
+
+.topbar__search:focus-within {
+  box-shadow: 0 0 0 3px var(--acc);
+}
+
+.topbar__search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 14.5px var(--font-body);
+}
+
+.topbar__search input::placeholder {
+  color: var(--mut);
+  font-weight: 500;
+  opacity: 1;
+}
+
+.topbar__go {
+  flex: none;
+  height: 34px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 13.5px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.topbar__go:active {
+  transform: scale(0.96);
+}
+
+.topbar__theme {
+  margin-left: auto;
+}
+
+.topbar__theme,
+.leftnav__head .cbtn {
+  color: var(--ink);
+}
+
+/* --- Cabecera de Inicio (telefono) --------------------------------------- */
+
+/* La marca y el engranaje de Ajustes. Va sobre --bg: el agujero del disco es
+   del color de la pagina. En escritorio los lleva el menu lateral. */
+.apphead {
+  --logo-hole: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  margin: 0 0 4px;
+}
+
+.apphead__gear {
+  margin-right: -8px;
+  color: var(--ink);
+}
+
+/* --- Pantallas vacias ------------------------------- */
 
 .empty {
   max-width: 640px;
@@ -496,8 +722,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   background: var(--s1);
   color: var(--ink);
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease),
-    background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .settings__back:active {
@@ -517,8 +742,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
   border-radius: var(--r-card);
   background: var(--s1);
   box-shadow: var(--shadow);
-  /* La cabecera es sticky: al traer una seccion a la vista, no queda debajo. */
-  scroll-margin-top: 88px;
+  /* La barra de arriba (escritorio) es fija: al traer una seccion a la vista,
+     no queda debajo. */
+  scroll-margin-top: calc(var(--top-h) + 16px);
 }
 
 .settings__h {
@@ -537,6 +763,10 @@ html[data-vt="mode"]::view-transition-new(screen) {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+}
+
+.settings__row + .settings__row {
+  margin-top: 16px;
 }
 
 .settings__label {
@@ -578,5 +808,14 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
   .settings__segs .seg {
     flex: 1;
+  }
+}
+
+/* Escritorio: el "Volver" de cada pagina, la cabecera de Inicio y el buscador
+   de Buscar sobran, los pone el menu o la barra de arriba. El prefijo .app
+   gana a las reglas base de las hojas de cada pantalla, que cargan despues. */
+@media (min-width: 960px) {
+  .app :is(.hback, .vback, .dhead__back, .settings__back, .apphead, .finder > .search) {
+    display: none;
   }
 }

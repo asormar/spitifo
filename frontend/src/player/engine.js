@@ -52,15 +52,6 @@ export function createEngine({
   /* Avisos de cierre/cambio de pista: el historial de escucha necesita saber
      POR QUE se cerro la sesion, cosa que el estado (una foto) no dice. */
   const trackEvents = new Set();
-  /* key -> cajas que muestran esa pista. El mini-reproductor las usa para saber
-     si alguna fila esta a la vista. No es parte del estado: cambia con el DOM,
-     no con la reproduccion. Pueden ser varias (la misma cancion en Escuchar y
-     en "Descargado hace poco"), asi que cada clave guarda un array inmutable:
-     su identidad solo cambia al registrar o soltar, y el mini-reproductor lo
-     usa como dependencia sin recrear su observador en cada emision. */
-  const elements = new Map();
-  const NO_ELEMENTS = Object.freeze([]);
-
   let audio = null;
   /* Ultima clave adelantada. Evita repetir el POST al reanudar una pausa. */
   let prefetched = null;
@@ -470,21 +461,6 @@ export function createEngine({
     return () => listeners.delete(listener);
   };
 
-  /* Devuelve quien suelta SU caja: soltar por clave borraria tambien la de la
-     otra pantalla que muestra la misma cancion. */
-  const registerElement = (key, el) => {
-    if (!el) {
-      elements.delete(key);
-      return () => {};
-    }
-    elements.set(key, [...(elements.get(key) || NO_ELEMENTS), el]);
-    return () => {
-      const rest = (elements.get(key) || NO_ELEMENTS).filter((x) => x !== el);
-      if (rest.length) elements.set(key, rest);
-      else elements.delete(key);
-    };
-  };
-
   const onTrackEvent = (fn) => {
     trackEvents.add(fn);
     return () => trackEvents.delete(fn);
@@ -511,8 +487,6 @@ export function createEngine({
     cycleRepeat,
     setVolume,
     toggleMute,
-    registerElement,
-    elementsFor: (key) => elements.get(key) || NO_ELEMENTS,
   };
 }
 

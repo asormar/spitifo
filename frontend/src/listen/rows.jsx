@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
@@ -12,8 +12,7 @@ import { Icon } from "./icons.jsx";
    Las filas son vistas del motor, igual que el mini-reproductor: preguntan
    "soy la actual?" y "estoy sonando?" (booleanos, ver useEngine.js) y nunca
    leen la foto entera, porque con la lista montada el motor emite cuatro veces
-   por segundo. Cada fila registra su caja en el motor para que el
-   mini-reproductor sepa si la cancion que suena esta a la vista.
+   por segundo.
    ------------------------------------------------------------------------- */
 
 /* No hay portada por pista en la biblioteca: la inicial hace de portada. */
@@ -28,15 +27,7 @@ export const Bars = ({ on }) => (
   </span>
 );
 
-/* Registra la caja de una fila para el mini-reproductor. */
-function useRegisterRow(key, ref, enabled = true) {
-  useEffect(() => {
-    if (!enabled) return undefined;
-    return engine.registerElement(key, ref.current);
-  }, [key, ref, enabled]);
-}
-
-/* Menu de la fila. Lo abre y lo cierra ListenView (solo hay uno a la vez); aqui
+/* Menu de la fila. Lo abre y lo cierra ListenProvider (solo hay uno a la vez); aqui
    solo se coloca y se maneja con flechas. `items`: [clave, texto]; la clave es
    lo que recibe `onPick`. */
 export function RowMenu({ items, onPick }) {
@@ -74,16 +65,14 @@ const SONG_ITEMS = [
   ["list", "Añadir a una lista…"],
 ];
 
-/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Descargar). `rank`
+/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
    pone el numero de puesto delante (los rankings) y `sub` cambia la segunda
    linea (por defecto artista y album). */
 export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, sub }) {
   const { key, title, artist, album } = entry;
-  const rootRef = useRef(null);
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
   const video = entry.kind === "video";
-  useRegisterRow(key, rootRef);
 
   const meta = sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
@@ -91,7 +80,6 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
 
   return (
     <div
-      ref={rootRef}
       className={cx("srow", isCurrent && "is-current", enter != null && "is-in")}
       style={enter != null ? { "--i": enter } : undefined}
     >
@@ -167,28 +155,22 @@ export function GroupRow({ title, meta, art, enter, onOpen }) {
 
 /* Fila de la cola. `now` = la que suena (sin asa ni quitar). `pos` es su
    posicion en la cola del motor, no en la lista visible. `transform` lo pone
-   QueueList mientras se arrastra. `reg` = false la deja fuera del registro del
-   mini-reproductor: la cola de "Ahora suena" no es la fila de la biblioteca. */
+   QueueList mientras se arrastra. */
 export function QueueRow({
   track,
   pos,
   now,
-  reg = true,
   enter,
   transform,
   dragging,
   handleRef,
   handleProps,
 }) {
-  const rootRef = useRef(null);
   const playing = useEngine((s) => now && s.playing);
-  /* Solo la que suena puede ser "la fila a la vista" de su pista. */
-  useRegisterRow(track.key, rootRef, now && reg);
   const qtone = coverTone(track.meta || track.title);
 
   return (
     <div
-      ref={rootRef}
       className={cx(
         "srow qrow",
         now && "is-current",

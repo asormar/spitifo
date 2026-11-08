@@ -203,7 +203,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-press) var(--ease);
+  transition: var(--tr-press), background-color var(--t-press) var(--ease);
 }
 
 .vhb:active {

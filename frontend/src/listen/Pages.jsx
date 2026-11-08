@@ -25,12 +25,12 @@ import {
 } from "./home.js";
 
 /* ---------------------------------------------------------------------------
-   PAGINAS DE ESCUCHAR
+   PAGINAS DE LA BIBLIOTECA
 
-   Lo que se apila sobre el inicio (useViewStack): una lista de "Ver todo", la
+   Lo que se apila sobre una pestana (la pila de useNav): una lista de "Ver todo", la
    biblioteca entera para explorar y la ficha de un album, un artista o una
    lista. Todas llevan su "Volver"; el cuerpo es una lista virtual de filas, la
-   misma fila (SongRow) que el resto de Escuchar.
+   misma fila (SongRow) que el resto de la biblioteca.
    ------------------------------------------------------------------------- */
 
 const songs = (n) => plural(n, "canción", "canciones");
@@ -40,11 +40,14 @@ const LIST_ITEMS = [
   ["delete", "Borrar lista"],
 ];
 
-/* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi. */
-function useFocusBack(ref) {
+/* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi.
+   En escritorio el de la pagina no se ve y el foco va al de la barra de arriba. */
+function useFocusBack(ref, on = true) {
   useEffect(() => {
-    ref.current?.focus({ preventScroll: true });
-  }, [ref]);
+    if (!on) return;
+    const back = ref.current?.getClientRects().length ? ref.current : document.querySelector(".topbar .cbtn--soft");
+    back?.focus({ preventScroll: true });
+  }, [ref, on]);
 }
 
 /* --- Filas de grupos -------------------------------------------------------------- */
@@ -207,6 +210,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
             active={active}
             count={page.items.length}
             getKey={(i) => itemKey(page.items[i])}
+            menuKey={ctx.menu?.key}
             renderRow={(i, enter) => row(page.items[i], i, enter)}
           />
         </div>
@@ -219,22 +223,28 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
 
 /* --- Explorar la biblioteca ------------------------------------------------------------- */
 
-export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort, active, ctx }, listRef) {
+/* `root`: es la raiz de Tu biblioteca, no una pagina apilada: sin "Volver" ni
+   titulo (los pone la pantalla) y sin animacion de entrada. */
+export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort, active, ctx, root }, listRef) {
   const backRef = useRef(null);
-  useFocusBack(backRef);
+  useFocusBack(backRef, !root);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
 
   return (
-    <div className="lpage">
+    <div className={cx("lpage", root && "lpage--root")}>
       <div className="libhead">
-        <button ref={backRef} type="button" className="vback" onClick={ctx.back}>
-          <span aria-hidden="true">‹</span> Volver
-        </button>
+        {!root && (
+          <button ref={backRef} type="button" className="vback" onClick={ctx.back}>
+            <span aria-hidden="true">‹</span> Volver
+          </button>
+        )}
         <div className="libhead__row">
-          <div>
-            <h1 className="libhead__h">Biblioteca</h1>
-            <p className="libhead__n">{plural(rows.length, "tema", "temas")}</p>
-          </div>
+          {!root && (
+            <div>
+              <h1 className="libhead__h">Biblioteca</h1>
+              <p className="libhead__n">{plural(rows.length, "tema", "temas")}</p>
+            </div>
+          )}
           <div className="libhead__sort" role="group" aria-label="Ordenar por">
             <span className="libhead__lbl" aria-hidden="true">
               Ordenar
@@ -260,6 +270,7 @@ export const LibraryPage = forwardRef(function LibraryPage({ index, sort, onSort
           active={active}
           count={rows.length}
           getKey={(i) => rows[i].key}
+          menuKey={ctx.menu?.key}
           renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
         />
       </div>
@@ -378,7 +389,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
           </div>
         )}
         <div className="dhead__body">
-          <span className="dhead__art">{art}</span>
+          <span className={cx("dhead__art", view.type === "artist" && "dhead__art--round")}>{art}</span>
           <div className="dhead__info">
             <p className="dhead__kind">{kind}</p>
             {naming && pl ? (
@@ -459,6 +470,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
               active={active}
               count={rows.length}
               getKey={(i) => rows[i].key}
+              menuKey={ctx.menu?.key}
               renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
             />
           )}

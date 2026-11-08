@@ -1,47 +1,35 @@
-import { Suspense, lazy, useSyncExternalStore } from "react";
-import { cx } from "../shared/ui.jsx";
-import { MODES } from "./navigation.js";
+import { TABS } from "./navigation.js";
 import { NavIcon } from "./navIcons.jsx";
 
-/* Una sola lista para las tres piezas: el orden de MODES manda en el
-   indicador deslizante y en las tres etiquetas. */
-const ITEMS = [
-  { id: "download", label: "Descargar" },
-  { id: "listen", label: "Escuchar" },
+/* Una sola lista para las piezas de la navegacion (barra, puntos y menu
+   lateral): el orden de TABS manda en el indicador y en las etiquetas. */
+export const ITEMS = [
+  { id: "home", label: "Inicio" },
+  { id: "search", label: "Buscar" },
+  { id: "library", label: "Tu biblioteca" },
   { id: "discover", label: "Descubrir" },
 ];
 
-const indexOf = (mode) => Math.max(0, MODES.indexOf(mode));
+const indexOf = (tab) => Math.max(0, TABS.indexOf(tab));
 
-/* La lista de listas del riel se carga aparte (pide /api/playlists) y solo
-   donde hay riel: en telefono no se monta ni se descarga. */
-const RailLists = lazy(() => import("../listen/RailLists.jsx"));
-const DESKTOP = "(min-width: 720px)";
-const watchDesktop = (cb) => {
-  const mq = window.matchMedia(DESKTOP);
-  mq.addEventListener("change", cb);
-  return () => mq.removeEventListener("change", cb);
-};
-const isDesktop = () => window.matchMedia(DESKTOP).matches;
-
-export function TabBar({ mode, onMode }) {
-  const index = indexOf(mode);
+export function TabBar({ tab, onTab }) {
+  const index = indexOf(tab);
   return (
     <nav className="tabbar" aria-label="Modos">
-      {/* La pastilla viaja con transform (spring), no cambia de izquierda a
-          izquierda: es lo unico que se mueve al cambiar de modo. */}
+      {/* La pastilla del icono viaja con transform: es lo unico que se mueve al
+          cambiar de pestana. */}
       <span className="tabbar__ind" aria-hidden="true" style={{ "--i": index }} />
       {ITEMS.map(({ id, label }) => {
-        const active = mode === id;
+        const active = tab === id;
         return (
           <button
             key={id}
             type="button"
             className="tabbar__btn"
             aria-current={active ? "page" : undefined}
-            onClick={() => onMode(id)}
+            onClick={() => onTab(id)}
           >
-            <NavIcon name={id} filled={active} />
+            <NavIcon name={id} filled={active} size={24} />
             <span>{label}</span>
           </button>
         );
@@ -50,83 +38,32 @@ export function TabBar({ mode, onMode }) {
   );
 }
 
-/* Variante de paginas deslizables: barra mucho mas baja, solo puntos y el
-   nombre del modo activo. El gesto es el protagonista, no los botones. */
-export function SwipeDots({ mode, onMode }) {
-  const index = indexOf(mode);
+/* Variante de paginas deslizables: barra mucho mas baja, dos puntos, el nombre
+   de la pestana activa y dos puntos. El gesto es el protagonista. */
+export function SwipeDots({ tab, onTab }) {
+  const index = indexOf(tab);
+  const dot = ({ id, label }) => {
+    const active = tab === id;
+    return (
+      <button
+        key={id}
+        type="button"
+        className="dots__btn"
+        aria-label={label}
+        aria-current={active ? "page" : undefined}
+        onClick={() => onTab(id)}
+      >
+        <span className="dots__dot" aria-hidden="true" />
+      </button>
+    );
+  };
   return (
     <nav className="dots" aria-label="Modos">
-      <div className="dots__row">
-        {ITEMS.map(({ id, label }) => {
-          const active = mode === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              className="dots__btn"
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              onClick={() => onMode(id)}
-            >
-              <span className="dots__dot" aria-hidden="true" />
-            </button>
-          );
-        })}
-      </div>
+      {ITEMS.slice(0, 2).map(dot)}
       <span className="dots__name" aria-hidden="true">
         {ITEMS[index].label}
       </span>
-    </nav>
-  );
-}
-
-/* Riel del escritorio. El hueco flexible de abajo de los modos es para las
-   listas de reproduccion: scrollea si hay muchas. */
-export function Rail({ mode, settingsOpen, onMode, onSettings, onPlaylist }) {
-  const desktop = useSyncExternalStore(watchDesktop, isDesktop);
-  /* La barra sigue al modo, no a la pantalla: con Ajustes abierto se queda
-     donde estaba. */
-  const index = Math.max(
-    0,
-    ITEMS.findIndex(({ id }) => id === mode)
-  );
-  return (
-    <nav className="rail" aria-label="Modos" style={{ "--i": index }}>
-      <span className="rail__bar" aria-hidden="true" />
-      {ITEMS.map(({ id, label }) => {
-        const active = mode === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            className={cx("rail__btn", active && "is-on")}
-            aria-current={active ? "page" : undefined}
-            aria-label={label}
-            title={label}
-            onClick={() => onMode(id)}
-          >
-            <NavIcon name={id} filled={active} />
-          </button>
-        );
-      })}
-      <span className="rail__sep" aria-hidden="true" />
-      <div className="rail__lists" role="group" aria-label="Listas">
-        {desktop && (
-          <Suspense fallback={null}>
-            <RailLists onOpen={onPlaylist} />
-          </Suspense>
-        )}
-      </div>
-      <button
-        type="button"
-        className={cx("rail__btn", settingsOpen && "is-on")}
-        aria-label="Ajustes"
-        aria-pressed={settingsOpen}
-        title="Ajustes"
-        onClick={onSettings}
-      >
-        <NavIcon name="settings" filled={settingsOpen} />
-      </button>
+      {ITEMS.slice(2).map(dot)}
     </nav>
   );
 }

@@ -2,7 +2,7 @@
    8e. LISTAS DE REPRODUCCION
 
    Campo de nombre en linea, hoja "Añadir a una lista" y el boton del aviso.
-   Se carga con los chunks de Escuchar y de "Ahora suena", no con el primer
+   Se carga con los chunks de la biblioteca y de "Ahora suena", no con el primer
    script. Solo se animan transform y opacity.
    ------------------------------------------------------------------------- */
 
@@ -109,7 +109,7 @@
   font: 600 15px var(--font-body);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btn);
 }
 
 .pick__it:active {

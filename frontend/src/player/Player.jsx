@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Icon } from "../shared/icons.jsx";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
@@ -15,7 +15,6 @@ import { useEngine } from "./useEngine.js";
    ------------------------------------------------------------------------- */
 function Player({ track }) {
   const railRef = useRef(null);
-  const rootRef = useRef(null);
   /* Posicion (0..1) mientras se arrastra la barra. null = no se arrastra. */
   const [drag, setDrag] = useState(null);
 
@@ -28,12 +27,6 @@ function Player({ track }) {
   const failed = useEngine((s) => s.track?.key === key && s.failed);
   const time = useEngine((s) => (s.track?.key === key ? s.time : 0));
   const realDur = useEngine((s) => (s.track?.key === key ? s.duration : 0));
-
-  /* La caja de esta fila es lo que el mini-reproductor observa para saber si la
-     cancion esta a la vista. */
-  useEffect(() => {
-    return engine.registerElement(key, rootRef.current);
-  }, [key]);
 
   const dur = realDur || track?.duration || 0;
   const pct = drag !== null ? drag : dur ? clamp(time / dur, 0, 1) : 0;
@@ -146,10 +139,7 @@ function Player({ track }) {
   );
 
   return (
-    <div
-      ref={rootRef}
-      className={cx("pv", active && "is-active", playing && "is-playing")}
-    >
+    <div className={cx("pv", active && "is-active", playing && "is-playing")}>
       {button}
       {rail}
       <span className="pv__time">{active ? clock(shownTime) : total}</span>

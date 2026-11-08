@@ -2,32 +2,33 @@
    4. HERO + BUSCADOR
    ------------------------------------------------------------------------- */
 
+/* El titulo de pagina de Buscar: igual que el de Tu biblioteca (.lhead__h). */
 .hero {
-  padding-top: clamp(36px, 7vw, 60px);
-  text-align: center;
+  padding-top: 8px;
 }
 
 .hero__title {
-  margin: 0 auto;
-  font: 700 clamp(30px, 6.2vw, 46px) / 1.08 var(--font-display);
+  margin: 0;
+  font: 700 clamp(26px, 4.6vw, 34px) / 1.1 var(--font-display);
   letter-spacing: -0.04em;
-  text-wrap: balance;
   overflow-wrap: anywhere;
   --rise: 16px;
-  animation: rise var(--t-move) var(--ease) 60ms backwards;
+  animation: var(--sec-move);
+  animation-delay: 60ms;
 }
 
 .finder {
   border: 0;
   max-width: 860px;
-  margin: 32px auto 0;
+  margin: 16px auto 0;
   padding: 14px;
   border-radius: var(--r-panel);
   background: var(--s1);
   box-shadow: var(--shadow);
   text-align: left;
   --rise: 16px;
-  animation: rise var(--t-move) var(--ease) 160ms backwards;
+  animation: var(--sec-move);
+  animation-delay: 160ms;
 }
 
 .search {
@@ -42,8 +43,8 @@
 }
 
 /* El campo no dibuja su propio aro: lo dibuja la fila entera, que es lo que
-   se ve como "el buscador". Con :has el aro no salta al pulsar el boton. */
-.search:has(input:focus) {
+   se ve como "el buscador". Solo el campo lo enciende (no el boton). */
+.search.is-focus {
   box-shadow: 0 0 0 3px var(--acc);
 }
 
@@ -97,7 +98,7 @@
   font-size: 15px;
   font-weight: 800;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
+  transition: var(--tr-press), opacity var(--t-press) var(--ease);
 }
 
 .search__go:active {
@@ -209,8 +210,7 @@
   line-height: 1.2;
   text-align: center;
   cursor: pointer;
-  transition: transform var(--t-press) var(--ease), color var(--t-quick) var(--ease),
-    background-color var(--t-quick) var(--ease);
+  transition: var(--tr-btnc);
 }
 
 .seg:active {
@@ -224,10 +224,6 @@
 
 .seg.is-on {
   color: var(--on);
-}
-
-.seg__n {
-  font-variant-numeric: tabular-nums;
 }
 
 /* YouTube apagado en el servidor: se marca sin deshabilitar (el usuario puede

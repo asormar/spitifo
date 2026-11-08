@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 371,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 376,500 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -356,6 +356,19 @@ smaller:
 | JavaScript | 366,005 B | 369,716 B (+3,711) | 367,000 B | 371,000 B |
 | CSS | 103,358 B | 102,395 B (−963) | 104,000 B | 103,000 B |
 
+The redesign's navigation shell (four tabs with one page stack, the phone tab
+bar and floating mini-player, and on a desktop the left nav, top bar and
+floating player bar) replaces the old header pill, theme switch and icon rail,
+and adds the stores that let the shell outlive a screen (downloads, search text,
+theme) and the pure navigation helpers. Net of the deletions (and of its size,
+performance and motion review) it adds 4,617 B of
+script and 166 B of style; only the script needed a new limit:
+
+| Bundle | Before the shell | After | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 370,415 B | 375,032 B (+4,617) | 371,000 B | 376,500 B |
+| CSS | 98,055 B | 98,221 B (+166) | 103,000 B | 103,000 B |
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
@@ -457,11 +470,11 @@ attaches to the page and reports, in this order:
 
 - **startup**: launch to the app's navigation, first contentful paint, when
   `/api/library` answered, and launch to usable: `/api/library` answered **and**
-  the first content of the mode the app opened on (Descargar) is rendered. When
+  the first content of the mode the app opened on (Inicio) is rendered. When
   that content was already there at attach time the value is a lower bound
   (`usableBasis: "lower-bound"`: the latest of the library response, the mode's
   JS chunk and the first paint); otherwise it is observed. It also lists the
-  mode bar in use (`rail` or `tabbar`) and the viewport;
+  mode bar in use (`leftnav`, `tabbar` or `dots`) and the viewport;
 - **discoverOnStartup**: whether `genre-map.json`, `/api/discover` or the
   Discover JS chunk were requested before the first visit to Descubrir (taken
   4 s after start-up, once the idle preload has had its chance). Neither the
@@ -472,21 +485,21 @@ attaches to the page and reports, in this order:
   preloaded. `/api/discover` waits for the map to be drawn. The
   `afterRun` part shows what the visits requested afterwards (`/api/discover`
   once per visit to Descubrir, and again while the server is still working);
-- **tapFeedback**: `pointerdown` on a segment of Descargar's "Modo de
+- **tapFeedback**: `pointerdown` on a segment of Buscar's "Modo de
   búsqueda" (a real control with `:active`; a mode bar button if it were gone)
   to the end of the next frame, with the press held so `:active` is read at
   that frame (`activeShown`, e.g. `3/3`; emulated touch never sets it, so check
   it on the phone);
 - **modeSwitch**: a click on each button of the mode bar. `firstVisit` is the
-  first, cold visit to Descubrir (straight from Descargar) and to Escuchar;
-  `toListen`, `toDiscover` and `toDownload` are `--runs` warm cycles
-  Descargar → Escuchar → Descubrir → Descargar. Per switch: `frame` (click to
+  first, cold visit to Descubrir (straight from Buscar) and to Tu biblioteca;
+  `toLibrary`, `toDiscover` and `toSearch` are `--runs` warm cycles
+  Buscar → Tu biblioteca → Descubrir → Buscar. Per switch: `frame` (click to
   the end of the first frame), `shown` (the new screen is visible and its mode
   button is current, plus a frame: the View Transition has swapped the
-  screens), `content` (the mode's own content painted: Escuchar's home
-  sections, Descubrir's map canvas **drawn**) and the longest frame while the
+  screens), `content` (the mode's own content painted: Tu biblioteca's
+  search box and feed, Descubrir's map canvas **drawn**) and the longest frame while the
   switch settles;
-- **listenScroll**: opens "Explorar la biblioteca" (the virtual list), flings
+- **libraryScroll**: opens "Explorar la biblioteca" from Inicio (the virtual list), flings
   three times down and up it, then closes it with "Volver". Frame rate, median
   and 95th percentile frame interval, share of frames over 1.5 refreshes,
   longest frame, and how far the page scrolled (`maxScrollPx`, a check that the

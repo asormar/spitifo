@@ -7,9 +7,10 @@ import { useNotice } from "../listen/Notice.jsx";
 import PlaylistPicker from "../listen/PlaylistPicker.jsx";
 import { playlists } from "../listen/playlists.js";
 import { initial } from "../listen/rows.jsx";
-import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 import { useVideoHost } from "./videoStore.js";
+import { usePc } from "../shared/viewport.js";
+import { Controls, Volume } from "./controls.jsx";
 import Scrub from "./Scrub.jsx";
 import { artTint, fallbackTint } from "./tint.js";
 import "./nowplaying.css";
@@ -23,20 +24,13 @@ import "./nowplaying.css";
    crecer desde la pastilla (ver screenSwap.js y nowplaying.css).
 
    En telefono son dos paginas en una banda horizontal (Ahora suena y Cola) que
-   se cambian con las pastillas o deslizando; desde 960 px van lado a lado. Un
-   arrastre hacia abajo cierra la vista. Los gestos usan pointer events: el
+   se cambian con las pastillas o deslizando; en escritorio (usePc) van lado a
+   lado. Un arrastre hacia abajo cierra la vista. Los gestos usan pointer events: el
    gesto se decide por la direccion de los primeros pixeles y, una vez
    decidido, la vista captura el puntero.
    ------------------------------------------------------------------------- */
 
-const REPEAT = {
-  off: ["Repetir: no", "Repeat"],
-  all: ["Repetir: todo", "Repeat"],
-  one: ["Repetir: una", "RepeatOnce"],
-};
-
 const PAGES = ["Ahora suena", "Cola"];
-const WIDE = "(min-width: 960px)";
 
 /* Movimiento minimo antes de decidir si el gesto es horizontal o vertical. */
 const SLOP = 8;
@@ -45,18 +39,6 @@ const CLOSE_FRACTION = 0.25;
 const CLOSE_SPEED = 0.6;
 /* Cambio de pagina por arrastre horizontal (px). */
 const PAGE_DRAG = 60;
-
-function useWide() {
-  const [wide, setWide] = useState(() => window.matchMedia(WIDE).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(WIDE);
-    const on = () => setWide(mq.matches);
-    on();
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return wide;
-}
 
 /* Un solo canvas de 24x24 para todas las portadas: promediar 576 pixeles basta
    para el color y no cuesta nada. La portada sale del mismo origen (/api/audio),
@@ -93,122 +75,17 @@ function usePaint(art, fallback) {
   return [paint, apply, settle];
 }
 
-function Controls() {
-  const st = useEngine();
-  const hasNext = st.index >= 0 && st.index + 1 < st.queue.length;
-  const [repeatLabel, repeatIcon] = REPEAT[st.repeat];
-  const icon = st.buffering ? "load" : st.playing ? "pause" : "play";
-
-  return (
-    <div className="np__ctl">
-      <button
-        type="button"
-        className={cx("np__btn", st.shuffle && "is-on")}
-        aria-pressed={st.shuffle}
-        aria-label="Aleatorio"
-        title="Aleatorio"
-        onClick={() => engine.setShuffle(!st.shuffle)}
-      >
-        <Icon name="Shuffle" size={24} />
-      </button>
-      <button
-        type="button"
-        className="np__btn"
-        onClick={() => engine.prev()}
-        aria-label="Anterior"
-        title="Anterior"
-      >
-        <Icon name="SkipBack" size={28} weight="fill" />
-      </button>
-      <button
-        type="button"
-        className="pbtn np__play"
-        data-icon={icon}
-        onClick={() => engine.toggle()}
-        aria-label={`${st.playing ? "Pausar" : "Reproducir"} ${st.track?.label ?? ""}`}
-      >
-        <span className="pbtn__ico pbtn__ico--play">
-          <Icon name="Play" size={30} weight="fill" />
-        </span>
-        <span className="pbtn__ico pbtn__ico--pause">
-          <Icon name="Pause" size={30} weight="fill" />
-        </span>
-        <span className="pbtn__ico pbtn__ico--load">
-          <Icon name="CircleNotch" size={30} weight="bold" className="spin" />
-        </span>
-      </button>
-      <button
-        type="button"
-        className="np__btn"
-        onClick={() => engine.next()}
-        disabled={!hasNext && st.repeat !== "all"}
-        aria-label="Siguiente"
-        title="Siguiente"
-      >
-        <Icon name="SkipForward" size={28} weight="fill" />
-      </button>
-      <button
-        type="button"
-        className={cx("np__btn", st.repeat !== "off" && "is-on")}
-        onClick={() => engine.cycleRepeat()}
-        aria-label={repeatLabel}
-        title={repeatLabel}
-      >
-        <Icon name={repeatIcon} size={24} />
-      </button>
-    </div>
-  );
-}
-
-/* Silencio y deslizador: solo con sitio (desde 960 px); en el telefono manda
-   el volumen del propio telefono. */
-function Volume() {
-  const volume = useEngine((s) => s.volume);
-  const muted = useEngine((s) => s.muted);
-  const quiet = muted || volume === 0;
-  const pct = Math.round((quiet ? 0 : volume) * 100);
-
-  return (
-    <div className="np__vol">
-      <button
-        type="button"
-        className="pl__mute"
-        onClick={() => engine.toggleMute()}
-        aria-label={quiet ? "Activar el sonido" : "Silenciar"}
-      >
-        {quiet ? (
-          <Icon name="SpeakerSlash" size={20} />
-        ) : volume < 0.45 ? (
-          <Icon name="SpeakerLow" size={20} />
-        ) : (
-          <Icon name="SpeakerHigh" size={20} />
-        )}
-      </button>
-      <input
-        type="range"
-        className="vol"
-        min={0}
-        max={100}
-        step={1}
-        value={pct}
-        aria-label="Volumen"
-        style={{ "--v": `${pct}%` }}
-        onChange={(e) => engine.setVolume(Number(e.target.value) / 100)}
-      />
-    </div>
-  );
-}
-
-export default function NowPlaying({ onClose, onReveal }) {
+export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
   const track = useEngine((s) => s.track);
   const engineDuration = useEngine((s) => s.duration);
   const vhost = useVideoHost();
-  const wide = useWide();
-  const [page, setPage] = useState(0);
+  const wide = usePc();
+  /* Pagina con la que abre: la cola si viene de "Cola" de la barra. */
+  const [page, setPage] = useState(initialPage);
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
   const [badArt, setBadArt] = useState(null);
   /* Hoja "Añadir a una lista" abierta. Se pinta dentro de esta capa (queda por
-     encima) y el aviso tambien: el de Escuchar esta debajo y no se veria. */
+     encima) y el aviso tambien: el de la biblioteca esta debajo y no se veria. */
   const [adding, setAdding] = useState(false);
   const [noticeNode, show] = useNotice();
 
@@ -384,7 +261,7 @@ export default function NowPlaying({ onClose, onReveal }) {
               <button
                 ref={addRef}
                 type="button"
-                className="np__btn"
+                className="cbtn cbtn--w"
                 onClick={() => setAdding(true)}
                 aria-label="Añadir a una lista"
                 aria-haspopup="dialog"
@@ -399,7 +276,7 @@ export default function NowPlaying({ onClose, onReveal }) {
               disabled={track.kind !== "library"}
               onClick={() => onReveal(track.key)}
             >
-              Ver en Escuchar
+              Ver en tu biblioteca
             </button>
           </div>
         </header>

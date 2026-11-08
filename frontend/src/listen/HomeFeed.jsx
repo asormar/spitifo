@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { clock } from "../shared/format.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
+import { useNav } from "../app/useNav.js";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
 import { Cover, Mosaic, NowBadge, SectionHead, coverOf } from "./cards.jsx";
@@ -127,6 +128,7 @@ function ListCard({ list, byKey, ctx }) {
 }
 
 export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
+  const nav = useNav();
   const hist = useHistory();
   const entries = index.entries;
 
@@ -140,6 +142,9 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
   const topEntries = useMemo(() => top.map((i) => i.entry), [top]);
 
   const open = (what) => () => ctx.open({ type: "all", what });
+  /* La seccion con el menu de una fila abierto queda por encima de las siguientes. */
+  const menuKey = ctx.menu?.key;
+  const topUp = menuKey != null && top.slice(0, TOP_HOME).some((t) => t.entry.key === menuKey);
 
   return (
     <div className="hfeed">
@@ -190,7 +195,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
 
       <div className="hcol hcol--side">
         {top.length > 0 && (
-          <section className="hsec hsec--top" aria-labelledby="h-top">
+          <section className={`hsec hsec--top${topUp ? " hsec--up" : ""}`} aria-labelledby="h-top">
             <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
             <div className="lpanel">
               {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
@@ -244,7 +249,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
         </div>
       </section>
 
-      <button type="button" className="hcard xcard" onClick={() => ctx.open({ type: "library" })}>
+      <button type="button" className="hcard xcard" onClick={() => nav.goTab("library")}>
         <span className="xcard__ico">
           <Icon name="HardDrives" size={22} />
         </span>

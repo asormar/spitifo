@@ -4,9 +4,10 @@ import { cx } from "../shared/ui.jsx";
 /* ---------------------------------------------------------------------------
    AVISO
 
-   El aviso pasajero de Escuchar y de "Ahora suena": un texto que se retira
-   solo, con un boton opcional (Deshacer). Cada pantalla pinta el suyo, porque
-   el de una pantalla oculta no se ve.
+   El aviso pasajero de la biblioteca y de "Ahora suena": un texto que se retira
+   solo, con un boton opcional (Deshacer). La biblioteca lo pinta una vez en
+   ListenProvider, fuera de las pantallas; "Ahora suena" y Descubrir pintan el
+   suyo, porque viven fuera de ese provider.
    ------------------------------------------------------------------------- */
 
 /* El aviso se retira solo; la salida dura --t-quick (180 ms). Con boton se

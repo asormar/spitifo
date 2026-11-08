@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 /* ---------------------------------------------------------------------------
    CAMBIO DE PANTALLA
 
-   Un solo camino para modos y Ajustes. Con View Transitions, el navegador
+   Un solo camino para pestanas y Ajustes. Con View Transitions, el navegador
    congela la pantalla vieja y la nueva entra desde el lado del avance (dir:
    -1 atras, 1 adelante, 0 solo fundido). Sin la API, un fundido con WAAPI.
 
