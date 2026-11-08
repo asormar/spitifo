@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
-import { AlbumCard, AllSongs, ArtistCard, ListCard, NewListCard, SectionHead, Shelf } from "./cards.jsx";
-import { libraryCounts, libraryGrid, plural, toggleFilter, topArtists } from "./home.js";
-import { useMore } from "./useMore.js";
+import { AlbumCard, AllSongs, ArtistCard, Cards, ListCard, NewListCard, SectionHead, Shelf } from "./cards.jsx";
+import { libraryCounts, libraryGrid, toggleFilter, topArtists } from "./home.js";
 import "../shared/chips.css";
 import "./home.css";
 
@@ -31,26 +30,6 @@ const Tile = ({ n, icon, label, onClick }) => (
     <span>{label}</span>
   </button>
 );
-
-/* Una tarjeta por elemento; `key` en quien la usa la reinicia al cambiar de
-   filtro. */
-function Cards({ cards, model, ctx }) {
-  const [shown, more] = useMore(cards.length);
-  return (
-    <>
-      {cards.slice(0, shown).map(({ kind, item }) =>
-        kind === "list" ? (
-          <ListCard key={item.id} list={item} byKey={model.byKey} ctx={ctx} sub="Lista" />
-        ) : kind === "artist" ? (
-          <ArtistCard key={item.id} g={item} ctx={ctx} sub={`Artista · ${plural(item.entries.length, "canción", "canciones")}`} />
-        ) : (
-          <AlbumCard key={item.id} g={item} ctx={ctx} sub={`Álbum · ${item.artist}`} />
-        )
-      )}
-      {more && <div ref={more} className="sentinel" />}
-    </>
-  );
-}
 
 export default function LibraryHome({ model, ctx }) {
   const pc = usePc();
@@ -96,7 +75,7 @@ export default function LibraryHome({ model, ctx }) {
         </div>
         <div className="grid grid--6">
           {filter === "lists" && listsReady && !lists.length && <NewListCard ctx={ctx} />}
-          <Cards key={filter} cards={cards} model={model} ctx={ctx} />
+          <Cards key={filter} cards={cards} byKey={model.byKey} ctx={ctx} tag />
         </div>
       </div>
     );

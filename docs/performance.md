@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 377,700 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 381,850 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -383,6 +383,29 @@ and the lazy Buscar chunk now carries 18,957 B of style and 34,766 B of script:
 | --- | --- | --- | --- | --- |
 | JavaScript | 375,032 B | 376,675 B (+1,643) | 376,500 B | 377,700 B |
 | CSS | 98,221 B | 99,235 B (+1,014) | 103,000 B | 103,000 B |
+
+The redesigned Inicio and Tu biblioteca (the Mezcla record with endless mixes,
+shelves and card grids that load in steps, the Todas tus canciones page with a
+table on a desktop, grouped library search with a best-result card, and covers on
+the song rows) replace the old feed, the full-library root and the group rows.
+Net of the deletions (and of its size, performance and motion review) it adds
+4,724 B of script and 1,021 B of style; only the script needed a new limit. The
+stacked pages (`Pages.jsx`, `pages.css`) are now their own lazy chunk, preloaded
+when the app is idle, so Inicio's stylesheet went from 14,123 B to 11,394 B (plus
+893 B of chips shared with Buscar) and the pages chunk carries 11,625 B of script
+and 4,165 B of style; the render-blocking first stylesheet is 40,223 B. Rows with
+a cover (only videos have one in a real library; the test library gives 100 of
+341 tracks one, 480x360, 19 KB) cost frames on a fast scroll: at 4x CPU
+throttling 1.5–4.4% of the frames of a 2,900 px/s scroll took two refreshes
+(one first pass took 83 ms) against none with the images hidden, and none at 1x.
+`/api/audio` now sends `Cache-Control: private, max-age=604800` for the `.jpg`
+so a row that mounts again does not ask for it again; the real fix for covers is
+a ~100 px thumbnail from the backend:
+
+| Bundle | Before Inicio and Tu biblioteca | After | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 376,675 B | 381,399 B (+4,724) | 377,700 B | 381,850 B |
+| CSS | 99,235 B | 100,256 B (+1,021) | 103,000 B | 103,000 B |
 
 ### Windows installer: 22,707,225 B
 

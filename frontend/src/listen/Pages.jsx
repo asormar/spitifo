@@ -11,7 +11,7 @@ import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { RowMenu, Thead } from "./rows.jsx";
-import { AlbumCard, AllSongs, ArtistCard, Cover, ListCard, Mosaic, coverOf } from "./cards.jsx";
+import { AllSongs, Cards, Cover, Mosaic, coverOf } from "./cards.jsx";
 import {
   SORTS,
   TOP_ALL,
@@ -26,7 +26,6 @@ import {
   topItems,
 } from "./home.js";
 import { subscribeReveal, takeReveal } from "./revealRequest.js";
-import { useMore } from "./useMore.js";
 
 /* ---------------------------------------------------------------------------
    PAGINAS DE LA BIBLIOTECA
@@ -75,26 +74,6 @@ const TITLES = {
   "r-lists": "Listas",
 };
 
-/* De artistas, albumes o listas: una tarjeta cada uno, de a 60 (useMore). */
-function Grid({ what, items, byKey, ctx }) {
-  const [shown, more] = useMore(items.length);
-  const kind = what.replace("r-", "");
-  return (
-    <div className={cx("grid", kind === "artists" && "grid--6")}>
-      {items.slice(0, shown).map((g) =>
-        kind === "artists" ? (
-          <ArtistCard key={g.id} g={g} ctx={ctx} sub={songs(g.entries.length)} />
-        ) : kind === "albums" ? (
-          <AlbumCard key={g.id} g={g} ctx={ctx} />
-        ) : (
-          <ListCard key={g.id} list={g} byKey={byKey} ctx={ctx} />
-        )
-      )}
-      {more && <div ref={more} className="sentinel" />}
-    </div>
-  );
-}
-
 export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
   const { what } = view;
   const pc = usePc();
@@ -129,6 +108,10 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
     }
   }, [what, index, byKey, lists, r, hist]);
   const topEntries = useMemo(() => (what === "top" ? items.map((t) => t.entry) : null), [what, items]);
+
+  /* Artistas, albumes o listas: una tarjeta cada uno. */
+  const kind = what.replace("r-", "").slice(0, -1);
+  const cards = useMemo(() => items.map((item) => ({ kind, item })), [items, kind]);
 
   const isTop = what === "top";
   const isSongs = isTop || what === "recent" || what === "r-songs";
@@ -193,7 +176,9 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
           />
         </>
       ) : (
-        <Grid key={what} what={what} items={items} byKey={byKey} ctx={ctx} />
+        <div className={cx("grid", kind === "artist" && "grid--6")}>
+          <Cards cards={cards} byKey={byKey} ctx={ctx} />
+        </div>
       )}
     </div>
   );

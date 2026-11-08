@@ -168,3 +168,23 @@ def test_head_devuelve_los_mismos_headers_sin_cuerpo(api):
     assert r.headers["accept-ranges"] == "bytes"
     assert r.headers["content-length"] == str(len(CONTENIDO))
     assert r.content == b""
+
+
+# ------------------------------------------------------------- miniaturas
+def test_miniatura_jpg_se_cachea_y_el_audio_no(api):
+    """El `.jpg` de una fila sale con `Cache-Control` (completo y con `Range`); el
+    audio no lo lleva: se pide por rangos y no tiene que quedarse en el cache."""
+    c, root = api
+    _plantar(root, "A/x.mp3")
+    _plantar(root, "A/x.jpg")
+
+    completo = c.get("/api/audio", params={"key": "A/x.jpg"})
+    assert completo.status_code == 200
+    assert completo.headers["cache-control"] == "private, max-age=604800"
+    assert completo.headers["content-type"] == "image/jpeg"
+
+    rango = c.get("/api/audio", params={"key": "A/x.jpg"}, headers={"Range": "bytes=0-3"})
+    assert rango.status_code == 206
+    assert rango.headers["cache-control"] == "private, max-age=604800"
+
+    assert "cache-control" not in c.get("/api/audio", params={"key": "A/x.mp3"}).headers

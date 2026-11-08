@@ -6,6 +6,7 @@ import { toneClass, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, plural, toneOf } from "./home.js";
+import { useMore } from "./useMore.js";
 
 /* ---------------------------------------------------------------------------
    PIEZAS DEL INICIO DE ESCUCHAR
@@ -161,6 +162,32 @@ export const NewListCard = ({ ctx }) => (
     title="Crear tu primera lista"
   />
 );
+
+/* Una tarjeta por elemento ({ kind, item }), de a 60 (useMore); un cambio de
+   lista se resuelve con una `key` en quien la usa. `tag`: el subtitulo lleva el
+   tipo ("Lista · 4 canciones"). */
+export function Cards({ cards, byKey, ctx, tag }) {
+  const [shown, more] = useMore(cards.length);
+  return (
+    <>
+      {cards.slice(0, shown).map(({ kind, item }) =>
+        kind === "list" ? (
+          <ListCard key={item.id} list={item} byKey={byKey} ctx={ctx} sub={tag && "Lista"} />
+        ) : kind === "artist" ? (
+          <ArtistCard
+            key={item.id}
+            g={item}
+            ctx={ctx}
+            sub={`${tag ? "Artista · " : ""}${plural(item.entries.length, "canción", "canciones")}`}
+          />
+        ) : (
+          <AlbumCard key={item.id} g={item} ctx={ctx} sub={tag ? `Álbum · ${item.artist}` : undefined} />
+        )
+      )}
+      {more && <div ref={more} className="sentinel" />}
+    </>
+  );
+}
 
 /* Todas tus canciones: cuantas hay y donde estan. El cuerpo abre la pagina
    (`onOpen`); el boton rosa las baraja y, si se pide, uno suave las reproduce. */

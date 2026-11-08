@@ -20,59 +20,34 @@ const SHOWN = { songs: 5, artists: 6, albums: 6, lists: 3 };
 
 const songs = (n) => plural(n, "canción", "canciones");
 
+const TYPES = { artist: "Artista", album: "Álbum", song: "Canción" };
+
 function Best({ best, all, ctx }) {
   const { kind, item } = best;
   const curKey = useEngine((s) => s.track?.key);
   const sounding = useEngine((s) => s.playing);
 
-  const view =
-    kind === "artist"
-      ? {
-          name: item.name,
-          type: "Artista",
-          sub: songs(item.entries.length),
-          tone: toneOf(item.name),
-          label: item.name,
-          round: true,
-          src: null,
-          entries: item.entries,
-          open: () => ctx.open({ type: "artist", id: item.id }),
-          openLabel: `Abrir artista ${item.name}`,
-          playLabel: `Reproducir canciones de ${item.name}`,
-        }
-      : kind === "album"
-        ? {
-            name: item.name,
-            type: "Álbum",
-            sub: `${item.artist} · ${songs(item.entries.length)}`,
-            tone: albumTone(item.artist, item.name),
-            label: item.name,
-            src: coverOf(item.entries),
-            entries: item.entries,
-            open: () => ctx.open({ type: "album", id: item.id }),
-            openLabel: `Abrir álbum ${item.name}`,
-            playLabel: `Reproducir el álbum ${item.name}`,
-          }
-        : {
-            name: item.title,
-            type: "Canción",
-            sub: item.album ? `${item.artist} · ${item.album}` : item.artist,
-            tone: entryTone(item),
-            label: item.artist,
-            src: coverOf([item]),
-            entries: [item],
-            open: (el) => ctx.tap(item, el, all),
-            openLabel: `Reproducir ${item.title}`,
-            playLabel: `${curKey === item.key && sounding ? "Pausar" : "Reproducir"} ${item.title}`,
-          };
+  const song = kind === "song";
+  const artist = kind === "artist";
+  const name = song ? item.title : item.name;
+  const entries = song ? [item] : item.entries;
+  const sub = artist
+    ? songs(entries.length)
+    : song
+      ? item.album
+        ? `${item.artist} · ${item.album}`
+        : item.artist
+      : `${item.artist} · ${songs(entries.length)}`;
+  const tone = artist ? toneOf(name) : song ? entryTone(item) : albumTone(item.artist, name);
 
-  const inside = view.entries.some((e) => e.key === curKey);
+  const inside = entries.some((e) => e.key === curKey);
   const on = inside && sounding;
 
+  /* Una cancion suena o se pausa; un artista o un album, entero. */
   const play = (e) => {
-    if (kind === "song") ctx.tap(item, e.currentTarget, all);
+    if (song) ctx.tap(item, e.currentTarget, all);
     else if (inside) engine.toggle();
-    else ctx.playGroup(view.entries);
+    else ctx.playGroup(entries);
   };
 
   return (
@@ -80,18 +55,25 @@ function Best({ best, all, ctx }) {
       <button
         type="button"
         className="best__main"
-        aria-label={view.openLabel}
-        onClick={(e) => view.open(e.currentTarget)}
+        aria-label={song ? `Reproducir ${name}` : `Abrir ${TYPES[kind].toLowerCase()} ${name}`}
+        onClick={(e) => (song ? play(e) : ctx.open({ type: kind, id: item.id }))}
       >
-        <Cover tone={view.tone} label={view.label} src={view.src} round={view.round} size={70} className="best__cv" />
+        <Cover
+          tone={tone}
+          label={song ? item.artist : name}
+          src={artist ? null : coverOf(entries)}
+          round={artist}
+          size={70}
+          className="best__cv"
+        />
         <span className="best__txt">
-          <span className="best__name">{view.name}</span>
+          <span className="best__name">{name}</span>
           <span className="best__sub">
-            {view.type} · {view.sub}
+            {TYPES[kind]} · {sub}
           </span>
         </span>
       </button>
-      <button type="button" className="pk pk--s" aria-label={view.playLabel} onClick={play}>
+      <button type="button" className="pk pk--s" aria-label={`${on ? "Pausar" : "Reproducir"} ${name}`} onClick={play}>
         <Icon name={on ? "Pause" : "Play"} weight="fill" size={22} />
       </button>
     </div>
