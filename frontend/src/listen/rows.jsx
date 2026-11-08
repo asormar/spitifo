@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
+import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
@@ -85,6 +86,7 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
   useRegisterRow(key, rootRef);
 
   const meta = sub ?? (album ? `${artist} · ${album}` : artist);
+  const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
 
   return (
@@ -108,7 +110,9 @@ export function SongRow({ entry, enter, menuOpen, onPlay, onMenu, onPick, rank, 
             {rank}
           </span>
         )}
-        <span className="art">{isCurrent ? <Bars on={playing} /> : initial(artist)}</span>
+        <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
+          {isCurrent ? <Bars on={playing} /> : initial(artist)}
+        </span>
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
           <span className="srow__m">
@@ -180,6 +184,7 @@ export function QueueRow({
   const playing = useEngine((s) => now && s.playing);
   /* Solo la que suena puede ser "la fila a la vista" de su pista. */
   useRegisterRow(track.key, rootRef, now && reg);
+  const qtone = coverTone(track.meta || track.title);
 
   return (
     <div
@@ -214,7 +219,9 @@ export function QueueRow({
         }
         onClick={() => (now ? engine.toggle() : engine.playAt(pos))}
       >
-        <span className="art">{now ? <Bars on={playing} /> : initial(track.meta || track.title)}</span>
+        <span className={cx("art", toneClass(qtone))} style={toneVars(qtone)}>
+          {now ? <Bars on={playing} /> : initial(track.meta || track.title)}
+        </span>
         <span className="srow__txt">
           <span className="srow__t">{track.title}</span>
           <span className="srow__m">{track.meta}</span>

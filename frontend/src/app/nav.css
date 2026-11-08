@@ -20,11 +20,8 @@
   margin: 0 auto;
   padding: 0 10px 0 24px;
   border-radius: var(--r-pill);
-  background: var(--nav-bg);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-nav);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   /* Baja desde -14 px: la pildora entra desde el borde de arriba. */
   --rise: -14px;
   animation: rise var(--t-move) var(--ease) backwards;
@@ -37,14 +34,46 @@
   min-width: 0;
 }
 
-.brand__mark {
-  flex: none;
-  color: var(--accent-fg);
+/* Marca "Disco" (shared/Logo.jsx): palabra en Unbounded + disco como "o". */
+.logo {
+  display: inline-flex;
+  align-items: center;
+  font: 700 22px/1 var(--font-display);
+  letter-spacing: -0.045em;
 }
 
-.brand__name {
-  font: 700 21px/1 var(--font-display);
-  letter-spacing: -0.02em;
+.logo__o {
+  width: 0.84em;
+  height: 0.84em;
+  margin: 0.05em 0 0 0.05em;
+  animation: spin 3.2s linear infinite;
+  animation-play-state: paused;
+}
+
+.logo__rec {
+  fill: var(--ink);
+}
+
+.logo__gr {
+  fill: none;
+  stroke: var(--mut);
+}
+
+.logo__p {
+  fill: var(--pink);
+}
+
+.logo__p2 {
+  fill: var(--pink2);
+}
+
+.logo__hole {
+  fill: var(--s1);
+}
+
+/* En pausa conserva el angulo en vez de volver a 0 de golpe. */
+.logo__o.is-spin {
+  animation-play-state: running;
 }
 
 /* Cambio de tema: cortina vertical. La foto vieja queda fija debajo y la nueva
@@ -62,22 +91,17 @@ html[data-vt="theme"]::view-transition-new(root) {
 }
 
 html[data-vt="theme"]::view-transition-new(root) {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
   mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
-  -webkit-mask-size: 100% 300%;
   mask-size: 100% 300%;
-  -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   animation: theme-curtain var(--t-scene) cubic-bezier(0.45, 0, 0.55, 1) both;
 }
 
 @keyframes theme-curtain {
   from {
-    -webkit-mask-position: 0% 100%;
     mask-position: 0% 100%;
   }
   to {
-    -webkit-mask-position: 0% 0%;
     mask-position: 0% 0%;
   }
 }
@@ -101,7 +125,7 @@ html[data-vt="theme"]::view-transition-new(root) {
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--line-strong);
+  background: var(--s3);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease),
     background-color var(--t-enter) var(--ease-io);
@@ -118,7 +142,7 @@ html[data-vt="theme"]::view-transition-new(root) {
 }
 
 .themesw[aria-checked="true"] {
-  background: var(--accent);
+  background: var(--acc);
 }
 
 .themesw__knob {
@@ -131,7 +155,7 @@ html[data-vt="theme"]::view-transition-new(root) {
   height: 22px;
   border-radius: 50%;
   background: var(--ink);
-  color: var(--on-ink);
+  color: var(--on);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   transition: transform var(--t-enter) var(--ease-io),
     background-color var(--t-enter) var(--ease-io), color var(--t-enter) var(--ease-io);
@@ -167,12 +191,12 @@ html[data-vt="theme"]::view-transition-new(root) {
   animation: pop var(--t-quick) var(--ease) both;
 }
 
-/* Contador. Sobre coral va texto de tinta (4.8:1); el blanco daria 3.4:1. */
+/* Contador: tinta sobre rosa, como el glifo de los botones de reproduccion. */
 .count {
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: var(--accent-badge);
-  color: var(--badge-text);
+  background: var(--pink);
+  color: var(--on-pink);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;

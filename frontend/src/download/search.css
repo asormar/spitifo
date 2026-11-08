@@ -9,8 +9,8 @@
 
 .hero__title {
   margin: 0 auto;
-  font: 700 clamp(34px, 7.2vw, 56px) / 1.05 var(--font-display);
-  letter-spacing: -0.035em;
+  font: 700 clamp(30px, 6.2vw, 46px) / 1.08 var(--font-display);
+  letter-spacing: -0.04em;
   text-wrap: balance;
   overflow-wrap: anywhere;
   --rise: 16px;
@@ -18,15 +18,13 @@
 }
 
 .finder {
+  border: 0;
   max-width: 860px;
   margin: 32px auto 0;
   padding: 14px;
   border-radius: var(--r-panel);
-  background: var(--glass);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-panel);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   text-align: left;
   --rise: 16px;
   animation: rise var(--t-move) var(--ease) 160ms backwards;
@@ -36,29 +34,27 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 68px;
+  height: 64px;
   padding: 0 8px 0 22px;
-  border-radius: var(--r-field);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
 }
 
 /* El campo no dibuja su propio aro: lo dibuja la fila entera, que es lo que
    se ve como "el buscador". Con :has el aro no salta al pulsar el boton. */
 .search:has(input:focus) {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 2px var(--ring-gap);
+  box-shadow: 0 0 0 3px var(--acc);
 }
 
 .search__icon {
   flex: none;
-  color: var(--icon-dim);
+  color: var(--dim);
   transition: color var(--t-quick) var(--ease);
 }
 
 .search.is-scanning .search__icon {
-  color: var(--accent-fg);
+  color: var(--acc);
   animation: scan 1.2s linear infinite;
 }
 
@@ -68,13 +64,13 @@
   border: 0;
   background: transparent;
   color: var(--ink);
-  font: 500 clamp(16px, 4.6vw, 19px) var(--font-body);
+  font: 600 clamp(16px, 4.6vw, 18px) var(--font-body);
   outline: none;
   box-shadow: none;
 }
 
 .search input::placeholder {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 /* type="search": sin el aspecto nativo ni la "x" de Chrome/Safari, que no
@@ -95,17 +91,17 @@
   height: 52px;
   padding: 0 28px;
   border: 0;
-  border-radius: var(--r-inner);
-  background: var(--accent);
-  color: #fff;
-  font-size: 16px;
-  font-weight: 600;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), opacity var(--t-press) var(--ease);
 }
 
 .search__go:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .search__go:disabled {
@@ -133,7 +129,7 @@
    secundario, con una entrada corta para que no aparezca de golpe. */
 .finder__hint {
   margin: 10px 4px 0;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
   line-height: 1.4;
   animation: hint-in var(--t-quick) var(--ease) backwards;
@@ -157,14 +153,14 @@
 }
 
 .fmts__lbl {
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
   font-weight: 600;
 }
 
 /* ---------------------------------------------------------------------------
    5. SEGMENTADOS (modo, formato, filtro de resultados)
-   Pista azul claro con una pastilla blanca elevada para el activo. Un solo
+   Pista --s2 con una pastilla de tinta para el activo (texto --on). Un solo
    componente visual para los tres controles.
    ------------------------------------------------------------------------- */
 
@@ -172,8 +168,8 @@
   position: relative;
   display: inline-flex;
   padding: 4px;
-  border-radius: var(--r-inner);
-  background: var(--track);
+  border-radius: var(--r-pill);
+  background: var(--s2);
 }
 
 /* La pastilla blanca del activo NO es el fondo del boton: es una sola pieza que
@@ -188,9 +184,8 @@
   left: 0;
   width: var(--iw, 0px);
   transform: translateX(var(--ix, 0px));
-  border-radius: var(--r-sm);
-  background: var(--seg-on);
-  box-shadow: var(--shadow-raise);
+  border-radius: var(--r-pill);
+  background: var(--ink);
   pointer-events: none;
 }
 
@@ -206,11 +201,11 @@
   min-height: 40px;
   padding: 0 16px;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   background: transparent;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--mut);
+  font-size: 13.5px;
+  font-weight: 700;
   line-height: 1.2;
   text-align: center;
   cursor: pointer;
@@ -219,7 +214,7 @@
 }
 
 .seg:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .seg {
@@ -228,7 +223,7 @@
 }
 
 .seg.is-on {
-  color: var(--ink);
+  color: var(--on);
 }
 
 .seg__n {
@@ -239,7 +234,7 @@
    estar reactivandolo desde otra pestana) para que el title explique el 0 de
    resultados en vez de dejarlo como un fallo. */
 .mode--dead {
-  color: var(--faint);
+  color: var(--dim);
   text-decoration: underline dotted;
   text-underline-offset: 4px;
 }

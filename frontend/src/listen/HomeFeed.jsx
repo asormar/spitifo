@@ -8,11 +8,11 @@ import { Cover, Mosaic, NowBadge, SectionHead, coverOf } from "./cards.jsx";
 import {
   TOP_ALL,
   TOP_HOME,
-  albumHue,
+  albumTone,
   continueItems,
-  entryHue,
-  hueOf,
-  mosaicHues,
+  entryTone,
+  toneOf,
+  mosaicTones,
   plural,
   recentAlbums,
   recentEntries,
@@ -66,7 +66,7 @@ function ContinueCard({ item, items, ctx }) {
       onClick={() => (current ? engine.toggle() : ctx.resume(item, items))}
     >
       <span className="ccard__top">
-        <Cover hue={entryHue(entry)} label={entry.artist} src={coverOf([entry])} className="ccard__cv" />
+        <Cover tone={entryTone(entry)} label={entry.artist} src={coverOf([entry])} className="ccard__cv" />
         <span className={`ccard__go${playing ? " is-on" : ""}`}>
           <Icon name={playing ? "Pause" : "Play"} weight="fill" size={18} />
         </span>
@@ -96,7 +96,7 @@ function AddedCard({ entry, list, ctx }) {
       aria-label={`${playing ? "Pausar" : "Reproducir"} ${entry.title}, ${entry.artist}`}
       onClick={(e) => (current ? engine.toggle() : ctx.play(entry, e.currentTarget, list))}
     >
-      <Cover hue={entryHue(entry)} label={entry.artist} src={coverOf([entry])} className="acard__cv">
+      <Cover tone={entryTone(entry)} label={entry.artist} src={coverOf([entry])} className="acard__cv">
         {current && <NowBadge on={playing} />}
       </Cover>
       <span className={`acard__t${current ? " is-current" : ""}`}>{entry.title}</span>
@@ -108,7 +108,7 @@ function AddedCard({ entry, list, ctx }) {
 /* --- Listas ------------------------------------------------------------------- */
 
 function ListCard({ list, byKey, ctx }) {
-  const hues = useMemo(() => mosaicHues(list.keys, byKey), [list.keys, byKey]);
+  const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
   const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
   return (
     <button
@@ -117,7 +117,7 @@ function ListCard({ list, byKey, ctx }) {
       aria-label={`${list.name}, ${plural(count, "canción", "canciones")}`}
       onClick={() => ctx.open({ type: "list", id: list.id })}
     >
-      <Mosaic hues={hues} className="lcard__mos" />
+      <Mosaic tones={tones} className="lcard__mos" />
       <span className="lcard__txt">
         <span className="lcard__t">{list.name}</span>
         <span className="lcard__c">{plural(count, "canción", "canciones")}</span>
@@ -178,7 +178,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
                   aria-label={`Abrir álbum ${g.name}, ${g.artist}`}
                   onClick={() => ctx.open({ type: "album", id: g.id })}
                 >
-                  <Cover hue={albumHue(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
+                  <Cover tone={albumTone(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
                   <span className="alb__t">{g.name}</span>
                   <span className="alb__a">{g.artist}</span>
                 </button>
@@ -237,7 +237,7 @@ export default function HomeFeed({ index, byKey, lists, listsReady, ctx }) {
               aria-label={`Abrir artista ${g.name}`}
               onClick={() => ctx.open({ type: "artist", id: g.id })}
             >
-              <Cover hue={hueOf(g.name)} label={g.name} round className="art-c__cv" />
+              <Cover tone={toneOf(g.name)} label={g.name} round className="art-c__cv" />
               <span className="art-c__t">{g.name}</span>
             </button>
           ))}

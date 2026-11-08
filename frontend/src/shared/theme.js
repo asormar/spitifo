@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
    pintar; aqui solo se lee de ahi. Se guarda en localStorage cuando el usuario
    lo elige a mano; mientras no haya eleccion guardada, sigue al sistema. */
 export const THEME_KEY = "spitifo-theme";
-export const THEME_COLOR = { light: "#CFE6F5", dark: "#14293B" };
+export const THEME_COLOR = { light: "#f5f5fa", dark: "#0e0e18" };
 
 export function applyTheme(t) {
   document.documentElement.setAttribute("data-theme", t);

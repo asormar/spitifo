@@ -25,6 +25,12 @@ import {
 import { Rail, SwipeDots, TabBar } from "./Nav.jsx";
 import { swapNowPlaying, swapScreens } from "./screenSwap.js";
 import { NavIcon } from "./navIcons.jsx";
+import Logo from "../shared/Logo.jsx";
+import { useEngine } from "../player/useEngine.js";
+
+/* El disco gira mientras suena algo (selector booleano: solo repinta al
+   pausar o reanudar). */
+const BrandLogo = () => <Logo spinning={useEngine((s) => s.playing)} />;
 
 /* writeView devuelve "" para Descargar sin otros parametros, y pushState/
    replaceState con "" no cambian la URL: se cae al pathname. */
@@ -580,12 +586,9 @@ export default function App() {
   return (
     <>
     <main className="app" inert={np ? "" : undefined}>
-      <div className="blob blob--coral" aria-hidden="true" />
-      <div className="blob blob--sky" aria-hidden="true" />
       <header className="top">
         <div className="brand">
-          <Icon name="Waveform" size={24} weight="bold" className="brand__mark" />
-          <span className="brand__name">spitifo</span>
+          <BrandLogo />
         </div>
         <div className="top__actions">
           <button

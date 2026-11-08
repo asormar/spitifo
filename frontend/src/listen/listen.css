@@ -29,7 +29,7 @@
   gap: 10px;
   margin: 0;
   font: 700 clamp(26px, 4.6vw, 34px) / 1.1 var(--font-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.04em;
 }
 
 /* La ruta que muestra el boton de almacenamiento (el boton es .panel__store,
@@ -37,7 +37,7 @@
 .panel__path {
   min-width: 0;
   max-width: 46ch;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -56,7 +56,7 @@
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: var(--s1);
   color: var(--ink);
   font: 600 14px var(--font-body);
   cursor: pointer;
@@ -74,15 +74,15 @@
 }
 
 .lbtn--go {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--acc);
+  border-color: var(--acc);
+  color: var(--acc-ink);
 }
 
 .lbtn.is-on {
-  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-  border-color: var(--accent-fill);
-  color: var(--accent-fg);
+  background: color-mix(in srgb, var(--acc) 9%, var(--s1));
+  border-color: var(--acc);
+  color: var(--acc);
 }
 
 /* --- Tarjeta y lista -------------------------------------------------------- */
@@ -90,21 +90,20 @@
 .lpanel {
   padding: 6px;
   border-radius: var(--r-card);
-  background: var(--glass-card);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
 }
 
 .lnote {
   margin: 0;
   padding: 28px 16px;
-  color: var(--muted);
+  color: var(--mut);
   text-align: center;
 }
 
 .llabel {
   margin: 10px 10px 4px;
-  color: var(--muted);
+  color: var(--mut);
   font: 600 13px / 1.2 var(--font-body);
 }
 
@@ -142,7 +141,7 @@
 }
 
 .srow.is-current {
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  background: color-mix(in srgb, var(--acc) 6%, transparent);
 }
 
 /* Solo las filas de la primera pintura de una lista: las que monta el scroll
@@ -155,11 +154,11 @@
 
 @media (hover: hover) and (pointer: fine) {
   .srow:not(.is-current):hover {
-    background: var(--row-hover);
+    background: var(--hover);
   }
 
   .rmenu button:hover {
-    background: var(--surface-hover);
+    background: var(--hover);
   }
 }
 
@@ -187,25 +186,80 @@
   transform: scale(0.98);
 }
 
+/* Portada generada (receta Giro), para .cv (home.css) y .art (filas). El JSX
+   pone --c (color de genero) y una de las clases cv-p0..3 (trama); --s es el
+   lado del .cv. En oscuro el fondo es el color tal cual y la letra, tinta. Vive
+   aqui, en la hoja eager, porque las filas de Descargar tambien la usan. */
+.cv,
 .art {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
+  overflow: hidden;
+  background-color: color-mix(in oklab, var(--c, var(--genre-2)) 84%, #000);
+  color: #fff;
+  letter-spacing: -0.05em;
+}
+
+:root[data-theme="dark"] :is(.cv, .art) {
+  background-color: var(--c, var(--genre-2));
+  color: #11111c;
+}
+
+.cv {
+  width: var(--s, 40px);
+  height: var(--s, 40px);
+  border-radius: var(--r-md);
+  font: 800 calc(var(--s, 40px) * 0.28) / 1 var(--font-display);
+}
+
+.art {
   width: 40px;
   height: 40px;
   border-radius: var(--r-sm);
-  background: var(--track);
-  color: var(--muted);
-  font: 600 16px / 1 var(--font-display);
+  font: 800 16px / 1 var(--font-display);
 }
 
-.art--round {
+.cv > span:first-child {
+  position: absolute;
+  left: 10%;
+  top: 8%;
+}
+
+.cv.cv--round {
   border-radius: 50%;
 }
 
+.cv--round > span:first-child {
+  position: static;
+  font-size: 1.15em;
+}
+
+.cv-p0 {
+  background-image: radial-gradient(circle at 78% 78%, color-mix(in oklab, var(--c) 44%, #fff) 0 18%, transparent 18.5% 34%, color-mix(in oklab, var(--c) 72%, #fff) 34.5% 36%, transparent 36.5%);
+}
+
+.cv-p1 {
+  background-image: repeating-radial-gradient(circle at 0 0, transparent 0 9%, color-mix(in oklab, var(--c) 74%, #fff) 9% 13%);
+}
+
+.cv-p2 {
+  background-image: radial-gradient(circle at 50% 108%, color-mix(in oklab, var(--c) 48%, #fff) 0 42%, transparent 42.5%);
+}
+
+.cv-p3 {
+  background-image: linear-gradient(135deg, color-mix(in oklab, var(--c) 48%, #fff) 0 22%, transparent 22% 78%, color-mix(in oklab, var(--c) 78%, #11111c) 78%);
+}
+
+/* Esqueleto: sin color de genero, tile neutro. */
+.lskel .art {
+  background: var(--s2);
+}
+
 .is-current .art {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent-fg);
+  background: color-mix(in srgb, var(--acc) 14%, var(--s1));
+  color: var(--acc);
 }
 
 .srow__txt {
@@ -224,30 +278,30 @@
 
 .srow__t {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.3;
 }
 
 .is-current .srow__t {
-  color: var(--accent-fg);
+  color: var(--acc);
 }
 
 .srow__m {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 12.5px;
   line-height: 1.3;
 }
 
 .srow__d {
   flex: none;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 
 .srow__go {
   flex: none;
-  color: var(--icon-dim);
+  color: var(--dim);
 }
 
 .tag {
@@ -255,8 +309,8 @@
   margin-right: 6px;
   padding: 0 7px;
   border-radius: var(--r-pill);
-  background: var(--track);
-  color: var(--muted);
+  background: var(--s2);
+  color: var(--mut);
   font-size: 11px;
   font-weight: 600;
 }
@@ -272,7 +326,7 @@
   border: 0;
   border-radius: var(--r-pill);
   background: none;
-  color: var(--muted);
+  color: var(--mut);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease);
 }
@@ -302,7 +356,7 @@
   flex: 1;
   height: 100%;
   border-radius: 1.5px;
-  background: var(--accent);
+  background: var(--pink);
   transform: scaleY(0.3);
   transform-origin: bottom;
   animation: eq 900ms ease-in-out infinite;
@@ -331,9 +385,8 @@
   width: 228px;
   padding: 6px;
   border-radius: var(--r-cover);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-panel);
+  background: var(--s1);
+  box-shadow: var(--shadow), 0 0 0 1px var(--line);
   transform-origin: top right;
   --pop: 0.96;
   animation: pop var(--t-quick) var(--ease) both;
@@ -368,7 +421,7 @@
 
 .qrow__grip {
   width: 36px;
-  color: var(--icon-dim);
+  color: var(--dim);
   cursor: grab;
   touch-action: none;
   -webkit-user-select: none;
@@ -387,8 +440,8 @@
 }
 
 .qrow.is-drag {
-  background: var(--surface);
-  box-shadow: var(--shadow-panel);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -408,7 +461,7 @@
   max-width: 55%;
   height: 14px;
   border-radius: 7px;
-  background: var(--track);
+  background: var(--s2);
 }
 
 /* --- Aviso ------------------------------------------------------------------ */
@@ -431,13 +484,12 @@ body.has-mini .lnotice {
 }
 
 .ltoast {
-  padding: 10px 18px;
-  border-radius: var(--r-pill);
-  background: var(--toast-bg);
-  border: 1px solid var(--toast-edge);
-  color: #fff;
-  font: 600 14px var(--font-body);
-  box-shadow: 0 12px 30px rgba(20, 32, 43, 0.3);
+  padding: 14px 16px;
+  border-radius: var(--r-cover);
+  background: var(--ink);
+  color: var(--on);
+  font: 700 14px var(--font-body);
+  box-shadow: var(--shadow);
   --rise: 12px;
   animation: rise var(--t-enter) var(--ease) both;
 }
@@ -456,9 +508,9 @@ body.has-mini .lnotice {
   padding: 4px 10px;
   border: 0;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font: 700 14px var(--font-body);
+  background: transparent;
+  color: var(--toast-act);
+  font: 800 14px var(--font-body);
   cursor: pointer;
   pointer-events: auto;
   transition: transform var(--t-press) var(--ease);

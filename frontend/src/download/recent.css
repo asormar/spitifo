@@ -30,7 +30,7 @@
 }
 
 .recent__n {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -53,7 +53,7 @@
   border: 0;
   border-radius: var(--r-inner);
   background: none;
-  color: var(--muted);
+  color: var(--mut);
   font: 600 14px / 1 var(--font-body);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease), background-color var(--t-quick) var(--ease),
@@ -70,6 +70,7 @@
 
 /* Enlace de una linea para cuando hay resultados de busqueda. */
 .rlink {
+  border: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -77,10 +78,9 @@
   min-height: 44px;
   margin: 18px 0 0 auto;
   padding: 0 16px;
-  border: 1px solid var(--glass-edge);
   border-radius: var(--r-pill);
-  background: var(--glass-card);
-  color: var(--muted);
+  background: var(--s1);
+  color: var(--mut);
   font: 600 13px / 1 var(--font-body);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
@@ -100,7 +100,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .recent__more:hover {
-    background: var(--row-hover);
+    background: var(--hover);
     color: var(--ink);
   }
 

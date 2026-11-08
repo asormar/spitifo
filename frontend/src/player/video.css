@@ -12,17 +12,14 @@
    ------------------------------------------------------------------------- */
 
 :root {
-  --video-bg: #22303f;
-  --video-ink: #dbe8f2;
-  --video-scrim: rgba(20, 32, 43, 0.55);
-  /* Radio del diseno de video (8 px): mas chico que la escala general, que
-     empieza en 12. En una miniatura de 96 px un radio mayor se come la imagen. */
-  --r-thumb: 8px;
+  --video-bg: #1c1c2c;
+  --video-ink: #e3e3f0;
+  --video-scrim: rgba(17, 17, 28, 0.55);
 }
 
 :root[data-theme="dark"] {
-  --video-bg: #0d151d;
-  --video-ink: #b9c9d6;
+  --video-bg: #08080f;
+  --video-ink: #b6b6cc;
   --video-scrim: rgba(0, 0, 0, 0.62);
 }
 
@@ -60,15 +57,15 @@
 }
 
 .vhost__card {
+  border: 0;
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 12px;
   border-radius: var(--r-card);
-  background: var(--surface);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--shadow-panel);
+  background: var(--s1);
+  box-shadow: var(--shadow);
 }
 
 /* --- Modal: centrada, con el fondo oscurecido y el scroll de la pagina
@@ -176,7 +173,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   justify-content: flex-end;
   gap: 6px;
   padding: 8px;
-  background: linear-gradient(to top, rgba(8, 14, 20, 0.66), transparent);
+  background: linear-gradient(to top, rgba(14, 14, 24, 0.66), transparent);
 }
 
 .vhost__mini-title {
@@ -200,7 +197,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: var(--r-pill);
-  background: var(--track);
+  background: var(--s2);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -218,19 +215,18 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   min-height: 34px;
   padding: 0 8px;
   border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(8, 14, 20, 0.6);
+  background: rgba(14, 14, 24, 0.6);
   color: #fff;
-  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
 
 @media (hover: hover) {
   .vhb:hover {
-    background: var(--track-hover);
+    background: var(--s3);
   }
 
   .vhb--over:hover {
-    background: rgba(8, 14, 20, 0.82);
+    background: rgba(14, 14, 24, 0.82);
   }
 }
 
@@ -257,7 +253,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
 
 .vhost__sub {
   margin: 2px 0 0;
-  color: var(--muted);
+  color: var(--mut);
   font-size: 13px;
 }
 
@@ -275,7 +271,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   padding: 10px 12px;
   border-radius: var(--r-sm);
   background: var(--bad-bg);
-  color: var(--bad-fg);
+  color: var(--bad-t);
   font-size: 13px;
 }
 

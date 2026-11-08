@@ -1,4 +1,4 @@
-import { hashHue } from "../player/tint.js";
+import { coverTone } from "../shared/cover.js";
 import { collator, fold, groupAlbums, groupArtists } from "./library.js";
 import { continueListening, mostPlayed } from "./history.js";
 
@@ -216,23 +216,23 @@ export function topItems(state, byKey, n) {
 /* --- Portadas sin imagen ------------------------------------------------------- */
 
 /* Tono estable de una cancion (el de su album; sin album, el del artista) y de
-   un grupo. El CSS lo convierte en degradado con --h. */
-export const hueOf = (name) => hashHue(name);
-export const albumHue = (artist, album) => hashHue(`${artist}|${album}`);
-export const entryHue = (entry) =>
-  entry.album ? albumHue(entry.artist, entry.album) : hueOf(entry.artist);
+   un grupo (ver shared/cover.js: color por artista, trama por album). */
+export const toneOf = (name) => coverTone(name);
+export const albumTone = (artist, album) => coverTone(artist, album);
+export const entryTone = (entry) =>
+  entry.album ? albumTone(entry.artist, entry.album) : toneOf(entry.artist);
 
 /* Los cuatro tonos del mosaico de una lista: las primeras canciones que siguen
    en la biblioteca; si hay menos de cuatro se repite la primera. Vacia = []. */
-export function mosaicHues(keys, byKey) {
-  const hues = [];
+export function mosaicTones(keys, byKey) {
+  const tones = [];
   for (const key of keys) {
     const entry = byKey.get(key);
-    if (entry) hues.push(entryHue(entry));
-    if (hues.length === 4) break;
+    if (entry) tones.push(entryTone(entry));
+    if (tones.length === 4) break;
   }
-  while (hues.length && hues.length < 4) hues.push(hues[0]);
-  return hues;
+  while (tones.length && tones.length < 4) tones.push(tones[0]);
+  return tones;
 }
 
 /* Minutos redondeados de un conjunto de canciones; null si no se conoce ninguna

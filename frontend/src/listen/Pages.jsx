@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
+import { toneVars } from "../shared/cover.js";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
 import { groupAlbums } from "./library.js";
@@ -12,12 +13,12 @@ import { Cover, Mosaic, coverOf } from "./cards.jsx";
 import {
   SORTS,
   TOP_ALL,
-  albumHue,
+  albumTone,
   albumOrder,
-  entryHue,
-  hueOf,
+  entryTone,
+  toneOf,
   minutes,
-  mosaicHues,
+  mosaicTones,
   plural,
   sortEntries,
   topItems,
@@ -54,7 +55,7 @@ function ArtistRow({ g, enter, ctx }) {
     <GroupRow
       title={g.name}
       meta={`${songs(g.entries.length)}${albums}`}
-      art={<Cover hue={hueOf(g.name)} label={g.name} round />}
+      art={<Cover tone={toneOf(g.name)} label={g.name} round />}
       enter={enter}
       onOpen={() => ctx.open({ type: "artist", id: g.id })}
     />
@@ -66,7 +67,7 @@ function AlbumRow({ g, enter, ctx }) {
     <GroupRow
       title={g.name}
       meta={`${g.artist} · ${songs(g.entries.length)}`}
-      art={<Cover hue={albumHue(g.artist, g.name)} label={g.artist} />}
+      art={<Cover tone={albumTone(g.artist, g.name)} label={g.artist} />}
       enter={enter}
       onOpen={() => ctx.open({ type: "album", id: g.id })}
     />
@@ -74,13 +75,13 @@ function AlbumRow({ g, enter, ctx }) {
 }
 
 function ListRow({ p, byKey, enter, ctx }) {
-  const hues = useMemo(() => mosaicHues(p.keys, byKey), [p.keys, byKey]);
+  const tones = useMemo(() => mosaicTones(p.keys, byKey), [p.keys, byKey]);
   const count = p.keys.filter((k) => byKey.has(k)).length;
   return (
     <GroupRow
       title={p.name}
       meta={songs(count)}
-      art={<Mosaic hues={hues} className="mos--row" />}
+      art={<Mosaic tones={tones} className="mos--row" />}
       enter={enter}
       onOpen={() => ctx.open({ type: "list", id: p.id })}
     />
@@ -316,13 +317,13 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
   const name = pl ? pl.name : group ? group.name : "";
   const kind = view.type === "album" ? "Álbum" : view.type === "artist" ? "Artista" : "Lista";
   const mins = minutes(rows);
-  const hue = pl
+  const tone = pl
     ? rows.length
-      ? entryHue(rows[0])
-      : 200
+      ? entryTone(rows[0])
+      : toneOf(pl.name)
     : view.type === "album"
-      ? albumHue(group?.artist, name)
-      : hueOf(name);
+      ? albumTone(group?.artist, name)
+      : toneOf(name);
   const meta = pl
     ? `Lista · ${songs(rows.length)}${mins ? ` · ${mins} min` : ""}`
     : view.type === "album"
@@ -330,10 +331,10 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
       : `${plural(albums.length, "álbum", "álbumes")} · ${songs(rows.length)}`;
 
   const art = pl ? (
-    <Mosaic hues={mosaicHues(pl.keys, byKey)} className="mos--big" />
+    <Mosaic tones={mosaicTones(pl.keys, byKey)} className="mos--big" />
   ) : (
     <Cover
-      hue={hue}
+      tone={tone}
       label={view.type === "album" ? group?.artist : name}
       src={view.type === "album" ? coverOf(rows) : null}
       round={view.type === "artist"}
@@ -348,7 +349,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
 
   return (
     <div className="lpage lpage--detail">
-      <header className="dhead" style={{ "--h": hue }}>
+      <header className="dhead" style={toneVars(tone)}>
         <button ref={backRef} type="button" className="dhead__back" onClick={ctx.back}>
           <Icon name="ArrowLeft" size={16} />
           Volver
@@ -433,7 +434,7 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
                 aria-label={`Abrir álbum ${g.name}`}
                 onClick={() => ctx.open({ type: "album", id: g.id })}
               >
-                <Cover hue={albumHue(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
+                <Cover tone={albumTone(g.artist, g.name)} label={g.artist} src={coverOf(g.entries)} className="alb__cv" />
                 <span className="alb__t">{g.name}</span>
               </button>
             ))}
