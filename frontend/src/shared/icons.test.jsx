@@ -11,9 +11,9 @@ describe("Icon", () => {
     expect(html.match(/<path/g)).toHaveLength(1);
   });
 
-  it("regular y bold del mismo icono son rutas distintas", () => {
+  it("los iconos de la vista y los del script inicial son rutas distintas", () => {
     const a = renderToStaticMarkup(<Icon name="X" />);
-    const b = renderToStaticMarkup(<ListenIcon name="DotsThree" weight="bold" />);
+    const b = renderToStaticMarkup(<ListenIcon name="CaretDown" />);
     expect(a).not.toBe(b);
     expect(renderToStaticMarkup(<Icon name="CircleNotch" weight="bold" />)).toContain("<path");
   });

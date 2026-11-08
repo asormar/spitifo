@@ -89,7 +89,7 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
         y0: e.clientY,
         y: e.clientY,
         s0: scrolled(),
-        inset: sc ? sc.getBoundingClientRect().top : document.querySelector(".ltool")?.getBoundingClientRect().bottom ?? 0,
+        inset: sc ? sc.getBoundingClientRect().top : document.querySelector(".topbar")?.getBoundingClientRect().bottom ?? 0,
         /* Sin contenedor, hasta el borde de arriba del reproductor flotante. */
         bottom: sc
           ? sc.getBoundingClientRect().bottom

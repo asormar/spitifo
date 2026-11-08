@@ -3,6 +3,7 @@ import { keyUrl } from "../shared/api.js";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
+import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, plural, toneOf } from "./home.js";
@@ -156,7 +157,7 @@ export const NewListCard = ({ ctx }) => (
     onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
     cover={
       <span className="cv card__add">
-        <Icon name="Plus" size={28} />
+        <NavIcon name="plus" size={28} />
       </span>
     }
     title="Crear tu primera lista"

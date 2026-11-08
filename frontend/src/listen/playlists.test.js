@@ -135,6 +135,31 @@ describe("editing", () => {
     expect(calls[1].body.keys).toEqual(["y", "z", "x"]);
   });
 
+  it("restoreKey puts a removed key back at its old position and sends it", async () => {
+    const { store, calls } = await loaded([P("a", "A", ["x", "y", "z"])]);
+    store.removeKey("a", "y");
+    expect(store.restoreKey("a", "y", 1)).toBe(true);
+    expect(store.getState().list[0].keys).toEqual(["x", "y", "z"]);
+    await tick();
+    calls[1].resolve(saved(calls[1]));
+    await tick();
+    expect(calls).toHaveLength(3);
+    expect(calls[2].body.keys).toEqual(["x", "y", "z"]);
+  });
+
+  it("restoreKey clamps the position, never duplicates and ignores unknown lists", async () => {
+    const { store } = await loaded([P("a", "A", ["x", "y", "z"])]);
+    store.removeKey("a", "z");
+    store.removeKey("a", "y");
+    expect(store.restoreKey("a", "z", 9)).toBe(true);
+    expect(store.getState().list[0].keys).toEqual(["x", "z"]);
+    expect(store.restoreKey("a", "y", -3)).toBe(true);
+    expect(store.getState().list[0].keys).toEqual(["y", "x", "z"]);
+    expect(store.restoreKey("a", "y", 0)).toBe(false);
+    expect(store.restoreKey("nope", "y", 0)).toBe(false);
+    expect(store.getState().list[0].keys).toEqual(["y", "x", "z"]);
+  });
+
   it("rename keeps the list sorted and trims the name", async () => {
     const { store } = await loaded([P("a", "Alfa"), P("b", "Beta")]);
     expect(store.rename("a", " Zeta ")).toBe(true);

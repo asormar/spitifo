@@ -41,14 +41,36 @@ const BAD_ART = new Set();
    linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
    de la duracion. `table` (escritorio) reparte la fila en celdas, alineadas con
    el encabezado de su tabla: puesto, titulo, album, duracion y menu; con
-   "lib", titulo, artista, album, duracion y menu. */
-export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMenu, rank, sub, badge, table }) {
+   "lib", titulo, artista, album, duracion y menu.
+
+   Las paginas de un album, un artista o una lista llevan `num` (el numero de
+   pista en vez de la portada; en la fila que suena, el ecualizador). `table`
+   "trk" (# titulo duracion menu) y "lst" (asa # titulo duracion quitar menu).
+   Las listas pasan ademas `drag` ({ transform, dragging, handleRef, handleProps },
+   las del arrastre de useDragSort: esas filas no son memo, son pocas) y
+   `onRemove(entry)`. */
+export const SongRow = memo(function SongRow({
+  entry,
+  list,
+  enter,
+  onPlay,
+  onMenu,
+  onRemove,
+  rank,
+  num,
+  sub,
+  badge,
+  table,
+  drag,
+}) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
   const video = entry.kind === "video";
 
   const lib = table === "lib";
+  /* Tabla de pagina: sin portada ni album. */
+  const page = table === "trk" || table === "lst";
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
@@ -60,12 +82,40 @@ export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMen
     </span>
   );
 
+  const numCell = num != null && (
+    <span className="srow__n" aria-hidden="true">
+      {isCurrent ? <Bars on={playing} /> : num}
+    </span>
+  );
+
   return (
     <div
-      className={cx("srow", table && "srow--t", lib && "srow--lib", isCurrent && "is-current", enter != null && "is-in")}
-      style={enter != null ? { "--i": enter } : undefined}
+      className={cx(
+        "srow",
+        table && "srow--t",
+        lib && "srow--lib",
+        page && `srow--${table}`,
+        num != null && "srow--n",
+        drag && "qrow",
+        isCurrent && "is-current",
+        drag?.dragging && "is-drag",
+        enter != null && "is-in"
+      )}
+      style={enter != null || drag?.transform ? { "--i": enter, transform: drag?.transform } : undefined}
     >
-      {table && rankCell}
+      {drag && (
+        <button
+          type="button"
+          ref={drag.handleRef}
+          className="qrow__grip"
+          data-no-swipe=""
+          aria-label={`Mover ${title}. Usa las flechas para subir o bajar`}
+          {...drag.handleProps}
+        >
+          <Ico n="grip" size={20} />
+        </button>
+      )}
+      {table && (rankCell || numCell)}
       <button
         type="button"
         className="srow__main"
@@ -76,31 +126,33 @@ export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMen
         }
         onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list))}
       >
-        {!table && rankCell}
-        <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
-          {isCurrent && !img ? <Bars on={playing} /> : initial(artist)}
-          {img && (
-            <img
-              className="art__img"
-              src={src}
-              alt=""
-              width="48"
-              height="48"
-              loading="lazy"
-              decoding="async"
-              fetchpriority="low"
-              onError={(e) => {
-                BAD_ART.add(src);
-                e.currentTarget.hidden = true;
-              }}
-            />
-          )}
-          {isCurrent && img && (
-            <span className="cv__now">
-              <Bars on={playing} />
-            </span>
-          )}
-        </span>
+        {!table && (rankCell || numCell)}
+        {num == null && (
+          <span className={cx("art", toneClass(tone))} style={toneVars(tone)}>
+            {isCurrent && !img ? <Bars on={playing} /> : initial(artist)}
+            {img && (
+              <img
+                className="art__img"
+                src={src}
+                alt=""
+                width="48"
+                height="48"
+                loading="lazy"
+                decoding="async"
+                fetchpriority="low"
+                onError={(e) => {
+                  BAD_ART.add(src);
+                  e.currentTarget.hidden = true;
+                }}
+              />
+            )}
+            {isCurrent && img && (
+              <span className="cv__now">
+                <Bars on={playing} />
+              </span>
+            )}
+          </span>
+        )}
         <span className="srow__txt">
           <span className="srow__t">{title}</span>
           {(video || meta) && (
@@ -111,11 +163,22 @@ export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMen
           )}
         </span>
         {!table && badge}
-        {!table && dur && <span className="srow__d">{dur}</span>}
+        {!table && num == null && dur && <span className="srow__d">{dur}</span>}
       </button>
       {lib && <span className="srow__c">{artist}</span>}
-      {table && <span className="srow__c">{album}</span>}
+      {table && !page && <span className="srow__c">{album}</span>}
       {table && <span className="srow__c srow__d">{dur}</span>}
+      {onRemove && (
+        <button
+          type="button"
+          className="srow__more"
+          aria-label={`Quitar ${title} de la lista`}
+          title="Quitar de la lista"
+          onClick={() => onRemove(entry)}
+        >
+          <Ico n="x" size={18} />
+        </button>
+      )}
       {!video && onMenu ? (
         <button
           type="button"
@@ -137,13 +200,15 @@ export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMen
 /* Encabezado de una tabla de canciones: las mismas columnas que sus filas.
    `lib` (titulo, artista, album...) o, sin ella, la del ranking; `sticky` lo
    deja pegado bajo la barra de arriba. */
-export const Thead = ({ lib, sticky }) => (
-  <div className={cx("thd", sticky && "thd--s", lib && "thd--lib")} aria-hidden="true">
-    {!lib && <span />}
+export const Thead = ({ lib, kind, sticky }) => (
+  <div className={cx("thd", sticky && "thd--s", lib && "thd--lib", kind && `thd--${kind}`)} aria-hidden="true">
+    {kind === "lst" && <span />}
+    {kind ? <span className="ra">#</span> : !lib && <span />}
     <span>Título</span>
     {lib && <span>Artista</span>}
-    <span>Álbum</span>
+    {!kind && <span>Álbum</span>}
     <span className="ra">Duración</span>
+    {kind === "lst" && <span />}
     <span />
   </div>
 );
@@ -183,7 +248,7 @@ export function QueueRow({
           aria-label={`Mover ${track.title}. Usa las flechas para subir o bajar`}
           {...handleProps}
         >
-          <Icon name="DotsSixVertical" size={20} />
+          <Ico n="grip" size={20} />
         </button>
       )}
       <button

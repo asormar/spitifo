@@ -174,6 +174,17 @@ export function createPlaylists({
     return true;
   };
 
+  /* Deshacer "Quitada de": la clave vuelve a su sitio (`at`, o al final si la
+     lista ya es mas corta). No duplica: si ya esta, no hace nada. */
+  const restoreKey = (id, key, at) => {
+    const p = find(id);
+    if (!p || p.keys.includes(key)) return false;
+    const keys = [...p.keys];
+    keys.splice(Math.min(Math.max(at, 0), keys.length), 0, key);
+    write({ ...p, keys });
+    return true;
+  };
+
   const move = (id, from, to) => {
     const p = find(id);
     const keys = p && moveKey(p.keys, from, to);
@@ -202,6 +213,7 @@ export function createPlaylists({
     rename,
     addKeys,
     removeKey,
+    restoreKey,
     move,
     remove,
     undoRemove,

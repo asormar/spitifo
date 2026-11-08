@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
+import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "../listen/icons.jsx";
 import QueueList from "../listen/QueueList.jsx";
 import { useNotice } from "../listen/Notice.jsx";
@@ -268,7 +269,7 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
                 aria-haspopup="dialog"
                 title="Añadir a una lista"
               >
-                <Icon name="Plus" size={24} />
+                <NavIcon name="plus" size={24} />
               </button>
             )}
             <button
