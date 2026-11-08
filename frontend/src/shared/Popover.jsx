@@ -78,6 +78,10 @@ export default function Popover({ anchor, onClose, rev, width = 300, children })
     return () => {
       document.removeEventListener("click", outside, true);
       unlock();
+      /* El foco vuelve al boton, salvo que el toque fuera lo haya llevado a otro
+         control. */
+      const at = document.activeElement;
+      if ((!at || at === document.body) && anchor?.isConnected) anchor.focus({ preventScroll: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

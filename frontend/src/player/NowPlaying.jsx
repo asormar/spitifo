@@ -84,8 +84,9 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
   const [page, setPage] = useState(initialPage);
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
   const [badArt, setBadArt] = useState(null);
-  /* Hoja "Añadir a una lista" abierta. Se pinta dentro de esta capa (queda por
-     encima) y el aviso tambien: el de la biblioteca esta debajo y no se veria. */
+  /* Hoja "Añadir a una lista" abierta. Es una Sheet (z 56, por encima de esta
+     capa); el aviso va dentro de la capa: el de la biblioteca esta debajo y no
+     se veria. Esta vista no tiene pila de navegacion: la cierra su propio estado. */
   const [adding, setAdding] = useState(false);
   const [noticeNode, show] = useNotice();
 
@@ -125,7 +126,7 @@ export default function NowPlaying({ onClose, onReveal, initialPage = 0 }) {
     /* El raton no arrastra (seleccionaria texto); la barra, el volumen, el asa
        de la cola y la hoja de listas tienen su propio gesto. */
     if (e.pointerType === "mouse" || !e.isPrimary) return;
-    if (e.target.closest(".scrub, input, .qrow__grip, .pick")) return;
+    if (e.target.closest(".scrub, input, .qrow__grip, .sh")) return;
     gesture.current = {
       id: e.pointerId,
       x: e.clientX,

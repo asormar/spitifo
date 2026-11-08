@@ -1,21 +1,12 @@
-import {
-  Suspense,
-  createContext,
-  lazy,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { isOverlay } from "../app/navigation.js";
 import { keyUrl } from "../shared/api.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { normalizeLibrary, toQueue, toTrack } from "./library.js";
 import { buildIndex } from "./home.js";
 import { mixEntries } from "./mixes.js";
-import { loadPageHost, pageReady } from "./pageLoader.jsx";
+import { LazyOverlays, loadOverlays, loadPageHost, overlaysReady, pageReady } from "./pageLoader.jsx";
 import { history, useHistory } from "./history.js";
 import { playlists, usePlaylists } from "./playlists.js";
 import { useNotice } from "./Notice.jsx";
@@ -25,38 +16,35 @@ import { SongRow } from "./rows.jsx";
    LO QUE COMPARTEN LAS PANTALLAS DE LA BIBLIOTECA
 
    Inicio, Tu biblioteca y Buscar pintan las mismas filas y comparten el menu
-   de fila abierto, la hoja "Añadir a una lista", el aviso y las funciones de
+   de fila, la hoja "Añadir a una lista", el aviso y las funciones de
    reproducir. Viven aqui, montadas UNA vez alrededor de las pantallas: una
    pantalla oculta (display:none) ya no se lleva su aviso ni su hoja.
 
    `useListen()` devuelve:
-     ctx    lo que reciben las vistas (menu, play, open, back, song...). Se
-            rehace al abrir o cerrar un menu: solo repintan quienes lo leen.
+     ctx    lo que reciben las vistas (openMenu, play, open, goTo, show, song...).
+            Es estable: solo se rehace con la biblioteca. Abrir o cerrar un menu
+            no repinta ninguna fila (SongRow es memo y sus props no cambian).
      model  { entries, index, byKey, plays, lists, listsReady, storage },
             calculado una vez para las tres pantallas. `storage` es donde
             se guarda la musica ("Google Drive" o "este dispositivo").
      show   el aviso pasajero.
-   `nav` (useNav) pone open/back: la pila de paginas vive en el shell. Un atras
-   del navegador o un cambio de pestana cierra tambien el menu abierto.
+   `nav` (useNav) pone open/back/replace: la pila de paginas vive en el shell.
+   Los menus y la hoja de listas son la entrada de arriba de esa pila (menu,
+   picker, lmenu), asi que atras, Escape y el atras de Android los cierran, y un
+   cambio de pestana los quita con el resto de la pila.
    ------------------------------------------------------------------------- */
-
-/* La hoja solo se abre desde un menu: no hace falta en el primer script. */
-const PlaylistPicker = lazy(() => import("./PlaylistPicker.jsx"));
 
 const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
 export default function ListenProvider({ files, nav, storage, children }) {
-  /* Solo se leen open/back (estables): depender de `nav` entero reconstruiria el
-     contexto en cada cambio de pestana. */
-  const { open: navOpen, back: navBack } = nav;
-  /* { key, el }: la fila con el menu abierto y su boton. Solo hay uno. */
-  const [menu, setMenu] = useState(null);
-  /* { key, title, el }: la cancion de la hoja "Añadir a una lista". */
-  const [picker, setPicker] = useState(null);
+  /* Solo se leen las acciones (estables): depender de `nav` entero
+     reconstruiria el contexto en cada cambio de pestana. */
+  const { open: navOpen, back: navBack, replace: navReplace, getStack } = nav;
   const [noticeNode, show] = useNotice();
-  /* Aperturas de pagina: solo vale la ultima si el chunk aun no ha llegado. */
+  /* Aperturas de pagina o de menu: solo vale la ultima si el chunk aun no ha
+     llegado. */
   const opening = useRef(0);
 
   const lists = usePlaylists((s) => s.list);
@@ -83,77 +71,7 @@ export default function ListenProvider({ files, nav, storage, children }) {
     return playlists.onError(show);
   }, [show]);
 
-  useEffect(() => setMenu(null), [nav.stack, nav.tab]);
-
-  /* Fuera del menu, con scroll o con Tab se cierra. El boton de otra fila
-     queda fuera de la excepcion a proposito: su clic ya cambia el menu. */
-  useEffect(() => {
-    if (!menu) return undefined;
-    const close = () => setMenu(null);
-    const onDown = (e) => {
-      if (!e.target.closest(".rmenu, .srow__more")) close();
-    };
-    const onKey = (e) => {
-      if (e.key === "Tab") close();
-    };
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, { passive: true });
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close);
-    };
-  }, [menu]);
-
   const value = useMemo(() => {
-    /* Con teclado el foco vuelve al boton que abrio el menu. */
-    const closeMenu = (refocus) => {
-      if (refocus) menu?.el.focus({ preventScroll: true });
-      setMenu(null);
-    };
-
-    /* Escape: lo mas pequeno primero. La hoja se cierra sola (captura). */
-    const closeTop = () => {
-      if (!menu) return false;
-      closeMenu(true);
-      return true;
-    };
-
-    const onMenu = (key, el) => setMenu((m) => (m && m.key === key ? null : { key, el }));
-
-    const pick = (entry, kind) => {
-      if (kind === "list") {
-        setPicker({ key: entry.key, title: entry.title, el: menu?.el });
-        setMenu(null);
-        return;
-      }
-      const track = toTrack(entry, keyUrl);
-      /* Con el motor parado las dos opciones arrancan la cancion: el aviso
-         tiene que decir eso y no "a continuacion". */
-      const idle = !engine.getState().track;
-      const done = kind === "next" ? engine.playNext(track) : engine.enqueue(track);
-      closeMenu(true);
-      show(
-        idle
-          ? "Reproduciendo"
-          : !done
-            ? "Ya está en la cola"
-            : kind === "next"
-              ? "Sonará a continuación"
-              : "Añadida a la cola"
-      );
-    };
-
-    /* Borrar es inmediato y se puede deshacer unos segundos: la lista vuelve
-       con el mismo id, nombre y canciones. */
-    const deleteList = (pl) => {
-      setMenu(null);
-      playlists.remove(pl.id);
-      navBack();
-      show(`Lista «${pl.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(pl) });
-    };
-
     const play = (entry, el, list) => {
       if (entry.kind === "video") {
         /* Un video no entra en la cola: se abre en el VideoHost. */
@@ -214,62 +132,71 @@ export default function ListenProvider({ files, nav, storage, children }) {
       engine.play(queue[at], { queue, index: at, at: item.at });
     };
 
+    /* Espera al chunk que hace falta (la pantalla actual sigue a la vista en vez
+       de quedar en blanco) y solo vale la ultima peticion. Si la carga falla se
+       navega igual. */
+    const whenReady = (ready, load, go) => {
+      const n = ++opening.current;
+      if (ready()) go();
+      else
+        load()
+          .catch(() => {})
+          .then(() => n === opening.current && go());
+    };
+
+    /* Abre el menu (o el de una lista, `type` lmenu) de `key` junto a `el`: el
+       mismo boton otra vez lo cierra; otro menu o la hoja de listas, lo cambia;
+       si no, se apila. */
+    const openMenu = (key, el, type = "menu") => {
+      const on = getStack().at(-1);
+      if (on?.type === type && on.key === key) {
+        navBack();
+        return;
+      }
+      const view = { type, key, anchor: el };
+      whenReady(overlaysReady, loadOverlays, () =>
+        isOverlay(getStack().at(-1)?.type) ? navReplace(view) : navOpen(view)
+      );
+    };
+
     const ctx = {
-      menu,
-      onMenu,
-      closeMenu,
-      closeTop,
+      openMenu,
+      show,
       play,
       tap,
       playGroup,
       playMix,
       resume,
-      /* Sin el chunk de la pagina se espera a el: la pantalla actual sigue a la
-         vista en vez de quedar en blanco. Si falla la carga se navega igual. */
-      open: (v) => {
-        const n = ++opening.current;
-        if (pageReady()) navOpen(v);
-        else
-          loadPageHost()
-            .catch(() => {})
-            .then(() => n === opening.current && navOpen(v));
-      },
+      open: (v) => whenReady(pageReady, loadPageHost, () => navOpen(v)),
+      /* Cambia el menu de arriba por una pagina ("Ir al album"): atras vuelve
+         a donde estaba el menu. */
+      goTo: (v) => whenReady(pageReady, loadPageHost, () => navReplace(v)),
       back: navBack,
-      deleteList,
       song: (entry, list, extra) => (
-        <SongRow
-          key={entry.key}
-          entry={entry}
-          menuOpen={menu?.key === entry.key}
-          list={list}
-          onPlay={play}
-          onMenu={onMenu}
-          onPick={pick}
-          {...extra}
-        />
+        <SongRow key={entry.key} entry={entry} list={list} onPlay={play} onMenu={openMenu} {...extra} />
       ),
     };
     return { ctx, model, show };
-  }, [menu, model, show, navOpen, navBack]);
+  }, [model, show, navOpen, navBack, navReplace, getStack]);
 
-  const closePicker = useCallback(() => {
-    if (picker?.el?.isConnected) picker.el.focus({ preventScroll: true });
-    setPicker(null);
-  }, [picker]);
+  /* El menu de una cancion o la hoja de listas, si es lo de arriba de la pila
+     (el de una lista lo pinta su pagina). */
+  const top = nav.stack.at(-1);
+  const overlay = top && (top.type === "menu" || top.type === "picker") ? top : null;
 
   return (
     <ListenContext.Provider value={value}>
       {children}
       {noticeNode}
-      {picker && (
-        <Suspense fallback={null}>
-          <PlaylistPicker
-            songKey={picker.key}
-            title={picker.title}
-            onNotice={show}
-            onClose={closePicker}
-          />
-        </Suspense>
+      {overlay && (
+        <LazyOverlays
+          top={overlay}
+          byKey={model.byKey}
+          back={navBack}
+          replace={navReplace}
+          goTo={value.ctx.goTo}
+          show={show}
+        />
       )}
     </ListenContext.Provider>
   );

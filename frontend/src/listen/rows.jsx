@@ -1,4 +1,5 @@
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo } from "react";
+import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
 import { clock } from "../shared/format.js";
@@ -29,55 +30,19 @@ export const Bars = ({ on }) => (
   </span>
 );
 
-/* Menu de la fila. Lo abre y lo cierra ListenProvider (solo hay uno a la vez); aqui
-   solo se coloca y se maneja con flechas. `items`: [clave, texto]; la clave es
-   lo que recibe `onPick`. */
-export function RowMenu({ items, onPick }) {
-  const ref = useRef(null);
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    el.querySelector("button").focus({ preventScroll: true });
-    /* Sin sitio debajo (fin de pagina, barra inferior) se abre hacia arriba. */
-    if (el.getBoundingClientRect().bottom > window.innerHeight - 120) el.dataset.up = "";
-  }, []);
-
-  const onKeyDown = (e) => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const items = [...ref.current.querySelectorAll("button")];
-    const at = items.indexOf(document.activeElement);
-    items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
-  };
-
-  return (
-    <div ref={ref} className="rmenu" role="menu" onKeyDown={onKeyDown}>
-      {items.map(([kind, text]) => (
-        <button key={kind} type="button" role="menuitem" onClick={() => onPick(kind)}>
-          {text}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const SONG_ITEMS = [
-  ["next", "Reproducir a continuación"],
-  ["end", "Añadir a la cola"],
-  ["list", "Añadir a una lista…"],
-];
-
 /* Miniaturas que dieron error: una fila que se vuelve a montar (lista
    virtual) no reintenta un 404. */
 const BAD_ART = new Set();
 
-/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar). `rank`
+/* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar); con el, lo
+   abre y cierra ListenProvider (un menu en la pila de navegacion), asi que la
+   fila no sabe si hay uno abierto y abrirlo no la repinta. `rank`
    pone el numero de puesto delante (los rankings), `sub` cambia la segunda
    linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
    de la duracion. `table` (escritorio) reparte la fila en celdas, alineadas con
    el encabezado de su tabla: puesto, titulo, album, duracion y menu; con
    "lib", titulo, artista, album, duracion y menu. */
-export const SongRow = memo(function SongRow({ entry, list, enter, menuOpen, onPlay, onMenu, onPick, rank, sub, badge, table }) {
+export const SongRow = memo(function SongRow({ entry, list, enter, onPlay, onMenu, rank, sub, badge, table }) {
   const { key, title, artist, album } = entry;
   const isCurrent = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -158,15 +123,13 @@ export const SongRow = memo(function SongRow({ entry, list, enter, menuOpen, onP
           aria-label={`Más opciones de ${title}`}
           title="Más opciones"
           aria-haspopup="menu"
-          aria-expanded={menuOpen}
           onClick={(e) => onMenu(key, e.currentTarget)}
         >
-          <Icon name="DotsThree" weight="bold" size={22} />
+          <Ico n="dots" size={20} />
         </button>
       ) : (
         table && <span />
       )}
-      {menuOpen && <RowMenu items={SONG_ITEMS} onPick={(kind) => onPick(entry, kind)} />}
     </div>
   );
 });

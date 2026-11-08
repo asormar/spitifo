@@ -47,7 +47,6 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
 
   const onSearch = (value) => {
     setQ(value);
-    ctx.closeMenu();
     const has = nav.getStack().some((v) => v.type === "search");
     if (value.trim() && !has) nav.open({ type: "search" });
     else if (!value.trim() && has) nav.back();

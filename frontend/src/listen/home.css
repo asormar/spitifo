@@ -10,29 +10,6 @@
 
 /* --- Portada y mosaico ------------------------------------------------------ */
 
-.mos {
-  display: grid;
-  flex: none;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 3px;
-  overflow: hidden;
-  border-radius: var(--r-inner);
-}
-
-.mos .cv {
-  width: auto;
-  height: auto;
-  border-radius: 0;
-}
-
-.mos--empty {
-  grid-template: none;
-  place-items: center;
-  background: var(--s2);
-  color: var(--dim);
-}
-
 .mos--row {
   width: 50px;
   height: 50px;
@@ -240,11 +217,6 @@ button.allsongs__main:active {
 
 .sec {
   margin-top: 30px;
-}
-
-.sec--up {
-  position: relative;
-  z-index: 6;
 }
 
 .shead {

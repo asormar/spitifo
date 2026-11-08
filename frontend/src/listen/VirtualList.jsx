@@ -23,9 +23,8 @@ import { visibleRange } from "./library.js";
    animacion de entrada (que tambien usa transform) y el desplazamiento de la
    cola al reordenar no pisan la posicion.
 
-   `menuKey` (la fila con el menu abierto) y `dragged(i)` (la que se arrastra)
-   suben su caja por encima de las siguientes: cada una es su propio contexto de
-   apilado.
+   `dragged(i)` (la que se arrastra) sube su caja por encima de las siguientes:
+   cada una es su propio contexto de apilado.
 
    `scroller` (una ref a un elemento) cambia quien scrollea: la cola de "Ahora
    suena" vive en su propio contenedor, y entonces se escucha ESE scroll y se
@@ -48,7 +47,7 @@ const FAST_PX_MS = 2;
 const FAST_HOLD = 140;
 
 const VirtualList = forwardRef(function VirtualList(
-  { count, active, getKey, renderRow, className, scroller, menuKey, dragged },
+  { count, active, getKey, renderRow, className, scroller, dragged },
   ref
 ) {
   const boxRef = useRef(null);
@@ -150,7 +149,7 @@ const VirtualList = forwardRef(function VirtualList(
     rows.push(
       <div
         key={key}
-        className={cx("vrow", menuKey != null && key === menuKey && "vrow--menu", dragged?.(i) && "vrow--drag")}
+        className={cx("vrow", dragged?.(i) && "vrow--drag")}
         role="listitem"
         aria-posinset={i + 1}
         aria-setsize={count}

@@ -1,9 +1,9 @@
 /* ---------------------------------------------------------------------------
-   8. BIBLIOTECA: filas, menu y aviso
+   8. BIBLIOTECA: filas y aviso
 
-   Lo comun de la biblioteca: la fila de cancion, su menu, la cola y el aviso. El
-   inicio, las tarjetas y las paginas estan en home.css. Solo se animan
-   transform y opacity.
+   Lo comun de la biblioteca: la fila de cancion, la cola y el aviso. El inicio,
+   las tarjetas y las paginas estan en home.css; los menus y las hojas, en
+   shared/sheet.css. Solo se animan transform y opacity.
    ------------------------------------------------------------------------- */
 
 .listen {
@@ -125,12 +125,8 @@
   height: var(--row-h);
 }
 
-/* Con el menu abierto o una fila en el aire, su caja pasa por encima de las
-   siguientes (cada caja es su propio contexto de apilado). */
-.vrow--menu {
-  z-index: 5;
-}
-
+/* Con una fila en el aire, su caja pasa por encima de las siguientes (cada caja
+   es su propio contexto de apilado). */
 .vrow--drag {
   z-index: 6;
 }
@@ -158,10 +154,6 @@
 
 @media (hover: hover) and (pointer: fine) {
   .srow:not(.is-current):hover {
-    background: var(--hover);
-  }
-
-  .rmenu button:hover {
     background: var(--hover);
   }
 }
@@ -289,6 +281,30 @@
   background-image: linear-gradient(135deg, color-mix(in oklab, var(--c) 48%, #fff) 0 22%, transparent 22% 78%, color-mix(in oklab, var(--c) 78%, #11111c) 78%);
 }
 
+/* Mosaico 2x2 de tonos (listas), tambien en la hoja "Añadir a una lista". */
+.mos {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: var(--r-inner);
+}
+
+.mos .cv {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+.mos--empty {
+  grid-template: none;
+  place-items: center;
+  background: var(--s2);
+  color: var(--dim);
+}
+
 /* Esqueleto: sin color de genero, tile neutro. */
 .lskel .art {
   background: var(--s2);
@@ -406,48 +422,6 @@
   animation-play-state: running;
 }
 
-/* --- Menu de fila ----------------------------------------------------------- */
-
-.rmenu {
-  position: absolute;
-  z-index: 5;
-  top: calc(100% - 6px);
-  right: 8px;
-  width: 228px;
-  padding: 6px;
-  border-radius: var(--r-cover);
-  background: var(--s1);
-  box-shadow: var(--shadow), 0 0 0 1px var(--line);
-  transform-origin: top right;
-  --pop: 0.96;
-  animation: pop var(--t-quick) var(--ease) both;
-}
-
-.rmenu[data-up] {
-  top: auto;
-  bottom: calc(100% - 6px);
-  transform-origin: bottom right;
-}
-
-.rmenu button {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: none;
-  color: var(--ink);
-  font: 500 14.5px var(--font-body);
-  text-align: left;
-  cursor: pointer;
-  transition: var(--tr-btn);
-}
-
-.rmenu button:active {
-  transform: scale(0.96);
-}
-
 /* --- Cola ------------------------------------------------------------------- */
 
 .qrow__grip {
@@ -523,6 +497,12 @@ body.has-mini .lnotice {
   box-shadow: var(--shadow);
   --rise: 12px;
   animation: var(--rise-both);
+}
+
+@media (min-width: 960px) {
+  .ltoast {
+    padding: 14px 18px;
+  }
 }
 
 .ltoast.is-out {

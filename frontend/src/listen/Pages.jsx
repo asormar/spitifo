@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { NavIcon } from "../app/navIcons.jsx";
+import { useNav } from "../app/useNav.js";
 import { cx } from "../shared/ui.jsx";
 import { toneVars } from "../shared/cover.js";
 import { usePc } from "../shared/viewport.js";
@@ -10,7 +11,8 @@ import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
 import VirtualList from "./VirtualList.jsx";
-import { RowMenu, Thead } from "./rows.jsx";
+import { ListMenu } from "./Overlays.jsx";
+import { Thead } from "./rows.jsx";
 import { AllSongs, Cards, Cover, Mosaic, coverOf } from "./cards.jsx";
 import {
   SORTS,
@@ -38,11 +40,6 @@ import { subscribeReveal, takeReveal } from "./revealRequest.js";
    ------------------------------------------------------------------------- */
 
 const songs = (n) => plural(n, "canción", "canciones");
-
-const LIST_ITEMS = [
-  ["rename", "Renombrar"],
-  ["delete", "Borrar lista"],
-];
 
 /* El foco entra en la pagina por su "Volver": con teclado se sigue desde ahi.
    En escritorio el de la pagina no se ve y el foco va al de la barra de arriba. */
@@ -74,7 +71,7 @@ const TITLES = {
   "r-lists": "Listas",
 };
 
-export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
+export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx }) {
   const { what } = view;
   const pc = usePc();
   const hist = useHistory();
@@ -83,9 +80,9 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
   const [naming, setNaming] = useState(Boolean(view.naming));
   useFocusBack(backRef);
 
-  /* Lo que se lista, sin depender de `ctx` (que se rehace en cada render con el
-     menu abierto): ordenar miles de canciones no puede repetirse por eso. El
-     historial solo cuenta en "top": las demas no se reordenan con cada escucha. */
+  /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
+     repetirse por eso. El historial solo cuenta en "top": las demas no se
+     reordenan con cada escucha. */
   const items = useMemo(() => {
     switch (what) {
       case "recent":
@@ -148,6 +145,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
               submit="Crear"
               onSubmit={(name) => {
                 playlists.create(name);
+                ctx.show(`Lista «${name}» creada`);
                 endNaming();
               }}
               onCancel={endNaming}
@@ -172,7 +170,6 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
             active={active}
             count={items.length}
             getKey={(i) => (isTop ? items[i].entry.key : items[i].key)}
-            menuKey={ctx.menu?.key}
             renderRow={row}
           />
         </>
@@ -183,7 +180,7 @@ export function AllPage({ view, index, byKey, lists, listsReady, r, active, ctx 
       )}
     </div>
   );
-}
+});
 
 /* --- Todas tus canciones ----------------------------------------------------------------- */
 
@@ -281,7 +278,6 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
         active={active}
         count={rows.length}
         getKey={(i) => rows[i].key}
-        menuKey={ctx.menu?.key}
         renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, table: pc && "lib" })}
       />
     </div>
@@ -291,6 +287,7 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
 /* --- Album, artista o lista ----------------------------------------------------------------- */
 
 export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx }) {
+  const nav = useNav();
   const backRef = useRef(null);
   const [naming, setNaming] = useState(false);
   useFocusBack(backRef);
@@ -368,6 +365,16 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
     requestAnimationFrame(() => backRef.current?.focus({ preventScroll: true }));
   };
 
+  /* El menu de la lista es lo de arriba de la pila: atras lo cierra. Borrar es
+     inmediato y se puede deshacer unos segundos (la lista vuelve con el mismo
+     id, nombre y canciones); cierra el menu y la pagina de una vez. */
+  const menu = pl && nav.stack.at(-1);
+  const deleteList = () => {
+    playlists.remove(pl.id);
+    nav.pop(2);
+    ctx.show(`Lista «${pl.name}» borrada`, { label: "Deshacer", run: () => playlists.undoRemove(pl) });
+  };
+
   return (
     <div className="lpage lpage--detail">
       <header className="dhead" style={toneVars(tone)}>
@@ -383,17 +390,16 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
               aria-label={`Más opciones de ${pl.name}`}
               title="Más opciones"
               aria-haspopup="menu"
-              aria-expanded={ctx.menu?.key === pl.id}
-              onClick={(e) => ctx.onMenu(pl.id, e.currentTarget)}
+              onClick={(e) => ctx.openMenu(pl.id, e.currentTarget, "lmenu")}
             >
               <Icon name="DotsThree" weight="bold" size={22} />
             </button>
-            {ctx.menu?.key === pl.id && (
-              <RowMenu
-                items={LIST_ITEMS}
-                onPick={(kindPicked) =>
-                  kindPicked === "rename" ? (ctx.closeMenu(false), setNaming(true)) : ctx.deleteList(pl)
-                }
+            {menu?.type === "lmenu" && menu.key === pl.id && (
+              <ListMenu
+                name={pl.name}
+                anchor={menu.anchor}
+                onClose={nav.back}
+                onPick={(kind) => (kind === "rename" ? (nav.back(), setNaming(true)) : deleteList())}
               />
             )}
           </div>
@@ -485,7 +491,6 @@ export function DetailPage({ view, index, byKey, lists, listsReady, active, ctx 
               active={active}
               count={rows.length}
               getKey={(i) => rows[i].key}
-              menuKey={ctx.menu?.key}
               renderRow={(i, enter) => ctx.song(rows[i], rows, { enter })}
             />
           )}
