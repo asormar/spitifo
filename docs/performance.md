@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 376,900 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 380,900 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -428,6 +428,24 @@ included:
 | --- | --- | --- | --- | --- |
 | JavaScript | 381,399 B | 376,382 B (−5,017: +287 fixes, −5,304 terser) | 381,850 B | 376,900 B |
 | CSS | 100,256 B | 100,129 B (−127) | 103,000 B | 103,000 B |
+
+The pages of an album, an artist and a list, the track menu, the list menu and
+the playlist picker (one `Detail` page with a sticky side column and a table on a
+desktop; menus and sheets that are entries of the navigation stack, so opening
+one does not touch the rows) replace the old detail page, the menu drawn inside
+the row and the picker's own dialog. Net of the deletions it adds 3,972 B of
+script and 898 B of style (CSS stays under its limit); the new `Popover` and
+`Overlays` chunks load when the app is idle, so the first script went down by
+121 B. Opening a menu costs about the same main-thread time as before (a
+13–21 ms task at 4x CPU throttling on Inicio, 11–17 ms on a 3,000-row Todas tus
+canciones; the old row menu: about 13 ms), and dragging a row of a 300-row list
+at 4x drops no frame over 33 ms on the phone viewport and one of 33 ms on the
+desktop one:
+
+| Bundle | After the review | After the pages and menus | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 376,382 B | 380,354 B (+3,972) | 376,900 B | 380,900 B |
+| CSS | 100,129 B | 101,027 B (+898) | 103,000 B | 103,000 B |
 
 ### Windows installer: 22,707,225 B
 
