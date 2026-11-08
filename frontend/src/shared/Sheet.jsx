@@ -31,7 +31,7 @@ export function lockScroll() {
   };
 }
 
-export default function Sheet({ title, onClose, anchor, children }) {
+export default function Sheet({ title, onClose, anchor, sm, children }) {
   const pc = usePc();
   const box = useRef(null);
 
@@ -62,7 +62,7 @@ export default function Sheet({ title, onClose, anchor, children }) {
   return createPortal(
     <div className="sh" data-no-swipe="">
       <div className="sh__scrim" onClick={onClose} />
-      <div ref={box} className="sh__box" role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
+      <div ref={box} className={sm ? "sh__box sh__box--sm" : "sh__box"} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
         <div className="sh__grab" aria-hidden="true" />
         {children}
       </div>

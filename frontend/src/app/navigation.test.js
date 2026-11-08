@@ -4,11 +4,13 @@ import {
   TABS,
   canStartSwipe,
   depthOf,
+  isOverlay,
   modeDirection,
   nextGuess,
   pageOf,
   readPhoneNav,
   readView,
+  replaceTop,
   stackFor,
   swipeTarget,
   truncate,
@@ -166,6 +168,42 @@ describe("pageOf", () => {
     expect(pageOf([ficha, menu])).toBeNull();
     expect(pageOf([album, ficha])).toBe(album);
   });
+
+  it("skips the library overlays (song menu, list menu and picker)", () => {
+    const menu = { type: "menu", key: "k1" };
+    const picker = { type: "picker", key: "k1" };
+    const lmenu = { type: "lmenu", key: "p1" };
+    expect(pageOf([menu])).toBeNull();
+    expect(pageOf([album, menu])).toBe(album);
+    expect(pageOf([album, menu, picker])).toBe(album);
+    expect(pageOf([album, lmenu])).toBe(album);
+  });
+});
+
+describe("isOverlay", () => {
+  it("is true for the song menu, the list menu and the picker only", () => {
+    expect(["menu", "picker", "lmenu"].every(isOverlay)).toBe(true);
+    expect(["album", "artist", "all", "library", "settings", "search", "ficha", "resmenu"].some(isOverlay)).toBe(false);
+  });
+});
+
+describe("replaceTop", () => {
+  it("swaps the entry on top and keeps the ones below", () => {
+    const menu = { type: "menu", key: "k1" };
+    const picker = { type: "picker", key: "k1" };
+    expect(replaceTop([album, menu], picker)).toEqual([album, picker]);
+    expect(replaceTop([menu], album)).toEqual([album]);
+  });
+
+  it("does not touch the stack it receives", () => {
+    const stack = [album, { type: "menu", key: "k1" }];
+    replaceTop(stack, artist);
+    expect(stack).toHaveLength(2);
+  });
+
+  it("opens the view over an empty stack", () => {
+    expect(replaceTop([], album)).toEqual([album]);
+  });
 });
 
 describe("stackFor", () => {
@@ -209,6 +247,12 @@ describe("viewKey", () => {
     const ficha = { type: "ficha", key: "k" };
     expect(viewKey("search", [ficha])).toBe("search");
     expect(viewKey("home", [album, ficha])).toBe("home/album:a1");
+  });
+
+  it("keeps the scroll of the page under an overlay", () => {
+    const menu = { type: "menu", key: "k1" };
+    expect(viewKey("home", [album, menu])).toBe("home/album:a1");
+    expect(viewKey("home", [menu])).toBe("home");
   });
 
   it("is settings while Ajustes is on top", () => {

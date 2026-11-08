@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchErr } from "../shared/api.js";
 import { fmtApproxSize } from "../shared/format.js";
-import Sheet, { lockScroll } from "../shared/Sheet.jsx";
-import { clamp, cx } from "../shared/ui.jsx";
+import Popover from "../shared/Popover.jsx";
+import Sheet from "../shared/Sheet.jsx";
+import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { fetchFormats, formatsCache } from "./api.js";
 import Ico from "../shared/ico.jsx";
@@ -138,86 +138,6 @@ function Body({ st, load, title, onPick }) {
         </>
       )}
     </div>
-  );
-}
-
-/* Escritorio: fixed junto al boton, 300 de ancho, alineado a su borde derecho; si
-   abajo no cabe y arriba si, se abre hacia arriba. Va en un portal a <body>: dentro
-   de la fila lo recortarian el overflow de la pagina y su z-index quedaria por
-   debajo del reproductor de video. */
-function Popover({ anchor, onClose, rev, children }) {
-  const ref = useRef(null);
-  const [pos, setPos] = useState(null);
-
-  const place = useCallback(() => {
-    const box = ref.current;
-    if (!box || !anchor?.isConnected) return;
-    const r = anchor.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const width = Math.min(300, vw - 16);
-    /* La altura NATURAL: sin el tope de la colocacion anterior, que la mediria
-       ya recortada. El estilo se devuelve tal cual. */
-    const prev = box.style.maxHeight;
-    box.style.maxHeight = "none";
-    const natural = box.offsetHeight || 0;
-    box.style.maxHeight = prev;
-    const gap = 6;
-    const below = vh - (r.bottom + gap) - 8;
-    const above = r.top - gap - 8;
-    const up = natural > below && above > below;
-    setPos({
-      top: Math.max(8, up ? r.top - gap - Math.min(natural, above) : r.bottom + gap),
-      left: clamp(r.right - width, 8, Math.max(8, vw - width - 8)),
-      width,
-      maxH: Math.max(140, up ? above : below),
-    });
-  }, [anchor]);
-
-  /* Vuelve a colocarse cuando llega la lista (cambia la altura). */
-  useLayoutEffect(() => {
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [place, rev]);
-
-  useEffect(() => {
-    if (anchor && !anchor.isConnected) onClose();
-    const box = ref.current;
-    box.querySelector("[data-autofocus]")?.focus({ preventScroll: true });
-    /* Tocar fuera cierra, pero ARRASTRAR no: se escucha click, que solo existe
-       si hubo un toque. El boton se excluye: su click ya alterna. */
-    const outside = (e) => {
-      if (!box.contains(e.target) && !anchor?.contains(e.target)) onClose();
-    };
-    document.addEventListener("click", outside, true);
-    const unlock = lockScroll();
-    return () => {
-      document.removeEventListener("click", outside, true);
-      unlock();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /* Tab cierra y deja el foco en el boton: el menu es un portal al final del
-     <body> y sin esto el tabulado siguiente caeria lejos de la fila. */
-  const onKeyDown = (e) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    onClose();
-  };
-
-  return createPortal(
-    <div
-      ref={ref}
-      className={cx("pop", pos && "is-placed")}
-      data-no-swipe=""
-      style={pos ? { top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxH } : undefined}
-      onKeyDown={onKeyDown}
-    >
-      {children}
-    </div>,
-    document.body
   );
 }
 

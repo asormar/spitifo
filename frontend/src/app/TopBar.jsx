@@ -10,8 +10,8 @@ import { useNav } from "./useNav.js";
 /* ---------------------------------------------------------------------------
    BARRA DE ARRIBA (escritorio)
 
-   "Volver" mientras hay una pagina abierta (en escritorio las paginas no
-   pintan el suyo), EL buscador de la app y el tema. El buscador comparte el
+   "Volver" mientras hay una pagina abierta o Ajustes (en escritorio no pintan
+   el suyo; una hoja o un menu no son paginas), EL buscador de la app y el tema. El buscador comparte el
    texto con Buscar (searchDraft): enfocarlo lleva a Buscar, escribir muestra lo
    de tu biblioteca y Enter lanza la busqueda de descargas.
    ------------------------------------------------------------------------- */
@@ -31,7 +31,7 @@ export default function TopBar() {
 
   return (
     <header className="topbar">
-      {nav.stack.length > 0 && (
+      {(nav.pageOf(nav.tab) || nav.settings) && (
         <button type="button" className="cbtn cbtn--soft" aria-label="Volver" title="Volver" onClick={nav.back}>
           <NavIcon name="back" size={22} />
         </button>
