@@ -4,7 +4,6 @@ import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
 import Ico from "../shared/ico.jsx";
 import { canStartSwipe, swipeTarget } from "../app/navigation.js";
-import { swapPanel } from "../app/screenSwap.js";
 import { Icon } from "../listen/icons.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import QueueList from "../listen/QueueList.jsx";
@@ -36,8 +35,8 @@ import "./nowplaying.css";
      cambia de pestana al soltar.
    - el resto (escritorio): columna al lado de las paginas ("docked"), o
      ampliada sobre ellas ("wide", solo la pestana Ahora suena), sin gestos, sin
-     capturar el foco y sin cerrar nada por si sola. Ampliar y reducir son una
-     View Transition (swapPanel): la caja se mueve en el compositor.
+     capturar el foco y sin cerrar nada por si sola. Ampliar y reducir cambian
+     el marco de golpe y el contenido entra con el mismo fundido de las pestanas.
    Solo se pinta la pestana a la vista: la cola y sus filas no existen mientras
    no se abre Cola.
    ------------------------------------------------------------------------- */
@@ -99,8 +98,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
   const source = useEngine((s) => s.source);
   const tab = usePanel((s) => s.tab);
   /* Solo se anima el cambio de pestana, no la primera pintura. */
-  const [seen, setSeen] = useState({ tab, moved: false });
-  if (seen.tab !== tab) setSeen({ tab, moved: true });
+  const [seen, setSeen] = useState({ tab, wide, moved: false });
+  if (seen.tab !== tab || seen.wide !== wide) setSeen({ tab, wide, moved: true });
   const vhost = useVideoHost();
   /* Dentro del proveedor de la biblioteca: de ahi salen los mosaicos de la hoja
      de listas y, en escritorio, el aviso. */
@@ -249,7 +248,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
   const caption = sourceCaption(source, track);
 
   /* Salir de la pestana 0 suelta el ampliado: con su misma transicion. */
-  const go = (i) => (wide && i !== 0 ? swapPanel(() => panel.show(i)) : panel.show(i));
+  const go = (i) => panel.show(i);
 
   const onTabKey = (e) => {
     const to = { ArrowRight: Math.min(tab + 1, 2), ArrowLeft: Math.max(tab - 1, 0), Home: 0, End: 2 }[e.key];
@@ -476,7 +475,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
             swipe.current = null;
           }}
         >
-          <div key={tab} id="np-panel" role="tabpanel" aria-labelledby={`np-tab-${tab}`} className="np__panel" data-rise={seen.moved ? "" : undefined}>
+          <div key={wide ? "w" : tab} id="np-panel" role="tabpanel" aria-labelledby={`np-tab-${tab}`} className="np__panel" data-rise={seen.moved ? "" : undefined}>
             {panelBody}
           </div>
         </div>

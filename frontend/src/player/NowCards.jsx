@@ -5,6 +5,7 @@ import { requestSearch } from "../download/searchRequest.js";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { useListen } from "../listen/ListenProvider.jsx";
 import { useHistory } from "../listen/history.js";
+import { initials } from "../shared/format.js";
 import { fileFacts, readReco, relatedTo } from "./nowInfo.js";
 
 /* ---------------------------------------------------------------------------
@@ -45,16 +46,6 @@ export function FichaCard({ track, full = false, onReveal }) {
     </section>
   );
 }
-
-/* Dos iniciales: "PJ Harvey" -> PH, "C. Tangana" -> CT. */
-const initials = (name) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => [...w][0])
-    .join("")
-    .toUpperCase();
 
 /* "Si te gusta, prueba": artistas de "Para ti" cuya razon nombra a este. Lee la
    foto que Descubrir dejo en el dispositivo (sin pedirla): vacia hasta que

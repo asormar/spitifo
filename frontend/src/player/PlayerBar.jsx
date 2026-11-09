@@ -67,26 +67,22 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
 
       <div className="dock__end">
         <Volume className="dock__vol" />
-        <button
-          type="button"
-          className={cx("cbtn cbtn--tab", tab === 1 && "is-open")}
-          onClick={() => onOpen(1, true)}
-          aria-pressed={tab === 1}
-          aria-label="Cola"
-          title="Cola"
-        >
-          <Ico n="queue" size={22} />
-        </button>
-        <button
-          type="button"
-          className={cx("cbtn cbtn--tab", tab === 2 && "is-open")}
-          onClick={() => onOpen(2, true)}
-          aria-pressed={tab === 2}
-          aria-label="Ficha del archivo"
-          title="Ficha del archivo"
-        >
-          <Ico n="file" size={22} />
-        </button>
+        {[
+          [1, "Cola", "queue"],
+          [2, "Ficha del archivo", "file"],
+        ].map(([i, label, n]) => (
+          <button
+            key={i}
+            type="button"
+            className={cx("cbtn cbtn--tab", tab === i && "is-open")}
+            onClick={() => onOpen(i, true)}
+            aria-pressed={tab === i}
+            aria-label={label}
+            title={label}
+          >
+            <Ico n={n} size={22} />
+          </button>
+        ))}
       </div>
     </section>
   );

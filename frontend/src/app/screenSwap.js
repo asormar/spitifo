@@ -83,18 +83,6 @@ export function swapScreens(update, dir = 0) {
     });
 }
 
-/* Amplia o reduce la columna de "Ahora suena" (escritorio). La caja es la
-   misma antes y despues: el navegador la mueve de su tamano de columna al de
-   pagina entera en un solo gesto, sin animar layout. Con movimiento reducido o
-   sin la API cambia de golpe. */
-export function swapPanel(update) {
-  if (reducedMotion()) {
-    update();
-    return;
-  }
-  if (!viewTransition("rp", update)) update();
-}
-
 /* Abre o cierra "Ahora suena". Con la API, la pastilla y la vista comparten
    nombre y el navegador mueve una caja en un solo gesto. Sin ella, la vista
    sube desde abajo (y baja antes de desmontarse al cerrar). Con movimiento

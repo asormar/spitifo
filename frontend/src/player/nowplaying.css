@@ -603,39 +603,6 @@
   }
 }
 
-/* --- Ampliar y reducir (View Transition "rp") ---------------------------------------- */
-
-/* La columna es la misma caja antes y despues: la foto vieja y la nueva
-   conservan su tamano y la caja crece (o se encoge) sobre ellas. */
-html[data-vt="rp"] .np--pane {
-  view-transition-name: vt-rp;
-}
-
-html[data-vt="rp"]::view-transition-group(vt-rp) {
-  animation-duration: var(--t-move);
-  animation-timing-function: var(--drawer);
-}
-
-html[data-vt="rp"]::view-transition-old(vt-rp),
-html[data-vt="rp"]::view-transition-new(vt-rp) {
-  height: 100%;
-  object-fit: none;
-  object-position: top left;
-}
-
-/* Lo demas no se mueve: las paginas de debajo no son lo que se anima. */
-html[data-vt="rp"]::view-transition-group(root) {
-  animation: none;
-}
-
-html[data-vt="rp"]::view-transition-old(root) {
-  display: none;
-}
-
-html[data-vt="rp"]::view-transition-new(root) {
-  animation: none;
-}
-
 /* --- Transicion desde la pastilla (View Transitions, solo telefono) ----------------- */
 
 /* La pastilla y la vista son el mismo elemento para el navegador: la que esta

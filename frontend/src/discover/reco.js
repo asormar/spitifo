@@ -90,12 +90,7 @@ export function visibleArtists(artists, hidden) {
   return artists.filter((a) => !gone.has(a.name));
 }
 
-/* "Porque escuchas X y Y" a partir de los artistas que mas aportaron. */
-export function becauseText(because) {
-  const list = Array.isArray(because) ? because.filter(Boolean).slice(0, 2) : [];
-  if (!list.length) return "";
-  return `Porque escuchas ${list.join(" y ")}`;
-}
+export { becauseText } from "../shared/format.js";
 
 export function createReco({
   fetchFn = (...a) => fetch(...a),

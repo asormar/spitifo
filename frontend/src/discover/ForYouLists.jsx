@@ -1,10 +1,9 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
-import { percent } from "../shared/format.js";
+import { becauseText, initials, percent } from "../shared/format.js";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
-import { becauseText } from "./reco.js";
 import { useDrag } from "./useDrag.js";
 
 /* ---------------------------------------------------------------------------
@@ -13,16 +12,6 @@ import { useDrag } from "./useDrag.js";
    Todo lo que va dentro del panel salvo el marco (hoja inferior o panel
    lateral) y los gestos del marco, que viven en ForYou.jsx.
    ------------------------------------------------------------------------- */
-
-/* "Ana Maria" -> "AM"; "Wisin & Yandel" -> "WY"; un solo nombre, sus dos primeras letras. */
-export function initials(name) {
-  const words = String(name || "")
-    .replace(/&/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  const text = words.length > 1 ? [...words[0]][0] + [...words[1]][0] : [...(words[0] || "?")].slice(0, 2).join("");
-  return text.toUpperCase();
-}
 
 const genreColor = (data, i) => (i >= 0 ? `var(--genre-${data.c[i]})` : "var(--dim)");
 

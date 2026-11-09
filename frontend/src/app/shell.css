@@ -777,7 +777,12 @@ html[data-vt="mode"]::view-transition-new(screen) {
   }
 }
 
-/* Ampliada, la columna tapa las paginas: lo que se mueve debajo se detiene. */
+/* Ampliada, la columna tapa las paginas: no se pintan (en los 12 px de aire
+   que dejan se veria lo de debajo) y lo que se mueve se detiene. */
+html[data-rp="wide"] .screens {
+  visibility: hidden;
+}
+
 html[data-rp="wide"] .mezcla .rec__spin,
 html[data-rp="wide"] .screens .eq i {
   animation-play-state: paused;

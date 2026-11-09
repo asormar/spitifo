@@ -29,7 +29,7 @@ import { SwipeDots, TabBar } from "./Nav.jsx";
 import LeftNav from "./LeftNav.jsx";
 import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
-import { swapNowPlaying, swapPanel } from "./screenSwap.js";
+import { swapNowPlaying } from "./screenSwap.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -375,14 +375,14 @@ export default function App() {
     }
     /* Escritorio: Escape reduce la ampliada y no cierra nada mas. */
     if (panel.get().wide) {
-      swapPanel(() => panel.collapse());
+      panel.collapse();
       return true;
     }
     return false;
   }, [closeNp]);
 
   const onWide = useCallback(
-    (on) => swapPanel(() => (on ? panel.expand(nav.getKey()) : panel.collapse())),
+    (on) => (on ? panel.expand(nav.getKey()) : panel.collapse()),
     [nav.getKey]
   );
 

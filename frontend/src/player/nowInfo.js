@@ -1,4 +1,4 @@
-import { clock, fmtSize } from "../shared/format.js";
+import { becauseText, clock, fmtSize } from "../shared/format.js";
 import { fold } from "../listen/library.js";
 import { plural } from "../listen/home.js";
 import { mixName } from "../listen/mixes.js";
@@ -119,11 +119,6 @@ function inside(a, b) {
 /* Un mismo artista escrito de otra forma (en un sentido o en el otro). */
 const same = (a, b) => inside(a, b) || inside(b, a);
 
-const because = (names) => {
-  const list = names.slice(0, 2);
-  return list.length ? `Porque escuchas ${list.join(" y ")}` : "";
-};
-
 /* Hasta 3 artistas de "Para ti" cuya razon nombra a `artist`: [{ name, reason }].
    Sin el mismo artista con otro nombre ni "[unknown]". Sin datos, []. */
 export function relatedTo(artist, reco, limit = 3) {
@@ -135,7 +130,7 @@ export function relatedTo(artist, reco, limit = 3) {
     const why = Array.isArray(c?.because) ? c.because.filter((s) => typeof s === "string" && s) : [];
     if (!words(name) || fold(name) === "[unknown]" || same(name, artist)) continue;
     if (!why.some((w) => same(w, artist))) continue;
-    out.push({ name, reason: because(why) });
+    out.push({ name, reason: becauseText(why) });
     if (out.length === limit) break;
   }
   return out;
