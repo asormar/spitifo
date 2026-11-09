@@ -26,3 +26,19 @@ export function percent(share) {
   const n = Math.round(share * 100);
   return n < 1 ? "<1 %" : `${n} %`;
 }
+
+/* "Ana Maria" -> "AM"; "Wisin & Yandel" -> "WY"; un solo nombre, sus dos primeras letras. */
+export function initials(name) {
+  const words = String(name || "")
+    .replace(/&/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const text = words.length > 1 ? [...words[0]][0] + [...words[1]][0] : [...(words[0] || "?")].slice(0, 2).join("");
+  return text.toUpperCase();
+}
+
+/* "Porque escuchas X y Y" a partir de los artistas que mas aportaron. */
+export function becauseText(because) {
+  const list = Array.isArray(because) ? because.filter(Boolean).slice(0, 2) : [];
+  return list.length ? `Porque escuchas ${list.join(" y ")}` : "";
+}

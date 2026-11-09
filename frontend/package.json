@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "lightningcss": "^1.33.0",
     "terser": "^5.51.2",
     "vite": "^6.0.7",
     "vitest": "^3.2.4"

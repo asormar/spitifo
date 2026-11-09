@@ -14,7 +14,7 @@ export default function useLibraryHits(enabled = true) {
   const { model } = useListen();
   const term = enabled ? libraryQuery(dq) : null;
   return useMemo(
-    () => (term ? { songs: searchSongs(model.index, term, model.plays) } : null),
+    () => (term ? { q: term, songs: searchSongs(model.index, term, model.plays) } : null),
     [term, model.index, model.plays]
   );
 }

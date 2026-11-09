@@ -20,7 +20,7 @@ const SHOWN = { songs: 5, artists: 6, albums: 6, lists: 3 };
 
 const TYPES = { artist: "Artista", album: "Álbum", song: "Canción" };
 
-function Best({ best, all, ctx }) {
+function Best({ best, all, q, ctx }) {
   const { kind, item } = best;
   const curKey = useEngine((s) => s.track?.key);
   const sounding = useEngine((s) => s.playing);
@@ -43,9 +43,9 @@ function Best({ best, all, ctx }) {
 
   /* Una cancion suena o se pausa; un artista o un album, entero. */
   const play = (e) => {
-    if (song) ctx.tap(item, e.currentTarget, all);
+    if (song) ctx.tap(item, e.currentTarget, all, `search:${q}`);
     else if (inside) engine.toggle();
-    else ctx.playGroup(entries);
+    else ctx.playGroup(entries, false, `${kind}:${name}`);
   };
 
   return (
@@ -81,7 +81,8 @@ function Best({ best, all, ctx }) {
 export default function SearchResults({ r, query, byKey, ctx }) {
   const nav = useNav();
   const q = query.trim();
-  const open = (what) => () => ctx.open({ type: "all", what });
+  const open = (what) => () => ctx.open({ type: "all", what, q });
+  const from = `search:${q}`;
   const shownSongs = useMemo(() => r.songs.slice(0, SHOWN.songs), [r.songs]);
 
   if (r.empty) {
@@ -110,14 +111,14 @@ export default function SearchResults({ r, query, byKey, ctx }) {
       {r.best && (
         <section aria-label="Mejor resultado">
           <h2 className="sh2">Mejor resultado</h2>
-          <Best best={r.best} all={r.songs} ctx={ctx} />
+          <Best best={r.best} all={r.songs} q={q} ctx={ctx} />
         </section>
       )}
 
       {r.songs.length > 0 && (
         <section aria-label="Canciones">
           <SectionHead title="Canciones" onAll={open("r-songs")} label="Ver todas las canciones" />
-          {shownSongs.map((e) => ctx.song(e, r.songs))}
+          {shownSongs.map((e) => ctx.song(e, r.songs, { from }))}
         </section>
       )}
 

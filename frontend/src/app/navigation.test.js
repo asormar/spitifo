@@ -294,6 +294,12 @@ describe("swipeTarget", () => {
     expect(swipeTarget(swipe(-80, 0, 300), 3, 4)).toBeNull();
   });
 
+  it("moves both ways from the middle of three tabs (Ahora suena)", () => {
+    expect(swipeTarget(swipe(-80, 10, 300), 1, 3)).toBe(2);
+    expect(swipeTarget(swipe(80, 10, 300), 1, 3)).toBe(0);
+    expect(swipeTarget(swipe(-80, 10, 300), 2, 3)).toBeNull();
+  });
+
   it("accepts the exact thresholds", () => {
     expect(swipeTarget(swipe(-60, 40, 600), 0, 4)).toBe(1);
   });

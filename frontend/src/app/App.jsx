@@ -5,6 +5,8 @@ import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
+import { panel, panelMode, usePanel } from "../player/panel.js";
+import { useEngine } from "../player/useEngine.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
 import { fetchMapFile } from "../discover/mapFile.js";
@@ -19,6 +21,7 @@ import {
   readPhoneNav,
   readView,
   swipeTarget,
+  viewKey,
   writePhoneNav,
 } from "./navigation.js";
 import useNavController, { NavContext } from "./useNav.js";
@@ -154,11 +157,12 @@ const typing = () => {
 
 /* Las dos teclas de toda la app, UNA vez.
    Escape, de lo mas pequeno a lo mas grande (gana el primero que actua):
-   "Ahora suena", lo de arriba de la pila (un menu, una hoja, la pagina o
+   "Ahora suena" (a pantalla completa la cierra; ampliada en escritorio la
+   reduce; la columna no se cierra con Escape), lo de arriba de la pila (un menu, una hoja, la pagina o
    Ajustes).
    "/" lleva el foco al buscador de la pantalla a la vista o al de la barra
    de arriba. */
-function Hotkeys({ nav, escapeNp, npOpen }) {
+function Hotkeys({ nav, escapeNp, npOpen, wide }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
@@ -169,9 +173,11 @@ function Hotkeys({ nav, escapeNp, npOpen }) {
         /* El de la pantalla, si se ve (el de Buscar esta oculto en escritorio);
            si no, el de la barra de arriba. */
         const field =
-          [...document.querySelectorAll('[data-screen]:not([hidden]) [data-field="search"]')].find(
-            (f) => f.getClientRects().length
-          ) || document.querySelector('.topbar [data-field="search"]');
+          (!wide &&
+            [...document.querySelectorAll('[data-screen]:not([hidden]) [data-field="search"]')].find(
+              (f) => f.getClientRects().length
+            )) ||
+          document.querySelector('.topbar [data-field="search"]');
         if (!field) return;
         e.preventDefault();
         field.focus();
@@ -179,7 +185,7 @@ function Hotkeys({ nav, escapeNp, npOpen }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [nav, escapeNp, npOpen]);
+  }, [nav, escapeNp, npOpen, wide]);
   return null;
 }
 
@@ -202,11 +208,11 @@ export default function App() {
      historial para que el atras de Android y del navegador la cierren, y
      cerrarla (con la X, Escape o un arrastre) hace history.back() y deja que
      popstate cierre de verdad. npEntry: 0 cerrada, 1 abierta, 2 cerrandose
-     (ya se pidio el back; un segundo cierre no puede dar otro). */
-  const [np, setNp] = useState(false);
+     (ya se pidio el back; un segundo cierre no puede dar otro). El estado
+     abierto/cerrado y la pestana viven en el almacen del panel. */
+  const panelState = usePanel();
+  const hasTrack = useEngine((s) => Boolean(s.track));
   const npEntry = useRef(0);
-  /* Pagina con la que abre: la cola si viene de "Cola" de la barra. */
-  const npPage = useRef(0);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -289,22 +295,73 @@ export default function App() {
     warm: (tab) => tab === "discover" && warmDiscover(),
   });
 
-  const openNp = useCallback((page) => {
-    if (npEntry.current || !engine.getState().track) return;
+  /* Telefono: pantalla completa ("full"). Escritorio: una columna al lado de
+     las paginas ("docked"; flotando sobre Descubrir, "over"; ampliada, "wide"),
+     sin historial: no es navegacion, el atras no la cierra. */
+  const { activeId, visited } = nav;
+  const viewId = viewKey(nav.tab, nav.stack);
+  const mode = panelMode(panelState, {
+    key: viewId,
+    discover: activeId === "discover",
+    pc,
+    track: hasTrack,
+  });
+  const full = mode === "full";
+  const np = mode !== "off";
+  const wide = mode === "wide";
+
+  /* La columna sabe en que vista se abrio o se amplio: al cambiar de vista, la
+     ampliada vuelve a columna y lo abierto en Descubrir deja de flotar. */
+  useEffect(() => {
+    if (!panelState.open || panelState.at === viewId) return;
+    if (panelState.wide) panel.collapse();
+    else if (panelState.at === "discover") panel.show(panelState.tab, viewId);
+  }, [panelState, viewId]);
+
+  /* El CSS aparta las paginas segun el estado de la columna (shell.css). */
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (pc && mode !== "off" && mode !== "full") root.dataset.rp = mode;
+    else delete root.dataset.rp;
+    return () => {
+      delete root.dataset.rp;
+    };
+  }, [pc, mode]);
+
+  /* `toggle` (Cola y Ficha de la barra): pulsar la pestana que se ve cierra. */
+  const openNp = useCallback((page = 0, toggle = false) => {
+    if (!engine.getState().track) return;
+    /* "Cola" y "Ficha" de la barra abren su pestana. */
+    const tab = page === 1 ? 1 : page === 2 ? 2 : 0;
+    if (isPc()) {
+      if (toggle && np && panel.get().tab === tab) {
+        panel.close();
+        return;
+      }
+      loadNowPlaying()
+        .then(() => panel.show(tab, nav.getKey()))
+        .catch(() => {});
+      return;
+    }
+    if (npEntry.current) return;
     npEntry.current = 1;
-    npPage.current = page === 1 ? 1 : 0;
     loadNowPlaying()
       .then(() => {
         window.history.pushState({ spitifo: "np" }, "", window.location.href);
-        swapNowPlaying(() => setNp(true), true);
+        swapNowPlaying(() => panel.show(tab, nav.getKey()), true);
       })
       .catch(() => {
         npEntry.current = 0;
       });
-  }, []);
+  }, [nav.getKey, np]);
 
   const closeNp = useCallback((morph = true) => {
-    if (npEntry.current !== 1) return;
+    if (npEntry.current === 2) return;
+    /* Abierto sin entrada de historial: se cierra sin back. */
+    if (npEntry.current === 0) {
+      panel.close();
+      return;
+    }
     npEntry.current = 2;
     npMorph.current = morph;
     window.history.back();
@@ -312,10 +369,22 @@ export default function App() {
 
   /* Escape: cierra "Ahora suena" si esta abierta. */
   const escapeNp = useCallback(() => {
-    if (!npEntry.current) return false;
-    closeNp();
-    return true;
+    if (npEntry.current) {
+      closeNp();
+      return true;
+    }
+    /* Escritorio: Escape reduce la ampliada y no cierra nada mas. */
+    if (panel.get().wide) {
+      panel.collapse();
+      return true;
+    }
+    return false;
   }, [closeNp]);
+
+  const onWide = useCallback(
+    (on) => (on ? panel.expand(nav.getKey()) : panel.collapse()),
+    [nav.getKey]
+  );
 
   /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de
      useNav para que este ya haya sincronizado la pila cuando corre `then`. */
@@ -328,12 +397,12 @@ export default function App() {
       npThen.current = null;
       npMorph.current = true;
       if (then) {
-        flushSync(() => setNp(false));
+        flushSync(() => panel.close());
         then();
       } else if (morph) {
-        swapNowPlaying(() => setNp(false), false);
+        swapNowPlaying(() => panel.close(), false);
       } else {
-        setNp(false);
+        panel.close();
       }
     };
     window.addEventListener("popstate", onNpPop);
@@ -457,7 +526,8 @@ export default function App() {
      despues se salta a la fila. */
   const revealFromNp = useCallback(
     (key) => {
-      leaveNp(() => revealSong(key));
+      /* La columna de escritorio no tiene entrada que cerrar: se salta ya. */
+      if (!leaveNp(() => revealSong(key))) revealSong(key);
     },
     [leaveNp, revealSong]
   );
@@ -474,24 +544,25 @@ export default function App() {
   const libReady = lib !== null;
   const storage = /^Google Drive/.test(health?.library) ? "Google Drive" : "este dispositivo";
 
-  const { activeId, visited } = nav;
   const searchPage = nav.pageOf("search");
 
   return (
     <NavContext.Provider value={nav}>
-      <main className="app" inert={np ? "" : undefined}>
-        {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
-            arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
-        {pc && (
-          <>
-            <LeftNav npOpen={np} />
-            <TopBar />
-          </>
-        )}
+      {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
+          mosaicos de su hoja de listas); no pinta DOM propio. */}
+      <ListenProvider files={libFiles} nav={nav} storage={storage}>
+        <main className="app" inert={full ? "" : undefined}>
+          {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
+              arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
+          {pc && (
+            <>
+              <LeftNav />
+              <TopBar />
+            </>
+          )}
 
-        <ListenProvider files={libFiles} nav={nav} storage={storage}>
-          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={np} />
-          <div className="screens" ref={screensRef}>
+          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={full} wide={wide} />
+          <div className="screens" ref={screensRef} inert={wide ? "" : undefined}>
             {visited.has("home") && (
               <Screen id="home" active={activeId === "home"}>
                 <HomeScreen
@@ -561,31 +632,32 @@ export default function App() {
               </Screen>
             )}
           </div>
-        </ListenProvider>
 
-        {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
-            marcha. En escritorio las tarjetas van en el menu lateral. */}
-        {pc ? <PlayerBar onOpen={openNp} npOpen={np} /> : (
-          <>
-            <ProgressStack />
-            <MiniPlayer onOpen={openNp} npOpen={np} />
-          </>
-        )}
-        {/* Montado una sola vez: es el dueno del <video> y por eso la
-            reproduccion no se corta al cambiar de pestana. */}
-        <VideoHost />
+          {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
+              marcha. En escritorio las tarjetas van en el menu lateral. */}
+          {pc ? <PlayerBar onOpen={openNp} npOpen={false} tab={np ? panelState.tab : -1} /> : (
+            <>
+              <ProgressStack />
+              <MiniPlayer onOpen={openNp} npOpen={full} />
+            </>
+          )}
+          {/* Montado una sola vez: es el dueno del <video> y por eso la
+              reproduccion no se corta al cambiar de pestana. */}
+          <VideoHost />
 
-        {!pc &&
-          (phoneNav === "tabs" ? (
-            <TabBar tab={nav.tab} onTab={nav.goTab} />
-          ) : (
-            <SwipeDots tab={nav.tab} onTab={nav.goTab} />
-          ))}
-      </main>
-      {/* Fuera de <main>: este se vuelve inerte mientras la vista esta abierta. */}
-      {np && NowPlaying && (
-        <NowPlaying onClose={closeNp} onReveal={revealFromNp} initialPage={npPage.current} />
-      )}
+          {!pc &&
+            (phoneNav === "tabs" ? (
+              <TabBar tab={nav.tab} onTab={nav.goTab} />
+            ) : (
+              <SwipeDots tab={nav.tab} onTab={nav.goTab} />
+            ))}
+        </main>
+        {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
+            completa. */}
+        {np && NowPlaying && (
+            <NowPlaying mode={mode} onClose={closeNp} onReveal={revealFromNp} onWide={onWide} />
+          )}
+      </ListenProvider>
     </NavContext.Provider>
   );
 }

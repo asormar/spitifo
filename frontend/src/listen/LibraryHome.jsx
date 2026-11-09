@@ -44,7 +44,7 @@ export default function LibraryHome({ model, ctx }) {
       n={count.songs}
       storage={model.storage}
       onOpen={() => ctx.open({ type: "library", sort: "recent" })}
-      onShuffle={() => ctx.playGroup(model.entries, true)}
+      onShuffle={() => ctx.playGroup(model.entries, true, "library:")}
     />
   );
   const cards = useMemo(() => (pc ? libraryGrid(index, lists, filter) : []), [pc, index, lists, filter]);

@@ -758,3 +758,32 @@ html[data-vt="mode"]::view-transition-new(screen) {
     display: none;
   }
 }
+
+/* --- Columna de "Ahora suena" (escritorio) --------------------------------- */
+
+/* App pone html[data-rp] = docked | wide | over (ver App.jsx). Por debajo de
+   1200 px la columna se pone ENCIMA de las paginas (no queda sitio para las dos
+   y el menu): solo se aparta lo fijo. Desde 1200 px las paginas se estrechan
+   (340 de columna + 12 de aire a cada lado): eso vive en base.css, junto al
+   padding de .app (este archivo solo usa el umbral de 960). */
+@media (min-width: 960px) {
+  html[data-rp="docked"] .topbar,
+  html[data-rp="over"] .topbar {
+    right: 364px;
+  }
+
+  html[data-rp="docked"] .lnotice {
+    right: 364px;
+  }
+}
+
+/* Ampliada, la columna tapa las paginas: no se pintan (en los 12 px de aire
+   que dejan se veria lo de debajo) y lo que se mueve se detiene. */
+html[data-rp="wide"] .screens {
+  visibility: hidden;
+}
+
+html[data-rp="wide"] .mezcla .rec__spin,
+html[data-rp="wide"] .screens .eq i {
+  animation-play-state: paused;
+}

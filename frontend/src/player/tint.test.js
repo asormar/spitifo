@@ -4,22 +4,11 @@ import {
   averageColor,
   contrastWithWhite,
   darken,
-  fallbackTint,
-  hashHue,
   luminance,
+  toneTint,
 } from "./tint.js";
 
 const px = (...colors) => Uint8ClampedArray.from(colors.flatMap(([r, g, b, a = 255]) => [r, g, b, a]));
-
-/* HSL -> RGB, solo para comprobar el contraste del color de reserva. */
-function hslToRgb(h, s, l) {
-  const a = s * Math.min(l, 1 - l);
-  const f = (n) => {
-    const k = (n + h / 30) % 12;
-    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
-  };
-  return [f(0), f(8), f(4)].map((v) => Math.round(v * 255));
-}
 
 describe("averageColor", () => {
   it("averages the pixels", () => {
@@ -74,29 +63,16 @@ describe("darken", () => {
   });
 });
 
-describe("hashHue", () => {
-  it("is stable and inside the hue wheel", () => {
-    expect(hashHue("Radiohead")).toBe(hashHue("Radiohead"));
-    for (const name of ["", null, undefined, "Ñandú", "x".repeat(500)]) {
-      const h = hashHue(name);
-      expect(h).toBeGreaterThanOrEqual(0);
-      expect(h).toBeLessThan(360);
-    }
+describe("toneTint", () => {
+  it("mixes the genre colour of the tone into the dark base", () => {
+    expect(toneTint(0)).toBe("color-mix(in oklab, var(--genre-0) 50%, #0e0e18)");
+    expect(toneTint(37)).toBe("color-mix(in oklab, var(--genre-5) 50%, #0e0e18)");
   });
 
-  it("tells different artists apart", () => {
-    expect(hashHue("Artista A")).not.toBe(hashHue("Artista B"));
-  });
-});
-
-describe("fallbackTint", () => {
-  it("builds an hsl colour from the artist", () => {
-    expect(fallbackTint("Radiohead")).toBe(`hsl(${hashHue("Radiohead")} 45% 28%)`);
-  });
-
-  it("keeps white text above 4.5:1 for every hue", () => {
-    for (let h = 0; h < 360; h += 1) {
-      expect(contrastWithWhite(hslToRgb(h, 0.45, 0.28))).toBeGreaterThanOrEqual(4.5);
+  it("stays on the 16 colours for every tone", () => {
+    for (let tone = 0; tone < 64; tone += 1) {
+      const n = Number(/--genre-(\d+)/.exec(toneTint(tone))[1]);
+      expect(n).toBe(tone % 16);
     }
   });
 });

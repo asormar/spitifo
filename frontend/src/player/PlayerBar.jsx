@@ -1,5 +1,6 @@
-import { NavIcon } from "../app/navIcons.jsx";
+import Ico from "../shared/ico.jsx";
 import { clock } from "../shared/format.js";
+import { cx } from "../shared/ui.jsx";
 import { Controls, DockArt, Volume } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
@@ -11,13 +12,16 @@ import Scrub from "./Scrub.jsx";
    motor que ve useDock (la del telefono es MiniPlayer): transporte a la
    izquierda, una pantallita "LCD" en el centro (portada, tiempo, titulo,
    tiempo que falta y la barra de progreso pegada al borde de abajo) y silencio,
-   volumen y Cola a la derecha. Aparece con una pista y se esconde mientras
-   "Ahora suena" o el video estan abiertos.
+   volumen, Cola y Ficha a la derecha. Aparece con una pista y se esconde
+   mientras el video esta abierto; la columna de "Ahora suena" no la tapa (la
+   barra es su transporte).
 
-   La portada abre "Ahora suena"; Cola lo abre en la pagina de la cola.
+   La portada abre "Ahora suena". Cola y Ficha abren su pestana y son
+   interruptores: `tab` es la pestana que se ve (-1 = ninguna) y pulsar la que
+   esta a la vista cierra la columna (onOpen(tab, true)).
    ------------------------------------------------------------------------- */
 
-export default function PlayerBar({ onOpen, npOpen }) {
+export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
 
@@ -36,8 +40,8 @@ export default function PlayerBar({ onOpen, npOpen }) {
           type="button"
           className="lcd__cv"
           onClick={() => onOpen(0)}
-          aria-label={`Abrir el reproductor: ${info?.title ?? ""}`}
-          title="Abrir el reproductor"
+          aria-label={`Abrir Ahora suena: ${info?.title ?? ""}`}
+          title="Abrir Ahora suena"
         >
           <DockArt d={d} size={40} className="lcd__art" />
         </button>
@@ -63,9 +67,22 @@ export default function PlayerBar({ onOpen, npOpen }) {
 
       <div className="dock__end">
         <Volume className="dock__vol" />
-        <button type="button" className="cbtn" onClick={() => onOpen(1)} aria-label="Cola" title="Cola">
-          <NavIcon name="queue" size={22} />
-        </button>
+        {[
+          [1, "Cola", "queue"],
+          [2, "Ficha del archivo", "file"],
+        ].map(([i, label, n]) => (
+          <button
+            key={i}
+            type="button"
+            className={cx("cbtn cbtn--tab", tab === i && "is-open")}
+            onClick={() => onOpen(i, true)}
+            aria-pressed={tab === i}
+            aria-label={label}
+            title={label}
+          >
+            <Ico n={n} size={22} />
+          </button>
+        ))}
       </div>
     </section>
   );

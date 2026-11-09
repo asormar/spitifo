@@ -109,8 +109,10 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
   const empty = !rows.length;
   const { meta, liner } = detailMeta(d, storage);
 
-  const play = () => ctx.playGroup(rows);
-  const shuffle = () => ctx.playGroup(rows, true);
+  /* Origen de la cola: "Sonando desde" el album, el artista o la lista. */
+  const from = `${kind}:${name}`;
+  const play = () => ctx.playGroup(rows, false, from);
+  const shuffle = () => ctx.playGroup(rows, true, from);
 
   /* El menu de la lista es lo de arriba de la pila: atras lo cierra. Borrar es
      inmediato y se puede deshacer unos segundos (la lista vuelve con el mismo
@@ -188,6 +190,7 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
             rows={rows}
             active={active}
             ctx={ctx}
+            from={from}
             table={pc ? kindOf : undefined}
             onRemove={removeSong}
           />
@@ -200,6 +203,7 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
               ctx.song(rows[i], rows, {
                 enter,
                 num: i + 1,
+                from,
                 table: pc ? kindOf : undefined,
                 sub: artist ? rows[i].album || "" : "",
               })

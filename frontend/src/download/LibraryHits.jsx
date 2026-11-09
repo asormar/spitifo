@@ -18,15 +18,16 @@ export default function LibraryHits({ active }) {
   const lib = useLibraryHits(active);
   if (!lib || !lib.songs.length) return null;
 
-  const { songs } = lib;
+  const { songs, q } = lib;
+  const from = `search:${q}`;
   return (
     <section className="lhits" aria-labelledby="lhits-h">
       <h2 className="sh2" id="lhits-h">
         En tu biblioteca
       </h2>
-      <div className="lpanel">{songs.slice(0, SHOWN).map((e) => ctx.song(e, songs))}</div>
+      <div className="lpanel">{songs.slice(0, SHOWN).map((e) => ctx.song(e, songs, { from }))}</div>
       {songs.length > SHOWN && (
-        <button type="button" className="lhits__all" onClick={() => ctx.open({ type: "all", what: "r-songs" })}>
+        <button type="button" className="lhits__all" onClick={() => ctx.open({ type: "all", what: "r-songs", q })}>
           Ver las {songs.length} canciones
         </button>
       )}

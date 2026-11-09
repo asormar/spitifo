@@ -14,9 +14,8 @@ import "./playlists.css";
    Hoja para elegir a que lista va una cancion (shared/Sheet.jsx: sube desde
    abajo en telefono; desde 960 px, tarjeta centrada de 400). La misma desde el
    menu de una fila (la biblioteca, donde vive en la pila de navegacion y la
-   cierra nav.back) y desde "Ahora suena", que la abre con su propio estado y,
-   fuera del proveedor de la biblioteca, sin `byKey`: sus listas llevan el
-   mosaico neutro.
+   cierra nav.back) y desde "Ahora suena", que la abre con su propio estado.
+   Las dos pasan `byKey` (el mapa de la biblioteca) para los mosaicos.
 
    No guarda nada propio: elige con playlists.addKeys / playlists.create y
    avisa al que la abrio (`onNotice`) para que lo diga en SU aviso, porque el

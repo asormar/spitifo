@@ -278,6 +278,8 @@ export default function useNavController({ leaveNp, warm } = {}) {
       openSettings,
       toggleSettings,
       getStack: () => ref.current.stack,
+      /* La clave de la vista de ahora (viewKey): donde se abrio el panel. */
+      getKey: () => viewKey(ref.current.tab, ref.current.stack),
       onPop,
       scrolls,
     };

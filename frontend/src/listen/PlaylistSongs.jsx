@@ -13,7 +13,7 @@ import { useDragSort } from "./useDragSort.js";
    asa, el numero y "quitar" (rows.jsx).
    ------------------------------------------------------------------------- */
 
-export default function PlaylistSongs({ playlist, rows, active, ctx, table, onRemove }) {
+export default function PlaylistSongs({ playlist, rows, active, ctx, from, table, onRemove }) {
   const move = (from, to) => {
     if (to < 0 || to >= rows.length) return false;
     const keys = rows.map((e) => e.key);
@@ -33,6 +33,7 @@ export default function PlaylistSongs({ playlist, rows, active, ctx, table, onRe
         ctx.song(rows[i], rows, {
           enter,
           num: i + 1,
+          from,
           table,
           onRemove,
           drag: sort.dragFor(rows[i].key, i),
