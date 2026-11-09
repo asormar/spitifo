@@ -139,7 +139,7 @@
   display: flex;
 }
 
-.fy-tabs .seg {
+.fy-tabs .chip {
   flex: 1;
   min-height: 44px;
   font-size: 14.5px;

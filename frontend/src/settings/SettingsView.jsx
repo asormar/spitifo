@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Icon } from "./icons.jsx";
-import { useSlidingPill } from "../shared/ui.jsx";
+import Ico from "../shared/ico.jsx";
 import { useTheme } from "../shared/theme.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./storage.css";
+import "../shared/chips.css";
 
 const THEME_OPTIONS = [
   { id: "light", label: "Claro" },
@@ -33,11 +33,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const storageHeadRef = useRef(null);
   const cookiesRef = useRef(null);
   const cookiesHeadRef = useRef(null);
-  const segsRef = useRef(null);
-  useSlidingPill(segsRef, phoneNav);
-  const themeRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
-  useSlidingPill(themeRef, theme);
 
   /* Al abrir Ajustes con un destino (el aviso de cookies o el boton de la
      biblioteca) se trae esa seccion y se deja el foco en su titulo, para que
@@ -58,7 +54,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     <div className="settings">
       <header className="settings__head">
         <button type="button" className="settings__back" aria-label="Volver" onClick={onClose}>
-          <Icon name="CaretLeft" size={20} />
+          <Ico n="caret" size={20} sw={2.2} />
         </button>
         <h1 className="settings__title">Ajustes</h1>
       </header>
@@ -86,12 +82,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             <p className="settings__label">Tema</p>
             <p className="settings__note">Se guarda en este dispositivo.</p>
           </div>
-          <div
-            ref={themeRef}
-            className="segs settings__segs"
-            role="radiogroup"
-            aria-label="Tema"
-          >
+          <div className="chips settings__chips" role="radiogroup" aria-label="Tema">
             {THEME_OPTIONS.map((option) => (
               <button
                 key={option.id}
@@ -99,7 +90,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
                 role="radio"
                 aria-checked={theme === option.id}
                 tabIndex={theme === option.id ? 0 : -1}
-                className={`seg ${theme === option.id ? "is-on" : ""}`}
+                className={`chip ${theme === option.id ? "is-on" : ""}`}
                 onClick={() => chooseTheme(option.id)}
               >
                 {option.label}
@@ -112,12 +103,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             <p className="settings__label">Navegación en el teléfono</p>
             <p className="settings__note">Solo en teléfonos. Se guarda en este dispositivo.</p>
           </div>
-          <div
-            ref={segsRef}
-            className="segs settings__segs"
-            role="radiogroup"
-            aria-label="Navegación en el teléfono"
-          >
+          <div className="chips settings__chips" role="radiogroup" aria-label="Navegación en el teléfono">
             {NAV_OPTIONS.map((option) => (
               <button
                 key={option.id}
@@ -125,7 +111,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
                 role="radio"
                 aria-checked={phoneNav === option.id}
                 tabIndex={phoneNav === option.id ? 0 : -1}
-                className={`seg ${phoneNav === option.id ? "is-on" : ""}`}
+                className={`chip ${phoneNav === option.id ? "is-on" : ""}`}
                 onClick={() => onPhoneNav(option.id)}
               >
                 {option.label}

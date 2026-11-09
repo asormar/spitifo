@@ -5,11 +5,6 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .seg:not(.is-on):hover {
-    background: var(--hover);
-    color: var(--ink);
-  }
-
   .vf:not(:disabled):hover {
     background: var(--s3);
   }
@@ -36,7 +31,6 @@
 
 /* Dedo: los botones secundarios tambien llegan a 44px. */
 @media (pointer: coarse) {
-  .seg,
   .vf {
     min-height: 44px;
   }

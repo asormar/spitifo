@@ -67,6 +67,11 @@ const PAIRS = [
   ["on", "ink"],
   ["on-pink", "pink"],
   ["toast-act", "ink"],
+  /* Ajustes: el enlace de desconectar, el punto de "Conectada" y el glifo de
+     reproducir de una fila (grafico, 3:1 alcanza). */
+  ["bad-t", "bg"],
+  ["bad-t", "s1"],
+  ["ok-t", "s1"],
 ];
 
 describe.each([
@@ -86,6 +91,19 @@ describe.each([
   it.each(["ok", "near", "bad"])("verdict %s text on the page ground reaches 4.5:1", (tone) => {
     const tint = over(color(theme, `--${tone}-bg`), color(theme, "--bg"));
     expect(ratio(color(theme, `--${tone}-t`), tint)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* El glifo de reproducir es un grafico: WCAG pide 3:1, no 4.5. En claro va
+     justo (3.04), asi que el umbral es el que es. */
+  it("pink as a graphic on the card reaches 3:1", () => {
+    expect(ratio(color(theme, "--pink"), color(theme, "--s1"))).toBeGreaterThanOrEqual(3);
+  });
+
+  /* La fila elegida de Para ti: tinte rosa al 14 % sobre la tarjeta. */
+  it.each(["ink", "mut"])("%s on the selected-row tint reaches 4.5:1", (fg) => {
+    const pink = color(theme, "--pink");
+    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    expect(ratio(color(theme, `--${fg}`), tint)).toBeGreaterThanOrEqual(4.5);
   });
 
   it("defines the 16 genre colours", () => {

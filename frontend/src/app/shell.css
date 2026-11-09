@@ -719,7 +719,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   font-size: 13px;
 }
 
-.settings__segs {
+.settings__chips {
   flex: none;
 }
 
@@ -741,11 +741,11 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 @media (pointer: coarse) {
-  .settings__segs {
+  .settings__chips {
     width: 100%;
   }
 
-  .settings__segs .seg {
+  .settings__chips .chip {
     flex: 1;
   }
 }

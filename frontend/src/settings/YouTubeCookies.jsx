@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "./icons.jsx";
+import Ico from "../shared/ico.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
+import { cookieStatus } from "./storageInfo.js";
 
 /* ---------------------------------------------------------------------------
    COOKIES DE YOUTUBE (ultimo recurso)
@@ -87,17 +88,7 @@ export default function YouTubeCookies({ focus }) {
   };
 
   const configured = Boolean(info?.configured);
-  let state = "Comprobando…";
-  if (info) {
-    if (configured) {
-      const fecha = fmtImportDate(info.imported_at);
-      state = `Configuradas · ${info.count} ${
-        info.count === 1 ? "cookie" : "cookies"
-      }${fecha ? ` · ${fecha}` : ""}`;
-    } else {
-      state = "Sin configurar";
-    }
-  }
+  const state = cookieStatus(info, fmtImportDate);
 
   return (
     <section
@@ -107,7 +98,7 @@ export default function YouTubeCookies({ focus }) {
     >
       <div className="store__cookies-head">
         <h3 id="ytcookies-title" className="store__cookies-title">
-          <Icon name="Cookie" size={16} weight="duotone" aria-hidden="true" />
+          <Ico n="cookie" size={16} />
           Cookies de YouTube
         </h3>
         <span className="store__cookies-state">{state}</span>
@@ -126,12 +117,12 @@ export default function YouTubeCookies({ focus }) {
           onClick={() => fileRef.current?.click()}
           disabled={busy}
         >
-          <Icon name="UploadSimple" size={15} aria-hidden="true" />
+          <Ico n="upload" size={15} />
           {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
         </button>
         {configured && (
           <button type="button" className="vf" onClick={remove} disabled={busy}>
-            <Icon name="Trash" size={15} aria-hidden="true" />
+            <Ico n="trash" size={15} />
             Quitar
           </button>
         )}

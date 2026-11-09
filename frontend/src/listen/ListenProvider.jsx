@@ -9,7 +9,7 @@ import { mixEntries } from "./mixes.js";
 import { LazyOverlays, loadOverlays, loadPageHost, overlaysReady, pageReady } from "./pageLoader.jsx";
 import { history, useHistory } from "./history.js";
 import { playlists, usePlaylists } from "./playlists.js";
-import { useNotice } from "./Notice.jsx";
+import { useNotice, NoticeProvider } from "./Notice.jsx";
 import { SongRow } from "./rows.jsx";
 
 /* ---------------------------------------------------------------------------
@@ -190,19 +190,21 @@ export default function ListenProvider({ files, nav, storage, children }) {
   const overlay = top && (top.type === "menu" || top.type === "picker") ? top : null;
 
   return (
-    <ListenContext.Provider value={value}>
-      {children}
-      {noticeNode}
-      {overlay && (
-        <LazyOverlays
-          top={overlay}
-          byKey={model.byKey}
-          back={navBack}
-          replace={navReplace}
-          goTo={value.ctx.goTo}
-          show={show}
-        />
-      )}
-    </ListenContext.Provider>
+    <NoticeProvider value={show}>
+      <ListenContext.Provider value={value}>
+        {children}
+        {noticeNode}
+        {overlay && (
+          <LazyOverlays
+            top={overlay}
+            byKey={model.byKey}
+            back={navBack}
+            replace={navReplace}
+            goTo={value.ctx.goTo}
+            show={show}
+          />
+        )}
+      </ListenContext.Provider>
+    </NoticeProvider>
   );
 }

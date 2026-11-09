@@ -31,19 +31,27 @@ const D = {
   expand: "M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7",
   collapse: "M20 10h-6V4M4 14h6v6M14 10l7-7M3 21l7-7",
   file: "M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v5h5M9.5 13h5M9.5 17h5",
+  /* Ajustes: los cinco que antes eran Phosphor de 256 y viajaban en su chunk
+     (settings/icons.jsx). `trash` ya estaba. */
+  device: "M9 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM11 18h2",
+  laptop: "M4 6h16v10H4zM2 19h20",
+  cloud: "M7.5 18h9a3.5 3.5 0 0 0 .4-6.98A5 5 0 0 0 7.2 10.5 3.75 3.75 0 0 0 7.5 18z",
+  cookie: "M20.5 12.5A8.5 8.5 0 1 1 11.5 3.5a4 4 0 0 0 5 5 4 4 0 0 0 4 4zM9.5 9.5h.01M8.5 14h.01M14 13.5h.01",
+  upload: "M12 19V5M7.5 9.5 12 5l4.5 4.5",
 };
 
 /* Los puntos son trazos de largo cero: con punta redonda y trazo grueso salen
    como el prototipo. */
 const SW = { dots: 3.4, grip: 3 };
 
-export default function Ico({ n, size = 20, sw = SW[n] ?? 2 }) {
+export default function Ico({ n, size = 20, sw = SW[n] ?? 2, className }) {
   const fill = n === "pause";
   return (
     <svg
       viewBox="0 0 24 24"
       width={size}
       height={size}
+      className={className}
       fill={fill ? "currentColor" : "none"}
       stroke={fill ? "none" : "currentColor"}
       strokeWidth={sw}
