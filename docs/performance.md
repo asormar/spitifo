@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 380,850 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 388,950 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -460,6 +460,47 @@ locks the scroll: it closes when the page scrolls, so the reserved scrollbar
 gutter, which left a 10 px strip outside every full-screen scrim, is gone. The
 fixes net -6 B of script and -86 B of style, and the JavaScript limit went down
 from 380,900 B.
+
+"Ahora suena" is one pane for every width: a full-screen view on a phone, a column
+beside the pages on a desktop (and, wide, over them), with the Cola and Ficha tabs.
+Its code lives in the `NowPlaying` chunk (13,189 B of script and 7,621 B of style,
+from 7,395 B and 5,199 B for the old full-screen view), which loads when the app is
+idle, so the always-parsed bundle only grew by 2 KB of script and 0.4 KB of style.
+The review of that change measured one real cost and two sizes:
+
+- **Expanding and collapsing the column** went through a View Transition that
+  animated the pane's `width` and `height`, so every one of its 28 frames was a
+  main-thread layout. At 4x CPU throttling a toggle cost 246 ms of main thread in
+  the 900 ms after the click (72 ms in the first 120 ms, a 27 ms task, one dropped
+  frame) and at 6x two dropped frames. It now reuses the fade the tabs use: 108 ms,
+  30 ms in the first 120 ms, a 14 ms task, 0-1 dropped frames at 4x (re-run for
+  the final build on a slower session: 419 ms, 99 ms, 45 ms and 1 dropped frame
+  with the transition against 122 ms, 33 ms, 14 ms and 0 without). What is lost is
+  the box morphing from column to page; the page changes at once and its content
+  fades in. Reduced motion is unchanged.
+- **The wide view** kept painting the pages behind it, which showed in the 12 px
+  gap above and below the player bar and cost a third of its idle main-thread time
+  at 4x (149 ms to 100 ms per 1.5 s). `.screens` is now `visibility: hidden` while
+  wide: it stays laid out, so the scroll position survives.
+- **The stylesheet** was 1,780 B over its limit. `lightningcss` as the CSS minifier
+  gets it down by 1,952 B, but only with `build.cssTarget: "chrome111"` (the floor
+  `color-mix()` already sets): with Vite's default target it lowers `inset` to four
+  properties and the CSS gets 1.9 KB bigger. All 38 `color-mix()` calls are still
+  in the built CSS. The dropped transition took 520 B more.
+
+Opening the pane on a phone at 4x takes 214 ms of main thread (the old full-screen
+view: 302 ms) and closing it 203 ms (210 ms); docking the column on a page costs
+46 ms whatever the page (a 3,000-row list included, because the lists are
+virtual); a track change re-renders the pane once, and the tick only the bar's
+scrubber. The second `initials` and `becauseText`, and the two tab buttons of the
+bar, went into one each (-370 B of script together with the transition code).
+
+| Bundle | After the pages and menus | PR 6 before the review | After the review | Old limit | New limit |
+| --- | --- | --- | --- | --- | --- |
+| JavaScript | 380,348 B | 388,804 B (+8,456) | 388,434 B (+8,086) | 380,850 B | 388,950 B |
+| CSS | 100,941 B | 104,780 B (+3,839) | 102,380 B (+1,439) | 103,000 B | 103,000 B |
+
+The JavaScript limit is the measured size plus 500 B, rounded up to 50.
 
 ### Windows installer: 22,707,225 B
 
