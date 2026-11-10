@@ -1,34 +1,61 @@
 /* ---------------------------------------------------------------------------
    DESCUBRIR: el mapa de generos
 
-   El mapa ocupa lo que queda de la pantalla bajo la barra de arriba, sin scroll
-   de pagina: el alto resta esa barra (--top-h, solo escritorio) con el aire de
-   arriba (24 px) y la barra inferior del telefono (--nav-h), y un margen
-   negativo anula el relleno inferior de
-   .app para que el documento no crezca por encima de la ventana. Con el
-   mini-reproductor visible el mapa se acorta lo que este mide.
+   El mapa ocupa lo que queda de la pantalla sin scroll de pagina. Telefono: de
+   borde a borde, desde arriba hasta la barra de pestanas (un margen negativo
+   en la pantalla anula el relleno del .app, ver mas abajo). Escritorio: una
+   tarjeta bajo la barra de arriba (--top-h) con 24 px de aire. Un margen
+   negativo abajo anula el relleno inferior de .app para que el documento no
+   crezca por encima de la ventana; con el mini-reproductor visible el mapa se
+   acorta lo que este mide.
    Los controles flotan sobre el lienzo; el lienzo dibuja solo (ver
    mapCanvas.js). Aca solo se animan transform y opacity.
+
+   Telefono = hoja de "Para ti" (la clase .has-sheet que pone GenreMap al medir:
+   mapa de menos de 560 px). Lo demas va por el ancho de la ventana (960 px).
    ------------------------------------------------------------------------- */
 
 .gmap {
-  --gmap-below: 12px;
+  --gmap-below: 0px;
   --gmap-pad: 128px;
 
   position: relative;
-  height: calc(100dvh - var(--top-h) - 24px - var(--nav-h) - var(--gmap-below));
+  height: calc(100dvh - var(--nav-h) - var(--gmap-below));
   min-height: 300px;
-  margin: 12px 0 calc(var(--gmap-below) - var(--gmap-pad) - 1px);
+  margin: 0 0 calc(var(--gmap-below) - var(--gmap-pad) - 1px);
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
   background: var(--s1);
-  box-shadow: var(--shadow);
 }
 
 body.has-mini .gmap {
-  --gmap-below: calc(var(--mini-h) + 24px);
+  --gmap-below: calc(var(--mini-h) + 12px);
   --gmap-pad: calc(128px + var(--mini-h));
+  /* Bajo el mini el mapa termina redondeado. */
+  border-radius: 0 0 28px 28px;
+}
+
+/* Telefono: la pantalla se sale del relleno del .app (arriba 12 px y los
+   costados). El margen va en la pantalla y no en el mapa: la View Transition
+   de cambio de pestana captura la caja de .screen. */
+@media (max-width: 959.98px) {
+  .screen[data-screen="discover"] {
+    margin: -12px calc(-1 * var(--gutter)) 0;
+  }
+}
+
+@media (min-width: 960px) {
+  .gmap {
+    --gmap-below: 12px;
+    height: calc(100dvh - var(--top-h) - 24px - var(--nav-h) - var(--gmap-below));
+    margin-top: 12px;
+    border-radius: 28px;
+    box-shadow: var(--shadow);
+  }
+
+  body.has-mini .gmap {
+    --gmap-below: calc(var(--mini-h) + 24px);
+    border-radius: 28px;
+  }
 }
 
 /* --- Lienzo ---------------------------------------------------------------- */
@@ -61,49 +88,67 @@ body.has-mini .gmap {
 
 .gmap__search {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   top: 12px;
   left: 12px;
   /* El panel tapa un lado: --fy-right (ver GenreMap.jsx) corre lo flotante. */
-  width: min(320px, calc(100% - 88px - var(--fy-right, 0px)));
+  width: min(340px, calc(100% - 88px - var(--fy-right, 0px)));
+}
+
+.gmap.has-sheet .gmap__search {
+  right: 12px;
+  width: auto;
 }
 
 .gmap__input {
   box-sizing: border-box;
   width: 100%;
-  height: 44px;
-  padding: 0 16px 0 42px;
-  border: 1px solid var(--line);
+  height: 46px;
+  padding: 0 16px 0 44px;
+  border: 0;
   border-radius: var(--r-pill);
   background: var(--s1);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   color: var(--ink);
   font: inherit;
   /* 16 px: por debajo, iOS hace zoom al enfocar. */
   font-size: 16px;
+  font-weight: 600;
+}
+
+.gmap.has-sheet .gmap__input {
+  height: 50px;
+}
+
+/* El aro de foco va en la caja de la pildora y no como contorno. */
+.gmap__input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--acc), var(--shadow);
 }
 
 .gmap__input::placeholder {
-  color: var(--dim);
+  color: var(--mut);
+  font-weight: 500;
+  opacity: 1;
 }
 
 .gmap__lupa {
   position: absolute;
-  top: 13px;
-  left: 14px;
-  color: var(--dim);
+  top: 50%;
+  left: 16px;
+  margin-top: -9px;
+  color: var(--mut);
   pointer-events: none;
 }
 
 .gmap__sugs {
   position: absolute;
-  top: 50px;
+  top: calc(100% + 8px);
   left: 0;
   right: 0;
   margin: 0;
   padding: 6px;
   list-style: none;
-  border: 1px solid var(--line);
   border-radius: var(--r-field);
   background: var(--s1);
   box-shadow: var(--shadow);
@@ -115,12 +160,21 @@ body.has-mini .gmap {
   gap: 10px;
   min-height: 40px;
   padding: 0 12px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
+  font-size: 14.5px;
+  font-weight: 700;
   cursor: pointer;
 }
 
 .gmap__sug[aria-selected="true"] {
   background: var(--hover);
+}
+
+.gmap__sug i {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
 }
 
 .gmap__zoom {
@@ -129,21 +183,31 @@ body.has-mini .gmap {
   top: 12px;
   right: calc(12px + var(--fy-right, 0px));
   display: grid;
-  gap: 6px;
+  gap: 8px;
+}
+
+/* Telefono: la columna baja bajo el buscador, que ahora ocupa todo el ancho. */
+.gmap.has-sheet .gmap__zoom {
+  top: 74px;
 }
 
 .gmap__btn {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--r-pill);
   background: var(--s1);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow);
   color: var(--ink);
   cursor: pointer;
+}
+
+.gmap.has-sheet .gmap__zoom .gmap__btn {
+  width: 46px;
+  height: 46px;
 }
 
 /* Botones del mapa y del panel: mismo tiempo de pulsacion y de color, y la
@@ -169,40 +233,50 @@ body.has-mini .gmap {
   z-index: 1;
   left: 12px;
   bottom: 12px;
-  max-width: calc(100% - 24px);
+  max-width: calc(100% - 24px - var(--fy-right, 0px));
   margin: 0;
-  padding: 4px 12px;
+  padding: 7px 14px;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--s1) 86%, transparent);
+  background: var(--s1);
+  box-shadow: var(--shadow);
   color: var(--mut);
   font-size: 12.5px;
+  font-weight: 700;
   line-height: 1.4;
   pointer-events: none;
+}
+
+/* Con la hoja de "Para ti" abajo la nota sube sobre su barra. */
+.gmap.has-sheet .gmap__note {
+  bottom: 76px;
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
 /* --- Tarjeta del genero ---------------------------------------------------- */
 
 /* La posiciona el lienzo con transform (ver GenreMap.jsx); la entrada es del
-   hijo para que los dos transform no se pisen. */
+   hijo para que los dos transform no se pisen. 380 px: las dos acciones caben
+   lado a lado. */
 .gmap__card {
   position: absolute;
   z-index: 3;
   top: 0;
   left: 0;
-  width: min(272px, calc(100% - 16px));
+  width: min(380px, calc(100% - 16px));
 }
 
 .gmap__cardin {
-  padding: 14px 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-field);
+  padding: 20px 22px;
+  border-radius: 26px;
   background: var(--s1);
   box-shadow: var(--shadow);
   --pop: 0.96;
   animation: pop var(--t-enter) var(--ease) both;
 }
 
-/* Telefono: hoja fija abajo. Sigue sin tapar el punto (el lienzo lo sube). */
+/* Telefono: hoja fija abajo; tapa la barra de "Para ti" (que se oculta, ver
+   .fy[data-covered]). Sigue sin tapar el punto (el lienzo lo sube). */
 .gmap__card.is-sheet {
   top: auto;
   left: 8px;
@@ -213,46 +287,11 @@ body.has-mini .gmap {
   max-height: calc(42% - 8px);
 }
 
-/* En la hoja inferior la altura es lo que falta: las dos acciones van lado a
-   lado en vez de una encima de la otra. */
-/* Con la hoja de "Para ti" abajo, la tarjeta se sienta sobre su barra y la nota
-   sube con ella. */
-.gmap.has-sheet .gmap__card.is-sheet {
-  bottom: 72px;
-}
-
-.gmap.has-sheet .gmap__note {
-  bottom: 76px;
-}
-
-.gmap__card.is-sheet .gmap__acts {
-  /* Pegadas al pie: si hay muchos generos cercanos, se desplazan los chips y
-     las acciones siguen a la vista. */
-  position: sticky;
-  bottom: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 0 14px;
-  background: var(--s1);
-}
-
-.gmap__card.is-sheet .gmap__acts .gmap__go {
-  margin-top: 0;
-  padding: 0 6px;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.gmap__card.is-sheet .gmap__sample {
-  gap: 6px;
-}
-
 .gmap__card.is-sheet .gmap__cardin {
   flex: 1;
   /* Sin relleno abajo: lo pone la barra de acciones, que se pega al borde. */
-  padding-bottom: 0;
+  padding: 20px 20px 0;
+  border-radius: 28px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -260,14 +299,13 @@ body.has-mini .gmap {
 .gmap__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
+  gap: 8px;
 }
 
 .gmap__dot {
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
 }
 
@@ -275,9 +313,13 @@ body.has-mini .gmap {
   flex: 1;
   min-width: 0;
   margin: 0;
-  font: 600 18px / 1.2 var(--font-display);
-  letter-spacing: -0.01em;
+  font: 800 24px / 1.05 var(--font-display);
+  letter-spacing: -0.05em;
   overflow-wrap: anywhere;
+}
+
+.gmap__card.is-sheet .gmap__name {
+  font-size: 26px;
 }
 
 .gmap__name::first-letter {
@@ -286,26 +328,26 @@ body.has-mini .gmap {
 
 .gmap__close {
   flex: none;
-  width: 32px;
-  height: 32px;
-  border-color: transparent;
+  width: 40px;
+  height: 40px;
+  margin: -8px -10px -8px 0;
   box-shadow: none;
   background: transparent;
-  color: var(--mut);
+  color: var(--ink);
 }
 
 .gmap__sub {
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   color: var(--mut);
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .gmap__chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 8px 0 14px;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -313,7 +355,7 @@ body.has-mini .gmap {
 .gmap__chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   min-height: 34px;
   padding: 0 12px;
   border: 0;
@@ -321,28 +363,58 @@ body.has-mini .gmap {
   background: var(--s2);
   color: var(--ink);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
 
 .gmap__chip i {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
+}
+
+/* Acciones lado a lado. En la hoja del telefono van pegadas al pie: si hay
+   muchos generos cercanos se desplazan los chips y las acciones siguen a la
+   vista. */
+.gmap__acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.gmap__card.is-sheet .gmap__acts {
+  position: sticky;
+  bottom: 0;
+  margin-top: 0;
+  padding: 18px 0 20px;
+  background: var(--s1);
 }
 
 .gmap__go {
   width: 100%;
   min-height: 44px;
-  margin-top: 10px;
   border: 0;
   border-radius: var(--r-pill);
   background: var(--pink);
   color: var(--on-pink);
   font: inherit;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.gmap__acts .gmap__go {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.gmap__card.is-sheet .gmap__go {
+  min-height: 46px;
 }
 
 /* La muestra es la accion principal de la tarjeta; Descargar queda segunda. */
@@ -350,7 +422,7 @@ body.has-mini .gmap {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .gmap__sample svg {
@@ -364,10 +436,8 @@ body.has-mini .gmap {
 }
 
 .gmap__go--quiet {
-  margin-top: 8px;
-  background: transparent;
+  background: var(--s2);
   color: var(--ink);
-  box-shadow: inset 0 0 0 1.5px var(--s3);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -376,8 +446,12 @@ body.has-mini .gmap {
     background: var(--hover);
   }
 
+  .gmap__zoom .gmap__btn:hover {
+    background: color-mix(in srgb, var(--ink) 5%, var(--s1));
+  }
+
   .gmap__chip:hover {
-    background: var(--hover);
+    background: color-mix(in srgb, var(--ink) 8%, var(--s2));
   }
 
   .gmap__go:hover:not(:disabled) {
@@ -385,20 +459,16 @@ body.has-mini .gmap {
   }
 
   .gmap__go--quiet:hover:not(:disabled) {
-    background: var(--hover);
+    background: color-mix(in srgb, var(--ink) 8%, var(--s2));
+    filter: none;
   }
 }
 
 @media (pointer: coarse) {
-  .gmap__btn {
-    width: 44px;
-    height: 44px;
-  }
-
   .gmap__close {
     width: 44px;
     height: 44px;
-    margin: -6px -8px -6px 0;
+    margin: -10px -12px -10px 0;
   }
 
   .gmap__chip {
@@ -407,10 +477,6 @@ body.has-mini .gmap {
 
   .gmap__sug {
     min-height: 44px;
-  }
-
-  .gmap__search {
-    width: min(320px, calc(100% - 92px - var(--fy-right, 0px)));
   }
 }
 
@@ -536,6 +602,18 @@ body.has-mini .gmap {
 /* El marco estatico mide lo que el panel de verdad y no se toca. */
 .fy--stub {
   pointer-events: none;
+}
+
+/* Telefono: la tarjeta de un genero ocupa el sitio de la barra (GenreMap pone
+   inert; esto solo la esconde). */
+.fy[data-covered] {
+  visibility: hidden;
+}
+
+/* "Ahora suena" flotando sobre Descubrir (html[data-rp="over"], ver App.jsx)
+   cubre el panel casi entero: lo que asoma no se alcanza ni con el foco. */
+html[data-rp="over"] :is(.fy--side, .fy__pill) {
+  visibility: hidden;
 }
 
 .fy--sheet.fy--stub {

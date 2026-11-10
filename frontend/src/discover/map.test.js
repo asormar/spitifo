@@ -448,6 +448,39 @@ describe("placeCard", () => {
     expect(p.x).toBeGreaterThanOrEqual(0);
     expect(p.y).toBeGreaterThanOrEqual(0);
   });
+
+  /* La tarjeta del genero mide 380 px; el panel de "Para ti" le quita 372 px al mapa. */
+  it("keeps a 380 px card inside the room the panel leaves", () => {
+    const wide = { w: 380, h: 250 };
+    const room = { w: 934 - 372, h: 698 };
+    const right = placeCard(100, 300, wide, room);
+    expect(right.x).toBeGreaterThan(100);
+    expect(right.x + wide.w).toBeLessThanOrEqual(room.w);
+    const left = placeCard(400, 300, wide, room);
+    expect(left.x).toBeLessThan(400);
+    expect(left.x).toBeGreaterThanOrEqual(0);
+    expect(left.x + wide.w).toBeLessThanOrEqual(room.w);
+  });
+
+  it("goes below the point when neither side has room, above when below does not fit", () => {
+    const wide = { w: 380, h: 250 };
+    const room = { w: 562, h: 698 };
+    const below = placeCard(281, 349, wide, room, 8);
+    expect(below.y).toBeGreaterThan(349 + 8);
+    expect(below.x).toBeGreaterThanOrEqual(8);
+    expect(below.x + wide.w).toBeLessThanOrEqual(room.w - 8);
+    const above = placeCard(281, 600, wide, room, 8);
+    expect(above.y + wide.h).toBeLessThan(600 - 8);
+  });
+
+  it("flips left of the point once less than 380 px remain to its right", () => {
+    const wide = { w: 380, h: 250 };
+    const room = { w: 640, h: 698 };
+    const fits = placeCard(230, 300, wide, room);
+    expect(fits.x).toBeGreaterThan(230);
+    const flips = placeCard(400, 300, wide, room);
+    expect(flips.x + wide.w).toBeLessThanOrEqual(400);
+  });
 });
 
 describe("parseMs", () => {

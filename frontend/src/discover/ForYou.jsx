@@ -519,6 +519,8 @@ export default function ForYou({
         className="fy fy--sheet"
         aria-label="Para ti"
         data-snap={snap}
+        data-covered={genreOpen ? "" : undefined}
+        inert={genreOpen ? "" : undefined}
         style={{ height: geo.full }}
         onKeyDown={onKeyDown}
       >

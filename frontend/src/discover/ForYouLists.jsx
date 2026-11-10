@@ -74,7 +74,7 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
 /* --- Artistas --------------------------------------------------------------- */
 
 const MENU_ITEMS = [
-  ["search", "Buscar en Descargar"],
+  ["search", "Buscar para descargar"],
   ["hide", "No me interesa"],
 ];
 

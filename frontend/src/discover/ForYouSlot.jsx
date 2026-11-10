@@ -36,11 +36,11 @@ export function PanelTitle({ head }) {
 
 /* El marco estatico: la barra de la hoja (telefono) o la cabecera del panel
    lateral. Recogido en ancho no pinta nada: la pestana aparece con el panel. */
-function Frame({ narrow, collapsed }) {
+function Frame({ narrow, collapsed, covered }) {
   const head = panelHead(useReco());
   if (narrow) {
     return (
-      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" inert="">
+      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" data-covered={covered ? "" : undefined} inert="">
         <div className="fy__top">
           <div className="fy__peek">
             <span className="fy__grip" />
@@ -106,5 +106,5 @@ export default function ForYouSlot(props) {
   }, [ForYou]);
 
   if (ForYou) return <ForYou {...props} initialCollapsed={collapsed} />;
-  return <Frame narrow={ctx.narrow} collapsed={collapsed} />;
+  return <Frame narrow={ctx.narrow} collapsed={collapsed} covered={ctx.genreOpen} />;
 }
