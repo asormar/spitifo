@@ -91,53 +91,53 @@ export default function YouTubeCookies({ focus }) {
   const state = cookieStatus(info, fmtImportDate);
 
   return (
-    <section
-      className="store__cookies"
-      ref={boxRef}
-      aria-labelledby="ytcookies-title"
-    >
-      <div className="store__cookies-head">
-        <h3 id="ytcookies-title" className="store__cookies-title">
+    <div className="settings__card" ref={boxRef}>
+      <div className="settings__ckhead">
+        <span className="settings__cklabel">
           <Ico n="cookie" size={16} />
-          Cookies de YouTube
-        </h3>
-        <span className="store__cookies-state">{state}</span>
+          Estado
+        </span>
+        <span className="settings__ckstate">{state}</span>
       </div>
       <input
         ref={fileRef}
         type="file"
         accept=".txt,text/plain"
-        className="store__file"
+        className="settings__file"
         onChange={onPick}
       />
-      <div className="store__cookies-actions">
+      <div className="settings__ckacts">
         <button
           type="button"
-          className="vf"
+          className="settings__btn settings__btn--acc"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
         >
-          <Ico n="upload" size={15} />
           {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
         </button>
         {configured && (
-          <button type="button" className="vf" onClick={remove} disabled={busy}>
+          <button
+            type="button"
+            className="settings__btn settings__btn--ghost"
+            onClick={remove}
+            disabled={busy}
+          >
             <Ico n="trash" size={15} />
             Quitar
           </button>
         )}
       </div>
-      <p className="store__note">
+      <p className="settings__note">
         Exporta un <code>cookies.txt</code> desde una ventana privada con sesión
         iniciada en YouTube. Solo se usa si YouTube pide verificar que no eres un
         bot. Usar tu cuenta tiene riesgo de bloqueo: conviene una cuenta
         secundaria.
       </p>
       {err && (
-        <p className="store__err" role="alert">
+        <p className="settings__err" role="alert">
           {err}
         </p>
       )}
-    </section>
+    </div>
   );
 }

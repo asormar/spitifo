@@ -1,0 +1,423 @@
+/* ---------------------------------------------------------------------------
+   AJUSTES
+
+   Una sola pagina de secciones, como el prototipo: el h1, y debajo cada
+   seccion con su h2 sobre el suelo de la pagina. Solo son tarjeta las dos que
+   agrupan controles (Cookies de YouTube e Interfaz); Almacenamiento lleva sus
+   propias tarjetas de radio y la cuota, y Acerca de los datos son filas con
+   hairline. Vive en el chunk de Ajustes (no en el arranque).
+
+   El ancho y las dos columnas de las tarjetas de radio se deciden con
+   container queries sobre la columna real: con "Ahora suena" acoplado la
+   pagina es mas estrecha y las tarjetas se apilan sin media query de ventana.
+   ------------------------------------------------------------------------- */
+
+.settings {
+  max-width: 680px;
+  margin: 8px 0 0;
+  container-type: inline-size;
+}
+
+/* --- Cabecera -------------------------------------------------------------- */
+
+/* El "Volver" va en su propia fila, como el prototipo, y el h1 debajo; en
+   escritorio lo esconde la regla de shell.css (lo pone la barra de arriba) y
+   la columna queda con el h1 solo. */
+.settings__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+
+.settings__back {
+  margin-left: -8px;
+}
+
+.settings__title {
+  margin: 0;
+  font: 700 clamp(26px, 4.6vw, 34px) / 1.1 var(--font-display);
+  letter-spacing: -0.04em;
+}
+
+/* --- Secciones ------------------------------------------------------------- */
+
+.settings__sec {
+  /* La barra de arriba (escritorio) es fija: al traer una seccion a la vista,
+     no queda debajo. */
+  scroll-margin-top: calc(var(--top-h) + 16px);
+}
+
+.settings__h {
+  margin: 34px 2px 4px;
+  font: 700 18px / 1.2 var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+.settings__h:focus-visible {
+  outline-offset: 4px;
+}
+
+.settings__lead {
+  margin: 0 2px 12px;
+  color: var(--mut);
+  font-size: 14px;
+}
+
+/* Tarjeta de las secciones que agrupan controles. */
+.settings__card {
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--s1);
+}
+
+/* --- Almacenamiento: tarjetas de radio ------------------------------------- */
+
+.store__opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Con la columna estrecha (telefono, o escritorio con el panel acoplado) las
+   dos tarjetas se apilan. */
+@container (max-width: 560px) {
+  .store__opts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.store__opt {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--s1);
+  box-shadow: inset 0 0 0 2px transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--t-quick) var(--ease), transform var(--t-press) var(--ease);
+}
+
+.store__opt:active {
+  transform: scale(0.98);
+}
+
+/* La elegida: aro de 2px cobalto, y el aro del radio se llena. */
+.store__opt[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2px var(--acc);
+}
+
+.store__opt[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.store__opt:disabled {
+  cursor: progress;
+}
+
+.store__icon {
+  flex: none;
+  color: var(--acc);
+}
+
+/* El bloque de texto ocupa lo que queda entre el icono y el aro. */
+.store__opt > span:not(.store__icon):not(.store__radio) {
+  min-width: 0;
+}
+
+.store__name {
+  display: block;
+  font-size: 15.5px;
+  font-weight: 800;
+}
+
+.store__sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.store__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.store__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok-t);
+}
+
+/* El aro del radio, a la derecha. */
+.store__radio {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--dim);
+}
+
+.store__opt[aria-checked="true"] .store__radio {
+  box-shadow: inset 0 0 0 2px var(--acc);
+}
+
+.store__opt[aria-checked="true"] .store__radio::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--acc);
+}
+
+/* --- Cuota de Drive -------------------------------------------------------- */
+
+.quota {
+  margin-top: 10px;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--s1);
+}
+
+.quota__bar {
+  display: flex;
+  height: 12px;
+  margin: 2px 0 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--s2);
+}
+
+.quota__app {
+  background: var(--pink);
+}
+
+.quota__other {
+  background: var(--acc);
+}
+
+.quota__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--mut);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.quota__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quota__key {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.quota__key--app {
+  background: var(--pink);
+}
+
+.quota__key--other {
+  background: var(--acc);
+}
+
+.quota__key--free {
+  background: var(--s3);
+}
+
+/* --- Cookies de YouTube ---------------------------------------------------- */
+
+.settings__ckhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.settings__cklabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.settings__cklabel svg {
+  color: var(--acc);
+}
+
+.settings__ckstate {
+  color: var(--mut);
+  font-weight: 600;
+  text-align: right;
+}
+
+.settings__ckacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.settings__file {
+  display: none;
+}
+
+.settings__card code {
+  color: var(--ink);
+  font-size: 0.92em;
+}
+
+/* --- Interfaz -------------------------------------------------------------- */
+
+.settings__label {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.settings__label + .chips {
+  margin-top: 10px;
+}
+
+.settings__label + .settings__note {
+  margin-top: 6px;
+}
+
+.settings__row + .settings__row {
+  margin-top: 18px;
+}
+
+/* --- Acerca de los datos --------------------------------------------------- */
+
+.settings__src {
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings__src:first-child {
+  padding-top: 0;
+}
+
+.settings__src:last-of-type {
+  border-bottom: 0;
+}
+
+.settings__src b {
+  display: block;
+  font-size: 14.5px;
+}
+
+.settings__src span {
+  display: block;
+  margin-top: 3px;
+  color: var(--mut);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* --- Notas y errores ------------------------------------------------------- */
+
+.settings__note {
+  margin: 10px 0 0;
+  color: var(--mut);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.settings__note a {
+  color: var(--acc);
+}
+
+.settings__act {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.settings__act--bad {
+  color: var(--bad-t);
+}
+
+.settings__err {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--bad-bg);
+  color: var(--bad-t);
+  font-size: 13px;
+}
+
+/* --- Botones de la pantalla ------------------------------------------------ */
+
+/* Primario (importar cookies) y fantasma (quitar). 44 px de alto. */
+.settings__btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: var(--tr-press), background-color var(--t-quick) var(--ease);
+}
+
+.settings__btn:active {
+  transform: scale(0.97);
+}
+
+.settings__btn:disabled {
+  cursor: progress;
+}
+
+.settings__btn--acc {
+  background: var(--acc);
+  color: var(--acc-ink);
+}
+
+.settings__btn--ghost {
+  background: var(--s2);
+  color: var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings__btn--ghost:not(:disabled):hover {
+    background: var(--s3);
+  }
+
+  .store__opt:not([aria-checked="true"]):not(:disabled):hover {
+    box-shadow: inset 0 0 0 2px var(--s3);
+  }
+}

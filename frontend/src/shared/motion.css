@@ -21,11 +21,11 @@
 
 /* Feedback al presionar para los botones que no tenian ninguno y que no usan
    transform para colocarse. Una sola regla agrupada: mismos tiempos para todos. */
-:is(.dots__btn, .mini__txt, .store__link) {
+:is(.dots__btn, .mini__txt) {
   transition: var(--tr-press);
 }
 
-:is(.dots__btn, .mini__txt, .store__link):active {
+:is(.dots__btn, .mini__txt):active {
   transform: scale(0.96);
 }
 

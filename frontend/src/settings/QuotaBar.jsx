@@ -21,7 +21,7 @@ export default function QuotaBar({ quota }) {
       <ul className="quota__legend" aria-hidden="true">
         <li><span className="quota__key quota__key--app" />{view.legend[0]}</li>
         <li><span className="quota__key quota__key--other" />{view.legend[1]}</li>
-        <li>{view.legend[2]}</li>
+        <li><span className="quota__key quota__key--free" />{view.legend[2]}</li>
       </ul>
     </div>
   );

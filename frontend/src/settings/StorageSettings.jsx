@@ -156,7 +156,7 @@ export default function StorageSettings({ active, onChanged }) {
 
   return (
     <div className="store">
-      <p className="store__lede">¿Dónde guardas tu música?</p>
+      <p className="settings__lead">¿Dónde guardas tu música?</p>
 
       <div className="store__opts" role="radiogroup" aria-label="Dónde guardas tu música">
         <button
@@ -168,8 +168,11 @@ export default function StorageSettings({ active, onChanged }) {
           disabled={busy}
         >
           <Ico n={deviceIcon} size={24} className="store__icon" />
-          <span className="store__name">Este dispositivo</span>
-          <span className="store__sub">Sin conexión, solo aquí</span>
+          <span>
+            <span className="store__name">Este dispositivo</span>
+            <span className="store__sub">Sin conexión, solo aquí</span>
+          </span>
+          <span className="store__radio" aria-hidden="true" />
         </button>
 
         <button
@@ -182,13 +185,16 @@ export default function StorageSettings({ active, onChanged }) {
           disabled={busy}
         >
           <Ico n="cloud" size={24} className="store__icon" />
-          <span className="store__name">Google Drive</span>
-          <span className="store__sub">{driveSubNode}</span>
+          <span>
+            <span className="store__name">Google Drive</span>
+            <span className="store__sub">{driveSubNode}</span>
+          </span>
+          <span className="store__radio" aria-hidden="true" />
         </button>
       </div>
 
       {pending && (
-        <p className="store__note">
+        <p className="settings__note">
           {viaAndroid
             ? "Esperando a Google…"
             : "Termina de iniciar sesión en el navegador."}{" "}
@@ -197,7 +203,7 @@ export default function StorageSettings({ active, onChanged }) {
               Abrir de nuevo
             </a>
           )}
-          <button type="button" className="store__link" onClick={cancel}>
+          <button type="button" className="settings__act" onClick={cancel}>
             Cancelar
           </button>
         </p>
@@ -206,20 +212,25 @@ export default function StorageSettings({ active, onChanged }) {
       {activeProvider === "google" && <QuotaBar quota={info?.quota} />}
 
       {locked && (
-        <p className="store__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
+        <p className="settings__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
       )}
       {(err || connectErr) && (
-        <p className="store__err" role="alert">
+        <p className="settings__err" role="alert">
           {err || connectErr}
         </p>
       )}
 
       {google?.connected && !locked && (
-        <div className="store__foot">
-          <button type="button" className="store__link" onClick={disconnect} disabled={busy}>
+        <p className="settings__note">
+          <button
+            type="button"
+            className="settings__act settings__act--bad"
+            onClick={disconnect}
+            disabled={busy}
+          >
             Desconectar Google Drive
           </button>
-        </div>
+        </p>
       )}
     </div>
   );
