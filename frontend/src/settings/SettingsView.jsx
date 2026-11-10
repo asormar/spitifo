@@ -80,7 +80,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     <div className="settings">
       <header className="settings__head">
         <button type="button" className="settings__back cbtn cbtn--soft cbtn--l" aria-label="Volver" onClick={onClose}>
-          <Ico n="caret" size={20} sw={2.2} />
+          <Ico n="back" size={20} sw={2.2} />
         </button>
         <h1 className="settings__title">Ajustes</h1>
       </header>
