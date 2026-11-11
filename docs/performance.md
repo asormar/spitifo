@@ -533,10 +533,28 @@ biggest tier would fall back to the text face). Net of the deletions it takes
 The measured size plus 500 B is 386,589 B of script and 102,517 B of style, both
 under their limits, so `scripts/perf/budgets.json` is unchanged (lowering the
 script limit to keep the gain is a separate decision). Nothing new is fetched
-when Descubrir opens: the map's data and `/api/discover` load as before. The
-browser pass for this change (map pan and zoom, "Para ti" opening and closing,
-the row that folds when dismissed, Ajustes opening, at 1x and 4x CPU throttling)
-is its review and is not in these numbers.
+when Descubrir opens: the map's data and `/api/discover` load as before.
+
+The review of that change measured the map's draw time per frame at 4x CPU
+throttling, against the build before it:
+
+| Gesture | PC before | PC after | Phone before | Phone after |
+| --- | --- | --- | --- | --- |
+| Pan fling | 5.5 ms | 6.3 ms | 4.9 ms | 5.1 ms |
+| Wheel zoom (PC) / pinch zoom (phone) | 9.0 ms | 8.7 ms | 8.2 ms | 9.1 ms |
+| Fit | 9.4 ms | 10.4 ms | 7.7 ms | 7.9 ms |
+
+Coloured label text adds about 0.5 ms per frame. No frames drop beyond the old
+build at 1x or 4x; at 6x both builds sit at the 16.7 ms edge. "Para ti" and
+Ajustes cost the same as before, and the row that folds on dismiss has no frame
+over 50 ms at 4x or 6x. The review fixed two things:
+- The phone's full-bleed margin moved from the Descubrir screen to the map. A
+  wider screen box made the tab View Transition scale the old screen by 0.91 or
+  1.10 for about 120 ms.
+- The row menu of the half-open "Para ti" sheet now opens upward when the tab
+  bar would cover it.
+
+Those fixes add 133 B of script and save 53 B of style.
 
 ### Windows installer: 22,707,225 B
 

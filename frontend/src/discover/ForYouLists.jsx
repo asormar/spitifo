@@ -86,7 +86,13 @@ function RowMenu({ onPick, listRef }) {
   useLayoutEffect(() => {
     const el = ref.current;
     el.querySelector("button").focus({ preventScroll: true });
-    const edge = (listRef.current || document.documentElement).getBoundingClientRect().bottom;
+    /* En la hoja la lista llega mas abajo que la ventana: el borde es el de la
+       barra de pestanas (en ancho no hay y `height` es 0). */
+    const nav = document.querySelector(".tabbar, .dots")?.getBoundingClientRect();
+    const edge = Math.min(
+      (listRef.current || document.documentElement).getBoundingClientRect().bottom,
+      nav?.height ? nav.top : Infinity
+    );
     if (el.getBoundingClientRect().bottom > edge) el.dataset.up = "";
   }, [listRef]);
 

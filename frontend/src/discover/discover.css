@@ -34,12 +34,13 @@ body.has-mini .gmap {
   border-radius: 0 0 28px 28px;
 }
 
-/* Telefono: la pantalla se sale del relleno del .app (arriba 12 px y los
-   costados). El margen va en la pantalla y no en el mapa: la View Transition
-   de cambio de pestana captura la caja de .screen. */
+/* Telefono: el mapa se sale del relleno del .app (arriba 12 px y los
+   costados). El margen va en el mapa y no en la pantalla: si .screen fuera
+   mas ancha que las otras pestanas, la View Transition la escalaria. */
 @media (max-width: 959.98px) {
-  .screen[data-screen="discover"] {
-    margin: -12px calc(-1 * var(--gutter)) 0;
+  .gmap {
+    margin-top: -12px;
+    margin-inline: calc(-1 * var(--gutter));
   }
 }
 
