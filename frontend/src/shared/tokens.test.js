@@ -106,6 +106,16 @@ describe.each([
     expect(ratio(color(theme, `--${fg}`), tint)).toBeGreaterThanOrEqual(4.5);
   });
 
+  /* El glifo de reproducir de la fila elegida: rosa al 80 % hacia la tinta (el
+     rosa puro sobre el tinte da 2.6 en claro) sobre ese mismo tinte, 3:1. */
+  it("play glyph on the selected-row tint reaches 3:1", () => {
+    const pink = color(theme, "--pink");
+    const ink = color(theme, "--ink");
+    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    const glyph = [0, 1, 2].map((i) => pink[i] * 0.8 + ink[i] * 0.2);
+    expect(ratio(glyph, tint)).toBeGreaterThanOrEqual(3);
+  });
+
   it("defines the 16 genre colours", () => {
     for (let i = 0; i < 16; i++) expect(() => color(theme, `--genre-${i}`)).not.toThrow();
   });
