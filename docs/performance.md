@@ -502,6 +502,42 @@ bar, went into one each (-370 B of script together with the transition code).
 
 The JavaScript limit is the measured size plus 500 B, rounded up to 50.
 
+Descubrir and Ajustes (the map card with labels and rings in the colour of their
+genre, the "Para ti" sheet and panel, and Ajustes as one page of sections) restyle
+two screens that already had their structure, so the change is mostly deletions.
+The sliding pill behind the old segmented controls (`.segs` and
+`useSlidingPill`) is gone: the tabs of "Para ti" and the two choices in Ajustes
+are the shared `.chip`s. The Ajustes rules (1,308 B of `.settings*`) left the
+render-blocking first stylesheet for the Settings chunk, the Phosphor glyphs that
+chunk carried became five stroke glyphs of the shared set, and the toast
+Descubrir drew for itself is the provider's one (`NoticeProvider`). The labels of
+the map are drawn in their genre's colour with a guard: the fit view still
+labels 100 genres against 103 before (97%; the guard is 85%, and below it the
+biggest tier would fall back to the text face). Net of the deletions it takes
+2,345 B of script and 363 B of style off the totals, and the first stylesheet is
+2,222 B smaller, so neither limit moves:
+
+| Bundle | PR 6 after the review | After Descubrir and Ajustes | Limit | Headroom |
+| --- | --- | --- | --- | --- |
+| JavaScript | 388,434 B | 386,089 B (−2,345) | 388,950 B | 2,861 B |
+| CSS | 102,380 B | 102,017 B (−363) | 103,000 B | 983 B |
+
+| Chunk | Before (script / style) | After (script / style) |
+| --- | --- | --- |
+| `index-*` (first script and render-blocking stylesheet) | 229,881 B / 39,131 B | 229,930 B / 36,909 B |
+| `SettingsView-*` (Ajustes) | 14,734 B / 2,873 B | 12,106 B / 4,723 B |
+| `DiscoverView-*` (the map) | 23,505 B / 7,074 B | 23,561 B / 7,615 B |
+| `ForYou-*` ("Para ti") | 18,700 B / 8,245 B | 18,727 B / 7,713 B |
+| `chips-*` (shared) | — / 897 B | — / 897 B |
+
+The measured size plus 500 B is 386,589 B of script and 102,517 B of style, both
+under their limits, so `scripts/perf/budgets.json` is unchanged (lowering the
+script limit to keep the gain is a separate decision). Nothing new is fetched
+when Descubrir opens: the map's data and `/api/discover` load as before. The
+browser pass for this change (map pan and zoom, "Para ti" opening and closing,
+the row that folds when dismissed, Ajustes opening, at 1x and 4x CPU throttling)
+is its review and is not in these numbers.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

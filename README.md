@@ -13,7 +13,7 @@ Free-licence catalogues + YouTube as a last resort · Identity verification on e
 ![yt-dlp](https://img.shields.io/badge/yt--dlp-ff0000?logo=youtube&logoColor=white)
 ![mutagen](https://img.shields.io/badge/mutagen-43B02A?logo=python&logoColor=white)
 
-<img src="docs/app-home.png" alt="Spitifo home screen: dark interface with search bar, mode selector (Music / All sources / YouTube) and format selector" width="820">
+<img src="docs/app-home.png" alt="Spitifo on a desktop, dark theme: the left navigation (Inicio, Buscar, Tu biblioteca, Descubrir), the Mezcla record playing, the Seguir escuchando shelf and the floating player bar" width="820">
 
 *Local-first. No accounts, no cloud, no tracking.*
 
@@ -27,7 +27,7 @@ Free-licence catalogues + YouTube as a last resort · Identity verification on e
 - [The hard part: knowing what you downloaded](#the-hard-part-knowing-what-you-downloaded)
 - [How the sources work](#how-the-sources-work)
 - [The matcher](#the-matcher)
-- [Results in the browser](#results-in-the-browser)
+- [The app](#the-app)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [Embedding the backend](#embedding-the-backend)
@@ -151,23 +151,67 @@ A video is never reused for two different tracks.
 
 </div>
 
-## Results in the browser
+## The app
 
-<img src="docs/app-results.png" alt="Search results as a card grid: album artwork, title, artist and album, provenance line reading 'ficha: iTunes · archivo: YouTube', duration, a 30-second preview player and a download button labelled Completo" width="820">
+<img src="docs/app-results.png" alt="Buscar on a desktop, light theme: the search field with the Música, Todas las fuentes and YouTube chips and the mp3, m4a and original formats, the matches under En tu biblioteca, and the Para descargar results table with cover, title, verdict pill, source, duration, preview and download buttons" width="820">
 
-Each card states where **every** piece of data came from:
+Four tabs hold everything: **Inicio**, **Buscar**, **Tu biblioteca** and **Descubrir**, plus
+**Ajustes**. It is one responsive app, in a light and a dark theme: a left navigation, a
+top bar and a floating player bar on a desktop; a tab bar, a mini player and a
+full-screen **Ahora suena** on a phone.
 
-> `ficha: iTunes` · `archivo: YouTube` · `3:07` · vídeo · procedencia
+- **Buscar** is a single search field. While you type it lists the matches in your own
+  library (*En tu biblioteca*); on Enter it searches every active source (*Para
+  descargar*), as rows on a phone and as a table on a desktop. A result shows its cover,
+  a verdict pill, its source and duration and, when the source offers one, a 30-second
+  preview and a download button. A result with no full version says so instead of
+  offering a download.
+- **Inicio** and **Tu biblioteca** play what you already have: the *Mezcla* record (an
+  endless shuffle of the whole library, of what you play most, of what is new or of what
+  you have not heard yet), shelves, lists, albums and artists.
+- **Ahora suena** shows what is playing, the queue and the facts of the file.
+- **Ajustes** is where the music is stored (this device or Google Drive), the YouTube
+  cookies, the theme and where the recommendation data comes from.
+
+Every result states where **every** piece of data came from. The source column reads
+`iTunes` over `audio: YouTube` when the metadata and the audio come from different
+places (on a phone, a two-letter tag with the same text as its tooltip):
+
+> `iTunes` · `audio: YouTube` · `3:07`
 
 The labels are not decoration. In matched mode iTunes only *contributes metadata* while
 yt-dlp *downloads the audio*, so an unlabelled "iTunes · 3:07" reads as if the complete
 track came from iTunes — which would be false, since iTunes only serves 30-second
 previews.
 
-**Verified accessibility:** every text/background pair was measured, not eyeballed.
-The lowest ratio in either theme is **6.04:1** (dark) and **7.43:1** (light), all above
-the WCAG AA threshold of 4.5:1. The layout is verified down to 390 px wide with no
-horizontal overflow and 44 px minimum touch targets.
+The verdict pill is just as careful. A result starts as *Sin verificar* (or *Solo 30 s*
+when its source only has a preview): nobody has looked at the audio yet. *Coincide*,
+*Parecido* and *No coincide* appear only after the app has read the real tags of the
+file, either from a download or from *¿Es esta la canción?* in the result's ficha, which
+reads them without saving the file.
+
+### Descubrir
+
+<img src="docs/app-discover.png" alt="Descubrir on a desktop, light theme: the genre map with the card of the hip hop genre (nearby genres, a sample and a download shortcut) and the Para ti panel with recommended artists and the reason for each" width="820">
+
+**Descubrir** is a map of the genres, laid out so that genres that share artists sit
+close together (they do not necessarily sound alike). Drag, pinch or scroll to move
+around, search a genre or tap a label to open its card: the nearby genres,
+**Escuchar muestra** for a short sample and **Buscar para descargar**, which takes the
+name to Buscar.
+
+**Para ti** lists artists you may like, each with the reason (*Porque escuchas ...*). It
+is a sheet you drag up on a phone and a side panel on a desktop. **No me interesa** hides
+an artist (with **Deshacer**), and the **Géneros** tab shows the genres you listen to
+most. It is computed on your device: only the artist names go to MusicBrainz and
+ListenBrainz, and your listening history stays here.
+
+<img src="docs/app-phone.png" alt="Three phone screens side by side, light theme: Inicio with the Mezcla record playing and the mini player, Ahora suena with the cover, the controls and the file card, and Descubrir with the genre map and the Para ti sheet" width="820">
+
+**Accessibility:** the text and background pairs of both themes are pinned by a test
+(`frontend/src/shared/tokens.test.js`): every text pair reaches the WCAG AA threshold of
+4.5:1, and the pink play glyphs, which are graphics, reach 3:1. Motion honours
+`prefers-reduced-motion`.
 
 ## Getting started
 
