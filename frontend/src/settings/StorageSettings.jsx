@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "./icons.jsx";
+import Ico from "../shared/ico.jsx";
 import { API, fetchErr } from "../shared/api.js";
+import { connectErrorText, driveSub } from "./storageInfo.js";
 import QuotaBar from "./QuotaBar.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent);
-/* Los mensajes del flujo vienen del backend en ingles y estables: se traducen
-   aca para no mostrar texto crudo. */
-function connectErrorText(error) {
-  if (!error) return null;
-  if (/cancel/i.test(error)) return "Cancelaste el inicio de sesión.";
-  if (/timed out/i.test(error)) return "El navegador tardó demasiado. Vuelve a intentarlo.";
-  return "No se pudo conectar con Google Drive. Vuelve a intentarlo.";
-}
-
 /* Cuerpo de la seccion Almacenamiento. Era un <dialog>; ahora es una seccion
    normal de Ajustes, asi que no abre ni cierra nada: solo se carga cuando la
    pantalla esta activa y deja de sondear cuando se sale. */
@@ -144,28 +136,27 @@ export default function StorageSettings({ active, onChanged }) {
   };
 
   const connectErr = connectErrorText(info?.connect?.error);
-  const deviceIcon = IS_ANDROID ? "DeviceMobile" : "Laptop";
+  const deviceIcon = IS_ANDROID ? "device" : "laptop";
 
-  let driveSub;
-  if (!info) driveSub = " ";
-  else if (!google?.configured) driveSub = "No disponible en esta versión";
-  else if (pending) driveSub = (
-    <span className="store__state">
-      <Icon name="CircleNotch" size={14} className="spin" aria-hidden="true" />
-      {viaAndroid ? "Esperando a Google…" : "Esperando al navegador…"}
-    </span>
-  );
-  else if (google.connected) driveSub = (
-    <span className="store__state">
-      <span className="store__dot" aria-hidden="true" />
-      Conectada
-    </span>
-  );
-  else driveSub = "Conecta tu cuenta";
+  const sub = driveSub(info, { pending, viaAndroid });
+
+  let driveSubNode = sub.text;
+  if (sub.state) {
+    driveSubNode = (
+      <span className="store__state">
+        {sub.state === "pending" ? (
+          <Ico n="retry" size={14} className="spin" />
+        ) : (
+          <span className="store__dot" aria-hidden="true" />
+        )}
+        {sub.text}
+      </span>
+    );
+  }
 
   return (
     <div className="store">
-      <p className="store__lede">¿Dónde guardas tu música?</p>
+      <p className="settings__lead">¿Dónde guardas tu música?</p>
 
       <div className="store__opts" role="radiogroup" aria-label="Dónde guardas tu música">
         <button
@@ -176,9 +167,12 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickLocal}
           disabled={busy}
         >
-          <Icon name={deviceIcon} size={24} weight="duotone" className="store__icon" aria-hidden="true" />
-          <span className="store__name">Este dispositivo</span>
-          <span className="store__sub">Sin conexión, solo aquí</span>
+          <Ico n={deviceIcon} size={24} className="store__icon" />
+          <span>
+            <span className="store__name">Este dispositivo</span>
+            <span className="store__sub">Sin conexión, solo aquí</span>
+          </span>
+          <span className="store__radio" aria-hidden="true" />
         </button>
 
         <button
@@ -190,14 +184,17 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickDrive}
           disabled={busy}
         >
-          <Icon name="GoogleDriveLogo" size={24} weight="duotone" className="store__icon" aria-hidden="true" />
-          <span className="store__name">Google Drive</span>
-          <span className="store__sub">{driveSub}</span>
+          <Ico n="cloud" size={24} className="store__icon" />
+          <span>
+            <span className="store__name">Google Drive</span>
+            <span className="store__sub">{driveSubNode}</span>
+          </span>
+          <span className="store__radio" aria-hidden="true" />
         </button>
       </div>
 
       {pending && (
-        <p className="store__note">
+        <p className="settings__note">
           {viaAndroid
             ? "Esperando a Google…"
             : "Termina de iniciar sesión en el navegador."}{" "}
@@ -206,7 +203,7 @@ export default function StorageSettings({ active, onChanged }) {
               Abrir de nuevo
             </a>
           )}
-          <button type="button" className="store__link" onClick={cancel}>
+          <button type="button" className="settings__act" onClick={cancel}>
             Cancelar
           </button>
         </p>
@@ -215,20 +212,25 @@ export default function StorageSettings({ active, onChanged }) {
       {activeProvider === "google" && <QuotaBar quota={info?.quota} />}
 
       {locked && (
-        <p className="store__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
+        <p className="settings__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
       )}
       {(err || connectErr) && (
-        <p className="store__err" role="alert">
+        <p className="settings__err" role="alert">
           {err || connectErr}
         </p>
       )}
 
       {google?.connected && !locked && (
-        <div className="store__foot">
-          <button type="button" className="store__link" onClick={disconnect} disabled={busy}>
+        <p className="settings__note">
+          <button
+            type="button"
+            className="settings__act settings__act--bad"
+            onClick={disconnect}
+            disabled={busy}
+          >
             Desconectar Google Drive
           </button>
-        </div>
+        </p>
       )}
     </div>
   );

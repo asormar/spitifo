@@ -76,9 +76,7 @@ body.has-mini .app {
     .num,
     .prog__state,
     .srow__d,
-    .np__times,
-    .quota__legend,
-    .store__cookies-state
+    .np__times
   ) {
   font-variant-numeric: tabular-nums;
 }

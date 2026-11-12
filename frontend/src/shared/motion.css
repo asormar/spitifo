@@ -5,11 +5,6 @@
    ------------------------------------------------------------------------- */
 
 @media (hover: hover) and (pointer: fine) {
-  .seg:not(.is-on):hover {
-    background: var(--hover);
-    color: var(--ink);
-  }
-
   .vf:not(:disabled):hover {
     background: var(--s3);
   }
@@ -26,17 +21,16 @@
 
 /* Feedback al presionar para los botones que no tenian ninguno y que no usan
    transform para colocarse. Una sola regla agrupada: mismos tiempos para todos. */
-:is(.dots__btn, .mini__txt, .store__link) {
+:is(.dots__btn, .mini__txt) {
   transition: var(--tr-press);
 }
 
-:is(.dots__btn, .mini__txt, .store__link):active {
+:is(.dots__btn, .mini__txt):active {
   transform: scale(0.96);
 }
 
 /* Dedo: los botones secundarios tambien llegan a 44px. */
 @media (pointer: coarse) {
-  .seg,
   .vf {
     min-height: 44px;
   }

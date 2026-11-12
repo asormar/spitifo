@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { cx, useSlidingPill } from "../shared/ui.jsx";
+import { cx } from "../shared/ui.jsx";
 import { listDrag, panelDecision, pickSnap, resist, sheetGeometry, snapName, tabDecision } from "./gestures.js";
 import { PANEL_ROOM, PANEL_W, startsCollapsed } from "./frame.js";
 import { Icon } from "./icons.jsx";
@@ -8,6 +8,7 @@ import { normalize } from "./map.js";
 import { reco, useReco, visibleArtists } from "./reco.js";
 import { useDrag } from "./useDrag.js";
 import { ArtistRow, GenresTab, StateBlock } from "./ForYouLists.jsx";
+import "../shared/chips.css";
 import "./foryou.css";
 
 /* ---------------------------------------------------------------------------
@@ -66,7 +67,6 @@ export default function ForYou({
   /* El hueco (ForYouSlot) ya decidio si el panel lateral nace recogido. */
   const [collapsed, setCollapsed] = useState(initialCollapsed);
 
-  const segsRef = useRef(null);
   const listRef = useRef(null);
   const sheetRef = useRef(null);
   const sideRef = useRef(null);
@@ -76,8 +76,6 @@ export default function ForYou({
   const exits = useRef(new Map());
   const snapRef = useRef(snap);
   snapRef.current = snap;
-  /* La pastilla se vuelve a medir si el marco cambia (hoja <-> panel). */
-  useSlidingPill(segsRef, `${tab}${narrow}`);
 
   /* --- Datos de las filas -------------------------------------------------- */
 
@@ -431,7 +429,7 @@ export default function ForYou({
   /* --- Contenido ------------------------------------------------------------ */
 
   const tabs = (
-    <div ref={segsRef} className="segs fy-tabs" role="group" aria-label="Contenido del panel">
+    <div className="chips fy-tabs" role="group" aria-label="Contenido del panel">
       {[
         ["art", "Artistas"],
         ["gen", "Géneros"],
@@ -439,7 +437,7 @@ export default function ForYou({
         <button
           key={id}
           type="button"
-          className={cx("seg", tab === id && "is-on")}
+          className={cx("chip", tab === id && "is-on")}
           aria-pressed={tab === id}
           onClick={() => {
             setTab(id);
@@ -521,6 +519,8 @@ export default function ForYou({
         className="fy fy--sheet"
         aria-label="Para ti"
         data-snap={snap}
+        data-covered={genreOpen ? "" : undefined}
+        inert={genreOpen ? "" : undefined}
         style={{ height: geo.full }}
         onKeyDown={onKeyDown}
       >

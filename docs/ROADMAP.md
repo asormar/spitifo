@@ -879,6 +879,43 @@ The plan as written:
 - The same review as session 20, now covering Discover: the map's data and
   rendering, and anything the recommendations added to start-up.
 
+### 25. Redesign «Combinación» — PRs 1–7 done, PR 8 pending
+
+A chain of pull requests, each reviewed and merged into `main` in order, replaced
+the interface with the approved «Combinación» design: the Disco logo, Unbounded
+and Onest, one palette in two themes, four tabs and one app for the phone and the
+desktop. No feature was dropped and `main` worked at every merge. Plan, design
+and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
+
+1. **Base.** Tokens for both themes, fonts, logo and favicon, radii, shadows and
+   motion curves, and the primitives (buttons, chips, pills, generated covers).
+2. **Shell.** Inicio, Buscar, Tu biblioteca and Descubrir; on a phone a tab bar
+   and a floating mini player, on a desktop a left navigation, a top bar and a
+   floating player bar. The theme moved into Ajustes.
+3. **Buscar.** One field: the library as you type, the sources on Enter; result
+   rows and a table, verdict pills, the download ring and the result ficha.
+4. **Inicio and Tu biblioteca.** The Mezcla record with endless mixes, shelves,
+   «Todas tus canciones» and grouped library search.
+5. **Pages.** Album, artist and list pages, the track and list menus, the
+   playlist picker and the toasts, with their loading, empty and error states.
+6. **Ahora suena.** A full screen on a phone and a column beside the pages on a
+   desktop, with Cola and Ficha; the docked pane is off on Descubrir.
+7. **Descubrir and Ajustes.** The map card with genre-coloured labels, the genre
+   card, «Para ti» (a sheet on a phone, a panel inside the map card on a
+   desktop), and Ajustes as one page of sections. «Buscar para descargar» is the
+   wording wherever Descubrir points to a download.
+
+- **Truthful until PR 8.** The library has no verdict, provenance, genre or year
+  per file yet, so the app shows none: no pill on a library file, no «Ver la
+  ficha del archivo» item and no «En el mapa de géneros» card in Ahora suena.
+  PR 8 (`feat/file-verdict`) stores them at download time and lights those up.
+- **Size.** The JavaScript limit went from 371,000 B to 388,950 B over PRs 2–6
+  and the CSS limit stayed at 103,000 B. PR 7 ends at 386,089 B and 102,017 B,
+  with the first stylesheet 2,222 B smaller (`docs/performance.md`).
+- **Not done.** Installed-app and Pixel runs of `scripts/perf/ui.mjs` for the
+  redesign, the app icons with the Disco mark (installer and launcher), and the
+  logo decision in `PRODUCT.md`.
+
 ## Dependencies
 
 ```
@@ -887,7 +924,7 @@ The plan as written:
 2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ──┬── 8 Others
                                                                     └── 19 Playlists
 12 Baseline ── 13 Split frontend ── 14 Playback engine ── 15 App shell ── 16 Motion ──┬── 17 Library and queue ── 18 Now playing ── 19 Playlists ── 20 Review 1
-                                                                                      └── 21 Discover research ── 22 Genre map ── 23 Recommendations ── 24 Review 2
+                                                                                      └── 21 Discover research ── 22 Genre map ── 23 Recommendations ── 24 Review 2 ── 25 Redesign
                                                              9 Release ── 10 Hardening ── 11 Smaller, signed binaries
 ```
 
@@ -919,7 +956,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8, 10–24 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10–25 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:

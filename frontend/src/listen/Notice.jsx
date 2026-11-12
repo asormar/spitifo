@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 
 /* ---------------------------------------------------------------------------
@@ -6,9 +6,20 @@ import { cx } from "../shared/ui.jsx";
 
    El aviso pasajero de la biblioteca y de "Ahora suena": un texto que se retira
    solo, con un boton opcional (Deshacer). La biblioteca lo pinta una vez en
-   ListenProvider, fuera de las pantallas; "Ahora suena" y Descubrir pintan el
-   suyo (el de la biblioteca queda debajo de ellos).
+   ListenProvider, fuera de las pantallas; "Ahora suena" pinta el suyo (el de la
+   biblioteca queda debajo de el). Descubrir usa el de la biblioteca a traves de
+   `useShow()`: asi el "Ocultado {name}. Deshacer" es el mismo toast y sobrevive
+   a salir de Descubrir.
    ------------------------------------------------------------------------- */
+
+/* Solo la funcion `show`, estable: quien la usa (Descubrir) no se repinta cada
+   vez que cambia la biblioteca o la cola, que es lo que pasaria con
+   `useListen()`. */
+const NoticeContext = createContext(null);
+
+export const NoticeProvider = NoticeContext.Provider;
+
+export const useShow = () => useContext(NoticeContext);
 
 /* El aviso se retira solo; la salida dura --t-quick (180 ms). Con boton se
    deja mas tiempo: hay que poder leerlo y llegar a el. */

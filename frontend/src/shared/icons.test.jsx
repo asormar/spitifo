@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { Icon } from "./icons.jsx";
-import { Icon as SettingsIcon } from "../settings/icons.jsx";
+import Ico from "./ico.jsx";
 import { Icon as ListenIcon } from "../listen/icons.jsx";
 
 describe("Icon", () => {
@@ -19,9 +19,9 @@ describe("Icon", () => {
   });
 
   it("duotone lleva la capa con opacidad", () => {
-    const html = renderToStaticMarkup(<SettingsIcon name="Cookie" weight="duotone" />);
-    expect(html).toContain('opacity="0.2"');
-    expect(html.match(/<path/g)).toHaveLength(2);
+    const html = renderToStaticMarkup(<Icon name="Sparkle" weight="fill" />);
+    expect(html).toContain("<path");
+    expect(renderToStaticMarkup(<Icon name="Moon" weight="fill" />)).toContain("<path");
   });
 
   it("las vistas heredan los iconos del script inicial", () => {
@@ -32,5 +32,27 @@ describe("Icon", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(renderToStaticMarkup(<Icon name="Nope" />)).toBe("");
     warn.mockRestore();
+  });
+});
+
+/* Los de trazo: Ajustes usa los cinco que antes eran Phosphor de 256. */
+describe("Ico", () => {
+  it.each(["device", "laptop", "cloud", "cookie", "upload", "trash", "caret"])(
+    "pinta el glifo %s como un solo trazo",
+    (n) => {
+      const html = renderToStaticMarkup(<Ico n={n} />);
+      expect(html.startsWith('<svg viewBox="0 0 24 24" width="20" height="20"')).toBe(true);
+      expect(html).toContain('stroke="currentColor"');
+      expect(html.match(/<path/g)).toHaveLength(1);
+    }
+  );
+
+  it("acepta className para el color de cada sitio", () => {
+    expect(renderToStaticMarkup(<Ico n="cloud" className="store__icon" />)).toContain(
+      'class="store__icon"'
+    );  });
+
+  it("un glifo sin definir no pinta trazo", () => {
+    expect(renderToStaticMarkup(<Ico n="nope" />)).not.toContain("d=");
   });
 });

@@ -228,8 +228,10 @@ export default function GenreMap({
     /* El tema vive en data-theme de <html>; la paleta y la tinta cambian con el. */
     const mo = new MutationObserver(() => engine.refreshTheme());
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    /* Las fuentes de las etiquetas se piden aca: sin esto el lienzo mide con la
+       de respaldo hasta que otra cosa de la pagina las cargue. */
     let alive = true;
-    document.fonts?.ready.then(() => alive && engine.refreshTheme());
+    engine.loadFonts().then(() => alive && engine.refreshTheme());
 
     return () => {
       alive = false;
@@ -378,6 +380,7 @@ export default function GenreMap({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => goTo(i)}
               >
+                <i style={{ background: `var(--genre-${data.c[i]})` }} aria-hidden="true" />
                 {data.names[i]}
               </li>
             ))}
@@ -461,7 +464,7 @@ export default function GenreMap({
                 </button>
               )}
               <button type="button" className="gmap__go gmap__go--quiet" onClick={() => onSearchGenre?.(name)}>
-                Buscar en Descargar
+                Buscar para descargar
               </button>
             </div>
           </div>
