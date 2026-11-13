@@ -20,6 +20,8 @@ from .artistinfo import artist_name, fold, split_artists
 
 #: Tope de generos del perfil y de candidatos devueltos.
 MAX_USER_GENRES = 8
+#: Generos que se devuelven de UN artista (la tarjeta del mapa muestra cuatro).
+MAX_ARTIST_GENRES = 6
 MAX_CANDIDATES = 20
 MAX_CANDIDATE_GENRES = 3
 MAX_BECAUSE = 2
@@ -131,6 +133,31 @@ def user_genres(library: dict, records: dict,
             continue
         for name, count in pairs:
             totals[name] = totals.get(name, 0.0) + weight * count / total
+    top = sorted(totals.items(), key=lambda item: (-item[1], item[0]))[:limit]
+    overall = sum(value for _, value in top)
+    if overall <= 0:
+        return []
+    return [{"name": name, "share": value / overall} for name, value in top]
+
+
+def artist_genres(credit: str, records: dict,
+                  limit: int = MAX_ARTIST_GENRES) -> list[dict]:
+    """Generos de UN artista (o credito): `[{name, share}]`, normalizados a 1.
+
+    Un credito de colaboracion (`"A & B"`) se parte con `split_artists` y cada
+    parte reparte su peso entre sus generos (`count / total`); los repartos se
+    suman. Una ficha sin generos (artista desconocido, o una consulta fallida
+    sin nada guardado) no aporta. Una ficha vieja SI cuenta: `error_record`
+    conserva a proposito los generos que ya se sabian.
+    """
+    totals: dict[str, float] = {}
+    for part in split_artists(credit):
+        pairs = _genre_counts(records.get(fold(part)))
+        total = sum(count for _, count in pairs)
+        if total <= 0:
+            continue
+        for name, count in pairs:
+            totals[name] = totals.get(name, 0.0) + count / total
     top = sorted(totals.items(), key=lambda item: (-item[1], item[0]))[:limit]
     overall = sum(value for _, value in top)
     if overall <= 0:

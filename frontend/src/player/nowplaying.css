@@ -361,6 +361,57 @@
   transition: var(--tr-press);
 }
 
+/* En el mapa de generos. */
+.gchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(14, 14, 24, 0.34);
+  color: #fff;
+  font: 700 13px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.gchip:active {
+  transform: scale(0.96);
+}
+
+/* La mayuscula inicial por CSS (el nombre queda como lo trae el mapa); first-letter
+   no aplica a un contenedor flex, de ahi el bloque en linea. */
+.gchip__t {
+  display: inline-block;
+}
+
+.gchip__t::first-letter {
+  text-transform: uppercase;
+}
+
+.gd {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--gc);
+}
+
+.ncard__n {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: 0.94;
+}
+
 /* Si te gusta, prueba. */
 .try {
   display: grid;

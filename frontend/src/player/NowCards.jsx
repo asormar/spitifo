@@ -1,19 +1,22 @@
 import { useMemo } from "react";
 import { NavIcon } from "../app/navIcons.jsx";
 import { useNav } from "../app/useNav.js";
+import { requestGenre } from "../discover/genreRequest.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { useListen } from "../listen/ListenProvider.jsx";
 import { useHistory } from "../listen/history.js";
 import { initials } from "../shared/format.js";
+import { useArtistGenres } from "./genreChips.js";
 import { fileFacts, readReco, relatedTo } from "./nowInfo.js";
 
 /* ---------------------------------------------------------------------------
    TARJETAS DE "AHORA SUENA"
 
    Lo que se sabe de la cancion que suena, solo con datos que la app tiene de
-   verdad: cada tarjeta devuelve null si no hay nada que decir. Ninguna pide
-   nada a la red ni trae otro chunk al abrirse.
+   verdad: cada tarjeta devuelve null si no hay nada que decir. Ninguna trae
+   otro chunk al abrirse; solo la de generos pide algo (los generos del artista
+   y, si hay, el mapa).
    ------------------------------------------------------------------------- */
 
 /* "Ficha del archivo": formato, tamano, duracion, donde esta guardada y cuantas
@@ -91,12 +94,46 @@ export function TryCard({ artist, trackKey }) {
   );
 }
 
-/* Las tarjetas en su orden. Una tercera («En el mapa de generos») iria entre
-   las dos, sin tocar nada mas: cada tarjeta es independiente. */
+/* "En el mapa de generos": los generos reales del artista que el mapa conoce,
+   cada uno con el color de su zona. Un toque abre Descubrir en ese genero. No
+   hay esqueleto: sin datos (artista sin perfilar, sin mapa) no hay tarjeta. */
+export function GenresCard({ artist }) {
+  const nav = useNav();
+  const chips = useArtistGenres(artist);
+  if (!chips.length) return null;
+
+  return (
+    <section className="ncard" aria-label="En el mapa de géneros">
+      <h3 className="ncard__h">En el mapa de géneros</h3>
+      <div className="gchips">
+        {chips.map(({ name, cluster }) => (
+          <button
+            key={name}
+            type="button"
+            className="gchip"
+            style={{ "--gc": `var(--genre-${cluster})` }}
+            aria-label={`${name}. Abrir en Descubrir`}
+            onClick={() => {
+              requestGenre(name);
+              nav.goTab("discover");
+            }}
+          >
+            <span className="gd" aria-hidden="true" />
+            <span className="gchip__t">{name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="ncard__n">Cerca = comparten artistas, no suenan parecido.</p>
+    </section>
+  );
+}
+
+/* Las tarjetas en su orden; cada una es independiente. */
 export default function NowCards({ track, artist, onReveal }) {
   return (
     <>
       <FichaCard track={track} onReveal={onReveal} />
+      <GenresCard artist={artist} />
       <TryCard artist={artist} trackKey={track.key} />
     </>
   );
