@@ -103,6 +103,10 @@ class Storage(Protocol):
 
     def put_file(self, key: str, src: Path) -> StoredFile: ...
 
+    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
+        """Como `put_file` para varios: en la nube, UNA sola escritura del indice."""
+        ...
+
     def delete(self, key: str) -> None: ...
 
     # Playlists: puerto chico y SEPARADO del de archivos. Lo implementan los

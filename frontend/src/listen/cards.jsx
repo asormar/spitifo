@@ -7,6 +7,7 @@ import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
+import { rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
 
 /* ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ import { useMore } from "./useMore.js";
 /* La primera portada real de un grupo de canciones, o null. */
 export const coverOf = (entries) => {
   const hit = entries.find((e) => e.thumbKey);
-  return hit ? keyUrl(hit.thumbKey) : null;
+  return hit ? rowArt(hit, keyUrl) : null;
 };
 
 /* `size` es el lado en px (lo lee el CSS con --s); `round` = artista. */

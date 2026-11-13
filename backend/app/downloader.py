@@ -259,13 +259,23 @@ def _thumb_sidecar(key: str) -> str:
     return base + ".jpg"
 
 
+def thumb_small_sidecar(key: str) -> str:
+    """Clave del sidecar chico (~100 px) de una pista: `<stem>.s.jpg`.
+
+    La portada de 200 px es `_thumb_sidecar` (`<stem>.jpg`): `library_scan` y la
+    UI ya la conocen. La chica es solo para las filas de 48 px.
+    """
+    return _thumb_sidecar(key)[: -len(".jpg")] + ".s.jpg"
+
+
 def library_scan() -> list[dict]:
     """Lista la biblioteca terminada a traves del puerto, con la duracion real.
 
     Devuelve audio y video. Cada entrada suma `kind` (audio/video), `thumb_key`
     (la miniatura `.jpg` que existe al lado, o None) y `has_audio` (False solo
     en un video "sin audio": el que bajo `media=video`). Los `.jpg` NO se listan
-    como temas: son sidecars, asi que uno huerfano queda oculto.
+    como temas: son sidecars, asi que uno huerfano queda oculto. `thumb_s: True`
+    (solo si existe) avisa que ademas hay una portada chica `<stem>.s.jpg`.
     """
     files = list(get_storage().list())
     thumbs = {f.key for f in files if Path(f.key).suffix.lower() in IMAGE_EXTS}
@@ -277,7 +287,7 @@ def library_scan() -> list[dict]:
         partes = f.key.split("/")
         sidecar = _thumb_sidecar(f.key)
         es_video = ext in VIDEO_EXTS
-        out.append({
+        row = {
             "key": f.key,
             "filename": partes[-1],
             "folder": partes[-2] if len(partes) > 1 else "",
@@ -295,5 +305,9 @@ def library_scan() -> list[dict]:
             # Un video "sin audio" lo dice su propio nombre. El resto (audio y
             # el mp4 del modo "both") tiene pista de sonido.
             "has_audio": not (es_video and Path(partes[-1]).stem.endswith(" (sin audio)")),
-        })
+        }
+        # Campo opcional: sin portada chica no existe y la lista pesa lo de siempre.
+        if sidecar in thumbs and thumb_small_sidecar(f.key) in thumbs:
+            row["thumb_s"] = True
+        out.append(row)
     return sorted(out, key=lambda x: -x["modified"])

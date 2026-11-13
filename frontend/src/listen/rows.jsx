@@ -76,7 +76,7 @@ export const SongRow = memo(function SongRow({
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
-  const src = rowArt(entry, keyUrl);
+  const src = rowArt(entry, keyUrl, true);
   const img = src && !BAD_ART.has(src);
   const rankCell = rank != null && (
     <span className={cx("srow__rank", rank <= 3 && "is-top")} aria-hidden="true">

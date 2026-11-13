@@ -337,6 +337,12 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         shutil.move(str(src), str(p))
         return self._stored(p, key)
 
+    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
+        """Varios archivos de una descarga (audio y portadas): uno por uno."""
+        for key, _src in items:
+            validate_key(key)
+        return [self.put_file(key, src) for key, src in items]
+
     def delete(self, key: str) -> None:
         p = self._path(key)
         if not p.is_file():

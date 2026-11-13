@@ -816,7 +816,9 @@ class YtDlpSource(Source):
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
-        from .downloader import TEMP_DIR, _write_tags, record_download
+        from .covers import fetch_itunes_covers
+        from .downloader import (TEMP_DIR, _write_tags, record_download,
+                                 thumb_small_sidecar)
         from .identify import verdict
         from .storage import get_storage
         url = track.extra.get("webpage_url")
@@ -1017,12 +1019,35 @@ class YtDlpSource(Source):
                 # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
                 # su manera, y la UI tiene que mostrar lo que quedo guardado.
                 filename = key.rsplit("/", 1)[-1]
-                stored = await asyncio.to_thread(get_storage().put_file, key, path)
+                # Audio con ficha de iTunes: su portada en dos tamanos va junto
+                # al audio, en un solo `put_files` (en Drive, una escritura del
+                # indice). Best effort: sin portada la descarga sigue igual.
+                covers = (await fetch_itunes_covers(track.artwork_url, work)
+                          if kind == "audio" and use_itunes else None)
+                items = [(key, path)]
+                if covers:
+                    items += [(thumb_sidecar_key(key), covers[0]),
+                              (thumb_small_sidecar(key), covers[1])]
+                try:
+                    stored = (await asyncio.to_thread(
+                        get_storage().put_files, items))[0]
+                except Exception as e:
+                    if not covers:
+                        raise
+                    # Si fallo una portada, el audio (el primero) ya quedo.
+                    log.warning("ytdlp: fallaron las portadas de %s: %s", key, e)
+                    try:
+                        stored = await asyncio.to_thread(get_storage().stat, key)
+                    except Exception:
+                        raise e
+                    covers = None
                 size = stored.size
                 # Miniatura best effort SOLO para video: si falla, la descarga
                 # sigue y `thumb_key` queda en None (nunca tumba el job).
-                thumb_key = (await fetch_thumb(info.get("id"), key, work)
-                             if kind == "video" else None)
+                if kind == "video":
+                    thumb_key = await fetch_thumb(info.get("id"), key, work)
+                else:
+                    thumb_key = thumb_sidecar_key(key) if covers else None
 
             # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
             # calcula aca y no antes de la descarga porque hasta ahora no se

@@ -177,3 +177,86 @@ def test_ytdlp_sigue_si_el_registro_falla(ytdlp, monkeypatch):
     monkeypatch.setattr(ytdlp, "save_fileinfo", roto)
     res = _bajar(_numb(), "numb linkin park")
     assert (ytdlp.root / res["key"]).exists()
+
+
+# ------------------------------------------------------------------- portadas
+JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 60
+ARTE = ("https://is1-ssl.mzstatic.com/image/thumb/Music/v4/ab/source/"
+        "300x300bb.jpg")
+
+
+@pytest.fixture
+def portadas(monkeypatch):
+    """Reemplaza la bajada de portadas: anota las URLs y devuelve un jpg."""
+    from backend.app import covers
+
+    pedidas: list[str] = []
+
+    async def falso(client, url):
+        pedidas.append(url)
+        return JPG + url.encode()
+
+    monkeypatch.setattr(covers, "_get", falso)
+    return pedidas
+
+
+def test_la_descarga_guarda_las_dos_portadas_junto_al_audio(ytdlp, portadas):
+    res = _bajar(_numb_con_arte(), "numb")
+
+    raiz = Path(ytdlp.root)
+    base = res["key"].rsplit(".", 1)[0]
+    assert (raiz / f"{base}.jpg").read_bytes().endswith(b"200x200bb.jpg")
+    assert (raiz / f"{base}.s.jpg").read_bytes().endswith(b"100x100bb.jpg")
+    assert res["thumb_key"] == f"{base}.jpg"
+    assert sorted(portadas) == [ARTE.replace("300x300", "100x100"),
+                                ARTE.replace("300x300", "200x200")]
+
+    from backend.app.downloader import library_scan
+    (fila,) = [f for f in library_scan() if f["key"] == res["key"]]
+    assert fila["thumb_key"] == f"{base}.jpg" and fila["thumb_s"] is True
+
+
+def _numb_con_arte() -> Track:
+    t = _numb()
+    t.artwork_url = ARTE
+    return t
+
+
+def test_una_portada_que_falla_no_tumba_la_descarga(ytdlp, monkeypatch):
+    from backend.app import covers
+
+    async def roto(client, url):
+        raise RuntimeError("iTunes no contesta")
+
+    monkeypatch.setattr(covers, "_get", roto)
+    res = _bajar(_numb_con_arte(), "numb")
+
+    assert (ytdlp.root / res["key"]).exists()
+    assert res["thumb_key"] is None
+    assert not list(Path(ytdlp.root).rglob("*.jpg"))
+
+
+def test_sin_ficha_de_itunes_no_se_baja_ninguna_portada(ytdlp, portadas):
+    track = _numb_con_arte()
+    track.extra["from_itunes"] = False
+    res = _bajar(track, "numb")
+
+    assert portadas == [] and res["thumb_key"] is None
+
+
+def test_si_falla_al_guardar_las_portadas_el_audio_queda(ytdlp, portadas,
+                                                         monkeypatch):
+    original = ytdlp.put_file
+    estado = {"n": 0}
+
+    def a_medias(key, src):
+        estado["n"] += 1
+        if estado["n"] == 2:
+            raise OSError("sin espacio")
+        return original(key, src)
+
+    monkeypatch.setattr(ytdlp, "put_file", a_medias)
+    res = _bajar(_numb_con_arte(), "numb")
+
+    assert (ytdlp.root / res["key"]).exists()
+    assert res["thumb_key"] is None
