@@ -3,8 +3,10 @@ import { NavIcon } from "../app/navIcons.jsx";
 import { useNav } from "../app/useNav.js";
 import { requestGenre } from "../discover/genreRequest.js";
 import { requestSearch } from "../download/searchRequest.js";
+import { VerdictPill } from "../shared/Verdict.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { useListen } from "../listen/ListenProvider.jsx";
+import { checkText, filePill } from "../listen/fileCheck.js";
 import { useHistory } from "../listen/history.js";
 import { initials } from "../shared/format.js";
 import { useArtistGenres } from "./genreChips.js";
@@ -19,9 +21,10 @@ import { fileFacts, readReco, relatedTo } from "./nowInfo.js";
    y, si hay, el mapa).
    ------------------------------------------------------------------------- */
 
-/* "Ficha del archivo": formato, tamano, duracion, donde esta guardada y cuantas
-   veces se ha oido, de la fila de la biblioteca. Solo canciones de la
-   biblioteca. `full` (la pestana Ficha) suma el nombre y la fecha. */
+/* "Ficha del archivo": el veredicto con su frase y, de la fila de la biblioteca,
+   de donde salen los datos, el formato, tamano, duracion, donde esta guardada y
+   cuantas veces se ha oido. Solo canciones de la biblioteca. `full` (la
+   pestana Ficha) separa Ficha y Archivo y suma el nombre y la fecha. */
 export function FichaCard({ track, full = false, onReveal }) {
   const { model } = useListen();
   const entry = model.byKey.get(track.key);
@@ -35,6 +38,8 @@ export function FichaCard({ track, full = false, onReveal }) {
   return (
     <section className="ncard" aria-label="Ficha del archivo">
       <h3 className="ncard__h">Ficha del archivo</h3>
+      <VerdictPill v={filePill(entry)} />
+      <p className="ncard__p">{checkText(entry, { card: true })}</p>
       <dl className="ncard__facts">
         {rows.map((r) => (
           <div key={r.k}>

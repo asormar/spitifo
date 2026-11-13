@@ -191,14 +191,18 @@ export function Cards({ cards, byKey, ctx, tag }) {
   );
 }
 
-/* Todas tus canciones: cuantas hay y donde estan. El cuerpo abre la pagina
+/* Todas tus canciones: cuantas hay y donde estan, y cuantas se comprobaron
+   (`check`, de checkedSummary: vacio si ninguna). El cuerpo abre la pagina
    (`onOpen`); el boton rosa las baraja y, si se pide, uno suave las reproduce. */
-export function AllSongs({ n, storage, onOpen, onPlay, onShuffle }) {
+export function AllSongs({ n, storage, check, onOpen, onPlay, onShuffle }) {
   const body = (
     <>
       <b className="num">{n}</b>
       <span>Todas tus canciones</span>
-      <small>En {storage}</small>
+      <small>
+        En {storage}
+        {check && ` · ${check}`}
+      </small>
     </>
   );
   return (

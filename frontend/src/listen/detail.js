@@ -1,3 +1,4 @@
+import { albumVerdict } from "./fileCheck.js";
 import { artistId, groupAlbums } from "./library.js";
 import { albumOrder, albumTone, entryTone, minutes, plural, songs, sortEntries, toneOf } from "./home.js";
 
@@ -54,11 +55,15 @@ export function detailOf(view, { index, byKey, lists, listsReady, listsError }) 
 }
 
 /* Los textos de la ficha: `meta` (lista y artista) y `liner` (album: la
-   linea fuerte y donde esta guardado), sin la linea de genero y ano que no hay. */
+   linea fuerte, con «Todo coincide» o «k de n coinciden» si hay veredictos
+   guardados, y donde esta guardado), sin la linea de genero y ano que no hay. */
 export function detailMeta(d, storage) {
   const n = d.rows.length;
   const time = d.mins ? ` · ${d.mins} min` : "";
   if (d.kind === "list") return { meta: `Lista · ${songs(n)}${time}` };
-  if (d.kind === "album") return { liner: [`${songs(n)}${time}`, `En ${storage}`] };
+  if (d.kind === "album") {
+    const check = albumVerdict(d.rows);
+    return { liner: [`${songs(n)}${time}${check ? ` · ${check}` : ""}`, `En ${storage}`] };
+  }
   return { meta: `${plural(d.albums.length, "álbum", "álbumes")} · ${songs(n)}` };
 }

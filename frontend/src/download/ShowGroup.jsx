@@ -5,7 +5,8 @@ import { ExtLink } from "../shared/ui.jsx";
 import { SOURCE_CODE, provenance } from "./constants.js";
 import DlRing from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
-import { Thumb, VerdictPill } from "./ResultRow.jsx";
+import { VerdictPill } from "../shared/Verdict.jsx";
+import { Thumb } from "./ResultRow.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------

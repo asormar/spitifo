@@ -6,7 +6,10 @@ import { coverTone } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { engine } from "../player/engine.js";
+import { VerdictPill } from "../shared/Verdict.jsx";
 import { Cover } from "./cards.jsx";
+import { checkOf } from "./fileCheck.js";
+import FileSheet from "./FileSheet.jsx";
 import { albumId, artistId, toTrack } from "./library.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import "./menus.css";
@@ -24,7 +27,7 @@ import "./menus.css";
    y borrar); aqui solo se dibuja.
    ------------------------------------------------------------------------- */
 
-/* [clave, icono, texto, tono]; la clave es lo que recibe `onPick`. */
+/* [clave, icono, texto, tono, pastilla]; la clave es lo que recibe `onPick`. */
 const SONG_ITEMS = [
   ["next", "next", "Reproducir a continuación"],
   ["end", "queue", "Añadir a la cola"],
@@ -39,7 +42,7 @@ const LIST_ITEMS = [
 ];
 
 /* El primer item toma el foco al abrir; las flechas recorren el menu en circulo. */
-function MenuItems({ items, label, onPick }) {
+function MenuItems({ items, label, onPick, stack }) {
   const ref = useRef(null);
 
   const onKeyDown = (e) => {
@@ -52,7 +55,7 @@ function MenuItems({ items, label, onPick }) {
 
   return (
     <div ref={ref} className="mlist" role="menu" aria-label={label} onKeyDown={onKeyDown}>
-      {items.map(([kind, icon, text, tone], i) => (
+      {items.map(([kind, icon, text, tone, pill], i) => (
         <button
           key={kind}
           type="button"
@@ -62,7 +65,14 @@ function MenuItems({ items, label, onPick }) {
           onClick={() => onPick(kind)}
         >
           <Ico n={icon} size={22} />
-          {text}
+          {pill ? (
+            <span className={cx("mi__t", stack && "mi__t--stack")}>
+              {text}
+              <VerdictPill v={pill} />
+            </span>
+          ) : (
+            text
+          )}
         </button>
       ))}
     </div>
@@ -74,6 +84,9 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const { title, artist, album } = entry;
   const label = `Opciones de ${title}`;
   const items = SONG_ITEMS.filter(([kind]) => (kind === "album" ? album : kind === "artist" ? artist : true));
+  /* La ficha del archivo: la pastilla solo si hay registro (el archivo anterior
+     la dice dentro de la ficha). */
+  items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
   const head = (
     <div className="mhead">
       <Cover tone={coverTone(artist, album)} label={artist} size={pc ? 40 : 56} />
@@ -83,7 +96,7 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
       </span>
     </div>
   );
-  const menu = <MenuItems items={items} label={label} onPick={onPick} />;
+  const menu = <MenuItems items={items} label={label} onPick={onPick} stack={pc} />;
 
   if (pc) {
     return (
@@ -109,10 +122,10 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
   );
 }
 
-/* El menu de una cancion o la hoja de listas de la entrada de arriba de la
-   pila. `back` cierra (nav.back), `replace` cambia el menu por otra cosa y
-   `goTo` por una pagina (ListenProvider). */
-export default function Overlays({ top, byKey, back, replace, goTo, show }) {
+/* El menu de una cancion, la hoja de listas o la ficha del archivo de la
+   entrada de arriba de la pila. `back` cierra (nav.back), `replace` cambia el
+   menu por otra cosa y `goTo` por una pagina (ListenProvider). */
+export default function Overlays({ top, byKey, back, replace, goTo, show, storage }) {
   const entry = byKey.get(top.key);
 
   /* La biblioteca se refresco y la cancion ya no esta: no hay nada que mostrar. */
@@ -134,7 +147,15 @@ export default function Overlays({ top, byKey, back, replace, goTo, show }) {
     );
   }
 
+  if (top.type === "file") {
+    return <FileSheet entry={entry} storage={storage} anchor={top.anchor} onClose={back} />;
+  }
+
   const pick = (kind) => {
+    if (kind === "file") {
+      replace({ type: "file", key: entry.key, anchor: top.anchor });
+      return;
+    }
     if (kind === "list") {
       replace({ type: "picker", key: entry.key, anchor: top.anchor });
       return;

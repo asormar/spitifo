@@ -228,6 +228,59 @@
   -webkit-line-clamp: 2;
 }
 
+/* Telefono: el titulo y, a su lado, el chip del veredicto. */
+.np__meta--v {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.np__tx {
+  flex: 1;
+  min-width: 0;
+}
+
+.np__v {
+  margin-top: 2px;
+}
+
+/* La pastilla sobre el panel oscuro: un chip con su punto de estado. */
+.np .vb {
+  gap: 8px;
+  height: 30px;
+  padding: 0 12px;
+  background: rgba(14, 14, 24, 0.34);
+  color: #fff;
+  font-size: 12.5px;
+}
+
+.np .vb::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.np .vb--ok::before {
+  background: #7ff0b0;
+}
+
+.np .vb--near::before {
+  background: #ffd27a;
+}
+
+.np .vb--bad::before {
+  background: #ff9d96;
+}
+
+/* Escritorio: blanco al 12 % (el 16 % del prototipo da 4.2:1 sobre el fondo mas
+   claro; shared/tokens.test.js pide 4.5). */
+.np--pane .vb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .np__sub {
   margin: 4px 0 0;
   overflow: hidden;
@@ -318,6 +371,17 @@
   margin: 0 0 12px;
   font: 700 16px / 1.2 var(--font-display);
   letter-spacing: -0.025em;
+}
+
+.ncard__p {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  opacity: 0.94;
+}
+
+.ncard__p + .ncard__facts {
+  margin-top: 14px;
 }
 
 .ncard__facts {

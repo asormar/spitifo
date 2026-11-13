@@ -1,8 +1,10 @@
 import Ico from "../shared/ico.jsx";
 import { clock } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
+import { VerdictChip } from "../shared/Verdict.jsx";
 import { Controls, DockArt, Volume } from "./controls.jsx";
 import useDock from "./useDock.js";
+import { useTrackPill } from "./useTrackPill.js";
 import Scrub from "./Scrub.jsx";
 
 /* ---------------------------------------------------------------------------
@@ -16,7 +18,8 @@ import Scrub from "./Scrub.jsx";
    mientras el video esta abierto; la columna de "Ahora suena" no la tapa (la
    barra es su transporte).
 
-   La portada abre "Ahora suena". Cola y Ficha abren su pestana y son
+   La pastilla de veredicto de la pista abre la Ficha (no la alterna). La
+   portada abre "Ahora suena". Cola y Ficha abren su pestana y son
    interruptores: `tab` es la pestana que se ve (-1 = ninguna) y pulsar la que
    esta a la vista cierra la columna (onOpen(tab, true)).
    ------------------------------------------------------------------------- */
@@ -24,6 +27,7 @@ import Scrub from "./Scrub.jsx";
 export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
+  const pill = useTrackPill(info);
 
   return (
     <section
@@ -63,6 +67,7 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
             </>
           )}
         </Scrub>
+        {pill && <VerdictChip v={pill} className="lcd__v" onOpen={() => onOpen(2)} />}
       </div>
 
       <div className="dock__end">

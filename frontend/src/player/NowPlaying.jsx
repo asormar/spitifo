@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
+import { VerdictChip } from "../shared/Verdict.jsx";
 import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
 import Ico from "../shared/ico.jsx";
@@ -18,6 +19,7 @@ import Scrub from "./Scrub.jsx";
 import NowCards, { FichaCard } from "./NowCards.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { panel, usePanel } from "./panel.js";
+import { useTrackPill } from "./useTrackPill.js";
 import { artTint, toneTint } from "./tint.js";
 import "./nowplaying.css";
 
@@ -126,6 +128,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
 
   const meta = track?.meta ?? "";
   const { artist, album } = splitMeta(meta);
+  /* El veredicto del archivo, o «Solo 30 s» en un avance: abre la Ficha. */
+  const pill = useTrackPill(track);
+  const chip = pill && <VerdictChip v={pill} className="np__v" onOpen={() => panel.show(2)} />;
   const art = track?.artwork && badArt !== track.artwork ? track.artwork : null;
   const fallback = toneTint(coverTone(artist, album));
   const [paint, apply, settle] = usePaint(art, fallback);
@@ -347,10 +352,14 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
           {pc ? (
             <div className="np__row">
               <div className="np__meta">{title}</div>
+              {chip}
               {addButton}
             </div>
           ) : (
-            <div className="np__meta">{title}</div>
+            <div className="np__meta np__meta--v">
+              <div className="np__tx">{title}</div>
+              {chip}
+            </div>
           )}
         </div>
         {!pc && (

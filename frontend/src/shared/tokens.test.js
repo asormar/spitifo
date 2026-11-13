@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { darken } from "../player/tint.js";
 
 /* Contraste WCAG de los pares de texto que importan, leyendo los valores
    literales de tokens.css (claro en :root, oscuro en :root[data-theme="dark"],
@@ -152,5 +153,34 @@ describe("Mezcla hero", () => {
   it("white chip text on the translucent chip (PC) and the blue text on the active white chip reach 4.5:1", () => {
     expect(ratio(WHITE, over([10, 14, 70, 0.32], BLUE))).toBeGreaterThanOrEqual(4.5);
     expect(ratio(BLUE, WHITE)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/* La pastilla de veredicto sobre el panel oscuro de Ahora suena (nowplaying.css,
+   `.np .vb`): texto blanco sobre un chip translucido y un punto de estado. El
+   fondo ya se oscurece hasta 6:1 con el blanco (tint.js); el peor caso es el
+   mas claro que puede tomar. */
+describe("verdict chip on the Ahora suena pane", () => {
+  const WHITE = [255, 255, 255, 1];
+  const tint = [...darken([255, 255, 255]), 1];
+  const chip = over([14, 14, 24, 0.34], tint);
+
+  it("white text on the phone chip reaches 4.5:1", () => {
+    expect(ratio(WHITE, chip)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* El prototipo usa 16 %: sobre el fondo mas claro da 4.2:1. */
+  it("white text on the PC chip (white 12 %) reaches 4.5:1", () => {
+    expect(ratio(WHITE, over([255, 255, 255, 0.12], tint))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* Los puntos son graficos: 3:1. */
+  it.each([
+    ["ok", [0x7f, 0xf0, 0xb0, 1]],
+    ["near", [0xff, 0xd2, 0x7a, 1]],
+    ["bad", [0xff, 0x9d, 0x96, 1]],
+    ["mute", over([255, 255, 255, 0.7], chip)],
+  ])("the %s status dot reaches 3:1 on the chip", (_name, dot) => {
+    expect(ratio(dot, chip)).toBeGreaterThanOrEqual(3);
   });
 });

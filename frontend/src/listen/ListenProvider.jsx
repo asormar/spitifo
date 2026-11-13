@@ -3,6 +3,7 @@ import { isOverlay } from "../app/navigation.js";
 import { keyUrl } from "../shared/api.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
+import { checkedSummary } from "./fileCheck.js";
 import { normalizeLibrary, toQueue, toTrack } from "./library.js";
 import { buildIndex } from "./home.js";
 import { mixEntries } from "./mixes.js";
@@ -26,9 +27,10 @@ import { SongRow } from "./rows.jsx";
      ctx    lo que reciben las vistas (openMenu, play, open, goTo, show, song...).
             Es estable: solo se rehace con la biblioteca. Abrir o cerrar un menu
             no repinta ninguna fila (SongRow es memo y sus props no cambian).
-     model  { entries, index, byKey, plays, lists, listsReady, storage },
+     model  { entries, index, byKey, plays, lists, listsReady, storage, check },
             calculado una vez para las tres pantallas. `storage` es donde
-            se guarda la musica ("Google Drive" o "este dispositivo").
+            se guarda la musica ("Google Drive" o "este dispositivo") y `check`
+            el resumen de «comprobadas» (vacio si ninguna lo esta).
      show   el aviso pasajero.
    `nav` (useNav) pone open/back/replace: la pila de paginas vive en el shell.
    Los menus y la hoja de listas son la entrada de arriba de esa pila (menu,
@@ -60,9 +62,10 @@ export default function ListenProvider({ files, nav, storage, children }) {
     () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
     [hist.tracks]
   );
+  const check = useMemo(() => checkedSummary(entries), [entries]);
   const model = useMemo(
-    () => ({ entries, index, byKey, plays, lists, listsReady, storage }),
-    [entries, index, byKey, plays, lists, listsReady, storage]
+    () => ({ entries, index, byKey, plays, lists, listsReady, storage, check }),
+    [entries, index, byKey, plays, lists, listsReady, storage, check]
   );
 
   /* Las listas y el historial se piden una vez al arrancar; los fallos de
@@ -184,10 +187,10 @@ export default function ListenProvider({ files, nav, storage, children }) {
     return { ctx, model, show };
   }, [model, show, navOpen, navBack, navReplace, getStack]);
 
-  /* El menu de una cancion o la hoja de listas, si es lo de arriba de la pila
-     (el de una lista lo pinta su pagina). */
+  /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
+     de arriba de la pila (el de una lista lo pinta su pagina). */
   const top = nav.stack.at(-1);
-  const overlay = top && (top.type === "menu" || top.type === "picker") ? top : null;
+  const overlay = top && (top.type === "menu" || top.type === "picker" || top.type === "file") ? top : null;
 
   return (
     <NoticeProvider value={show}>
@@ -202,6 +205,7 @@ export default function ListenProvider({ files, nav, storage, children }) {
             replace={navReplace}
             goTo={value.ctx.goTo}
             show={show}
+            storage={model.storage}
           />
         )}
       </ListenContext.Provider>

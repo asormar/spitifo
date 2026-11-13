@@ -4,9 +4,11 @@ import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
 import { clock } from "../shared/format.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
+import { VerdictPill } from "../shared/Verdict.jsx";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { Icon } from "./icons.jsx";
+import { checkOf, rowPill } from "./fileCheck.js";
 import { rowArt } from "./library.js";
 
 /* ---------------------------------------------------------------------------
@@ -38,10 +40,12 @@ const BAD_ART = new Set();
    abre y cierra ListenProvider (un menu en la pila de navegacion), asi que la
    fila no sabe si hay uno abierto y abrirlo no la repinta. `rank`
    pone el numero de puesto delante (los rankings), `sub` cambia la segunda
-   linea (por defecto artista y album) y `badge` pone algo (una pastilla) antes
-   de la duracion. `table` (escritorio) reparte la fila en celdas, alineadas con
-   el encabezado de su tabla: puesto, titulo, album, duracion y menu; con
-   "lib", titulo, artista, album, duracion y menu.
+   linea (por defecto artista y album). La pastilla de veredicto sale de la
+   propia fila (`entry`, estable, asi sigue siendo memo): en el telefono solo
+   cuando algo no esta bien y, con `all` (un booleano), siempre que haya registro.
+   `table` (escritorio) reparte la fila en celdas, alineadas con el encabezado
+   de su tabla: puesto, titulo, album, duracion y menu; con "lib", titulo,
+   artista, album, verificacion, duracion y menu.
 
    Las paginas de un album, un artista o una lista llevan `num` (el numero de
    pista en vez de la portada; en la fila que suena, el ecualizador). `table`
@@ -60,7 +64,7 @@ export const SongRow = memo(function SongRow({
   rank,
   num,
   sub,
-  badge,
+  all,
   table,
   drag,
   from,
@@ -73,6 +77,10 @@ export const SongRow = memo(function SongRow({
   const lib = table === "lib";
   /* Tabla de pagina: sin portada ni album. */
   const page = table === "trk" || table === "lst";
+  /* Las tablas de canciones llevan la columna Verificacion (siempre, con
+     «Coincide»); fuera de ellas, la pastilla va antes de la duracion. */
+  const checked = lib || page;
+  const pill = checked || all ? checkOf(entry) : rowPill(entry);
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
@@ -164,11 +172,12 @@ export const SongRow = memo(function SongRow({
             </span>
           )}
         </span>
-        {!table && badge}
+        {!table && pill && <VerdictPill v={pill} />}
         {!table && num == null && dur && <span className="srow__d">{dur}</span>}
       </button>
       {lib && <span className="srow__c">{artist}</span>}
       {table && !page && <span className="srow__c">{album}</span>}
+      {checked && <span className="srow__v">{pill && <VerdictPill v={pill} />}</span>}
       {table && <span className="srow__c srow__d">{dur}</span>}
       {onRemove && (
         <button
@@ -209,6 +218,7 @@ export const Thead = ({ lib, kind, sticky }) => (
     <span>Título</span>
     {lib && <span>Artista</span>}
     {!kind && <span>Álbum</span>}
+    {(lib || kind) && <span>Verificación</span>}
     <span className="ra">Duración</span>
     {kind === "lst" && <span />}
     <span />

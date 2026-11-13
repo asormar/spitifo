@@ -109,6 +109,33 @@ describe("detailMeta", () => {
     expect(detailMeta({ ...d, mins: null }, "x").liner[0]).toBe("2 canciones");
   });
 
+  it("adds Todo coincide to the liner when every track has a matching verdict", () => {
+    const checked = (key, folder, album, extra) => file(key, folder, album, { verdict: "match", meta_src: "itunes", ...extra });
+    const list = [checked("m1", "Beck", "Odelay"), checked("m2", "Beck", "Odelay")];
+    const idx = buildIndex(list);
+    const d = detailOf({ type: "album", id: idx.albums[0].id }, { ...env(), index: idx, byKey: new Map(list.map((e) => [e.key, e])) });
+    expect(detailMeta(d, "Google Drive").liner).toEqual(["2 canciones · 4 min · Todo coincide", "En Google Drive"]);
+  });
+
+  it("counts the matches when only some tracks do, and leaves the storage line alone", () => {
+    const list = [
+      file("m1", "Beck", "Odelay", { verdict: "match", meta_src: "itunes" }),
+      file("m2", "Beck", "Odelay", { verdict: "partial", meta_src: "itunes", real: "Otra" }),
+      file("m3", "Beck", "Odelay"),
+    ];
+    const idx = buildIndex(list);
+    const d = detailOf({ type: "album", id: idx.albums[0].id }, { ...env(), index: idx, byKey: new Map(list.map((e) => [e.key, e])) });
+    const { liner } = detailMeta(d, "este dispositivo");
+    expect(liner[0]).toBe("3 canciones · 6 min · 1 de 3 coinciden");
+    expect(liner[1]).toBe("En este dispositivo");
+  });
+
+  it("does not touch the liner of an album with no stored verdicts, nor the meta of lists and artists", () => {
+    expect(detailMeta(detailOf(albumView("Motomami"), env()), "x").liner[0]).toBe("1 canción · 2 min");
+    const rosalia = detailOf(artistView("Rosalía"), env());
+    expect(detailMeta(rosalia, "x").meta).not.toMatch(/coincid/);
+  });
+
   it("writes the artist meta with the plural of albums", () => {
     const rosalia = detailOf(artistView("Rosalía"), env());
     expect(detailMeta(rosalia, "x")).toEqual({ meta: "2 álbumes · 3 canciones" });

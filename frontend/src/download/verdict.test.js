@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createVerdictStore, libVerdict, libVerdictKey, verdictKey, verdictOf, vText } from "./verdict.js";
+import { createVerdictStore, verdictKey, verdictOf, vText } from "./verdict.js";
 
 const full = { source: "itunes", source_id: "1", extra: { webpage_url: "https://y.test/1" } };
 const archive = { source: "archive", source_id: "a1", audio_url: "https://a.test/a1.mp3" };
@@ -27,6 +27,14 @@ describe("verdictOf: la verdad de cada fila", () => {
     expect(verdictOf(full, done("match"))).toBe("match");
     expect(verdictOf(full, done("partial"))).toBe("partial");
     expect(verdictOf(full, done("mismatch"))).toBe("mismatch");
+  });
+
+  it("un resultado descargable sigue en Sin verificar aunque su archivo ya este en la biblioteca", () => {
+    /* El veredicto guardado del archivo vive en la biblioteca, no en esta tabla:
+       los resultados nunca lo leen (no hay clave de biblioteca en un resultado). */
+    const store = createVerdictStore(reply({}));
+    store.setFromDownload(archive, "otra consulta", { match: "match" });
+    expect(verdictOf(archive, store.get(verdictKey(archive, "esta consulta")))).toBe("unv");
   });
 
   it("unknown, un registro sin terminar o un fallo se quedan en Sin verificar", () => {
@@ -130,25 +138,5 @@ describe("verdictStore", () => {
     off();
     store.setFromDownload(archive, "c", { match: "match" });
     expect(spy).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("archivos recien bajados", () => {
-  it("sin registro no hay pastilla: la ausencia nunca es Coincide", () => {
-    expect(libVerdict(undefined)).toBeNull();
-    expect(libVerdict({ phase: "loading" })).toBeNull();
-  });
-
-  it("con registro: el veredicto, o Sin verificar si no se pudo identificar", () => {
-    expect(libVerdict({ phase: "done", match: "match" })).toBe("match");
-    expect(libVerdict({ phase: "done", match: "mismatch" })).toBe("mismatch");
-    expect(libVerdict({ phase: "done", match: "unknown" })).toBe("unv");
-  });
-
-  it("la descarga deja el registro tambien bajo la clave del archivo nuevo", () => {
-    const store = createVerdictStore(reply({}));
-    store.setFromDownload(full, "q", { match: "partial", real_title: "Otro", libKey: "Artista/Artista - Tema.mp3" });
-    expect(store.get(libVerdictKey("Artista/Artista - Tema.mp3"))).toMatchObject({ match: "partial", real: "Otro" });
-    expect(libVerdictKey("a/b.mp3")).toBe("lib|a/b.mp3");
   });
 });
