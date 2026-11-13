@@ -816,7 +816,7 @@ class YtDlpSource(Source):
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
-        from .downloader import TEMP_DIR, _write_tags
+        from .downloader import TEMP_DIR, _write_tags, record_download
         from .identify import verdict
         from .storage import get_storage
         url = track.extra.get("webpage_url")
@@ -1030,6 +1030,13 @@ class YtDlpSource(Source):
             # status=done sin `match` y no podia avisar nada. `query` es lo que el
             # usuario escribio; el titulo real del video es la otra mitad.
             estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
+            # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
+            # terminar ya trae el veredicto. Sin consulta, o con un enlace
+            # pegado, el titulo del video se compara consigo mismo: no vale.
+            await record_download(
+                key, size, track, via="ytdlp", query=query,
+                video_title=info_title,
+                vacuous=not query or bool(parse_youtube_url(query)))
             # `height` es la altura PEDIDA (None si no se eligio): la UI la
             # muestra como "1080p" del archivo que acaba de bajar.
             altura = (int(height) if height is not None

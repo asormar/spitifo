@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from dataclasses import replace
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 import httpx
 
 from .config import IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
+from . import fileinfo
 from .models import Track, safe_name
 from .storage import get_storage
 
@@ -138,6 +140,33 @@ def _ffmpeg_convert(src: Path, out_path: Path) -> Path:
     return out_path
 
 
+async def record_download(key: str, size: int, track: Track, *,
+                          via: str = "file", query: str | None = None,
+                          video_title: str | None = None,
+                          vacuous: bool = False) -> dict | None:
+    """Guarda el veredicto y la procedencia del archivo recien publicado.
+
+    Best effort: si falla, la descarga sigue y el archivo queda "sin verificar".
+    `via` es `file` (`download_track`) o `ytdlp`; en el segundo caso el veredicto
+    sale de comparar el titulo del video con lo buscado.
+    """
+    try:
+        now = time.time()
+        if via == "ytdlp":
+            record = fileinfo.record_for_ytdlp(
+                track, size, now, query=query, video_title=video_title,
+                vacuous=vacuous)
+        else:
+            record = fileinfo.record_for_file(track, size, now)
+        if record is None:
+            return None
+        await asyncio.to_thread(get_storage().save_fileinfo, key, record)
+        return record
+    except Exception as e:
+        log.warning("no se pudo guardar el veredicto de %s: %s", key, e)
+        return None
+
+
 async def download_track(t: Track, fmt: str = "original") -> dict:
     """Descarga la pista a la biblioteca. fmt: original|mp3|m4a.
 
@@ -206,6 +235,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
         key = f"{folder}/{filename}"
         stored = await asyncio.to_thread(get_storage().put_file, key, terminado)
         size = stored.size
+        await record_download(key, size, t)
         return {
             "key": key, "filename": filename, "folder": folder,
             "bytes": size, "size_mb": round(size / 1_048_576, 2),

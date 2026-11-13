@@ -32,6 +32,7 @@ import httpx
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
+from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
 from ..listens import AGG_PREFIX, MONTH_PREFIX, ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
@@ -55,7 +56,7 @@ PLAYLIST_PREFIX = "playlists-"
 #: Prefijos de los archivos chicos por dispositivo que se guardan en la copia
 #: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea.
 SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, MONTH_PREFIX, AGG_PREFIX,
-                  ARTISTINFO_PREFIX, DISCOVER_PREFIX)
+                  ARTISTINFO_PREFIX, DISCOVER_PREFIX, FILEINFO_PREFIX)
 #: Cuantos archivos chicos se bajan a la vez al cargar el indice y compania.
 SMALL_FILE_WORKERS = 4
 
@@ -254,7 +255,7 @@ def upload_ranges(total: int, chunk: int) -> list[tuple[int, int]]:
 
 # ------------------------------------------------------------------- adapter
 class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
-                   DiscoverStorageMixin):
+                   DiscoverStorageMixin, FileInfoStorageMixin):
     """`Storage` sobre una nube. El proveedor concreto implementa los hooks.
 
     Esta clase tiene todo lo que NO depende del proveedor: reintentos, el indice
@@ -800,6 +801,22 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         return self._read_small(ref)
 
     def _discover_write(self, name: str, data: bytes,
+                        ref: str | None = None) -> str:
+        return self._write_small(name, data, ref)
+
+    # ----------------------------------------------------------------- fileinfo
+    def _fileinfo_device(self) -> str:
+        return self.device_id
+
+    def _fileinfo_list(self) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los registros de todos los dispositivos."""
+        return [(rf.remote_id, rf.name)
+                for rf in self._list_small(FILEINFO_PREFIX)]
+
+    def _fileinfo_read(self, ref: str) -> bytes:
+        return self._read_small(ref)
+
+    def _fileinfo_write(self, name: str, data: bytes,
                         ref: str | None = None) -> str:
         return self._write_small(name, data, ref)
 

@@ -39,6 +39,7 @@ configure_runtime()
 
 from .artistinfo import Enricher, fold, library_artists
 from .downloader import download_track, library_scan
+from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
@@ -726,9 +727,21 @@ async def setlist(request: Request):
     return JSONResponse({"tracks": tracks})
 
 
+async def _fileinfo_records(storage) -> dict:
+    """Veredictos guardados. Si no se pueden leer, la lista sale sin ellos."""
+    try:
+        return await asyncio.to_thread(storage.load_fileinfo)
+    except Exception as e:
+        log.warning("no se pudieron leer los veredictos: %s", e)
+        return {}
+
+
 async def library(request: Request):
-    files = await asyncio.to_thread(library_scan)
-    return JSONResponse({"library": get_storage().describe(), "count": len(files),
+    storage = get_storage()
+    files, records = await asyncio.gather(
+        asyncio.to_thread(library_scan), _fileinfo_records(storage))
+    files = with_checks(files, records)
+    return JSONResponse({"library": storage.describe(), "count": len(files),
                          "files": files})
 
 
