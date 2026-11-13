@@ -92,7 +92,10 @@ own contents.
 > [!NOTE]
 > The verdict is computed **after** the download, against the real title of the file that
 > landed — not against the metadata you searched with. Publishing it through the job
-> payload is what lets the UI show it without a second round trip.
+> payload is what lets the UI show it without a second round trip, and it is **stored**
+> with the file (a small record per download, in `.spitifo/` on disk and next to the index
+> on Drive) so the library can show it later. A file downloaded before that has no record
+> and stays *Sin verificar*: nothing is guessed back.
 
 ## How the sources work
 
@@ -189,6 +192,13 @@ when its source only has a preview): nobody has looked at the audio yet. *Coinci
 *Parecido* and *No coincide* appear only after the app has read the real tags of the
 file, either from a download or from *¿Es esta la canción?* in the result's ficha, which
 reads them without saving the file.
+
+In the library the pill comes from the stored record. Phone rows show it only when
+something is not right (*Parecido*, *No coincide*, or *Sin verificar* when the title could
+not be read), the desktop tables have a *Verificación* column, and an album says *Todo
+coincide* or *3 de 5 coinciden*. A file without a record shows nothing on a row: its *Ficha
+del archivo* (in Ahora suena, or from the track menu) says *Sin verificar*, and says where
+the metadata and the audio came from when it knows.
 
 ### Descubrir
 
@@ -385,7 +395,8 @@ account risks a ban; a secondary account is advisable.
 | `GET` | `/api/setlist` | Expand an Archive concert into its real setlist |
 | `POST` | `/api/download` | Start a download; returns a `job_id` |
 | `GET` | `/api/download/progress/{job_id}` | Progress, speed, ETA and identity verdict |
-| `GET` | `/api/library` | Everything already downloaded, with durations |
+| `GET` | `/api/library` | Everything already downloaded, with durations, covers (`thumb_key`, `thumb_s`) and, for files with a stored record, `verdict`, `meta_src`, `file_src` and `real` |
+| `GET` | `/api/artist/genres?name=` | The genres MusicBrainz gave an artist, from the stored profiles (no network; empty until the profiler reaches them) |
 | `GET` | `/api/youtube/cookies` | Whether a `cookies.txt` is imported, and when |
 | `POST` | `/api/youtube/cookies` | Import a `cookies.txt` (multipart `file` or raw body) |
 | `DELETE` | `/api/youtube/cookies` | Forget the imported cookies |

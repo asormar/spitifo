@@ -879,7 +879,7 @@ The plan as written:
 - The same review as session 20, now covering Discover: the map's data and
   rendering, and anything the recommendations added to start-up.
 
-### 25. Redesign «Combinación» — PRs 1–7 done, PR 8 pending
+### 25. Redesign «Combinación» — PRs 1–8 done
 
 A chain of pull requests, each reviewed and merged into `main` in order, replaced
 the interface with the approved «Combinación» design: the Disco logo, Unbounded
@@ -904,17 +904,35 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
    card, «Para ti» (a sheet on a phone, a panel inside the map card on a
    desktop), and Ajustes as one page of sections. «Buscar para descargar» is the
    wording wherever Descubrir points to a download.
+8. **Veredicto por archivo.** Each download stores its verdict and where the
+   metadata and the audio came from (`fileinfo-<device>-YYYY-MM.json`, on disk
+   and on Drive), and audio downloads with an iTunes ficha get a 200 px and a
+   ~100 px cover next to the file (one batched index write on Drive). With that
+   data: pills in the library rows and a «Verificación» column in the desktop
+   tables, «Todo coincide» / «3 de 5 coinciden» on an album, «todas
+   comprobadas», the Ficha del archivo (Ahora suena, the track menu), a verdict
+   chip in Ahora suena and the player bar, and «En el mapa de géneros» with the
+   artist's real genres (`GET /api/artist/genres`).
 
-- **Truthful until PR 8.** The library has no verdict, provenance, genre or year
-  per file yet, so the app shows none: no pill on a library file, no «Ver la
-  ficha del archivo» item and no «En el mapa de géneros» card in Ahora suena.
-  PR 8 (`feat/file-verdict`) stores them at download time and lights those up.
-- **Size.** The JavaScript limit went from 371,000 B to 388,950 B over PRs 2–6
-  and the CSS limit stayed at 103,000 B. PR 7 ends at 386,089 B and 102,017 B,
-  with the first stylesheet 2,222 B smaller (`docs/performance.md`).
+- **Truthful by construction.** A verdict, a provenance or a cover appears only
+  from a real record. The verdict only exists at download time, so there is no
+  backfill: a file downloaded before PR 8 has no record, shows no pill on a row
+  and says «Sin verificar» only in its Ficha, the Ahora suena chip and the
+  player bar. A Buscar result keeps full / preview / none until a verification
+  or a download says otherwise, and «todas comprobadas» is computed, never
+  written. The artist genres card hides when the profiler has no data or the map
+  does not know the genre; the album year and genre line stays out (the
+  library has neither per album).
+- **Size.** The JavaScript limit went from 371,000 B to 393,400 B over PRs 2–8
+  and the CSS limit from 103,000 B to 104,800 B. PR 8 ends at 392,876 B and
+  104,267 B: it is the one PR that adds five features' worth of code instead of
+  replacing it (`docs/performance.md`).
 - **Not done.** Installed-app and Pixel runs of `scripts/perf/ui.mjs` for the
-  redesign, the app icons with the Disco mark (installer and launcher), and the
-  logo decision in `PRODUCT.md`.
+  redesign (and the Gallery question for covers beside the audio in
+  `Music/Spitifo`), a real Drive account run of the batched index write, a
+  «Buscar portadas» tool for the covers of existing files, the app icons with
+  the Disco mark (installer and launcher), and the logo decision in
+  `PRODUCT.md`.
 
 ## Dependencies
 

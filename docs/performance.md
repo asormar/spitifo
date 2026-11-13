@@ -30,8 +30,8 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 388,950 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 393,400 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 104,800 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -556,6 +556,80 @@ over 50 ms at 4x or 6x. The review fixed two things:
 
 Those fixes add 133 B of script and save 53 B of style.
 
+The file verdict (PR 8: a verdict and its provenance stored per download, real
+covers for audio, the genre card in Ahora suena, and the pills, the liner, the
+file sheet, the chip and the bar that read them) is the last piece of the
+redesign and the one that adds code instead of replacing it: five features that
+were hidden until the data existed. Nothing new is fetched on a cold start and
+no chunk is added to what opens first; the Ahora suena chunk asks for
+`/api/artist/genres` when its card mounts and for `genre-map.json` (189 KB, once
+per session) only if that answer has genres.
+
+| Bundle | After Descubrir and Ajustes | After the file verdict | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 386,089 B | 392,876 B (+6,787) | 388,950 B | 393,400 B |
+| CSS | 102,017 B | 104,267 B (+2,250) | 103,000 B | 104,800 B |
+
+Both limits are the measured size plus 500 B, rounded up to 50. The script grew
+by 6.8 KB across the five units (+307 B for the covers, +2,359 B for the genre
+card, +3,988 B for the pills, liner, file sheet, chip and bar): the pure module
+for the verdict texts and pills (`fileCheck`), the file sheet, the chip, the bar
+pill, the genre card and its map matching (`genreChips`), and the wiring in the
+rows, tables, liner and menu. The CI count adds every `.js`, so code that sits
+in a lazy chunk counts in full. The `.vb` rules left the Buscar stylesheet for a
+shared one (`shared/verdict.css`), so library rows do not import Buscar, and the
+session-only store of library verdicts and the old pill and labels in
+`download/` are gone. One tiny shared chunk (`genreRequest-*`) appeared because
+Ahora suena, Buscar and Descubrir now all import the genre request slot.
+
+**Payload.** The per-file summary rides on `/api/library` and is written to
+`localStorage` as well, so every byte is paid twice. Measured on a 3,000-track
+library (`seed_library.py`, local SSD, Windows), compact JSON as served:
+
+| `/api/library` | Bytes | Per file |
+| --- | --- | --- |
+| No records, no covers (a library from before PR 8) | 808,165 B | 269 B |
+| + `thumb_key` and `thumb_s` on every row | 950,165 B (+142,000) | +47 B |
+| + `verdict`, `meta_src`, `file_src` on every row, `real` on 12 % | 1,155,205 B (+205,040) | +68 B |
+
+A file without a record gets no new field, so a legacy library is served the
+exact bytes it was served before. The URLs, the matched title, the score and the
+time stay in the shard: sending the full record would have cost about 450 B per
+file. On the server `load_fileinfo` parses the 910 KB of shards in 18.5 ms and
+the join takes 1.9 ms (3,000 records; the media scan itself is unchanged: 1.44 s
+cold and 149 ms warm for 3,000 tracks). With both covers on every track the
+folder lists 9,000 files and the warm scan takes 299 ms: that is the extra
+directory entries, not the join. On Drive the records come from the 30-second
+cache and one small file per device and month: a record is about 300 B, so a
+download rewrites only its own month (25 KB at 83 records; the 3,000 records
+above are 910 KB over the months they span).
+
+**Covers on Drive.** Each cover is its own index entry, and every write
+re-uploads the whole per-device index. The real `LibraryIndex` classes, 3,000
+tracks:
+
+| Index | Size | `to_bytes` | `from_bytes` |
+| --- | --- | --- | --- |
+| Audio only | 1,020,027 B | 45 ms | 33 ms |
+| + 200 px cover | 1,911,027 B | 92 ms | 81 ms |
+| + 200 px and ~100 px | 2,805,027 B | 151 ms | 130 ms |
+
+At 300 tracks (the Pixel runs) the three sizes are 102 KB, 191 KB and 281 KB. A
+download writes the audio and its two covers in one `put_files` call, so the
+index goes up once (2.8 MB at 3,000 tracks) instead of three times in a row.
+The covers themselves are 13.9 KB (200 px) and 5.3 KB (~100 px) from the iTunes
+CDN (one cover measured during the design), about 57 MB for 3,000 tracks; they
+are only fetched for downloads with an iTunes ficha, and rows ask for the small
+one only.
+
+**Genres.** `GET /api/artist/genres` reads the profiler's stored records through
+the cache `/api/discover` already uses: a warm call is a dictionary lookup and
+the credit split. It never starts the profiler and never touches the network.
+
+The browser pass at 1x and 4x CPU throttling (frame times of the new table
+column and pill cells, the fast-scroll gate with real covers, opening Ahora suena
+with the chip) belongs to the review of the PR and is not in these numbers.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
@@ -620,7 +694,13 @@ python scripts/perf/seed_library.py <library folder> --remove
 ```
 
 It writes 300 copies of a 3-second MP3 into `Perf Artist NN` folders and
-`--remove` deletes exactly those folders. On the PC the library folder is
+`--remove` deletes exactly those folders. `--thumbs [N]` adds a cover next to
+the first N tracks, `--small-thumbs` the ~100 px `.s.jpg` beside each, and
+`--verdicts` the stored verdict of every track (a shard under `.spitifo/`, so
+`/api/library` carries `verdict`, `meta_src`, `file_src` and `real` on each row:
+the worst case for the payload; `--remove` deletes it too). The 3,000-track runs
+of the verdict work used
+`--count 3000 --folders 300 --thumbs 3000 --small-thumbs --verdicts`. On the PC the library folder is
 `%USERPROFILE%\Music\Spitifo`; on the phone, push the folders to
 `/sdcard/Music/Spitifo/` with `adb push`.
 
