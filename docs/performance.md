@@ -657,6 +657,17 @@ lazy import add 1,476 B to the Ajustes chunk. The CI count adds every `.js` and
 it. On Drive, each confirmed cover is one `put_files` of its two sizes, so one
 index write per file, the same as a download.
 
+**Fixes from the v0.7.0 phone pass.** The track menu header now draws the
+stored cover, and the yt-dlp verdict compares the video with the chosen iTunes
+ficha instead of the typed query. JS 401,845 -> 401,877 B (+32, all in the lazy
+`Overlays` and `PlaylistPicker` chunks; boot unchanged), CSS unchanged, limits
+unchanged. The menu asks for the same 100 px URL the row already loaded, so it
+adds no request: one cover request of 4,665 B with or without the fix. Time from
+tapping «...» to the sheet painted (headless Chrome, 390x844, warm median of 8,
+two runs per build), `main` -> fix: 23-33 -> 30 ms at CPU x1, 36-38 -> 34-37 ms
+at x4, within this machine's noise. The verdict change is a string comparison
+at download time and costs nothing measurable.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
