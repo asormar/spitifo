@@ -1464,6 +1464,43 @@ async def prefetch(request: Request):
     return JSONResponse({"key": key}, status_code=202)
 
 
+# ------------------------------------------------------------ buscar portadas
+async def covers_missing(request: Request):
+    """GET /api/covers/missing: temas de audio sin portada."""
+    from .cover_finder import missing
+    items = await asyncio.to_thread(missing)
+    return JSONResponse({"count": len(items), "items": items})
+
+
+async def covers_candidates(request: Request):
+    """GET /api/covers/candidates?key&q: canciones de iTunes con portada."""
+    from .cover_finder import CoverError, candidates
+    key = _query_str(request, "key", required=True)
+    q = _query_str(request, "q", required=True)
+    try:
+        found = await candidates(key, q)
+    except CoverError as e:
+        raise HTTPException(e.status, e.detail)
+    return JSONResponse({"key": key, "query": q, "candidates": found})
+
+
+async def covers_apply(request: Request):
+    """POST /api/covers/apply {key, artwork_url}: guarda la portada confirmada."""
+    from .cover_finder import CoverError, apply
+    body = await _json_body(request)
+    key = body.get("key")
+    url = body.get("artwork_url")
+    if not isinstance(key, str) or not key:
+        raise _invalid(["body", "key"], "Field required")
+    if not isinstance(url, str) or not url:
+        raise _invalid(["body", "artwork_url"], "Field required")
+    try:
+        saved = await apply(key, url)
+    except CoverError as e:
+        raise HTTPException(e.status, e.detail)
+    return JSONResponse(saved)
+
+
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
     """Mismo cuerpo de error que FastAPI: {"detail": ...} en todos los casos."""
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
@@ -1539,6 +1576,9 @@ routes = [
     Route("/api/storage/disconnect", storage_disconnect, methods=["POST"]),
     Route("/api/audio", audio),
     Route("/api/prefetch", prefetch, methods=["POST"]),
+    Route("/api/covers/missing", covers_missing),
+    Route("/api/covers/candidates", covers_candidates),
+    Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
