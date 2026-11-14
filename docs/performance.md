@@ -30,8 +30,8 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 393,400 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 104,600 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 402,350 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 108,400 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -638,6 +638,24 @@ the credit split. It never starts the profiler and never touches the network.
 The browser pass at 1x and 4x CPU throttling (frame times of the new table
 column and pill cells, the fast-scroll gate with real covers, opening Ahora suena
 with the chip) belongs to the review of the PR and is not in these numbers.
+
+**Buscar portadas.** The opt-in tool that finds covers for files downloaded
+before covers were stored (a «Portadas» card in Ajustes, the tool itself in its
+own `CoverFinder-*` chunk) is new code, not a replacement. Nothing loads on a
+cold start or when Ajustes opens: the chunk is fetched when the button is
+pressed (or hovered on a desktop).
+
+| Bundle | After the file verdict (`main`) | After Buscar portadas | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 392,865 B | 401,845 B (+8,980) | 393,400 B | 402,350 B |
+| CSS | 104,067 B | 107,857 B (+3,790) | 104,600 B | 108,400 B |
+
+Both limits are again the measured size plus 500 B, rounded up to 50. The
+`CoverFinder` chunk is 7,504 B of script and 3,737 B of style; the card and the
+lazy import add 1,476 B to the Ajustes chunk. The CI count adds every `.js` and
+`.css`, so the lazy chunk counts in full even though most sessions never load
+it. On Drive, each confirmed cover is one `put_files` of its two sizes, so one
+index write per file, the same as a download.
 
 ### Windows installer: 22,707,225 B
 
