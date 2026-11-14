@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Ico from "../shared/ico.jsx";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
@@ -6,6 +6,9 @@ import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./settings.css";
 import "../shared/chips.css";
+
+/* "Buscar portadas" va en su propio chunk: solo se baja al tocar el boton. */
+const CoverFinder = lazy(() => import("./CoverFinder.jsx"));
 
 const THEME_OPTIONS = [
   { id: "light", label: "Claro" },
@@ -58,8 +61,31 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const storageHeadRef = useRef(null);
   const cookiesRef = useRef(null);
   const cookiesHeadRef = useRef(null);
+  const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
   const pc = usePc();
+  const [finder, setFinder] = useState(false);
+  const coversSaved = useRef(false);
+
+  /* Al salir de "Buscar portadas" (por su boton o porque se dejo Ajustes) la
+     biblioteca se vuelve a pedir si se guardo algo, para ver las portadas. */
+  const closeFinder = useCallback(() => {
+    setFinder(false);
+    if (coversSaved.current) {
+      coversSaved.current = false;
+      onChanged?.();
+    }
+  }, [onChanged]);
+
+  useEffect(() => {
+    if (!active && finder) closeFinder();
+  }, [active, finder, closeFinder]);
+
+  const wasFinder = useRef(false);
+  useEffect(() => {
+    if (wasFinder.current && !finder) coversHeadRef.current?.focus({ preventScroll: false });
+    wasFinder.current = finder;
+  }, [finder]);
 
   /* Al abrir Ajustes con un destino (el aviso de cookies o el boton de la
      biblioteca) se trae esa seccion y se deja el foco en su titulo, para que
@@ -76,6 +102,14 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     target.head.current?.focus({ preventScroll: true });
   }, [active, focus]);
 
+  if (finder) {
+    return (
+      <Suspense fallback={<div className="settings" aria-busy="true" />}>
+        <CoverFinder onClose={closeFinder} onSaved={() => (coversSaved.current = true)} />
+      </Suspense>
+    );
+  }
+
   return (
     <div className="settings">
       <header className="settings__head">
@@ -90,6 +124,28 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           Almacenamiento
         </h2>
         <StorageSettings active={active} onChanged={onChanged} />
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-covers">
+        <h2 id="settings-covers" ref={coversHeadRef} tabIndex={-1} className="settings__h">
+          Portadas
+        </h2>
+        <div className="settings__card">
+          <p className="settings__note settings__note--lead">
+            Los temas que bajaste antes de que Spitifo guardara portadas no tienen una. Puedes
+            buscarlas en iTunes y elegir cuál va en cada tema. Nada se guarda sin tu confirmación.
+          </p>
+          <div className="settings__ckacts">
+            <button
+              type="button"
+              className="settings__btn settings__btn--acc"
+              onClick={() => setFinder(true)}
+              onPointerEnter={() => import("./CoverFinder.jsx")}
+            >
+              Buscar portadas
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="settings__sec" ref={cookiesRef} aria-labelledby="settings-cookies">

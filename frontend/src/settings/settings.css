@@ -342,6 +342,12 @@
   line-height: 1.5;
 }
 
+/* La nota que abre una tarjeta (Portadas): va arriba y en el cuerpo de texto. */
+.settings__note--lead {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+
 .settings__note a {
   color: var(--acc);
 }

@@ -396,6 +396,9 @@ account risks a ban; a secondary account is advisable.
 | `POST` | `/api/download` | Start a download; returns a `job_id` |
 | `GET` | `/api/download/progress/{job_id}` | Progress, speed, ETA and identity verdict |
 | `GET` | `/api/library` | Everything already downloaded, with durations, covers (`thumb_key`, `thumb_s`) and, for files with a stored record, `verdict`, `meta_src`, `file_src` and `real` |
+| `GET` | `/api/covers/missing` | Audio files with no cover next to them (downloaded before covers were stored), with a suggested iTunes search |
+| `GET` | `/api/covers/candidates?key=&q=` | Up to six iTunes songs with artwork for one of those files; the server remembers what it offered |
+| `POST` | `/api/covers/apply` | Save the cover the user confirmed for one file (`key`, `artwork_url`, which must be one that was offered); never overwrites |
 | `GET` | `/api/artist/genres?name=` | The genres MusicBrainz gave an artist, from the stored profiles (no network; empty until the profiler reaches them) |
 | `GET` | `/api/youtube/cookies` | Whether a `cookies.txt` is imported, and when |
 | `POST` | `/api/youtube/cookies` | Import a `cookies.txt` (multipart `file` or raw body) |
