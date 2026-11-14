@@ -175,32 +175,44 @@
   line-height: 1.45;
 }
 
-.ffacts {
+/* Los datos del archivo (la hoja y la tarjeta de Ahora suena). */
+.dfacts {
   display: grid;
   gap: 10px;
-  margin: 14px 0 0;
-  font-size: 14px;
+  margin: 0;
 }
 
-.ffacts > div {
+.dfacts > div {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
 }
 
-.ffacts dt {
+.dfacts dt {
   color: var(--mut);
-  font-weight: 600;
 }
 
-.ffacts dd {
+.dfacts dd {
   margin: 0;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.ffacts .is-mono {
-  font: 500 12px ui-monospace, "SFMono-Regular", Consolas, monospace;
+.dfacts dd.is-mono {
+  font: 500 12px / 1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.ffacts {
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.ffacts > div {
+  gap: 16px;
+}
+
+.ffacts dt {
+  font-weight: 600;
 }
 
 /* En el popover: cabecera con linea y items de 44. */

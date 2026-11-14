@@ -27,7 +27,7 @@ log = logging.getLogger("spitifo.covers")
 COVER_PX = 200
 SMALL_PX = 100
 #: Timeout de cada bajada: es un extra, no puede colgar el job.
-TIMEOUT_S = 15.0
+TIMEOUT_S = 5.0
 #: Una portada de 200 px pesa ~14 KB: un cuerpo mucho mayor no es una portada.
 MAX_BYTES = 1_500_000
 MAX_HOPS = 2

@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  albumVerdict,
-  checkOf,
-  checkText,
-  checkedSummary,
-  filePill,
-  provText,
-  rowPill,
-  trackPill,
-} from "./fileCheck.js";
+import { checkOf, checkedSummary, filePill, rowPill, trackPill } from "./fileCheck.js";
+import { albumVerdict, checkText, provText } from "./fileText.js";
 import { normalizeEntry } from "./library.js";
 
 const file = (extra = {}) =>

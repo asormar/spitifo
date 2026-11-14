@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Protocol
@@ -56,6 +57,9 @@ class InvalidKey(ValueError):
 #: clave tiene que poder ser un archivo real: si no, `put_file` fallaria recien
 #: al escribir. El `/` se trata aparte porque es el separador.
 _ILEGALES = set(':*?"<>|')
+#: Una pasada de regex en vez de un `any(ord(c) ...)` por caracter: `list()` valida
+#: una clave por archivo en cada `/api/library`.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def validate_key(key: str) -> str:
@@ -75,7 +79,7 @@ def validate_key(key: str) -> str:
         raise InvalidKey("la clave no puede estar vacia")
     if len(key) > MAX_KEY_LEN:
         raise InvalidKey("la clave es demasiado larga")
-    if any(ord(c) < 32 or ord(c) == 127 for c in key):
+    if _CONTROL.search(key):
         raise InvalidKey("la clave tiene caracteres de control")
     if "\\" in key:
         raise InvalidKey("la clave usa un separador invalido")

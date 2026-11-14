@@ -1,6 +1,6 @@
 import { becauseText, clock, fmtSize } from "../shared/format.js";
 import { fold } from "../listen/library.js";
-import { SRC, provText } from "../listen/fileCheck.js";
+import { SRC, provText } from "../listen/fileText.js";
 import { plural } from "../listen/home.js";
 import { mixName } from "../listen/mixes.js";
 

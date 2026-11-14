@@ -925,6 +925,7 @@ class YtDlpSource(Source):
             with _JOBS_LOCK:
                 JOBS[job_id]["status"] = "pending"
 
+        cover_task: asyncio.Task | None = None
         try:
             # El lock cubre tambien `_write_tags` y `put_file`: si se soltara
             # antes, el otro job podria empezar a reescribir el archivo mientras
@@ -932,6 +933,11 @@ class YtDlpSource(Source):
             async with lock:
                 with _JOBS_LOCK:
                     JOBS[job_id]["status"] = "downloading"
+                # Las portadas de iTunes no dependen del audio: se piden mientras
+                # yt-dlp baja, y la descarga no espera a un CDN lento al final.
+                if kind == "audio" and track.extra.get("from_itunes"):
+                    cover_task = asyncio.create_task(
+                        fetch_itunes_covers(track.artwork_url, work))
 
                 # Reintentos: ante un error transitorio se rehace TODO (extract +
                 # download) para traer URLs de formato nuevas. El job sigue
@@ -1022,8 +1028,8 @@ class YtDlpSource(Source):
                 # Audio con ficha de iTunes: su portada en dos tamanos va junto
                 # al audio, en un solo `put_files` (en Drive, una escritura del
                 # indice). Best effort: sin portada la descarga sigue igual.
-                covers = (await fetch_itunes_covers(track.artwork_url, work)
-                          if kind == "audio" and use_itunes else None)
+                covers = (await cover_task
+                          if cover_task is not None and use_itunes else None)
                 items = [(key, path)]
                 if covers:
                     items += [(thumb_sidecar_key(key), covers[0]),
@@ -1080,6 +1086,8 @@ class YtDlpSource(Source):
                 "real_title": info_title or None,
             }
         finally:
+            if cover_task is not None and not cover_task.done():
+                cover_task.cancel()
             # La subcarpeta de trabajo se borra entera pase lo que pase: el
             # archivo terminado ya salio por `put_file` y no quedan temporales.
             shutil.rmtree(work, ignore_errors=True)

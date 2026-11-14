@@ -5,7 +5,8 @@ import { keyUrl } from "../shared/api.js";
 import { coverTone } from "../shared/cover.js";
 import { fileFacts } from "../player/nowInfo.js";
 import { Cover } from "./cards.jsx";
-import { checkText, filePill } from "./fileCheck.js";
+import { filePill } from "./fileCheck.js";
+import { checkText } from "./fileText.js";
 import { rowArt } from "./library.js";
 
 /* ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ export default function FileSheet({ entry, storage, anchor, onClose }) {
           <VerdictPill v={v} />
           <p>{checkText(entry)}</p>
         </div>
-        <dl className="ffacts">
+        <dl className="dfacts ffacts">
           {rows.map((r) => (
             <div key={r.k}>
               <dt>{r.k}</dt>

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -260,3 +261,24 @@ def test_si_falla_al_guardar_las_portadas_el_audio_queda(ytdlp, portadas,
 
     assert (ytdlp.root / res["key"]).exists()
     assert res["thumb_key"] is None
+
+
+def test_las_portadas_se_piden_mientras_yt_dlp_baja(ytdlp, portadas, monkeypatch):
+    """La descarga no espera a las portadas al final: ya estan pedidas cuando yt-dlp corre."""
+    visto: dict = {}
+    original = YtDlpDoble.extract_info
+
+    def espia(self, url, download=True):
+        # Corre en un hilo: el bucle del evento atiende el pedido de portadas.
+        for _ in range(100):
+            if len(portadas) == 2:
+                break
+            time.sleep(0.01)
+        visto["pedidas"] = len(portadas)
+        return original(self, url, download=download)
+
+    monkeypatch.setattr(YtDlpDoble, "extract_info", espia)
+    res = _bajar(_numb_con_arte(), "numb")
+
+    assert visto["pedidas"] == 2
+    assert res["thumb_key"] is not None

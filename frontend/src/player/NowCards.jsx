@@ -6,7 +6,8 @@ import { requestSearch } from "../download/searchRequest.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { useListen } from "../listen/ListenProvider.jsx";
-import { checkText, filePill } from "../listen/fileCheck.js";
+import { filePill } from "../listen/fileCheck.js";
+import { checkText } from "../listen/fileText.js";
 import { useHistory } from "../listen/history.js";
 import { initials } from "../shared/format.js";
 import { useArtistGenres } from "./genreChips.js";
@@ -40,7 +41,7 @@ export function FichaCard({ track, full = false, onReveal }) {
       <h3 className="ncard__h">Ficha del archivo</h3>
       <VerdictPill v={filePill(entry)} />
       <p className="ncard__p">{checkText(entry, { card: true })}</p>
-      <dl className="ncard__facts">
+      <dl className="dfacts ncard__facts">
         {rows.map((r) => (
           <div key={r.k}>
             <dt>{r.k}</dt>

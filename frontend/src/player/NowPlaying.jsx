@@ -351,8 +351,10 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
           <div className="np__cover">{cover}</div>
           {pc ? (
             <div className="np__row">
-              <div className="np__meta">{title}</div>
-              {chip}
+              <div className="np__meta">
+                {title}
+                {chip}
+              </div>
               {addButton}
             </div>
           ) : (

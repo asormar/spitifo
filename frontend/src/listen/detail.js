@@ -1,4 +1,4 @@
-import { albumVerdict } from "./fileCheck.js";
+import { albumVerdict } from "./fileText.js";
 import { artistId, groupAlbums } from "./library.js";
 import { albumOrder, albumTone, entryTone, minutes, plural, songs, sortEntries, toneOf } from "./home.js";
 

@@ -278,10 +278,11 @@ def library_scan() -> list[dict]:
     (solo si existe) avisa que ademas hay una portada chica `<stem>.s.jpg`.
     """
     files = list(get_storage().list())
-    thumbs = {f.key for f in files if Path(f.key).suffix.lower() in IMAGE_EXTS}
+    thumbs = {f.key for f in files
+              if os.path.splitext(f.key)[1].lower() in IMAGE_EXTS}
     out = []
     for f in files:
-        ext = Path(f.key).suffix.lower()
+        ext = os.path.splitext(f.key)[1].lower()
         if ext in IMAGE_EXTS:
             continue  # huerfano o sidecar: lo resuelve `thumb_key` de su video
         partes = f.key.split("/")

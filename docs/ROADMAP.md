@@ -924,8 +924,8 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
   does not know the genre; the album year and genre line stays out (the
   library has neither per album).
 - **Size.** The JavaScript limit went from 371,000 B to 393,400 B over PRs 2–8
-  and the CSS limit from 103,000 B to 104,800 B. PR 8 ends at 392,876 B and
-  104,267 B: it is the one PR that adds five features' worth of code instead of
+  and the CSS limit from 103,000 B to 104,600 B. PR 8 ends at 392,865 B and
+  104,067 B: it is the one PR that adds five features' worth of code instead of
   replacing it (`docs/performance.md`).
 - **Not done.** Installed-app and Pixel runs of `scripts/perf/ui.mjs` for the
   redesign (and the Gallery question for covers beside the audio in

@@ -280,13 +280,20 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
         walk(str(self.root), "")
         found.sort()
+        seen: set[str] = set()
         for key, size, mtime in found:
+            if os.path.splitext(key)[1].lower() in IMAGE_EXTS:
+                # Una portada no tiene nada que leer: sin entrada en la cache
+                # (con dos por descarga triplicaba el listado y el JSON).
+                yield StoredFile(key=key, size=size, mtime=mtime)
+                continue
+            seen.add(key)
             dur, title, artist, album = self._media(self.root / key, key, size,
                                                     mtime)
             yield StoredFile(key=key, size=size, mtime=mtime, duration=dur,
                              title=title, artist=artist, album=album)
         # Solo con el listado completo se sabe que claves ya no estan.
-        self._save_media_cache({key for key, _, _ in found})
+        self._save_media_cache(seen)
 
     def stat(self, key: str) -> StoredFile:
         p = self._path(key)

@@ -110,3 +110,17 @@ def test_la_cache_conserva_las_etiquetas(tmp_path, mp3_desde_wav):
     (segundo,) = list(LocalStorage(tmp_path).list())
     assert (segundo.title, segundo.artist, segundo.album) == ("Canción", "Ñu", "Uno")
     assert segundo.duration == primero.duration
+
+
+def test_las_portadas_no_entran_en_la_cache_de_media(tmp_path):
+    """Cada descarga trae dos portadas: con entrada en la cache triplicaban el JSON."""
+    _plantar(tmp_path, "A/A - Uno.mp3")
+    _plantar(tmp_path, "A/A - Uno.jpg")
+    _plantar(tmp_path, "A/A - Uno.s.jpg")
+    # Una entrada vieja de una portada se poda en el siguiente listado.
+    storage = LocalStorage(tmp_path)
+    listado = {f.key: f for f in storage.list()}
+    assert set(listado) == {"A/A - Uno.mp3", "A/A - Uno.jpg", "A/A - Uno.s.jpg"}
+    assert listado["A/A - Uno.jpg"].size == 64 and listado["A/A - Uno.jpg"].duration is None
+    cache = json.loads((tmp_path / ".spitifo" / "media-cache.json").read_bytes())
+    assert list(cache["files"]) == ["A/A - Uno.mp3"]

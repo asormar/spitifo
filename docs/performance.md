@@ -31,7 +31,7 @@ open to DevTools); everything else comes from the published files.
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
 | JavaScript bundle (raw, all `.js`) | — | 393,400 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 104,800 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 104,600 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -567,11 +567,11 @@ per session) only if that answer has genres.
 
 | Bundle | After Descubrir and Ajustes | After the file verdict | Old limit | New limit |
 | --- | --- | --- | --- | --- |
-| JavaScript | 386,089 B | 392,876 B (+6,787) | 388,950 B | 393,400 B |
-| CSS | 102,017 B | 104,267 B (+2,250) | 103,000 B | 104,800 B |
+| JavaScript | 386,222 B | 392,865 B (+6,643) | 388,950 B | 393,400 B |
+| CSS | 101,964 B | 104,067 B (+2,103) | 103,000 B | 104,600 B |
 
 Both limits are the measured size plus 500 B, rounded up to 50. The script grew
-by 6.8 KB across the five units (+307 B for the covers, +2,359 B for the genre
+by 6.6 KB across the five units (+307 B for the covers, +2,359 B for the genre
 card, +3,988 B for the pills, liner, file sheet, chip and bar): the pure module
 for the verdict texts and pills (`fileCheck`), the file sheet, the chip, the bar
 pill, the genre card and its map matching (`genreChips`), and the wiring in the
@@ -581,6 +581,10 @@ shared one (`shared/verdict.css`), so library rows do not import Buscar, and the
 session-only store of library verdicts and the old pill and labels in
 `download/` are gone. One tiny shared chunk (`genreRequest-*`) appeared because
 Ahora suena, Buscar and Descubrir now all import the genre request slot.
+After the review the verdict sentences moved from `fileCheck` to `fileText`,
+which only the file sheet, the album liner and Ahora suena import: the boot
+chunk is 1,044 B lighter for the same total, and the file sheet and the Ahora
+suena card share one `.dfacts` block (CSS −200 B).
 
 **Payload.** The per-file summary rides on `/api/library` and is written to
 `localStorage` as well, so every byte is paid twice. Measured on a 3,000-track
@@ -598,8 +602,13 @@ time stay in the shard: sending the full record would have cost about 450 B per
 file. On the server `load_fileinfo` parses the 910 KB of shards in 18.5 ms and
 the join takes 1.9 ms (3,000 records; the media scan itself is unchanged: 1.44 s
 cold and 149 ms warm for 3,000 tracks). With both covers on every track the
-folder lists 9,000 files and the warm scan takes 299 ms: that is the extra
-directory entries, not the join. On Drive the records come from the 30-second
+folder lists 9,000 files. Covers are listed without a media-cache entry (there
+is nothing to read in them), which keeps `media-cache.json` at the size of the
+tracks alone (0.44 MB instead of 1.33 MB) and the warm scan at 172 ms instead of
+233 ms (review numbers, same machine); the rest of the extra is the directory
+entries, not the join. The iTunes cover fetch starts when yt-dlp starts and is
+awaited only when the audio is ready, with a 5 s cap, so a slow CDN does not hold
+a finished download. On Drive the records come from the 30-second
 cache and one small file per device and month: a record is about 300 B, so a
 download rewrites only its own month (25 KB at 83 records; the 3,000 records
 above are 910 KB over the months they span).

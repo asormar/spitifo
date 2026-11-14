@@ -373,7 +373,8 @@
   letter-spacing: -0.025em;
 }
 
-.ncard__p {
+.ncard__p,
+.ncard__n {
   margin: 10px 0 0;
   font-size: 14px;
   line-height: 1.45;
@@ -385,31 +386,8 @@
 }
 
 .ncard__facts {
-  display: grid;
-  gap: 10px;
-  margin: 0;
   font-size: 13.5px;
   line-height: 1.35;
-}
-
-.ncard__facts > div {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 12px;
-}
-
-.ncard__facts dt {
-  color: var(--mut);
-}
-
-.ncard__facts dd {
-  margin: 0;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.ncard__facts dd.is-mono {
-  font: 500 12px / 1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
 
 .ncard__go {
@@ -470,10 +448,7 @@
 }
 
 .ncard__n {
-  margin: 10px 0 0;
   font-size: 12.5px;
-  line-height: 1.45;
-  opacity: 0.94;
 }
 
 /* Si te gusta, prueba. */
@@ -660,6 +635,11 @@
 .np--pane .np__row .np__meta {
   flex: 1;
   margin-top: 0;
+}
+
+/* El chip va bajo el artista: a su lado le quitaba el ancho al titulo. */
+.np--pane .np__v {
+  margin-top: 10px;
 }
 
 .np--pane .np__row .cbtn--w {
