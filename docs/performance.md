@@ -668,6 +668,20 @@ two runs per build), `main` -> fix: 23-33 -> 30 ms at CPU x1, 36-38 -> 34-37 ms
 at x4, within this machine's noise. The verdict change is a string comparison
 at download time and costs nothing measurable.
 
+On the Pixel 9 Pro (Android 16, Google Drive library of 2 tracks), with
+inspectable release builds of `main` and the fix stamped 0.7.0. The menu is timed
+from the tap on «...» to the sheet painted, 11 warm opens per batch:
+
+| Pixel 9 Pro | `main` | Fix |
+| --- | --- | --- |
+| Menu open, warm median per batch | 31.8 / 36.3 ms | 30.7 / 33.3 / 38.2 ms |
+| Cover requests in the session | 4 | 4 |
+| Launch to usable (`ui.mjs --adb`) | 1,710 ms | 1,678 ms |
+| Tab switch, content shown (library / discover / search) | 74 / 80 / 84 ms | 70 / 76 / 72 ms |
+
+The 4 cover requests are the Inicio cards (200 px) and the rows (100 px). The
+menu header reuses the row's cover and adds no request.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
