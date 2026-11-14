@@ -145,6 +145,27 @@ def test_ytdlp_guarda_ficha_de_itunes_y_archivo_de_youtube(ytdlp):
     assert registro["real"] == YtDlpDoble.titulo and registro["real_by"] == "video"
 
 
+def test_ytdlp_con_ficha_compara_el_video_con_la_ficha_elegida(ytdlp, monkeypatch):
+    """Se escribio "Radiohead Creep" y se eligio "Creep (Acoustic)": el video de
+    esa version coincide con la ficha, aunque lo escrito fuera mas corto."""
+    monkeypatch.setattr(YtDlpDoble, "titulo", "Creep (Acoustic)")
+    track = Track(source="ytdlp", source_id="abc", title="Creep (Acoustic)",
+                  artist="Radiohead", album="Creep - EP", year="1992",
+                  extra={"webpage_url": "https://www.youtube.com/watch?v=abc",
+                         "item_url": "https://music.apple.com/us/song/2",
+                         "from_itunes": True})
+    res = _bajar(track, "Radiohead Creep")
+
+    assert res["match"] == "match"
+    assert ytdlp.load_fileinfo()[res["key"]]["verdict"] == "match"
+
+
+def test_ytdlp_con_ficha_y_sin_consulta_sigue_comparando(ytdlp):
+    """Sin consulta (una descarga desde una sugerencia) la ficha basta."""
+    res = _bajar(_numb(), None)
+    assert ytdlp.load_fileinfo()[res["key"]]["verdict"] == "match"
+
+
 def test_ytdlp_con_un_enlace_pegado_guarda_unknown(ytdlp):
     res = _bajar(_numb(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
     assert ytdlp.load_fileinfo()[res["key"]]["verdict"] == "unknown"

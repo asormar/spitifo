@@ -121,6 +121,10 @@ describe("checkText", () => {
     expect(checkText(rec("mismatch"))).toBe("No es lo que buscabas.");
   });
 
+  it("does not repeat the title when the file says the same", () => {
+    expect(checkText(rec("partial", { real: "numb" }))).toBe("Se parece, pero no es exactamente lo que buscaste.");
+  });
+
   it("unknown cannot read the title; legacy was never checked", () => {
     expect(checkText(rec("unknown"))).toBe("No se pudo leer el título del audio.");
     expect(checkText(legacy)).toBe("Todavía no se ha comprobado el audio.");
