@@ -328,19 +328,24 @@
 
 .thd.thd--lib,
 .srow--t.srow--lib {
-  --cols: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 56px 40px;
+  --cols: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 112px 56px 40px;
 }
 
 /* Las tablas de una pagina: numero, titulo, duracion y menu (y, en una lista, el
    asa y quitar). */
 .thd--trk,
 .srow--trk {
-  --cols: 36px minmax(0, 1fr) 64px 40px;
+  --cols: 36px minmax(0, 1fr) 112px 64px 40px;
 }
 
 .thd--lst,
 .srow--lst {
-  --cols: 28px 36px minmax(0, 1fr) 64px 40px 40px;
+  --cols: 28px 36px minmax(0, 1fr) 112px 64px 40px 40px;
+}
+
+/* La columna Verificacion: la pastilla de cada archivo con registro. */
+.srow__v {
+  min-width: 0;
 }
 
 .srow--lst .qrow__grip {

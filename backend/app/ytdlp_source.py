@@ -816,7 +816,9 @@ class YtDlpSource(Source):
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
-        from .downloader import TEMP_DIR, _write_tags
+        from .covers import fetch_itunes_covers
+        from .downloader import (TEMP_DIR, _write_tags, record_download,
+                                 thumb_small_sidecar)
         from .identify import verdict
         from .storage import get_storage
         url = track.extra.get("webpage_url")
@@ -923,6 +925,7 @@ class YtDlpSource(Source):
             with _JOBS_LOCK:
                 JOBS[job_id]["status"] = "pending"
 
+        cover_task: asyncio.Task | None = None
         try:
             # El lock cubre tambien `_write_tags` y `put_file`: si se soltara
             # antes, el otro job podria empezar a reescribir el archivo mientras
@@ -930,6 +933,11 @@ class YtDlpSource(Source):
             async with lock:
                 with _JOBS_LOCK:
                     JOBS[job_id]["status"] = "downloading"
+                # Las portadas de iTunes no dependen del audio: se piden mientras
+                # yt-dlp baja, y la descarga no espera a un CDN lento al final.
+                if kind == "audio" and track.extra.get("from_itunes"):
+                    cover_task = asyncio.create_task(
+                        fetch_itunes_covers(track.artwork_url, work))
 
                 # Reintentos: ante un error transitorio se rehace TODO (extract +
                 # download) para traer URLs de formato nuevas. El job sigue
@@ -1017,12 +1025,35 @@ class YtDlpSource(Source):
                 # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
                 # su manera, y la UI tiene que mostrar lo que quedo guardado.
                 filename = key.rsplit("/", 1)[-1]
-                stored = await asyncio.to_thread(get_storage().put_file, key, path)
+                # Audio con ficha de iTunes: su portada en dos tamanos va junto
+                # al audio, en un solo `put_files` (en Drive, una escritura del
+                # indice). Best effort: sin portada la descarga sigue igual.
+                covers = (await cover_task
+                          if cover_task is not None and use_itunes else None)
+                items = [(key, path)]
+                if covers:
+                    items += [(thumb_sidecar_key(key), covers[0]),
+                              (thumb_small_sidecar(key), covers[1])]
+                try:
+                    stored = (await asyncio.to_thread(
+                        get_storage().put_files, items))[0]
+                except Exception as e:
+                    if not covers:
+                        raise
+                    # Si fallo una portada, el audio (el primero) ya quedo.
+                    log.warning("ytdlp: fallaron las portadas de %s: %s", key, e)
+                    try:
+                        stored = await asyncio.to_thread(get_storage().stat, key)
+                    except Exception:
+                        raise e
+                    covers = None
                 size = stored.size
                 # Miniatura best effort SOLO para video: si falla, la descarga
                 # sigue y `thumb_key` queda en None (nunca tumba el job).
-                thumb_key = (await fetch_thumb(info.get("id"), key, work)
-                             if kind == "video" else None)
+                if kind == "video":
+                    thumb_key = await fetch_thumb(info.get("id"), key, work)
+                else:
+                    thumb_key = thumb_sidecar_key(key) if covers else None
 
             # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
             # calcula aca y no antes de la descarga porque hasta ahora no se
@@ -1030,6 +1061,13 @@ class YtDlpSource(Source):
             # status=done sin `match` y no podia avisar nada. `query` es lo que el
             # usuario escribio; el titulo real del video es la otra mitad.
             estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
+            # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
+            # terminar ya trae el veredicto. Sin consulta, o con un enlace
+            # pegado, el titulo del video se compara consigo mismo: no vale.
+            await record_download(
+                key, size, track, via="ytdlp", query=query,
+                video_title=info_title,
+                vacuous=not query or bool(parse_youtube_url(query)))
             # `height` es la altura PEDIDA (None si no se eligio): la UI la
             # muestra como "1080p" del archivo que acaba de bajar.
             altura = (int(height) if height is not None
@@ -1048,6 +1086,8 @@ class YtDlpSource(Source):
                 "real_title": info_title or None,
             }
         finally:
+            if cover_task is not None and not cover_task.done():
+                cover_task.cancel()
             # La subcarpeta de trabajo se borra entera pase lo que pase: el
             # archivo terminado ya salio por `put_file` y no quedan temporales.
             shutil.rmtree(work, ignore_errors=True)

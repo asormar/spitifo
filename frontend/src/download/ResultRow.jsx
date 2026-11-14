@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from "react";
+import { memo, useState } from "react";
 import { initial } from "../listen/rows.jsx";
 import { rowKey } from "../shared/api.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
@@ -9,7 +9,8 @@ import { thumbUrl } from "./artwork.js";
 import DlRing from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
-import { V_LABEL, V_TONE, useVerdict, verdictKey, verdictOf } from "./verdict.js";
+import { VerdictPill } from "../shared/Verdict.jsx";
+import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------
    UN RESULTADO
@@ -18,17 +19,6 @@ import { V_LABEL, V_TONE, useVerdict, verdictKey, verdictOf } from "./verdict.js
    lo decide el CSS). Las dos formas de la fuente (codigo corto / nombre entero)
    y de los datos estan en el DOM; el CSS enseña una.
    ------------------------------------------------------------------------- */
-
-/* La pastilla de veredicto. Al cambiar (una verificacion, una descarga) se
-   remonta y repite su entrada; la primera pintura no se anima. */
-export function VerdictPill({ v }) {
-  const first = useRef(v);
-  return (
-    <span key={v} className={`vb vb--${V_TONE[v]}`} data-up={v !== first.current ? "" : undefined}>
-      {V_LABEL[v]}
-    </span>
-  );
-}
 
 /* La portada de iTunes/YouTube; sin ella (o si no carga) la generada. */
 export function Thumb({ t }) {

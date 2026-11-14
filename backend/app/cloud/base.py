@@ -32,6 +32,7 @@ import httpx
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
+from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
 from ..listens import AGG_PREFIX, MONTH_PREFIX, ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..runtime import MEDIA_MIME_TYPES
@@ -55,7 +56,7 @@ PLAYLIST_PREFIX = "playlists-"
 #: Prefijos de los archivos chicos por dispositivo que se guardan en la copia
 #: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea.
 SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, MONTH_PREFIX, AGG_PREFIX,
-                  ARTISTINFO_PREFIX, DISCOVER_PREFIX)
+                  ARTISTINFO_PREFIX, DISCOVER_PREFIX, FILEINFO_PREFIX)
 #: Cuantos archivos chicos se bajan a la vez al cargar el indice y compania.
 SMALL_FILE_WORKERS = 4
 
@@ -254,7 +255,7 @@ def upload_ranges(total: int, chunk: int) -> list[tuple[int, int]]:
 
 # ------------------------------------------------------------------- adapter
 class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
-                   DiscoverStorageMixin):
+                   DiscoverStorageMixin, FileInfoStorageMixin):
     """`Storage` sobre una nube. El proveedor concreto implementa los hooks.
 
     Esta clase tiene todo lo que NO depende del proveedor: reintentos, el indice
@@ -803,6 +804,22 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                         ref: str | None = None) -> str:
         return self._write_small(name, data, ref)
 
+    # ----------------------------------------------------------------- fileinfo
+    def _fileinfo_device(self) -> str:
+        return self.device_id
+
+    def _fileinfo_list(self) -> list[tuple[str, str]]:
+        """`(remote_id, name)` de los registros de todos los dispositivos."""
+        return [(rf.remote_id, rf.name)
+                for rf in self._list_small(FILEINFO_PREFIX)]
+
+    def _fileinfo_read(self, ref: str) -> bytes:
+        return self._read_small(ref)
+
+    def _fileinfo_write(self, name: str, data: bytes,
+                        ref: str | None = None) -> str:
+        return self._write_small(name, data, ref)
+
     def _write_small(self, name: str, data: bytes,
                      ref: str | None = None) -> str:
         """Crea o reemplaza un archivo chico y devuelve su ref."""
@@ -921,41 +938,73 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
     def put_file(self, key: str, src: Path) -> StoredFile:
         """Sube `src` a `key` y lo BORRA (el puerto MUEVE)."""
-        validate_key(key)
-        src = Path(src)
-        size = src.stat().st_size
-        ext = _ext_of(key)
-        media_type = _mime_of(key)
-        # Un jpg no tiene tags que leer (y mutagen no lo parsea): se sube con la
-        # metadata vacia. El video si se intenta; si mutagen falla, queda vacia.
-        if Path(key).suffix.lower() in IMAGE_EXTS:
-            title = artist = album = ""
-            duration: float | None = None
-        else:
-            title, artist, album, duration = _read_tags(src)
+        return self.put_files([(key, src)])[0]
 
-        existing = self._entry(key)
-        existing_id = existing.remote_id if existing is not None else None
-        remote_id, revision = self._upload(key, src, size, media_type,
-                                           existing_id)
+    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
+        """Sube varios archivos y los indexa con UNA sola escritura del indice.
 
-        entry = IndexEntry(key=key, remote_id=remote_id, revision=revision,
-                           title=title, artist=artist, album=album,
-                           duration=duration, size=size, format=ext,
-                           updated_at=self._clock())
-        self._write_own(lambda index: index.upsert(entry))
+        Cada descarga trae el audio y sus dos portadas: el indice propio se
+        reescribe entero en cada `put_file`, asi que tres escrituras costarian
+        tres veces el indice. Si uno falla, lo que ya se subio SI se indexa y
+        despues se levanta el error. Cada `src` se BORRA al terminar.
+        """
+        for key, _src in items:
+            validate_key(key)
+        prepared: list[tuple[IndexEntry, IndexEntry | None, Path]] = []
+        failure: Exception | None = None
+        for key, raw_src in items:
+            src = Path(raw_src)
+            try:
+                size = src.stat().st_size
+                ext = _ext_of(key)
+                # Un jpg no tiene tags que leer (y mutagen no lo parsea): se sube
+                # con la metadata vacia. El video si se intenta; si mutagen falla,
+                # queda vacia.
+                if Path(key).suffix.lower() in IMAGE_EXTS:
+                    title = artist = album = ""
+                    duration: float | None = None
+                else:
+                    title, artist, album, duration = _read_tags(src)
+                existing = self._entry(key)
+                existing_id = existing.remote_id if existing is not None else None
+                remote_id, revision = self._upload(
+                    key, src, size, _mime_of(key), existing_id)
+            except Exception as exc:
+                failure = exc
+                break
+            entry = IndexEntry(key=key, remote_id=remote_id, revision=revision,
+                               title=title, artist=artist, album=album,
+                               duration=duration, size=size, format=ext,
+                               updated_at=self._clock())
+            prepared.append((entry, existing, src))
 
-        if self.cache is not None:
-            if existing is not None and existing.revision != revision:
-                # La revision vieja ya no es lo que el usuario tiene: puede salir.
-                self.cache.unpin(existing.remote_id, existing.revision)
-            # El usuario lo bajo a proposito: se guarda y se pinea antes de
-            # soltar el temporal (ADR 0002, seccion 7).
-            self.cache.put(remote_id, revision, src, ext)
-            self.cache.pin(remote_id, revision)
-        src.unlink()
-        return StoredFile(key=key, size=size, mtime=entry.updated_at,
-                          etag=revision, duration=duration)
+        if prepared:
+            def change(index: LibraryIndex) -> None:
+                for entry, _existing, _src in prepared:
+                    index.upsert(entry)
+
+            self._write_own(change)
+
+        out: list[StoredFile] = []
+        for entry, existing, src in prepared:
+            image = Path(entry.key).suffix.lower() in IMAGE_EXTS
+            if self.cache is not None and not image:
+                if existing is not None and existing.revision != entry.revision:
+                    # La revision vieja ya no es lo que el usuario tiene: puede salir.
+                    self.cache.unpin(existing.remote_id, existing.revision)
+                # El usuario lo bajo a proposito: se guarda y se pinea antes de
+                # soltar el temporal (ADR 0002, seccion 7). Las portadas no: son
+                # chicas y se piden por rango como cualquier otro archivo.
+                self.cache.put(entry.remote_id, entry.revision, src,
+                               entry.format)
+                self.cache.pin(entry.remote_id, entry.revision)
+            src.unlink()
+            out.append(StoredFile(key=entry.key, size=entry.size,
+                                  mtime=entry.updated_at, etag=entry.revision,
+                                  duration=entry.duration))
+        if failure is not None:
+            raise failure
+        return out
 
     def delete(self, key: str) -> None:
         validate_key(key)

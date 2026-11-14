@@ -178,11 +178,17 @@ describe("pageOf", () => {
     expect(pageOf([album, menu, picker])).toBe(album);
     expect(pageOf([album, lmenu])).toBe(album);
   });
+
+  it("skips the file sheet, which is not the Buscar ficha", () => {
+    const file = { type: "file", key: "k1" };
+    expect(pageOf([album, { type: "menu", key: "k1" }, file])).toBe(album);
+    expect(pageOf([file])).toBeNull();
+  });
 });
 
 describe("isOverlay", () => {
-  it("is true for the song menu, the list menu and the picker only", () => {
-    expect(["menu", "picker", "lmenu"].every(isOverlay)).toBe(true);
+  it("is true for the song menu, the list menu, the picker and the file sheet only", () => {
+    expect(["menu", "picker", "lmenu", "file"].every(isOverlay)).toBe(true);
     expect(["album", "artist", "all", "library", "settings", "search", "ficha", "resmenu"].some(isOverlay)).toBe(false);
   });
 });

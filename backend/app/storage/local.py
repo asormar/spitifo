@@ -18,6 +18,7 @@ from typing import Callable, Iterable, Iterator
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
+from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
 from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from . import InvalidKey, StoredFile, validate_key
@@ -102,7 +103,7 @@ def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | No
 
 
 class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
-                   DiscoverStorageMixin):
+                   DiscoverStorageMixin, FileInfoStorageMixin):
     """`Storage` sobre una carpeta del disco (la biblioteca publica en Android)."""
 
     def __init__(self, root: Path, device_id: str | None = None) -> None:
@@ -279,13 +280,20 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
         walk(str(self.root), "")
         found.sort()
+        seen: set[str] = set()
         for key, size, mtime in found:
+            if os.path.splitext(key)[1].lower() in IMAGE_EXTS:
+                # Una portada no tiene nada que leer: sin entrada en la cache
+                # (con dos por descarga triplicaba el listado y el JSON).
+                yield StoredFile(key=key, size=size, mtime=mtime)
+                continue
+            seen.add(key)
             dur, title, artist, album = self._media(self.root / key, key, size,
                                                     mtime)
             yield StoredFile(key=key, size=size, mtime=mtime, duration=dur,
                              title=title, artist=artist, album=album)
         # Solo con el listado completo se sabe que claves ya no estan.
-        self._save_media_cache({key for key, _, _ in found})
+        self._save_media_cache(seen)
 
     def stat(self, key: str) -> StoredFile:
         p = self._path(key)
@@ -335,6 +343,12 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # filesystems (EXDEV) si el temporal esta en otra particion.
         shutil.move(str(src), str(p))
         return self._stored(p, key)
+
+    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
+        """Varios archivos de una descarga (audio y portadas): uno por uno."""
+        for key, _src in items:
+            validate_key(key)
+        return [self.put_file(key, src) for key, src in items]
 
     def delete(self, key: str) -> None:
         p = self._path(key)
@@ -521,3 +535,17 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def _discover_write(self, name: str, data: bytes,
                         ref: str | None = None) -> str:
         return self._write_state(name, data, "discover")
+
+    # ------------------------------------------------------------- fileinfo
+    def _fileinfo_device(self) -> str:
+        return self.device_id
+
+    def _fileinfo_list(self) -> list[tuple[str, str]]:
+        return self._state_files(FILEINFO_PREFIX)
+
+    def _fileinfo_read(self, ref: str) -> bytes:
+        return (self.root / STATE_DIR / ref).read_bytes()
+
+    def _fileinfo_write(self, name: str, data: bytes,
+                        ref: str | None = None) -> str:
+        return self._write_state(name, data, "fileinfo")

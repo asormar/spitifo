@@ -102,7 +102,7 @@ export default function useDownloads({ query, mode, fmt, media, runs, onLibraryC
           const real = d.real_title || vtitle;
           setNotice(noticeFromSuccess({ filename: d.filename, size_mb: d.size_mb, match, real_title: real }, query));
           /* Sin veredicto (fuente que no lo calcula) la fila sigue «Sin verificar». */
-          if (match) verdictStore.setFromDownload(t, query, { match, real_title: real, libKey: d.key });
+          if (match) verdictStore.setFromDownload(t, query, { match, real_title: real });
           setDownloadedIds((cur) => new Set(cur).add(key));
           onLibraryChanged();
         };

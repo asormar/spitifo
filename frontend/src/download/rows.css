@@ -198,40 +198,6 @@
   gap: 4px;
 }
 
-/* --- Pastilla de veredicto ---------------------------------------------------- */
-
-.vb {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: var(--r-pill);
-  background: var(--s2);
-  color: var(--mut);
-  font: 800 11.5px / 1 var(--font-body);
-  white-space: nowrap;
-}
-
-.vb--ok {
-  background: var(--ok-bg);
-  color: var(--ok-t);
-}
-
-.vb--near {
-  background: var(--near-bg);
-  color: var(--near-t);
-}
-
-.vb--bad {
-  background: var(--bad-bg);
-  color: var(--bad-t);
-}
-
-.vb[data-up] {
-  animation: pop var(--t-quick) var(--ease) both;
-}
-
 /* --- 30 s, descarga y sin descarga -------------------------------------------- */
 
 .pre,
