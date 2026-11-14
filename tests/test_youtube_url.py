@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from backend.app.ytdlp_source import identity_query, parse_youtube_url, thumbnail_url
+from backend.app.models import Track
+from backend.app.ytdlp_source import (identity_query, identity_reference, parse_youtube_url,
+                                        thumbnail_url)
 
 VIDEO = "https://www.youtube.com/watch?v=eBG7P-K-r1Y"
 
@@ -50,3 +52,15 @@ def test_identity_query_con_url_usa_el_titulo():
 
 def test_thumbnail_url():
     assert thumbnail_url("eBG7P-K-r1Y") == "https://i.ytimg.com/vi/eBG7P-K-r1Y/hqdefault.jpg"
+
+
+def test_identity_reference_con_ficha_usa_la_ficha_elegida():
+    """Con ficha de iTunes se compara con la cancion elegida, no con lo escrito."""
+    itunes = Track(source="ytdlp", source_id="x", title="Creep (Acoustic)",
+                   artist="Radiohead", extra={"from_itunes": True})
+    youtube = Track(source="ytdlp", source_id="x", title="Creep", artist="Radiohead")
+    assert identity_reference("radiohead creep", itunes, "t") == "Radiohead Creep (Acoustic)"
+    assert identity_reference(None, itunes, "t") == "Radiohead Creep (Acoustic)"
+    assert identity_reference("radiohead creep", youtube, "t") == "radiohead creep"
+    # Un enlace pegado pide ese video: se compara consigo mismo.
+    assert identity_reference("https://youtu.be/eBG7P-K-r1Y", itunes, "t") == "t"

@@ -214,7 +214,8 @@ def record_for_ytdlp(track, size: int, now: float, *, query: str | None,
                      video_title: str | None, vacuous: bool) -> dict | None:
     """Registro de una descarga por yt-dlp (la ficha puede ser de iTunes).
 
-    Se compara el titulo del VIDEO con lo que se busco: nunca se leyeron tags.
+    Se compara el titulo del VIDEO con `query`, que es la ficha elegida (iTunes)
+    o lo que se escribio (ver `identity_reference`): nunca se leyeron tags.
     `vacuous` = no hubo nada que comparar (un enlace pegado o sin consulta): el
     veredicto es `unknown` en vez de un "Coincide" que no dice nada.
     """

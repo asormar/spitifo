@@ -114,6 +114,22 @@ def identity_query(query: str | None, fallback: str) -> str:
     return query
 
 
+def identity_reference(query: str | None, track: Track, fallback: str) -> str:
+    """Contra que se compara el titulo real del video.
+
+    Con ficha de iTunes se eligio ESA cancion: el video tiene que ser ella,
+    aunque lo escrito fuera mas corto ("Radiohead Creep" para el "Creep
+    (Acoustic)" elegido). Es lo que dice la ficha del archivo: «coincide con la
+    ficha». Sin ficha (busqueda de YouTube) manda lo que se escribio. Un enlace
+    pegado pide ESE video: sigue la regla de `identity_query`.
+    """
+    if query and parse_youtube_url(query):
+        return fallback
+    if track.extra.get("from_itunes") and track.title:
+        return f"{track.artist or ''} {track.title}".strip()
+    return identity_query(query, fallback)
+
+
 def _lock_de_ruta(clave: str) -> asyncio.Lock:
     """Lock de una clave de salida (la biblioteca, sin extension). Se crea una
     vez y se reusa.
@@ -781,7 +797,8 @@ class YtDlpSource(Source):
         real_title = info.get("title")
         if real_title:
             from .identify import verdict
-            state, label = verdict(identity_query(query, real_title), real_title)
+            state, label = verdict(identity_reference(query, track, real_title),
+                                   real_title)
             track.extra["real_title"] = real_title
             track.extra["real_artist"] = info.get("uploader")
             track.extra["match"] = state
@@ -1058,16 +1075,18 @@ class YtDlpSource(Source):
             # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
             # calcula aca y no antes de la descarga porque hasta ahora no se
             # publicaba en ningun lado del camino con job_id: la UI recibia
-            # status=done sin `match` y no podia avisar nada. `query` es lo que el
-            # usuario escribio; el titulo real del video es la otra mitad.
-            estado, etiqueta = verdict(identity_query(query, info_title or track.title), info_title)
+            # status=done sin `match` y no podia avisar nada. La referencia es la ficha
+            # elegida o lo escrito (`identity_reference`); el titulo del video, la otra.
+            referencia = identity_reference(query, track, info_title or track.title)
+            estado, etiqueta = verdict(referencia, info_title)
             # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
-            # terminar ya trae el veredicto. Sin consulta, o con un enlace
-            # pegado, el titulo del video se compara consigo mismo: no vale.
+            # terminar ya trae el veredicto. Sin ficha y sin consulta, o con un
+            # enlace pegado, el titulo del video se compara consigo mismo: no vale.
             await record_download(
-                key, size, track, via="ytdlp", query=query,
+                key, size, track, via="ytdlp", query=referencia,
                 video_title=info_title,
-                vacuous=not query or bool(parse_youtube_url(query)))
+                vacuous=bool(query and parse_youtube_url(query))
+                or (not query and not track.extra.get("from_itunes")))
             # `height` es la altura PEDIDA (None si no se eligio): la UI la
             # muestra como "1080p" del archivo que acaba de bajar.
             altura = (int(height) if height is not None

@@ -1,5 +1,6 @@
 import { clock } from "../shared/format.js";
 import { checkOf, songsOnly } from "./fileCheck.js";
+import { fold } from "./library.js";
 
 /* Los textos de un archivo (ficha, hoja, album): solo lo cargan las pantallas que
    los muestran, no el arranque. Las pastillas viven en fileCheck.js. */
@@ -36,7 +37,9 @@ export function checkText(entry, { card = false } = {}) {
     return `Leímos las etiquetas del audio: es «${title}», igual que la ficha.`;
   }
   if (v === "partial" || v === "mismatch") {
-    if (entry.real) return `En el archivo dice «${entry.real}».`;
+    /* Repetir el mismo titulo no explica nada (registros anteriores que
+       comparaban con lo escrito y no con la ficha). */
+    if (entry.real && fold(entry.real) !== fold(title)) return `En el archivo dice «${entry.real}».`;
     return v === "partial" ? "Se parece, pero no es exactamente lo que buscaste." : "No es lo que buscabas.";
   }
   if (v === "unv") return "No se pudo leer el título del audio.";

@@ -10,7 +10,7 @@ import { VerdictPill } from "../shared/Verdict.jsx";
 import { Cover } from "./cards.jsx";
 import { checkOf } from "./fileCheck.js";
 import FileSheet from "./FileSheet.jsx";
-import { albumId, artistId, toTrack } from "./library.js";
+import { albumId, artistId, rowArt, toTrack } from "./library.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import "./menus.css";
 
@@ -89,7 +89,7 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
   const head = (
     <div className="mhead">
-      <Cover tone={coverTone(artist, album)} label={artist} size={pc ? 40 : 56} />
+      <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} size={pc ? 40 : 56} />
       <span className="mhead__x">
         <span className="mhead__t">{title}</span>
         <span className="mhead__s">{pc || !album ? artist : `${artist} · ${album}`}</span>
