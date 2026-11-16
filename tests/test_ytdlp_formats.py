@@ -156,8 +156,10 @@ def test_summarize_sin_formatos():
 
 # ------------------------------------------------------------------ media_opts
 def test_media_opts_audio_con_height_es_lo_de_siempre():
-    opts = media_opts("audio", "m4a", height=1080)
+    opts = media_opts("audio", "mp3", height=1080)
     assert opts["format"] == "bestaudio/best"
+    # con m4a el selector es otro (la pista AAC), pero `height` tampoco cuenta
+    assert media_opts("audio", "m4a", height=1080) == media_opts("audio", "m4a")
     assert "merge_output_format" not in opts
     assert opts["postprocessors"][0]["key"] == "FFmpegExtractAudio"
 

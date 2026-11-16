@@ -28,6 +28,7 @@ from backend.app import ytdlp_source as ys
 from backend.app.main import DownloadReq
 from backend.app.models import Track
 from backend.app.ytdlp_source import (
+    M4A_AUDIO_SELECTOR,
     media_opts,
     media_selector,
     postprocessor_opts,
@@ -40,10 +41,24 @@ FORMATO_VIDEO = media_selector("video")
 
 # ------------------------------------------------------------- media_opts
 def test_media_opts_audio_es_lo_de_siempre():
-    opts = media_opts("audio", "m4a")
+    opts = media_opts("audio", "mp3")
     assert opts["format"] == "bestaudio/best"
     assert "merge_output_format" not in opts
+    assert opts["postprocessors"] == postprocessor_opts("mp3")
+
+
+def test_media_opts_m4a_pide_la_pista_aac_para_no_recodificar():
+    """Con la AAC del origen, FFmpegExtractAudio solo cambia de contenedor."""
+    opts = media_opts("audio", "m4a")
+    assert opts["format"] == M4A_AUDIO_SELECTOR
+    assert opts["format"].startswith("bestaudio[ext=m4a]/")
+    assert opts["format"].endswith("bestaudio/best")  # sin AAC: lo de siempre
     assert opts["postprocessors"] == postprocessor_opts("m4a")
+
+
+def test_media_opts_m4a_no_toca_el_video():
+    assert media_opts("both", "m4a")["format"] == FORMATO_BOTH
+    assert media_opts("video", "m4a")["format"] == FORMATO_VIDEO
 
 
 def test_media_opts_both_une_en_mp4_sin_extraer_audio():

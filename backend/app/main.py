@@ -565,6 +565,27 @@ async def formats(request: Request):
     return JSONResponse(payload)
 
 
+async def download_warm(request: Request):
+    """Adelanta la extraccion de yt-dlp de un video que probablemente se baje.
+
+    La UI lo llama al abrir la ficha y con los primeros resultados. Contesta ya
+    (202): la extraccion corre en background y `YtDlpSource.download` la
+    reutiliza, asi la descarga se ahorra ~3 s. Solo acepta enlaces de VIDEO de
+    YouTube: este endpoint no puede hacer que yt-dlp abra cualquier URL.
+    204 si yt-dlp esta desactivado (no hay nada que adelantar).
+    """
+    from .ytdlp_source import parse_youtube_url, warm
+    body = await _json_body(request)
+    url = body.get("url")
+    canon = parse_youtube_url(url) if isinstance(url, str) else None
+    if not canon or "/watch?v=" not in canon:
+        raise HTTPException(400, "url de video de YouTube invalida")
+    ysrc = BY_NAME.get("ytdlp")
+    if not ysrc or not ysrc.available():
+        return Response(status_code=204)
+    return JSONResponse({"warming": warm(canon)}, status_code=202)
+
+
 async def download(request: Request):
     query = _query_str(request, "query", default=None)
     wait = _query_bool(request, "wait", False)
@@ -1480,6 +1501,7 @@ routes = [
     Route("/api/download/progress/{job_id}", progress),
     Route("/api/formats", formats),
     Route("/api/download", download, methods=["POST"]),
+    Route("/api/download/warm", download_warm, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
     Route("/api/playlists", playlists),
