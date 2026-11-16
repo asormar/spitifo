@@ -60,6 +60,11 @@ export function normalizeEntry(file) {
     metaSrc: f.meta_src ?? null,
     fileSrc: f.file_src ?? null,
     real: f.real ?? null,
+    /* Numero de disco y de pista y id del album de iTunes. Los archivos de
+       antes de guardarlos no los tienen: quedan en null, como el resto. */
+    track_no: Number.isInteger(f.track_no) ? f.track_no : null,
+    disc_no: Number.isInteger(f.disc_no) ? f.disc_no : null,
+    album_id: f.album_id == null || f.album_id === "" ? null : String(f.album_id),
     /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
     added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),

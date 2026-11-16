@@ -183,6 +183,44 @@
   gap: 10px;
 }
 
+/* Pistas que faltan: misma fila y columnas, sin reproduccion. El numero y el
+   titulo en gris, la pastilla con el estado y el boton de descarga a la derecha. */
+.srow--miss .srow__n,
+.srow--miss .srow__t {
+  color: var(--dim);
+}
+
+.srow--miss .srow__t {
+  font-weight: 500;
+}
+
+.srow--miss .srow__main {
+  cursor: default;
+}
+
+.srow--miss .srow__main:active {
+  transform: none;
+}
+
+.srow__miss {
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 8px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srow__miss-dl {
+  flex: none;
+  padding: 0 12px;
+}
+
 .liner {
   margin: 18px 0 0;
   padding: 14px 16px;

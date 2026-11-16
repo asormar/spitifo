@@ -1,4 +1,5 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadAlbumChunk } from "../download/albumChunk.js";
 import Ico from "../shared/ico.jsx";
 import { Icon } from "../shared/icons.jsx";
 import { toneVars } from "../shared/cover.js";
@@ -7,12 +8,14 @@ import { usePc } from "../shared/viewport.js";
 import { useNav } from "../app/useNav.js";
 import { AlbumCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
+import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
 import { mosaicTones, songs } from "./home.js";
 import { skeleton } from "./LibraryGate.jsx";
 import { ListMenu } from "./Overlays.jsx";
 import { Back, useFocusBack } from "./Pages.jsx";
 import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
+import MissingRow from "./MissingRow.jsx";
 import { Thead } from "./rows.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
@@ -100,14 +103,66 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
     () => detailOf(view, { index, byKey, lists: ls, listsReady: ready, listsError: failed }),
     [view, index, byKey, ls, ready, failed]
   );
+
+  /* Solo una ficha de album con id de iTunes pide la lista real. El pedido se
+     guarda en albumTracks (una vez por album y sesion) y se comparte: al
+     desmontar no se aborta, solo se ignora la respuesta. */
+  const tracklistId = d.state === "ok" && d.kind === "album" ? mostCommonAlbumId(d.rows) : null;
+  const [tracklist, setTracklist] = useState(null);
+  useEffect(() => {
+    setTracklist(null);
+    if (!tracklistId) return undefined;
+    let live = true;
+    loadAlbumTracklist(tracklistId).then((data) => {
+      if (live) setTracklist(data);
+    });
+    return () => {
+      live = false;
+    };
+  }, [tracklistId]);
+  const merged = useMemo(
+    () => (d.state === "ok" && d.kind === "album" ? mergeAlbumTracks(d.rows, tracklist?.tracks) : null),
+    [d, tracklist]
+  );
+
+  /* El boton de una fila que falta abre la misma ficha que Buscar. El album
+     sale de la respuesta de /api/album, con la forma que AlbumSheet espera. */
+  const openAlbumSheet = useCallback(
+    (anchor) => {
+      const a = tracklist?.album;
+      const id = String(a?.id ?? tracklistId ?? "");
+      if (!a || !id) return;
+      loadAlbumChunk();
+      nav.open({
+        type: "albumsheet",
+        id,
+        anchor,
+        from: "listen",
+        album: {
+          id,
+          title: a.title || (d.state === "ok" ? d.name : ""),
+          artist: a.artist,
+          year: a.year,
+          track_count: a.track_count,
+          artwork_url: a.artwork_url,
+        },
+      });
+    },
+    [nav.open, tracklist, tracklistId, d]
+  );
+
   if (d.state !== "ok") return <Gone d={d} backRef={backRef} ctx={ctx} nav={nav} pc={pc} />;
 
   const { kind, name, rows, pl, tone } = d;
   const album = kind === "album";
   const artist = kind === "artist";
   const isList = kind === "list";
-  const empty = !rows.length;
-  const { meta, liner } = detailMeta(d, storage);
+  const albumRows = merged?.rows ?? null;
+  const noSongs = !rows.length;
+  const empty = album ? !albumRows?.length : !rows.length;
+  /* Con la lista conocida, la linea de la ficha dice cuantas pistas del disco
+     estan en la biblioteca, sin perder los minutos ni el veredicto. */
+  const { meta, liner: shownLiner } = detailMeta(d, storage, merged);
 
   /* Origen de la cola: "Sonando desde" el album, el artista o la lista. */
   const from = `${kind}:${name}`;
@@ -153,11 +208,11 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
 
   const acts = (
     <div className="dacts">
-      <button type="button" className="btn btn--pink" disabled={empty} onClick={play}>
+      <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
         <Icon name="Play" size={18} weight="fill" />
         Reproducir
       </button>
-      <button type="button" className="btn btn--ghost" disabled={empty} onClick={shuffle}>
+      <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={shuffle}>
         <Icon name="Shuffle" size={18} />
         Aleatorio
       </button>
@@ -193,6 +248,35 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
             from={from}
             table={pc ? kindOf : undefined}
             onRemove={removeSong}
+          />
+        ) : album ? (
+          /* Las filas que faltan son otro tipo de fila de la misma lista
+             virtual; la cola de reproduccion sigue siendo solo `rows`. */
+          <VirtualList
+            active={active}
+            count={albumRows.length}
+            getKey={(i) => albumRows[i].key}
+            renderRow={(i, enter) => {
+              const row = albumRows[i];
+              if (row.type === "missing") {
+                return (
+                  <MissingRow
+                    num={row.num}
+                    title={row.title}
+                    table={pc ? kindOf : undefined}
+                    onOpen={openAlbumSheet}
+                    prefetch={loadAlbumChunk}
+                  />
+                );
+              }
+              return ctx.song(row.entry, rows, {
+                enter,
+                num: i + 1,
+                from,
+                table: pc ? kindOf : undefined,
+                sub: "",
+              });
+            }}
           />
         ) : (
           <VirtualList
@@ -313,9 +397,9 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
           {acts}
           {album && pc && (
             <p className="liner">
-              <b>{liner[0]}</b>
+              <b>{shownLiner[0]}</b>
               <br />
-              {liner[1]}
+              {shownLiner[1]}
             </p>
           )}
         </div>
@@ -323,9 +407,9 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
           {tracks}
           {album && !pc && (
             <p className="liner">
-              <b>{liner[0]}</b>
+              <b>{shownLiner[0]}</b>
               <br />
-              {liner[1]}
+              {shownLiner[1]}
             </p>
           )}
         </div>

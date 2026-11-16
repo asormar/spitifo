@@ -173,10 +173,26 @@ export function recentAlbums(albums, n) {
     .slice(0, Math.max(0, n));
 }
 
-/* Las canciones de un album en el orden en que se bajaron (casi siempre es el
-   de la pista); sin fecha, por titulo. */
+/* Las canciones de un album en orden de disco y pista, cuando las hay. Las que
+   no tienen numero (las bajadas antes de guardarlo) van detras, en el orden de
+   siempre: fecha y, a igualdad, titulo. Si ninguna tiene numero, queda el orden
+   de siempre para todas. */
+const hasNo = (e) => Number.isInteger(e.disc_no) || Number.isInteger(e.track_no);
+const noOf = (e, key) => (Number.isInteger(e[key]) ? e[key] : 0);
+const byAdded = (a, b) => a.added - b.added || byTitle(a, b);
+
 export function albumOrder(entries) {
-  return entries.slice().sort((a, b) => a.added - b.added || byTitle(a, b));
+  return entries.slice().sort((a, b) => {
+    const na = hasNo(a);
+    const nb = hasNo(b);
+    if (na !== nb) return na ? -1 : 1;
+    if (na) {
+      const byDisc = noOf(a, "disc_no") - noOf(b, "disc_no");
+      const byTrack = noOf(a, "track_no") - noOf(b, "track_no");
+      if (byDisc || byTrack) return byDisc || byTrack;
+    }
+    return byAdded(a, b);
+  });
 }
 
 /* --- Historial ---------------------------------------------------------------- */

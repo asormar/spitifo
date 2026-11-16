@@ -56,14 +56,17 @@ export function detailOf(view, { index, byKey, lists, listsReady, listsError }) 
 
 /* Los textos de la ficha: `meta` (lista y artista) y `liner` (album: la
    linea fuerte, con «Todo coincide» o «k de n coinciden» si hay veredictos
-   guardados, y donde esta guardado), sin la linea de genero y ano que no hay. */
-export function detailMeta(d, storage) {
+   guardados, y donde esta guardado), sin la linea de genero y ano que no hay.
+   Con la lista real del disco (`disc`: { have, total }) el album cuenta lo que
+   hay de el en vez de solo sus canciones. */
+export function detailMeta(d, storage, disc) {
   const n = d.rows.length;
   const time = d.mins ? ` · ${d.mins} min` : "";
   if (d.kind === "list") return { meta: `Lista · ${songs(n)}${time}` };
   if (d.kind === "album") {
     const check = albumVerdict(d.rows);
-    return { liner: [`${songs(n)}${time}${check ? ` · ${check}` : ""}`, `En ${storage}`] };
+    const count = disc?.have != null ? `${disc.have} de ${disc.total} en tu biblioteca` : songs(n);
+    return { liner: [`${count}${time}${check ? ` · ${check}` : ""}`, `En ${storage}`] };
   }
   return { meta: `${plural(d.albums.length, "álbum", "álbumes")} · ${songs(n)}` };
 }

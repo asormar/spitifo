@@ -95,6 +95,9 @@ const SearchPage = React.lazy(() => import("../download/SearchPage.jsx"));
 /* La hoja de Descargas comparte chunk con la ficha del album; se adelanta al
    enfocar la pildora o una tarjeta de album. */
 const QueueSheet = React.lazy(() => loadAlbumChunk().then((m) => ({ default: m.QueueSheet })));
+/* La ficha del album que abre una fila que falta en Escuchar. Buscar pinta la
+   suya; esta sirve en cualquier pestana, como la hoja de Descargas. */
+const ListenAlbumSheet = React.lazy(() => loadAlbumChunk().then((m) => ({ default: m.AlbumSheet })));
 
 /* Mientras la pantalla esta oculta no se reconcilia su arbol: los cambios de
    pestana y de "Ahora suena" no recorren las cuatro pantallas que no se ven. Lo
@@ -555,6 +558,8 @@ export default function App() {
      atras de Android la cierran, y el foco vuelve a la pildora. */
   const queueAt = nav.stack.at(-1)?.type === "descargas" ? nav.stack.at(-1) : null;
   const openQueue = useCallback((anchor) => nav.open({ type: "descargas", anchor }), [nav.open]);
+  const topEntry = nav.stack.at(-1);
+  const listenAlbumAt = topEntry?.type === "albumsheet" && topEntry.from === "listen" ? topEntry : null;
 
   return (
     <NavContext.Provider value={nav}>
@@ -674,6 +679,17 @@ export default function App() {
         {queueAt && (
           <Suspense fallback={null}>
             <QueueSheet anchor={queueAt.anchor} onClose={nav.back} />
+          </Suspense>
+        )}
+        {listenAlbumAt?.album && (
+          <Suspense fallback={null}>
+            <ListenAlbumSheet
+              key={`a${listenAlbumAt.id}`}
+              album={listenAlbumAt.album}
+              anchor={listenAlbumAt.anchor}
+              onClose={nav.back}
+              onLibraryChanged={loadLib}
+            />
           </Suspense>
         )}
       </ListenProvider>

@@ -109,6 +109,12 @@ describe("detailMeta", () => {
     expect(detailMeta({ ...d, mins: null }, "x").liner[0]).toBe("2 canciones");
   });
 
+  it("counts what the library has of the real tracklist, keeping the minutes", () => {
+    const d = detailOf(albumView("El mal querer"), env());
+    expect(detailMeta(d, "Google Drive", { have: 2, total: 11 }).liner[0]).toBe("2 de 11 en tu biblioteca · 4 min");
+    expect(detailMeta(d, "Google Drive", { have: null, total: null }).liner[0]).toBe("2 canciones · 4 min");
+  });
+
   it("adds Todo coincide to the liner when every track has a matching verdict", () => {
     const checked = (key, folder, album, extra) => file(key, folder, album, { verdict: "match", meta_src: "itunes", ...extra });
     const list = [checked("m1", "Beck", "Odelay"), checked("m2", "Beck", "Odelay")];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { albumButton, groupToast, missingSentence } from "./albumText.js";
+import { albumButton, groupToast, missingSentence, ownedSlots, trackSlot } from "./albumText.js";
 
 describe("albumButton", () => {
   it("muestra busqueda mientras empareja", () => {
@@ -68,5 +68,34 @@ describe("groupToast", () => {
     expect(groupToast("Canción animal", { done: 8, total: 9, failed: 1 })).toBe(
       "Canción animal: 8 de 9, 1 falló"
     );
+  });
+});
+
+describe("ownedSlots", () => {
+  it("collects the disc and track of the library entries of this album only", () => {
+    const entries = [
+      { album_id: "321882757", disc_no: 1, track_no: 3 },
+      { album_id: "321882757", disc_no: null, track_no: 9 },
+      { album_id: "999", disc_no: 1, track_no: 4 },
+      { album_id: "321882757", disc_no: 1, track_no: null },
+      { album_id: null, disc_no: 1, track_no: 5 },
+    ];
+    expect([...ownedSlots(entries, 321882757)].sort()).toEqual(["1-3", "1-9"]);
+    expect(ownedSlots(entries, null).size).toBe(0);
+  });
+
+  it("matches the slot of an iTunes track", () => {
+    expect(trackSlot(1, 9)).toBe("1-9");
+    expect(trackSlot(undefined, 2)).toBe("1-2");
+    expect(trackSlot(1, null)).toBe(null);
+  });
+});
+
+describe("albumButton with owned tracks", () => {
+  it("says the album is already there when nothing is left to download", () => {
+    expect(albumButton({ matching: false, full: 0, owned: 9 })).toEqual({ text: "Ya está en tu biblioteca", disabled: true });
+    expect(albumButton({ matching: false, full: 0 })).toEqual({ text: "Sin versiones completas", disabled: true });
+    expect(albumButton({ matching: false, full: 1, owned: 9 }).text).toBe("Descargar la que falta");
+    expect(albumButton({ matching: false, full: 3, owned: 7 }).text).toBe("Descargar las 3 que faltan");
   });
 });

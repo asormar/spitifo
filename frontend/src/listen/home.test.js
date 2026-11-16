@@ -256,6 +256,33 @@ describe("albumOrder", () => {
     ]);
     expect(albumOrder(entries).map((e) => e.key)).toEqual(["a", "b", "c"]);
   });
+
+  it("sorts numbered tracks by disc and track, with the unnumbered last", () => {
+    const entries = normalizeLibrary([
+      file("late", "A", "Zeta", { album: "D", modified: 9 }),
+      file("d2t10", "A", "Diez", { album: "D", modified: 5, disc_no: 2, track_no: 10 }),
+      file("d1t2", "A", "Dos", { album: "D", modified: 8, disc_no: 1, track_no: 2 }),
+      file("d1t1", "A", "Uno", { album: "D", modified: 7, disc_no: 1, track_no: 1 }),
+      file("early", "A", "Alfa", { album: "D", modified: 2 }),
+    ]);
+    expect(albumOrder(entries).map((e) => e.key)).toEqual([
+      "d1t1",
+      "d1t2",
+      "d2t10",
+      "early",
+      "late",
+    ]);
+  });
+
+  it("uses added then title to break number ties and order the unnumbered", () => {
+    const entries = normalizeLibrary([
+      file("b", "A", "Zeta", { album: "D", modified: 1, disc_no: 1, track_no: 1 }),
+      file("a", "A", "Alfa", { album: "D", modified: 2, disc_no: 1, track_no: 1 }),
+      file("y", "A", "Y", { album: "D", modified: 4 }),
+      file("x", "A", "X", { album: "D", modified: 4 }),
+    ]);
+    expect(albumOrder(entries).map((e) => e.key)).toEqual(["b", "a", "x", "y"]);
+  });
 });
 
 describe("continueItems", () => {

@@ -167,6 +167,11 @@
   color: var(--mut);
 }
 
+.alp--ok {
+  background: var(--ok-bg);
+  color: var(--ok-t);
+}
+
 .alp--bad {
   background: var(--bad-bg);
   color: var(--bad-t);
