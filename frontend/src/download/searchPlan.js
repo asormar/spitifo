@@ -122,7 +122,7 @@ export function dlText({ id, pct }) {
     prep: "Preparando…",
     down: `Descargando, ${pct} %`,
     proc: "Procesando el archivo…",
-    save: "Guardando en tu biblioteca…",
+    save: "Guardando…",
     direct: "Descargando…",
     done: "Descargado",
   }[id];

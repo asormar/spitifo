@@ -52,6 +52,14 @@ export function normalizeEntry(file) {
     folder: f.folder,
     sizeMb: f.size_mb ?? null,
     thumbKey: f.thumb_key ?? null,
+    /* Hay ademas una portada chica (~100 px) para las filas de 48 px. */
+    thumbS: f.thumb_s === true,
+    /* Veredicto y procedencia guardados al descargar. Un archivo sin registro
+       (anterior a guardarlos) llega sin ninguno de estos campos: queda en null. */
+    verdict: f.verdict ?? null,
+    metaSrc: f.meta_src ?? null,
+    fileSrc: f.file_src ?? null,
+    real: f.real ?? null,
     /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
     added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),
@@ -116,9 +124,17 @@ export function groupAlbums(entries) {
   );
 }
 
-/* La imagen de una fila: la misma regla que `toTrack`, o null si el archivo no
-   tiene miniatura (el audio casi nunca la tiene; los videos si). */
-export const rowArt = (entry, keyUrl) => (entry.thumbKey ? keyUrl(entry.thumbKey) : null);
+/* La imagen de una fila, o null si el archivo no tiene portada. `small` pide la
+   de ~100 px, solo si existe: la fila de 48 px; todo lo demas usa la de 200.
+   Se vuelve a descargar bajo la misma clave, asi que la URL lleva la fecha del
+   audio (`v`): una portada nueva se pide de nuevo y una igual sale de la cache. */
+export function rowArt(entry, keyUrl, small = false) {
+  if (!entry.thumbKey) return null;
+  const key =
+    small && entry.thumbS ? entry.thumbKey.replace(/\.jpg$/i, ".s.jpg") : entry.thumbKey;
+  const url = keyUrl(key);
+  return entry.added ? `${url}${url.includes("?") ? "&" : "?"}v=${Math.floor(entry.added)}` : url;
+}
 
 /* `keyUrl` se recibe para no fijar aqui el prefijo de la API: el motor solo
    necesita una URL de audio ya resuelta. La portada es el .jpg que el backend

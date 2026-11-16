@@ -14,6 +14,7 @@ import {
   releaseVelocity,
   zoomAt,
 } from "./map.js";
+import { labelInk } from "./mapInk.js";
 
 /* ---------------------------------------------------------------------------
    LIENZO DEL MAPA
@@ -32,8 +33,10 @@ import {
 
 const TAU = Math.PI * 2;
 const TAP_SLOP = 6;
-/* Tamaños de etiqueta según la importancia del género (px). */
-const TIERS = [11, 12.5, 14];
+/* Etiquetas según la importancia del género: tamaño (px) y peso. La mayor va
+   en la fuente de títulos (ver readTheme y fonts). */
+const TIERS = [12, 13, 14];
+const WEIGHTS = [700, 800, 800];
 const tierOf = (w) => (w >= 66 ? 2 : w >= 33 ? 1 : 0);
 /* Al volar a un género no se aleja: se acerca al menos hasta aquí (veces el
    encuadre completo). */
@@ -50,10 +53,11 @@ export function readTheme(el) {
   return {
     palette: Array.from({ length: CLUSTERS }, (_, i) => v(`--genre-${i}`, "#6182f8")),
     ink: v("--ink", "#11111c"),
-    muted: v("--mut", "#585870"),
     halo: v("--s1", "#ffffff"),
-    accent: v("--acc", "#3045ff"),
     font: v("--font-body", "system-ui, sans-serif"),
+    display: v("--font-display", "system-ui, sans-serif"),
+    /* color-scheme del tema: claro u oscuro (ver tokens.css). */
+    scheme: cs.colorScheme.includes("dark") ? "dark" : "light",
     moveMs: parseMs(v("--t-move", "360ms")),
   };
 }
@@ -71,6 +75,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   let cy = 0;
   let theme = readTheme(host);
   let fonts = [];
+  let inks = [];
   let sel = -1;
   let hov = -1;
   let highlight = NO_HIGHLIGHT;
@@ -101,7 +106,9 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
 
   const applyTheme = (next) => {
     theme = next;
-    fonts = TIERS.map((px) => `${px}px ${theme.font}`);
+    fonts = TIERS.map((px, t) => `${WEIGHTS[t]} ${px}px ${t === 2 ? theme.display : theme.font}`);
+    /* Tinta de la etiqueta de cada grupo de colores. */
+    inks = theme.palette.map((hex) => labelInk(hex, theme.scheme));
     widths.fill(-1);
     layout = null;
   };
@@ -172,70 +179,62 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     }
     ctx.globalAlpha = 1;
 
-    /* "Tus géneros" (sesión 23): un anillo del acento. Solo los visibles. */
-    const first = [];
-    const priority = new Set();
-    if (highlight.size) {
-      ctx.beginPath();
-      for (const i of highlight) {
+    /* Anillos en el color de cada genero: un trazo por color, con un aro de la
+       superficie alrededor (el halo del diseno). Solo los visibles. */
+    const ring = (set, off, line, halo) => {
+      const marked = [];
+      for (const i of set) {
         const sx = xs[i] * k + ox;
         const sy = ys[i] * k + oy;
         if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
-        const r = dotR(i) + 3;
-        ctx.moveTo(sx + r, sy);
-        ctx.arc(sx, sy, r, 0, TAU);
-        if (first.length < 40) first.push(i);
+        marked.push([sx, sy, dotR(i) + off, data.c[i], i]);
       }
-      ctx.lineWidth = 1.75;
-      ctx.strokeStyle = theme.accent;
-      ctx.stroke();
+      if (!marked.length) return marked;
+      if (halo) {
+        ctx.lineWidth = line + 2 * halo;
+        ctx.strokeStyle = theme.halo;
+        ctx.beginPath();
+        for (const [sx, sy, r] of marked) {
+          ctx.moveTo(sx + r, sy);
+          ctx.arc(sx, sy, r, 0, TAU);
+        }
+        ctx.stroke();
+      }
+      ctx.lineWidth = line;
+      for (let c = 0; c < CLUSTERS; c++) {
+        ctx.beginPath();
+        let any = false;
+        for (const [sx, sy, r, rc] of marked) {
+          if (rc !== c) continue;
+          any = true;
+          ctx.moveTo(sx + r, sy);
+          ctx.arc(sx, sy, r, 0, TAU);
+        }
+        if (!any) continue;
+        ctx.strokeStyle = theme.palette[c];
+        ctx.stroke();
+      }
+      return marked;
+    };
+
+    /* "Tus géneros" (sesión 23): anillo de 3 px. */
+    const first = [];
+    const priority = new Set();
+    if (highlight.size) {
+      for (const m of ring(highlight, 6, 3, 3)) if (first.length < 40) first.push(m[4]);
     }
 
     /* Vista previa (puntero sobre una fila): anillo suave, sin etiquetas. */
     if (previewSet.size) {
-      ctx.beginPath();
-      for (const i of previewSet) {
-        const sx = xs[i] * k + ox;
-        const sy = ys[i] * k + oy;
-        if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
-        const r = dotR(i) + 4.5;
-        ctx.moveTo(sx + r, sy);
-        ctx.arc(sx, sy, r, 0, TAU);
-      }
       ctx.globalAlpha = 0.6;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = theme.accent;
-      ctx.stroke();
+      ring(previewSet, 6, 3, 0);
       ctx.globalAlpha = 1;
     }
 
-    /* Fila elegida: aro de la superficie y encima otro grueso del acento, como
-       el resaltado del diseno; sus etiquetas compiten primero. */
+    /* Fila elegida: anillo grueso con su halo, como el resaltado del diseno;
+       sus etiquetas compiten primero. */
     if (focusSet.size) {
-      const marked = [];
-      for (const i of focusSet) {
-        const sx = xs[i] * k + ox;
-        const sy = ys[i] * k + oy;
-        if (sx < 0 || sx > w || sy < 0 || sy > h) continue;
-        marked.push([sx, sy, dotR(i)]);
-        if (first.length < 40) first.unshift(i);
-      }
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = theme.halo;
-      ctx.beginPath();
-      for (const [sx, sy, r] of marked) {
-        ctx.moveTo(sx + r + 2, sy);
-        ctx.arc(sx, sy, r + 2, 0, TAU);
-      }
-      ctx.stroke();
-      ctx.lineWidth = 2.75;
-      ctx.strokeStyle = theme.accent;
-      ctx.beginPath();
-      for (const [sx, sy, r] of marked) {
-        ctx.moveTo(sx + r + 5.4, sy);
-        ctx.arc(sx, sy, r + 5.4, 0, TAU);
-      }
-      ctx.stroke();
+      for (const m of ring(focusSet, 7, 4, 3)) if (first.length < 40) first.unshift(m[4]);
     }
 
     /* Foco: aristas a sus relacionados y los puntos a plena opacidad. */
@@ -268,6 +267,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       ctx.lineWidth = 2;
       ctx.strokeStyle = theme.ink;
       ctx.stroke();
+      if (sel >= 0) ring([sel], 8, 4, 3);
       first.unshift(focus, ...rel);
     }
     first.forEach((i) => priority.add(i));
@@ -304,7 +304,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
         ctx.globalAlpha = 0.85 * labelAlpha;
         ctx.strokeText(text, l.x, l.y);
         ctx.globalAlpha = (focus >= 0 && !main ? 0.5 : 1) * labelAlpha;
-        ctx.fillStyle = main ? theme.ink : theme.muted;
+        ctx.fillStyle = main ? theme.ink : inks[data.c[l.i]];
         ctx.fillText(text, l.x, l.y);
       }
       ctx.globalAlpha = 1;
@@ -628,6 +628,8 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
         centerOn(vsz, data.x[i], data.y[i], v.k, lim, Math.min(vsz.w - 28, Math.max(28, a.x - ob.l)), (vsz.h - room) / 2)
       );
     },
+    /* Pide las fuentes de las etiquetas: el lienzo no las dispara solo. */
+    loadFonts: () => Promise.all(fonts.map((f) => document.fonts.load(f))),
     zoomBy,
     fit,
     /* Teclado: flechas mueven, +/- acercan, 0 encuadra todo. true = lo atendió. */

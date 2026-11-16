@@ -495,6 +495,20 @@
   text-align: right;
 }
 
+/* La pastilla de veredicto: sobre el Scrub, que cubre la pantallita. */
+.lcd__v {
+  position: relative;
+  z-index: 1;
+}
+
+/* Por debajo de 1200 px la pantallita no tiene sitio para titulo y chip: el
+   boton Ficha de la barra abre lo mismo. */
+@media (max-width: 1199.98px) {
+  .lcd__v {
+    display: none;
+  }
+}
+
 .lcd__tx {
   display: flex;
   flex: 1;

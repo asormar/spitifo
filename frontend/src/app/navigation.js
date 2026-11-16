@@ -86,11 +86,13 @@ export function modeDirection(from, to) {
    paginas) y las hojas de Buscar. La pila pertenece a la pestana activa. */
 
 /* "ficha" y "resmenu" son las hojas de Buscar (la ficha de un resultado y el
-   menu de resoluciones); "menu", "picker" y "lmenu" son el menu de una cancion,
-   la hoja "Añadir a una lista" y el menu de una lista. Todas viven en la pila
+   menu de resoluciones); "menu", "picker", "lmenu" y "file" son el menu de una
+   cancion, la hoja "Añadir a una lista", el menu de una lista y la ficha del
+   archivo de una cancion (no es la "ficha" de un resultado de Buscar). Todas
+   viven en la pila
    para que atras, Escape y el atras de Android las cierren, pero la pantalla
    sigue a la vista debajo, sin pagina propia. */
-const OVERLAYS = new Set(["menu", "picker", "lmenu"]);
+const OVERLAYS = new Set(["menu", "picker", "lmenu", "file"]);
 const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */

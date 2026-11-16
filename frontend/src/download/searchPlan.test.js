@@ -255,7 +255,7 @@ describe("dlState", () => {
     expect(dlText({ id: "down", pct: 62 })).toBe("Descargando, 62 %");
     expect(dlText({ id: "proc", pct: 100 })).toBe("Procesando el archivo…");
     expect(dlText({ id: "prep", pct: 0 })).toBe("Preparando…");
-    expect(dlText({ id: "save", pct: 100 })).toBe("Guardando en tu biblioteca…");
+    expect(dlText({ id: "save", pct: 100 })).toBe("Guardando…");
     expect(dlText({ id: "done", pct: 100 })).toBe("Descargado");
   });
 });

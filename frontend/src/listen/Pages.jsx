@@ -203,7 +203,7 @@ function useReveal(rows, active, listRef) {
   }, [active, rows, listRef]);
 }
 
-export function LibraryPage({ view, index, storage, active, ctx }) {
+export function LibraryPage({ view, index, storage, check, active, ctx }) {
   const pc = usePc();
   const backRef = useRef(null);
   const listRef = useRef(null);
@@ -223,6 +223,7 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
             <h1 className="phead__h">Todas tus canciones</h1>
             <p className="dmeta">
               {plural(rows.length, "tema", "temas")} · En {storage}
+              {check && ` · ${check}`}
             </p>
           </div>
           <div className="ph1__act">
@@ -246,7 +247,7 @@ export function LibraryPage({ view, index, storage, active, ctx }) {
             <Back bref={backRef} onClick={ctx.back} />
             <h1 className="sr-only">Todas tus canciones</h1>
           </div>
-          <AllSongs n={rows.length} storage={storage} onPlay={play} onShuffle={shuffle} />
+          <AllSongs n={rows.length} storage={storage} check={check} onPlay={play} onShuffle={shuffle} />
         </>
       )}
       <div className="chips chips--sort" role="group" aria-label="Ordenar por">

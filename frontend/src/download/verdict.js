@@ -18,16 +18,6 @@ import { trackState } from "./constants.js";
    ni document: se importa en Node para los tests.
    ------------------------------------------------------------------------- */
 
-export const V_LABEL = {
-  match: "Coincide",
-  partial: "Parecido",
-  mismatch: "No coincide",
-  p30: "Solo 30 s",
-  unv: "Sin verificar",
-};
-
-export const V_TONE = { match: "ok", partial: "near", mismatch: "bad", p30: "mute", unv: "mute" };
-
 const V_TEXT = {
   match: "El audio es la canción que buscaste.",
   partial: "Se parece, pero no es exactamente lo que buscaste.",
@@ -48,12 +38,6 @@ export function verdictOf(t, rec) {
   if (st === "none") return null;
   return (rec?.phase === "done" && FROM_MATCH[rec.match]) || "unv";
 }
-
-/* La pastilla de un archivo de la biblioteca recien bajado. Sin registro (un
-   archivo de antes, o de otra sesion) no hay pastilla: la ausencia es
-   «desconocido», nunca «Coincide». */
-export const libVerdict = (rec) => (rec?.phase === "done" ? FROM_MATCH[rec.match] || "unv" : null);
-export const libVerdictKey = (key) => `lib|${key}`;
 
 /* `untested`: nunca se comprobo (distinto de «no se pudo identificar»). */
 export function vText(key, { untested = false } = {}) {
@@ -85,10 +69,8 @@ export function createVerdictStore(fetchImpl = (...a) => fetch(...a)) {
     get: (key) => recs.get(key),
 
     /* La descarga termino: el backend ya comparo con el titulo (o las
-       etiquetas). Una verificacion que SI identifico el audio no se pisa.
-       `libKey`: la clave del archivo nuevo en la biblioteca; su fila de
-       «Descargado hace poco» lleva la misma pastilla hasta que se reinicia la
-       app (el veredicto no se guarda en el archivo). */
+       etiquetas). Una verificacion que SI identifico el audio no se pisa. El
+       archivo nuevo de la biblioteca trae su propio veredicto guardado. */
     setFromDownload(t, query, d) {
       const key = verdictKey(t, query);
       const rec = {
@@ -98,7 +80,6 @@ export function createVerdictStore(fetchImpl = (...a) => fetch(...a)) {
         real: d.real_title || null,
         by: byVideo(t) ? "video" : "file",
       };
-      if (d.libKey) put(libVerdictKey(d.libKey), rec);
       if (!known(recs.get(key))) put(key, rec);
     },
 

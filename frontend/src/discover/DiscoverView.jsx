@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
 import { subscribeGenre, takeGenre } from "./genreRequest.js";
-import { useNotice } from "../listen/Notice.jsx";
+import { useShow } from "../listen/Notice.jsx";
 import { engine } from "../player/engine.js";
 import ForYouSlot from "./ForYouSlot.jsx";
 import GenreMap from "./GenreMap.jsx";
@@ -50,7 +50,7 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
     mapData ? { status: "ready", data: mapData } : { status: "loading", data: null }
   );
   const [attempt, setAttempt] = useState(0);
-  const [noticeNode, notify] = useNotice();
+  const notify = useShow();
   const [focus, setFocus] = useState(NONE);
   const [preview, setPreview] = useState(NONE);
   const genres = useReco((s) => s.genres);
@@ -186,7 +186,6 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
           </div>
         </div>
       )}
-      {noticeNode}
     </>
   );
 }

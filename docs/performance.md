@@ -30,8 +30,8 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 388,950 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 103,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 402,350 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 108,400 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -502,6 +502,186 @@ bar, went into one each (-370 B of script together with the transition code).
 
 The JavaScript limit is the measured size plus 500 B, rounded up to 50.
 
+Descubrir and Ajustes (the map card with labels and rings in the colour of their
+genre, the "Para ti" sheet and panel, and Ajustes as one page of sections) restyle
+two screens that already had their structure, so the change is mostly deletions.
+The sliding pill behind the old segmented controls (`.segs` and
+`useSlidingPill`) is gone: the tabs of "Para ti" and the two choices in Ajustes
+are the shared `.chip`s. The Ajustes rules (1,308 B of `.settings*`) left the
+render-blocking first stylesheet for the Settings chunk, the Phosphor glyphs that
+chunk carried became five stroke glyphs of the shared set, and the toast
+Descubrir drew for itself is the provider's one (`NoticeProvider`). The labels of
+the map are drawn in their genre's colour with a guard: the fit view still
+labels 100 genres against 103 before (97%; the guard is 85%, and below it the
+biggest tier would fall back to the text face). Net of the deletions it takes
+2,345 B of script and 363 B of style off the totals, and the first stylesheet is
+2,222 B smaller, so neither limit moves:
+
+| Bundle | PR 6 after the review | After Descubrir and Ajustes | Limit | Headroom |
+| --- | --- | --- | --- | --- |
+| JavaScript | 388,434 B | 386,089 B (−2,345) | 388,950 B | 2,861 B |
+| CSS | 102,380 B | 102,017 B (−363) | 103,000 B | 983 B |
+
+| Chunk | Before (script / style) | After (script / style) |
+| --- | --- | --- |
+| `index-*` (first script and render-blocking stylesheet) | 229,881 B / 39,131 B | 229,930 B / 36,909 B |
+| `SettingsView-*` (Ajustes) | 14,734 B / 2,873 B | 12,106 B / 4,723 B |
+| `DiscoverView-*` (the map) | 23,505 B / 7,074 B | 23,561 B / 7,615 B |
+| `ForYou-*` ("Para ti") | 18,700 B / 8,245 B | 18,727 B / 7,713 B |
+| `chips-*` (shared) | — / 897 B | — / 897 B |
+
+The measured size plus 500 B is 386,589 B of script and 102,517 B of style, both
+under their limits, so `scripts/perf/budgets.json` is unchanged (lowering the
+script limit to keep the gain is a separate decision). Nothing new is fetched
+when Descubrir opens: the map's data and `/api/discover` load as before.
+
+The review of that change measured the map's draw time per frame at 4x CPU
+throttling, against the build before it:
+
+| Gesture | PC before | PC after | Phone before | Phone after |
+| --- | --- | --- | --- | --- |
+| Pan fling | 5.5 ms | 6.3 ms | 4.9 ms | 5.1 ms |
+| Wheel zoom (PC) / pinch zoom (phone) | 9.0 ms | 8.7 ms | 8.2 ms | 9.1 ms |
+| Fit | 9.4 ms | 10.4 ms | 7.7 ms | 7.9 ms |
+
+Coloured label text adds about 0.5 ms per frame. No frames drop beyond the old
+build at 1x or 4x; at 6x both builds sit at the 16.7 ms edge. "Para ti" and
+Ajustes cost the same as before, and the row that folds on dismiss has no frame
+over 50 ms at 4x or 6x. The review fixed two things:
+- The phone's full-bleed margin moved from the Descubrir screen to the map. A
+  wider screen box made the tab View Transition scale the old screen by 0.91 or
+  1.10 for about 120 ms.
+- The row menu of the half-open "Para ti" sheet now opens upward when the tab
+  bar would cover it.
+
+Those fixes add 133 B of script and save 53 B of style.
+
+The file verdict (PR 8: a verdict and its provenance stored per download, real
+covers for audio, the genre card in Ahora suena, and the pills, the liner, the
+file sheet, the chip and the bar that read them) is the last piece of the
+redesign and the one that adds code instead of replacing it: five features that
+were hidden until the data existed. Nothing new is fetched on a cold start and
+no chunk is added to what opens first; the Ahora suena chunk asks for
+`/api/artist/genres` when its card mounts and for `genre-map.json` (189 KB, once
+per session) only if that answer has genres.
+
+| Bundle | After Descubrir and Ajustes | After the file verdict | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 386,222 B | 392,865 B (+6,643) | 388,950 B | 393,400 B |
+| CSS | 101,964 B | 104,067 B (+2,103) | 103,000 B | 104,600 B |
+
+Both limits are the measured size plus 500 B, rounded up to 50. The script grew
+by 6.6 KB across the five units (+307 B for the covers, +2,359 B for the genre
+card, +3,988 B for the pills, liner, file sheet, chip and bar): the pure module
+for the verdict texts and pills (`fileCheck`), the file sheet, the chip, the bar
+pill, the genre card and its map matching (`genreChips`), and the wiring in the
+rows, tables, liner and menu. The CI count adds every `.js`, so code that sits
+in a lazy chunk counts in full. The `.vb` rules left the Buscar stylesheet for a
+shared one (`shared/verdict.css`), so library rows do not import Buscar, and the
+session-only store of library verdicts and the old pill and labels in
+`download/` are gone. One tiny shared chunk (`genreRequest-*`) appeared because
+Ahora suena, Buscar and Descubrir now all import the genre request slot.
+After the review the verdict sentences moved from `fileCheck` to `fileText`,
+which only the file sheet, the album liner and Ahora suena import: the boot
+chunk is 1,044 B lighter for the same total, and the file sheet and the Ahora
+suena card share one `.dfacts` block (CSS −200 B).
+
+**Payload.** The per-file summary rides on `/api/library` and is written to
+`localStorage` as well, so every byte is paid twice. Measured on a 3,000-track
+library (`seed_library.py`, local SSD, Windows), compact JSON as served:
+
+| `/api/library` | Bytes | Per file |
+| --- | --- | --- |
+| No records, no covers (a library from before PR 8) | 808,165 B | 269 B |
+| + `thumb_key` and `thumb_s` on every row | 950,165 B (+142,000) | +47 B |
+| + `verdict`, `meta_src`, `file_src` on every row, `real` on 12 % | 1,155,205 B (+205,040) | +68 B |
+
+A file without a record gets no new field, so a legacy library is served the
+exact bytes it was served before. The URLs, the matched title, the score and the
+time stay in the shard: sending the full record would have cost about 450 B per
+file. On the server `load_fileinfo` parses the 910 KB of shards in 18.5 ms and
+the join takes 1.9 ms (3,000 records; the media scan itself is unchanged: 1.44 s
+cold and 149 ms warm for 3,000 tracks). With both covers on every track the
+folder lists 9,000 files. Covers are listed without a media-cache entry (there
+is nothing to read in them), which keeps `media-cache.json` at the size of the
+tracks alone (0.44 MB instead of 1.33 MB) and the warm scan at 172 ms instead of
+233 ms (review numbers, same machine); the rest of the extra is the directory
+entries, not the join. The iTunes cover fetch starts when yt-dlp starts and is
+awaited only when the audio is ready, with a 5 s cap, so a slow CDN does not hold
+a finished download. On Drive the records come from the 30-second
+cache and one small file per device and month: a record is about 300 B, so a
+download rewrites only its own month (25 KB at 83 records; the 3,000 records
+above are 910 KB over the months they span).
+
+**Covers on Drive.** Each cover is its own index entry, and every write
+re-uploads the whole per-device index. The real `LibraryIndex` classes, 3,000
+tracks:
+
+| Index | Size | `to_bytes` | `from_bytes` |
+| --- | --- | --- | --- |
+| Audio only | 1,020,027 B | 45 ms | 33 ms |
+| + 200 px cover | 1,911,027 B | 92 ms | 81 ms |
+| + 200 px and ~100 px | 2,805,027 B | 151 ms | 130 ms |
+
+At 300 tracks (the Pixel runs) the three sizes are 102 KB, 191 KB and 281 KB. A
+download writes the audio and its two covers in one `put_files` call, so the
+index goes up once (2.8 MB at 3,000 tracks) instead of three times in a row.
+The covers themselves are 13.9 KB (200 px) and 5.3 KB (~100 px) from the iTunes
+CDN (one cover measured during the design), about 57 MB for 3,000 tracks; they
+are only fetched for downloads with an iTunes ficha, and rows ask for the small
+one only.
+
+**Genres.** `GET /api/artist/genres` reads the profiler's stored records through
+the cache `/api/discover` already uses: a warm call is a dictionary lookup and
+the credit split. It never starts the profiler and never touches the network.
+
+The browser pass at 1x and 4x CPU throttling (frame times of the new table
+column and pill cells, the fast-scroll gate with real covers, opening Ahora suena
+with the chip) belongs to the review of the PR and is not in these numbers.
+
+**Buscar portadas.** The opt-in tool that finds covers for files downloaded
+before covers were stored (a «Portadas» card in Ajustes, the tool itself in its
+own `CoverFinder-*` chunk) is new code, not a replacement. Nothing loads on a
+cold start or when Ajustes opens: the chunk is fetched when the button is
+pressed (or hovered on a desktop).
+
+| Bundle | After the file verdict (`main`) | After Buscar portadas | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 392,865 B | 401,845 B (+8,980) | 393,400 B | 402,350 B |
+| CSS | 104,067 B | 107,857 B (+3,790) | 104,600 B | 108,400 B |
+
+Both limits are again the measured size plus 500 B, rounded up to 50. The
+`CoverFinder` chunk is 7,504 B of script and 3,737 B of style; the card and the
+lazy import add 1,476 B to the Ajustes chunk. The CI count adds every `.js` and
+`.css`, so the lazy chunk counts in full even though most sessions never load
+it. On Drive, each confirmed cover is one `put_files` of its two sizes, so one
+index write per file, the same as a download.
+
+**Fixes from the v0.7.0 phone pass.** The track menu header now draws the
+stored cover, and the yt-dlp verdict compares the video with the chosen iTunes
+ficha instead of the typed query. JS 401,845 -> 401,877 B (+32, all in the lazy
+`Overlays` and `PlaylistPicker` chunks; boot unchanged), CSS unchanged, limits
+unchanged. The menu asks for the same 100 px URL the row already loaded, so it
+adds no request: one cover request of 4,665 B with or without the fix. Time from
+tapping «...» to the sheet painted (headless Chrome, 390x844, warm median of 8,
+two runs per build), `main` -> fix: 23-33 -> 30 ms at CPU x1, 36-38 -> 34-37 ms
+at x4, within this machine's noise. The verdict change is a string comparison
+at download time and costs nothing measurable.
+
+On the Pixel 9 Pro (Android 16, Google Drive library of 2 tracks), with
+inspectable release builds of `main` and the fix stamped 0.7.0. The menu is timed
+from the tap on «...» to the sheet painted, 11 warm opens per batch:
+
+| Pixel 9 Pro | `main` | Fix |
+| --- | --- | --- |
+| Menu open, warm median per batch | 31.8 / 36.3 ms | 30.7 / 33.3 / 38.2 ms |
+| Cover requests in the session | 4 | 4 |
+| Launch to usable (`ui.mjs --adb`) | 1,710 ms | 1,678 ms |
+| Tab switch, content shown (library / discover / search) | 74 / 80 / 84 ms | 70 / 76 / 72 ms |
+
+The 4 cover requests are the Inicio cards (200 px) and the rows (100 px). The
+menu header reuses the row's cover and adds no request.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
@@ -566,7 +746,13 @@ python scripts/perf/seed_library.py <library folder> --remove
 ```
 
 It writes 300 copies of a 3-second MP3 into `Perf Artist NN` folders and
-`--remove` deletes exactly those folders. On the PC the library folder is
+`--remove` deletes exactly those folders. `--thumbs [N]` adds a cover next to
+the first N tracks, `--small-thumbs` the ~100 px `.s.jpg` beside each, and
+`--verdicts` the stored verdict of every track (a shard under `.spitifo/`, so
+`/api/library` carries `verdict`, `meta_src`, `file_src` and `real` on each row:
+the worst case for the payload; `--remove` deletes it too). The 3,000-track runs
+of the verdict work used
+`--count 3000 --folders 300 --thumbs 3000 --small-thumbs --verdicts`. On the PC the library folder is
 `%USERPROFILE%\Music\Spitifo`; on the phone, push the folders to
 `/sdcard/Music/Spitifo/` with `adb push`.
 

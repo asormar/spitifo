@@ -446,3 +446,89 @@ def test_dos_dispositivos_mezclan_sus_playlists(tmp_path):
     nombres = sorted(f["name"] for f in fake.files.values()
                      if f["name"].startswith("playlists-"))
     assert nombres == ["playlists-A.json", "playlists-B.json"]
+
+
+# ------------------------------------------------------------------- put_files
+CLAVES_DESCARGA = ("A/A - x.m4a", "A/A - x.jpg", "A/A - x.s.jpg")
+
+
+def _lote(tmp_path: Path) -> list[tuple[str, Path]]:
+    """Una descarga: el audio y sus dos portadas, cada una con su tamano."""
+    return [(key, _origen(tmp_path, b"d" * (10 + i)))
+            for i, key in enumerate(CLAVES_DESCARGA)]
+
+
+def test_put_files_guarda_todo_en_orden_y_mueve_los_origenes(storage, tmp_path):
+    lote = _lote(tmp_path)
+
+    guardados = storage.put_files(lote)
+
+    assert [s.key for s in guardados] == list(CLAVES_DESCARGA)
+    assert [s.size for s in guardados] == [10, 11, 12]
+    assert all(not src.exists() for _key, src in lote), "tiene que MOVER"
+    assert sorted(f.key for f in storage.list()) == sorted(CLAVES_DESCARGA)
+
+
+def test_put_files_con_una_clave_invalida_no_sube_nada(storage, tmp_path):
+    lote = _lote(tmp_path) + [("../fuera.jpg", _origen(tmp_path, b"x"))]
+
+    with pytest.raises(InvalidKey):
+        storage.put_files(lote)
+    assert list(storage.list()) == []
+    assert all(src.exists() for _key, src in lote)
+
+
+def test_drive_put_files_escribe_el_indice_una_sola_vez(tmp_path):
+    from backend.app.cloud.cache import AudioCache
+    from fake_drive import FakeDrive
+
+    fake = FakeDrive()
+    storage = _drive_device(fake, "A", lambda: 1000.0)
+    storage.cache = AudioCache(tmp_path / "cache", budget_bytes=1 << 20)
+    storage.put_file("B/otra.mp3", _origen(tmp_path, b"z"))
+    (indice,) = [f for f in fake.files.values() if f["name"] == "index-A.json"]
+    antes = indice["version"]
+
+    storage.put_files(_lote(tmp_path))
+
+    assert indice["version"] == antes + 1, "audio + 2 portadas = UNA escritura"
+    assert {f["name"] for f in fake.files.values()} >= {
+        "A - x.m4a", "A - x.jpg", "A - x.s.jpg"}
+
+
+def test_drive_las_portadas_no_se_pinean_y_otro_dispositivo_ve_las_tres(tmp_path):
+    from backend.app.cloud.cache import AudioCache
+    from fake_drive import FakeDrive
+
+    fake = FakeDrive()
+    uno = _drive_device(fake, "A", lambda: 1000.0)
+    uno.cache = AudioCache(tmp_path / "cache", budget_bytes=1 << 20)
+    uno.put_files(_lote(tmp_path))
+
+    # Solo el audio quedo bajado y pineado en la cache de audio.
+    pineadas = [k for k, ent in uno.cache._index.items() if ent["pinned"]]
+    assert len(pineadas) == 1 and len(uno.cache._index) == 1
+
+    otro = _drive_device(fake, "B", lambda: 1000.0)
+    assert sorted(f.key for f in otro.list()) == sorted(CLAVES_DESCARGA)
+
+
+def test_drive_si_falla_una_portada_se_indexa_lo_que_ya_subio(tmp_path):
+    from fake_drive import FakeDrive
+
+    fake = FakeDrive()
+    storage = _drive_device(fake, "A", lambda: 1000.0)
+    subidas = {"n": 0}
+    real = storage._upload
+
+    def a_medias(*args, **kwargs):
+        subidas["n"] += 1
+        if subidas["n"] == 2:
+            raise OSError("se cayo la red")
+        return real(*args, **kwargs)
+
+    storage._upload = a_medias
+    with pytest.raises(OSError):
+        storage.put_files(_lote(tmp_path))
+
+    assert [f.key for f in storage.list()] == [CLAVES_DESCARGA[0]]

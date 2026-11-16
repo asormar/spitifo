@@ -117,6 +117,104 @@
   min-height: 48px;
 }
 
+/* La ficha del archivo en el menu: la pastilla a la derecha en el telefono y
+   debajo del texto en el escritorio. */
+.mi__t {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mi__t--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+/* La hoja de la ficha del archivo (listen/FileSheet.jsx). */
+.fsheet__h {
+  padding-right: 12px;
+}
+
+.fsheet__h .mhead__x {
+  flex: 1;
+}
+
+.fsheet__h .mhead__t {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.fsheet__b {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.fvcard {
+  padding: 16px;
+  border-radius: var(--r-field);
+  background: var(--s2);
+}
+
+.fvcard .vb--mute {
+  background: var(--s1);
+}
+
+.fvcard p {
+  margin: 8px 0 0;
+  color: var(--mut);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Los datos del archivo (la hoja y la tarjeta de Ahora suena). */
+.dfacts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.dfacts > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.dfacts dt {
+  color: var(--mut);
+}
+
+.dfacts dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.dfacts dd.is-mono {
+  font: 500 12px / 1.4 ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.ffacts {
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.ffacts > div {
+  gap: 16px;
+}
+
+.ffacts dt {
+  font-weight: 600;
+}
+
 /* En el popover: cabecera con linea y items de 44. */
 .pop .mhead {
   gap: 10px;

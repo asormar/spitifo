@@ -134,6 +134,55 @@ describe("fileFacts", () => {
     expect(get(fileFacts(entry, { now: later, full: true }), "Descargado")).toBe("el 2 de octubre de 2026");
   });
 
+  describe("with a stored record", () => {
+    const checked = { ...entry, metaSrc: "itunes", fileSrc: "youtube" };
+
+    it("the card says Procedencia as one row, first", () => {
+      const rows = fileFacts(checked, { now, storage: "este dispositivo" });
+      expect(rows[0]).toEqual({ k: "Procedencia", v: "Ficha: iTunes · Archivo: YouTube" });
+      expect(rows.map((r) => r.k)).toEqual(["Procedencia", "Audio", "Guardado en"]);
+    });
+
+    it("names a single source when ficha and file agree", () => {
+      expect(get(fileFacts({ ...entry, metaSrc: "archive" }, { now }), "Procedencia")).toBe("Internet Archive");
+      expect(get(fileFacts({ ...entry, metaSrc: "jamendo", fileSrc: "jamendo" }, { now }), "Procedencia")).toBe("Jamendo");
+    });
+
+    it("the Ficha tab splits it into Ficha and Archivo, in that order", () => {
+      const rows = fileFacts(checked, { now, full: true, storage: "Google Drive", plays: 2 });
+      expect(rows.map((r) => r.k)).toEqual([
+        "Ficha",
+        "Archivo",
+        "Audio",
+        "Guardado en",
+        "Nombre",
+        "Descargado",
+        "Escuchada",
+      ]);
+      expect(get(rows, "Ficha")).toBe("iTunes");
+      expect(get(rows, "Archivo")).toBe("YouTube");
+      expect(get(rows, "Procedencia")).toBeUndefined();
+    });
+
+    it("Archivo repeats the ficha source when there is no separate file source", () => {
+      expect(get(fileFacts({ ...entry, metaSrc: "archive" }, { now, full: true }), "Archivo")).toBe("Internet Archive");
+    });
+
+    it("the sheet has Ficha, Archivo, Audio, Guardado en and Nombre, without date or plays", () => {
+      const rows = fileFacts(checked, { now, sheet: true, storage: "Google Drive", plays: 9 });
+      expect(rows.map((r) => r.k)).toEqual(["Ficha", "Archivo", "Audio", "Guardado en", "Nombre"]);
+      expect(rows.at(-1).mono).toBe(true);
+    });
+
+    it("a legacy file has no provenance rows anywhere, and an unknown source is left out", () => {
+      for (const opts of [{}, { full: true }, { sheet: true }]) {
+        const keys = fileFacts(entry, { now, ...opts }).map((r) => r.k);
+        expect(keys.some((k) => ["Procedencia", "Ficha", "Archivo"].includes(k))).toBe(false);
+      }
+      expect(get(fileFacts({ ...entry, metaSrc: "napster" }, { now }), "Procedencia")).toBeUndefined();
+    });
+  });
+
   it("hides the date when unknown", () => {
     expect(get(fileFacts({ ...entry, added: 0 }, { now, full: true }), "Descargado")).toBeUndefined();
   });

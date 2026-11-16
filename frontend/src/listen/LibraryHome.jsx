@@ -43,6 +43,7 @@ export default function LibraryHome({ model, ctx }) {
     <AllSongs
       n={count.songs}
       storage={model.storage}
+      check={model.check}
       onOpen={() => ctx.open({ type: "library", sort: "recent" })}
       onShuffle={() => ctx.playGroup(model.entries, true, "library:")}
     />

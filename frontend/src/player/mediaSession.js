@@ -56,9 +56,10 @@ export function bindMediaSession(engine) {
             ? new MediaMetadata({
                 title: s.track.title || "",
                 artist: s.track.meta || "",
-                /* Solo las filas de resultados traen portada (300x300). */
+                /* Resultados de iTunes: 300x300. Una descarga nueva: la portada
+                   de 200 px que guarda el backend junto al audio. */
                 artwork: s.track.artwork
-                  ? [{ src: s.track.artwork, sizes: "300x300" }]
+                  ? [{ src: s.track.artwork, sizes: s.track.kind === "library" ? "200x200" : "300x300" }]
                   : [],
               })
             : null;

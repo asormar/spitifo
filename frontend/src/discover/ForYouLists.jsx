@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { becauseText, initials, percent } from "../shared/format.js";
+import Ico from "../shared/ico.jsx";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { useDrag } from "./useDrag.js";
@@ -73,9 +74,10 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
 
 /* --- Artistas --------------------------------------------------------------- */
 
+/* Cada opcion con su glifo; el color del glifo lo pone el CSS (acento / mal). */
 const MENU_ITEMS = [
-  ["search", "Buscar en Descargar"],
-  ["hide", "No me interesa"],
+  ["search", "Buscar para descargar", "dl"],
+  ["hide", "No me interesa", "nodl"],
 ];
 
 /* Menu de la fila: flechas para moverse, abre hacia arriba si abajo no cabe. */
@@ -84,7 +86,13 @@ function RowMenu({ onPick, listRef }) {
   useLayoutEffect(() => {
     const el = ref.current;
     el.querySelector("button").focus({ preventScroll: true });
-    const edge = (listRef.current || document.documentElement).getBoundingClientRect().bottom;
+    /* En la hoja la lista llega mas abajo que la ventana: el borde es el de la
+       barra de pestanas (en ancho no hay y `height` es 0). */
+    const nav = document.querySelector(".tabbar, .dots")?.getBoundingClientRect();
+    const edge = Math.min(
+      (listRef.current || document.documentElement).getBoundingClientRect().bottom,
+      nav?.height ? nav.top : Infinity
+    );
     if (el.getBoundingClientRect().bottom > edge) el.dataset.up = "";
   }, [listRef]);
 
@@ -98,8 +106,9 @@ function RowMenu({ onPick, listRef }) {
 
   return (
     <div ref={ref} className="fy-menu" role="menu" onKeyDown={onKeyDown}>
-      {MENU_ITEMS.map(([kind, text]) => (
+      {MENU_ITEMS.map(([kind, text, glyph]) => (
         <button key={kind} type="button" role="menuitem" onClick={() => onPick(kind)}>
+          <Ico n={glyph} />
           {text}
         </button>
       ))}
@@ -218,7 +227,7 @@ export function ArtistRow({
             aria-expanded={menuOpen}
             onClick={onToggleMenu}
           >
-            <Icon name="DotsThree" weight="fill" size={20} />
+            <Ico n="dots" />
           </button>
           {menuOpen && <RowMenu onPick={onMenuPick} listRef={listRef} />}
         </div>

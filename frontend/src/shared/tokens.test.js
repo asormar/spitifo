@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { darken } from "../player/tint.js";
 
 /* Contraste WCAG de los pares de texto que importan, leyendo los valores
    literales de tokens.css (claro en :root, oscuro en :root[data-theme="dark"],
@@ -67,6 +68,11 @@ const PAIRS = [
   ["on", "ink"],
   ["on-pink", "pink"],
   ["toast-act", "ink"],
+  /* Ajustes: el enlace de desconectar, el punto de "Conectada" y el glifo de
+     reproducir de una fila (grafico, 3:1 alcanza). */
+  ["bad-t", "bg"],
+  ["bad-t", "s1"],
+  ["ok-t", "s1"],
 ];
 
 describe.each([
@@ -86,6 +92,29 @@ describe.each([
   it.each(["ok", "near", "bad"])("verdict %s text on the page ground reaches 4.5:1", (tone) => {
     const tint = over(color(theme, `--${tone}-bg`), color(theme, "--bg"));
     expect(ratio(color(theme, `--${tone}-t`), tint)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* El glifo de reproducir es un grafico: WCAG pide 3:1, no 4.5. En claro va
+     justo (3.04), asi que el umbral es el que es. */
+  it("pink as a graphic on the card reaches 3:1", () => {
+    expect(ratio(color(theme, "--pink"), color(theme, "--s1"))).toBeGreaterThanOrEqual(3);
+  });
+
+  /* La fila elegida de Para ti: tinte rosa al 14 % sobre la tarjeta. */
+  it.each(["ink", "mut"])("%s on the selected-row tint reaches 4.5:1", (fg) => {
+    const pink = color(theme, "--pink");
+    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    expect(ratio(color(theme, `--${fg}`), tint)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* El glifo de reproducir de la fila elegida: rosa al 80 % hacia la tinta (el
+     rosa puro sobre el tinte da 2.6 en claro) sobre ese mismo tinte, 3:1. */
+  it("play glyph on the selected-row tint reaches 3:1", () => {
+    const pink = color(theme, "--pink");
+    const ink = color(theme, "--ink");
+    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    const glyph = [0, 1, 2].map((i) => pink[i] * 0.8 + ink[i] * 0.2);
+    expect(ratio(glyph, tint)).toBeGreaterThanOrEqual(3);
   });
 
   it("defines the 16 genre colours", () => {
@@ -124,5 +153,34 @@ describe("Mezcla hero", () => {
   it("white chip text on the translucent chip (PC) and the blue text on the active white chip reach 4.5:1", () => {
     expect(ratio(WHITE, over([10, 14, 70, 0.32], BLUE))).toBeGreaterThanOrEqual(4.5);
     expect(ratio(BLUE, WHITE)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/* La pastilla de veredicto sobre el panel oscuro de Ahora suena (nowplaying.css,
+   `.np .vb`): texto blanco sobre un chip translucido y un punto de estado. El
+   fondo ya se oscurece hasta 6:1 con el blanco (tint.js); el peor caso es el
+   mas claro que puede tomar. */
+describe("verdict chip on the Ahora suena pane", () => {
+  const WHITE = [255, 255, 255, 1];
+  const tint = [...darken([255, 255, 255]), 1];
+  const chip = over([14, 14, 24, 0.34], tint);
+
+  it("white text on the phone chip reaches 4.5:1", () => {
+    expect(ratio(WHITE, chip)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* El prototipo usa 16 %: sobre el fondo mas claro da 4.2:1. */
+  it("white text on the PC chip (white 12 %) reaches 4.5:1", () => {
+    expect(ratio(WHITE, over([255, 255, 255, 0.12], tint))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  /* Los puntos son graficos: 3:1. */
+  it.each([
+    ["ok", [0x7f, 0xf0, 0xb0, 1]],
+    ["near", [0xff, 0xd2, 0x7a, 1]],
+    ["bad", [0xff, 0x9d, 0x96, 1]],
+    ["mute", over([255, 255, 255, 0.7], chip)],
+  ])("the %s status dot reaches 3:1 on the chip", (_name, dot) => {
+    expect(ratio(dot, chip)).toBeGreaterThanOrEqual(3);
   });
 });

@@ -7,6 +7,7 @@ import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
+import { rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
 
 /* ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ import { useMore } from "./useMore.js";
 /* La primera portada real de un grupo de canciones, o null. */
 export const coverOf = (entries) => {
   const hit = entries.find((e) => e.thumbKey);
-  return hit ? keyUrl(hit.thumbKey) : null;
+  return hit ? rowArt(hit, keyUrl) : null;
 };
 
 /* `size` es el lado en px (lo lee el CSS con --s); `round` = artista. */
@@ -190,14 +191,18 @@ export function Cards({ cards, byKey, ctx, tag }) {
   );
 }
 
-/* Todas tus canciones: cuantas hay y donde estan. El cuerpo abre la pagina
+/* Todas tus canciones: cuantas hay y donde estan, y cuantas se comprobaron
+   (`check`, de checkedSummary: vacio si ninguna). El cuerpo abre la pagina
    (`onOpen`); el boton rosa las baraja y, si se pide, uno suave las reproduce. */
-export function AllSongs({ n, storage, onOpen, onPlay, onShuffle }) {
+export function AllSongs({ n, storage, check, onOpen, onPlay, onShuffle }) {
   const body = (
     <>
       <b className="num">{n}</b>
       <span>Todas tus canciones</span>
-      <small>En {storage}</small>
+      <small>
+        En {storage}
+        {check && ` · ${check}`}
+      </small>
     </>
   );
   return (

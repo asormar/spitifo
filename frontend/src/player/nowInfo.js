@@ -1,5 +1,6 @@
 import { becauseText, clock, fmtSize } from "../shared/format.js";
 import { fold } from "../listen/library.js";
+import { SRC, provText } from "../listen/fileText.js";
 import { plural } from "../listen/home.js";
 import { mixName } from "../listen/mixes.js";
 
@@ -70,11 +71,23 @@ function downloadedOn(seconds, now) {
 /* Las filas de la ficha de una cancion de la biblioteca: [{ k, v, mono }].
    Solo lo que de verdad se sabe: cada dato que falta se omite (sin raya ni
    "desconocido"). `full` (la pestana Ficha) suma el nombre del archivo y la
-   fecha. `entry` es la fila normalizada de la biblioteca; `storage`, donde se
-   guarda la musica ("Google Drive" o "este dispositivo"). */
-export function fileFacts(entry, { plays = 0, storage = "", now = new Date(), full = false } = {}) {
+   fecha; `sheet` (la hoja del menu) lleva el nombre pero no la fecha ni las
+   escuchas. Con registro guardado, la ficha dice de donde salen los datos:
+   «Procedencia» en la tarjeta; «Ficha» y «Archivo» por separado en la pestana y
+   la hoja. `entry` es la fila normalizada de la biblioteca; `storage`, donde
+   se guarda la musica ("Google Drive" o "este dispositivo"). */
+export function fileFacts(entry, { plays = 0, storage = "", now = new Date(), full = false, sheet = false } = {}) {
   if (!entry) return [];
   const rows = [];
+  const split = full || sheet;
+  if (SRC[entry.metaSrc]) {
+    if (split) {
+      rows.push({ k: "Ficha", v: SRC[entry.metaSrc] });
+      rows.push({ k: "Archivo", v: SRC[entry.fileSrc] || SRC[entry.metaSrc] });
+    } else {
+      rows.push({ k: "Procedencia", v: provText(entry) });
+    }
+  }
   const audio = [
     extOf(entry.filename),
     entry.sizeMb == null ? "" : fmtSize(entry.sizeMb),
@@ -82,10 +95,10 @@ export function fileFacts(entry, { plays = 0, storage = "", now = new Date(), fu
   ].filter(Boolean);
   if (audio.length) rows.push({ k: "Audio", v: audio.join(" · ") });
   if (storage) rows.push({ k: "Guardado en", v: storage[0].toUpperCase() + storage.slice(1) });
-  if (full && entry.filename) rows.push({ k: "Nombre", v: entry.filename, mono: true });
+  if (split && entry.filename) rows.push({ k: "Nombre", v: entry.filename, mono: true });
   const when = full ? downloadedOn(entry.added, now) : "";
   if (when) rows.push({ k: "Descargado", v: when });
-  if (plays > 0) rows.push({ k: "Escuchada", v: plural(plays, "reproducción", "reproducciones") });
+  if (!sheet && plays > 0) rows.push({ k: "Escuchada", v: plural(plays, "reproducción", "reproducciones") });
   return rows;
 }
 

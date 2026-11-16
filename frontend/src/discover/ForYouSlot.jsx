@@ -15,32 +15,25 @@ import { useReco, visibleArtists } from "./reco.js";
 
 const plural = (n) => `${n} ${n === 1 ? "artista" : "artistas"}`;
 
-/* El titulo del panel, el mismo en el marco y en el panel. */
+/* El texto del titulo del panel. */
 export function panelHead(rec) {
   const count = visibleArtists(rec.artists, rec.hidden).length;
   if (count === 0 && rec.status.running) return "Para ti · Conociendo tus artistas…";
   return count ? `Para ti · ${plural(count)}` : "Para ti";
 }
 
-/* El titulo con su icono. */
+/* El titulo, el mismo en el marco y en el panel. */
 export function PanelTitle({ head }) {
-  return (
-    <>
-      <span className="fy__ico" aria-hidden="true">
-        <Icon name="Sparkle" weight="fill" size={18} />
-      </span>
-      <span className="fy__title">{head}</span>
-    </>
-  );
+  return <span className="fy__title">{head}</span>;
 }
 
 /* El marco estatico: la barra de la hoja (telefono) o la cabecera del panel
    lateral. Recogido en ancho no pinta nada: la pestana aparece con el panel. */
-function Frame({ narrow, collapsed }) {
+function Frame({ narrow, collapsed, covered }) {
   const head = panelHead(useReco());
   if (narrow) {
     return (
-      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" inert="">
+      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" data-covered={covered ? "" : undefined} inert="">
         <div className="fy__top">
           <div className="fy__peek">
             <span className="fy__grip" />
@@ -106,5 +99,5 @@ export default function ForYouSlot(props) {
   }, [ForYou]);
 
   if (ForYou) return <ForYou {...props} initialCollapsed={collapsed} />;
-  return <Frame narrow={ctx.narrow} collapsed={collapsed} />;
+  return <Frame narrow={ctx.narrow} collapsed={collapsed} covered={ctx.genreOpen} />;
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Icon } from "./icons.jsx";
+import Ico from "../shared/ico.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
+import { cookieStatus } from "./storageInfo.js";
 
 /* ---------------------------------------------------------------------------
    COOKIES DE YOUTUBE (ultimo recurso)
@@ -87,66 +88,56 @@ export default function YouTubeCookies({ focus }) {
   };
 
   const configured = Boolean(info?.configured);
-  let state = "Comprobando…";
-  if (info) {
-    if (configured) {
-      const fecha = fmtImportDate(info.imported_at);
-      state = `Configuradas · ${info.count} ${
-        info.count === 1 ? "cookie" : "cookies"
-      }${fecha ? ` · ${fecha}` : ""}`;
-    } else {
-      state = "Sin configurar";
-    }
-  }
+  const state = cookieStatus(info, fmtImportDate);
 
   return (
-    <section
-      className="store__cookies"
-      ref={boxRef}
-      aria-labelledby="ytcookies-title"
-    >
-      <div className="store__cookies-head">
-        <h3 id="ytcookies-title" className="store__cookies-title">
-          <Icon name="Cookie" size={16} weight="duotone" aria-hidden="true" />
-          Cookies de YouTube
-        </h3>
-        <span className="store__cookies-state">{state}</span>
+    <div className="settings__card" ref={boxRef}>
+      <div className="settings__ckhead">
+        <span className="settings__cklabel">
+          <Ico n="cookie" size={16} />
+          Estado
+        </span>
+        <span className="settings__ckstate">{state}</span>
       </div>
       <input
         ref={fileRef}
         type="file"
         accept=".txt,text/plain"
-        className="store__file"
+        className="settings__file"
         onChange={onPick}
       />
-      <div className="store__cookies-actions">
+      <div className="settings__ckacts">
         <button
           type="button"
-          className="vf"
+          className="settings__btn settings__btn--acc"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
         >
-          <Icon name="UploadSimple" size={15} aria-hidden="true" />
           {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
         </button>
         {configured && (
-          <button type="button" className="vf" onClick={remove} disabled={busy}>
-            <Icon name="Trash" size={15} aria-hidden="true" />
+          <button
+            type="button"
+            className="settings__btn settings__btn--ghost"
+            onClick={remove}
+            disabled={busy}
+          >
+            <Ico n="trash" size={15} />
             Quitar
           </button>
         )}
       </div>
-      <p className="store__note">
+      <p className="settings__note">
         Exporta un <code>cookies.txt</code> desde una ventana privada con sesión
         iniciada en YouTube. Solo se usa si YouTube pide verificar que no eres un
         bot. Usar tu cuenta tiene riesgo de bloqueo: conviene una cuenta
         secundaria.
       </p>
       {err && (
-        <p className="store__err" role="alert">
+        <p className="settings__err" role="alert">
           {err}
         </p>
       )}
-    </section>
+    </div>
   );
 }

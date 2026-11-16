@@ -408,13 +408,21 @@ export function searchGenres(data, query, limit = 8) {
 /* --- Tarjeta ---------------------------------------------------------------- */
 
 /* Esquina de la tarjeta junto al punto (ax, ay), siempre dentro del mapa:
-   a la derecha del punto, o a la izquierda si no cabe. */
+   a la derecha del punto, o a la izquierda si no cabe. Si en un mapa estrecho
+   no cabe a ningun lado sin taparlo, va debajo del punto (o encima, si debajo
+   tampoco cabe). */
 export function placeCard(ax, ay, card, size, r = 6, margin = 8) {
+  const maxX = size.w - card.w - margin;
+  const maxY = size.h - card.h - margin;
   let x = ax + r + 10;
   if (x + card.w > size.w - margin) x = ax - r - 10 - card.w;
-  x = Math.min(size.w - card.w - margin, Math.max(margin, x));
-  const y = Math.min(size.h - card.h - margin, Math.max(margin, ay - 20));
-  return { x, y };
+  x = Math.min(maxX, Math.max(margin, x));
+  if (x < ax + r + 4 && x + card.w > ax - r - 4) {
+    const below = ay + r + 14;
+    const y = below + card.h <= size.h - margin ? below : ay - r - 14 - card.h;
+    return { x: Math.min(maxX, Math.max(margin, ax - card.w / 2)), y: Math.min(maxY, Math.max(margin, y)) };
+  }
+  return { x, y: Math.min(maxY, Math.max(margin, ay - 20)) };
 }
 
 /* "360ms" o "0.36s" -> milisegundos. */

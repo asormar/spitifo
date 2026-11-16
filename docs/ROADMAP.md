@@ -879,6 +879,61 @@ The plan as written:
 - The same review as session 20, now covering Discover: the map's data and
   rendering, and anything the recommendations added to start-up.
 
+### 25. Redesign «Combinación» — PRs 1–8 done
+
+A chain of pull requests, each reviewed and merged into `main` in order, replaced
+the interface with the approved «Combinación» design: the Disco logo, Unbounded
+and Onest, one palette in two themes, four tabs and one app for the phone and the
+desktop. No feature was dropped and `main` worked at every merge. Plan, design
+and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
+
+1. **Base.** Tokens for both themes, fonts, logo and favicon, radii, shadows and
+   motion curves, and the primitives (buttons, chips, pills, generated covers).
+2. **Shell.** Inicio, Buscar, Tu biblioteca and Descubrir; on a phone a tab bar
+   and a floating mini player, on a desktop a left navigation, a top bar and a
+   floating player bar. The theme moved into Ajustes.
+3. **Buscar.** One field: the library as you type, the sources on Enter; result
+   rows and a table, verdict pills, the download ring and the result ficha.
+4. **Inicio and Tu biblioteca.** The Mezcla record with endless mixes, shelves,
+   «Todas tus canciones» and grouped library search.
+5. **Pages.** Album, artist and list pages, the track and list menus, the
+   playlist picker and the toasts, with their loading, empty and error states.
+6. **Ahora suena.** A full screen on a phone and a column beside the pages on a
+   desktop, with Cola and Ficha; the docked pane is off on Descubrir.
+7. **Descubrir and Ajustes.** The map card with genre-coloured labels, the genre
+   card, «Para ti» (a sheet on a phone, a panel inside the map card on a
+   desktop), and Ajustes as one page of sections. «Buscar para descargar» is the
+   wording wherever Descubrir points to a download.
+8. **Veredicto por archivo.** Each download stores its verdict and where the
+   metadata and the audio came from (`fileinfo-<device>-YYYY-MM.json`, on disk
+   and on Drive), and audio downloads with an iTunes ficha get a 200 px and a
+   ~100 px cover next to the file (one batched index write on Drive). With that
+   data: pills in the library rows and a «Verificación» column in the desktop
+   tables, «Todo coincide» / «3 de 5 coinciden» on an album, «todas
+   comprobadas», the Ficha del archivo (Ahora suena, the track menu), a verdict
+   chip in Ahora suena and the player bar, and «En el mapa de géneros» with the
+   artist's real genres (`GET /api/artist/genres`).
+
+- **Truthful by construction.** A verdict, a provenance or a cover appears only
+  from a real record. The verdict only exists at download time, so there is no
+  backfill: a file downloaded before PR 8 has no record, shows no pill on a row
+  and says «Sin verificar» only in its Ficha, the Ahora suena chip and the
+  player bar. A Buscar result keeps full / preview / none until a verification
+  or a download says otherwise, and «todas comprobadas» is computed, never
+  written. The artist genres card hides when the profiler has no data or the map
+  does not know the genre; the album year and genre line stays out (the
+  library has neither per album).
+- **Size.** The JavaScript limit went from 371,000 B to 393,400 B over PRs 2–8
+  and the CSS limit from 103,000 B to 104,600 B. PR 8 ends at 392,865 B and
+  104,067 B: it is the one PR that adds five features' worth of code instead of
+  replacing it (`docs/performance.md`).
+- **Not done.** Installed-app and Pixel runs of `scripts/perf/ui.mjs` for the
+  redesign (and the Gallery question for covers beside the audio in
+  `Music/Spitifo`), a real Drive account run of the batched index write, a
+  «Buscar portadas» tool for the covers of existing files, the app icons with
+  the Disco mark (installer and launcher), and the logo decision in
+  `PRODUCT.md`.
+
 ## Dependencies
 
 ```
@@ -887,7 +942,7 @@ The plan as written:
 2 Exploration ──┴─────────── 6 Storage port ── 7 First connector ──┬── 8 Others
                                                                     └── 19 Playlists
 12 Baseline ── 13 Split frontend ── 14 Playback engine ── 15 App shell ── 16 Motion ──┬── 17 Library and queue ── 18 Now playing ── 19 Playlists ── 20 Review 1
-                                                                                      └── 21 Discover research ── 22 Genre map ── 23 Recommendations ── 24 Review 2
+                                                                                      └── 21 Discover research ── 22 Genre map ── 23 Recommendations ── 24 Review 2 ── 25 Redesign
                                                              9 Release ── 10 Hardening ── 11 Smaller, signed binaries
 ```
 
@@ -919,7 +974,7 @@ session happens on a short-lived branch.
 | --- | --- | --- |
 | 1 Feasibility | `spike/android-chaquopy` | **Never merged.** Only its written decision lands in `main`; the code is rebuilt properly in session 5 |
 | 2 Exploration | `docs/storage-exploration` | Merged when the ADR is done |
-| 3–8, 10–24 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
+| 3–8, 10–25 | `feat/<topic>` (e.g. `feat/embeddable-backend`, `feat/desktop-tauri`, `feat/storage-port`, `feat/connector-google`) | Merged when the session's goal works and the tests pass |
 | 9 Release | `ci/release` | Merged; releases are tags on `main` (`v0.1.0`, …) |
 
 Rules:

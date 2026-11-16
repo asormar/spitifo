@@ -38,7 +38,17 @@ export default function PageHost({ view, tab, active, results }) {
   if (view.type === "all") {
     page = <AllPage key={key} view={view} r={results || EMPTY_RESULTS} {...common} />;
   } else if (view.type === "library") {
-    page = <LibraryPage key={key} view={view} index={model.index} storage={model.storage} active={active} ctx={ctx} />;
+    page = (
+      <LibraryPage
+        key={key}
+        view={view}
+        index={model.index}
+        storage={model.storage}
+        check={model.check}
+        active={active}
+        ctx={ctx}
+      />
+    );
   } else {
     page = <DetailPage key={key} view={view} storage={model.storage} {...common} />;
   }

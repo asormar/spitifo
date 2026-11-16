@@ -39,6 +39,7 @@ configure_runtime()
 
 from .artistinfo import Enricher, fold, library_artists
 from .downloader import download_track, library_scan
+from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
@@ -747,9 +748,21 @@ async def setlist(request: Request):
     return JSONResponse({"tracks": tracks})
 
 
+async def _fileinfo_records(storage) -> dict:
+    """Veredictos guardados. Si no se pueden leer, la lista sale sin ellos."""
+    try:
+        return await asyncio.to_thread(storage.load_fileinfo)
+    except Exception as e:
+        log.warning("no se pudieron leer los veredictos: %s", e)
+        return {}
+
+
 async def library(request: Request):
-    files = await asyncio.to_thread(library_scan)
-    return JSONResponse({"library": get_storage().describe(), "count": len(files),
+    storage = get_storage()
+    files, records = await asyncio.gather(
+        asyncio.to_thread(library_scan), _fileinfo_records(storage))
+    files = with_checks(files, records)
+    return JSONResponse({"library": storage.describe(), "count": len(files),
                          "files": files})
 
 
@@ -1080,6 +1093,31 @@ async def discover(request: Request):
         # Sin enricher la vista sigue mostrando lo cacheado.
         log.warning("no se pudo arrancar el enricher: %s", exc)
     return JSONResponse({"status": enricher.status(), **data})
+
+
+async def artist_genres_route(request: Request):
+    """GET /api/artist/genres?name=: generos de UN artista, sin red.
+
+    Lee las fichas que ya guardo el enricher (las mismas que usa Discover) y
+    NUNCA lo arranca: eso lo hace `/api/discover`. Un artista que todavia no se
+    perfilo devuelve `genres: []` y la UI esconde la tarjeta.
+    """
+    from .recommend import artist_genres
+
+    name = _query_str(request, "name", required=True, min_length=1,
+                      max_length=200)
+    if not name.strip():
+        raise _invalid(["query", "name"],
+                       "String should have at least 1 characters")
+    try:
+        records = await asyncio.to_thread(
+            _discover_records, get_storage(), _enricher)
+    except Exception as exc:
+        log.warning("no se pudieron leer las fichas de artista: %s", exc)
+        records = {}
+    genres = artist_genres(name, records)
+    return JSONResponse({"name": name, "genres": [
+        {"name": g["name"], "share": round(g["share"], 3)} for g in genres]})
 
 
 def _dismiss_body(body: dict) -> tuple[str, bool]:
@@ -1447,6 +1485,43 @@ async def prefetch(request: Request):
     return JSONResponse({"key": key}, status_code=202)
 
 
+# ------------------------------------------------------------ buscar portadas
+async def covers_missing(request: Request):
+    """GET /api/covers/missing: temas de audio sin portada."""
+    from .cover_finder import missing
+    items = await asyncio.to_thread(missing)
+    return JSONResponse({"count": len(items), "items": items})
+
+
+async def covers_candidates(request: Request):
+    """GET /api/covers/candidates?key&q: canciones de iTunes con portada."""
+    from .cover_finder import CoverError, candidates
+    key = _query_str(request, "key", required=True)
+    q = _query_str(request, "q", required=True)
+    try:
+        found = await candidates(key, q)
+    except CoverError as e:
+        raise HTTPException(e.status, e.detail)
+    return JSONResponse({"key": key, "query": q, "candidates": found})
+
+
+async def covers_apply(request: Request):
+    """POST /api/covers/apply {key, artwork_url}: guarda la portada confirmada."""
+    from .cover_finder import CoverError, apply
+    body = await _json_body(request)
+    key = body.get("key")
+    url = body.get("artwork_url")
+    if not isinstance(key, str) or not key:
+        raise _invalid(["body", "key"], "Field required")
+    if not isinstance(url, str) or not url:
+        raise _invalid(["body", "artwork_url"], "Field required")
+    try:
+        saved = await apply(key, url)
+    except CoverError as e:
+        raise HTTPException(e.status, e.detail)
+    return JSONResponse(saved)
+
+
 async def _http_exception(request: Request, exc: HTTPException) -> JSONResponse:
     """Mismo cuerpo de error que FastAPI: {"detail": ...} en todos los casos."""
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
@@ -1511,6 +1586,7 @@ routes = [
     Route("/api/listens/summary", listens_summary),
     Route("/api/discover", discover),
     Route("/api/discover/dismiss", discover_dismiss, methods=["POST"]),
+    Route("/api/artist/genres", artist_genres_route),
     Route("/api/youtube/cookies", youtube_cookies_info),
     Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),
@@ -1522,6 +1598,9 @@ routes = [
     Route("/api/storage/disconnect", storage_disconnect, methods=["POST"]),
     Route("/api/audio", audio),
     Route("/api/prefetch", prefetch, methods=["POST"]),
+    Route("/api/covers/missing", covers_missing),
+    Route("/api/covers/candidates", covers_candidates),
+    Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():

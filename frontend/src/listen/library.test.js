@@ -65,10 +65,43 @@ describe("normalizeEntry", () => {
       folder: "Folder",
       sizeMb: 3.5,
       thumbKey: "thumb-1",
+      thumbS: false,
+      verdict: null,
+      metaSrc: null,
+      fileSrc: null,
+      real: null,
       added: 0,
       hasAudio: true,
       search: "song artist album",
     });
+  });
+
+  it("reads the stored verdict and provenance, and leaves a legacy file at null", () => {
+    const checked = normalizeEntry(
+      file({
+        thumb_key: "A/a.jpg",
+        thumb_s: true,
+        verdict: "partial",
+        meta_src: "itunes",
+        file_src: "youtube",
+        real: "Numb (Live)",
+      })
+    );
+    expect(checked).toMatchObject({
+      thumbS: true,
+      verdict: "partial",
+      metaSrc: "itunes",
+      fileSrc: "youtube",
+      real: "Numb (Live)",
+    });
+    const legacy = normalizeEntry(file());
+    expect([legacy.verdict, legacy.metaSrc, legacy.fileSrc, legacy.real, legacy.thumbS]).toEqual([
+      null,
+      null,
+      null,
+      null,
+      false,
+    ]);
   });
 
   it("keeps the modification time as the added date", () => {
@@ -254,6 +287,7 @@ describe("toQueue", () => {
 
 describe("rowArt", () => {
   const keyUrl = (key) => `/api/media/${encodeURIComponent(key)}`;
+  const api = (key) => `/api/audio?key=${encodeURIComponent(key)}`;
 
   it("is null without a thumbnail and the encoded sidecar URL with one", () => {
     expect(rowArt(normalizeEntry(file({ key: "a" })), keyUrl)).toBeNull();
@@ -264,6 +298,31 @@ describe("rowArt", () => {
   it("matches the artwork of the queue track", () => {
     const entry = normalizeEntry(file({ key: "a", thumb_key: "x/a.jpg" }));
     expect(rowArt(entry, keyUrl)).toBe(toQueue([entry], keyUrl)[0].artwork);
+  });
+
+  it("asks for the small cover only when the file has one", () => {
+    const both = normalizeEntry(file({ thumb_key: "A/a.jpg", thumb_s: true }));
+    const onlyBig = normalizeEntry(file({ thumb_key: "A/a.jpg" }));
+    expect(rowArt(both, keyUrl, true)).toBe("/api/media/A%2Fa.s.jpg");
+    expect(rowArt(both, keyUrl)).toBe("/api/media/A%2Fa.jpg");
+    expect(rowArt(onlyBig, keyUrl, true)).toBe("/api/media/A%2Fa.jpg");
+  });
+
+  it("is null without a cover even if the small flag is set", () => {
+    expect(rowArt(normalizeEntry(file({ thumb_s: true })), keyUrl, true)).toBeNull();
+  });
+
+  it("adds the added date so a re-downloaded cover is fetched again", () => {
+    const entry = normalizeEntry(file({ thumb_key: "A/a.jpg", thumb_s: true, modified: 1760000000.9 }));
+    expect(rowArt(entry, api, true)).toBe("/api/audio?key=A%2Fa.s.jpg&v=1760000000");
+    expect(rowArt(entry, keyUrl)).toBe("/api/media/A%2Fa.jpg?v=1760000000");
+  });
+
+  it("keeps the 200 px cover on the queue track and the thumbnail of a video", () => {
+    const audio = normalizeEntry(file({ thumb_key: "A/a.jpg", thumb_s: true, modified: 5 }));
+    expect(toQueue([audio], api)[0].artwork).toBe("/api/audio?key=A%2Fa.jpg&v=5");
+    const video = normalizeEntry(file({ kind: "video", thumb_key: "A/v.jpg" }));
+    expect(rowArt(video, api, true)).toBe("/api/audio?key=A%2Fv.jpg");
   });
 });
 
