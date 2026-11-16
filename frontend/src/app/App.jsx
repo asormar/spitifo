@@ -3,7 +3,8 @@ import { flushSync } from "react-dom";
 import { API } from "../shared/api.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
-import QueuePill from "../download/QueuePill.jsx";
+import { onQueueReady, probeQueue } from "../download/queueBoot.js";
+import { useShow } from "../listen/Notice.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
@@ -90,6 +91,9 @@ function DiscoverView(props) {
   return <View {...props} />;
 }
 const SettingsView = React.lazy(loadSettingsView);
+/* La pildora llega con el espejo de la cola, no con el shell: hasta que el
+   usuario descarga algo o el sondeo de entrada encuentra trabajo, no se carga. */
+const QueuePill = React.lazy(() => import("../download/QueuePill.jsx"));
 /* Las paginas de la pila de Buscar (Explorar la biblioteca, «Ver las N canciones»). */
 const SearchPage = React.lazy(() => import("../download/SearchPage.jsx"));
 /* La hoja de Descargas comparte chunk con la ficha del album; se adelanta al
@@ -197,8 +201,36 @@ function Hotkeys({ nav, escapeNp, npOpen, wide }) {
   return null;
 }
 
+/* El espejo de la cola no sabe nada de React: App le da las dos funciones que
+   necesita del exterior (refrescar la biblioteca y mostrar el aviso) en cuanto
+   el modulo llega, aunque lo haya hecho despues de montarse. `onReady` enciende
+   la pildora. El sondeo de entrada corre una vez, despues del primer pintado.
+   Vive dentro del NoticeProvider para tener el `show` de la app. */
+function QueueHooks({ onLibrary, onReady }) {
+  const show = useShow();
+  useEffect(() => {
+    let store = null;
+    const off = onQueueReady((mod) => {
+      store = mod.queueStore;
+      store.setHooks({ onLibrary, onToast: show });
+      onReady();
+    });
+    return () => {
+      off();
+      store?.setHooks({});
+    };
+  }, [onLibrary, show, onReady]);
+  useEffect(() => {
+    probeQueue();
+  }, []);
+  return null;
+}
+
 export default function App() {
   const [health, setHealth] = useState(null);
+  /* La pildora no se monta hasta que el espejo de la cola esta cargado. */
+  const [queueReady, setQueueReady] = useState(false);
+  const onQueueReadyPill = useCallback(() => setQueueReady(true), []);
   /* null = todavia no lo sabemos. Distinguir "vacia" de "sin consultar" importa:
      Inicio pinta esqueletos mientras llega y "Todavia no has descargado
      nada" solo cuando de verdad esta vacia. */
@@ -566,6 +598,7 @@ export default function App() {
       {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
           mosaicos de su hoja de listas); no pinta DOM propio. */}
       <ListenProvider files={libFiles} nav={nav} storage={storage}>
+        <QueueHooks onLibrary={loadLib} onReady={onQueueReadyPill} />
         <main className="app" inert={full ? "" : undefined}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
               arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
@@ -649,8 +682,12 @@ export default function App() {
           </div>
 
           {/* Sobre el reproductor, en cualquier modo: la cola sigue contando
-              aunque Buscar este oculta. */}
-          <QueuePill onOpen={openQueue} />
+              aunque Buscar este oculta. Solo se monta cuando el espejo llega. */}
+          {queueReady && (
+            <Suspense fallback={null}>
+              <QueuePill onOpen={openQueue} />
+            </Suspense>
+          )}
 
           {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
               marcha. En escritorio las tarjetas van en el menu lateral. */}
@@ -688,7 +725,6 @@ export default function App() {
               album={listenAlbumAt.album}
               anchor={listenAlbumAt.anchor}
               onClose={nav.back}
-              onLibraryChanged={loadLib}
             />
           </Suspense>
         )}

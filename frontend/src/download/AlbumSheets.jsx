@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { rowKey } from "../shared/api.js";
-import { useShow } from "../listen/Notice.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
@@ -11,30 +10,23 @@ import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, fetchAlbumMatch } from "./albumApi.js";
-import { downloadTrack } from "./downloadTrack.js";
-import { albumButton, groupToast, missingSentence, ownedSlots, trackSlot } from "./albumText.js";
-import { groupSummary, queueStore, useQueue } from "./queueStore.js";
+import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot } from "./albumText.js";
+import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
 
 /* ---------------------------------------------------------------------------
    FICHA DEL ALBUM Y HOJA DE DESCARGAS
 
-   Las dos viven en el mismo chunk perezoso (albumChunk.js), que se adelanta al
-   enfocar una tarjeta de album o la pildora de la cola. La ficha muestra la
+   Las dos viven en el mismo chunk perezoso (albumChunk.js). La ficha muestra la
    lista real de iTunes en cuanto llega, mientras /match busca el video de cada
-   pista. Todo el estado de descarga sale de queueStore y de jobsStore: cerrar y
-   volver a abrir no pierde nada, y la pildora sigue contando en cualquier modo.
+   pista. Todo el estado de descarga sale del espejo de la cola del servidor:
+   cerrar y volver a abrir no pierde nada, y la pildora sigue contando en
+   cualquier modo.
    ------------------------------------------------------------------------- */
 
 const initial = (label) => (String(label || "").trim()[0] || "?").toUpperCase();
-const verdict = (result) =>
-  result?.match === "match"
-    ? "match"
-    : result?.match === "partial"
-    ? "partial"
-    : result?.match === "mismatch"
-    ? "mismatch"
-    : "unv";
+const verdict = (match) =>
+  match === "match" ? "match" : match === "partial" ? "partial" : match === "mismatch" ? "mismatch" : "unv";
 
 function Cover({ album, className = "als__cv" }) {
   const [broken, setBroken] = useState(false);
@@ -62,33 +54,32 @@ function TrackPill({ track, item, failed, onRetry, owned }) {
   if (track.extra?.has_full == null) {
     return <span className="alp alp--mut">{failed ? "Sin verificar" : "Buscando…"}</span>;
   }
-  if (item?.state === "done") return <VerdictPill v={verdict(item.result)} />;
-  if (item?.state === "failed" || item?.state === "cancelled") {
+  if (item?.status === "done") return <VerdictPill v={verdict(item.match)} />;
+  if (item?.status === "error" || item?.status === "cancelled") {
     return (
       <button type="button" className="alp alp--bad alp--btn" onClick={onRetry}>
         Reintentar
       </button>
     );
   }
-  if (item?.state === "queued") return <span className="alp alp--mut">En cola</span>;
-  if (item?.state === "running") return <span className="alp alp--acc">Descargando</span>;
+  if (item?.status === "queued") return <span className="alp alp--mut">En cola</span>;
+  if (item && BUSY_STATES.has(item.status)) return <span className="alp alp--acc">Descargando</span>;
   return <span className="alp alp--acc">Completa</span>;
 }
 
-export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, downloadedIds }) {
-  const show = useShow();
+export function AlbumSheet({ album, query, anchor, onClose }) {
   const [detail, setDetail] = useState(null);
   const [detailErr, setDetailErr] = useState(null);
   const [match, setMatch] = useState(null);
   const [matching, setMatching] = useState(true);
   const [err, setErr] = useState(null);
   const matchAbort = useRef(null);
-  const queue = useQueue();
+  const queue = useQueueState();
   const gid = `album:${album.id}`;
-  const group = queue.find((g) => g.id === gid);
+  const group = queue.groups.find((g) => g.id === gid);
   const items = group?.items || [];
-  const done = items.filter((i) => i.state === "done").length;
-  const running = items.some((i) => i.state === "queued" || i.state === "running");
+  const done = items.filter((i) => i.status === "done").length;
+  const running = items.some((i) => BUSY_STATES.has(i.status));
   const tracks = match?.tracks || detail?.tracks || [];
   /* Lo que ya esta en la biblioteca (mismo album de iTunes, mismo disco y
      numero) no se vuelve a bajar: ni entra en el boton ni en la cola. */
@@ -99,6 +90,7 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
   const fullTracks = tracks.filter((t) => t.extra?.has_full === true && !isOwned(t));
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
+  const ask = query || `${album.artist} ${album.title}`;
 
   useEffect(() => {
     const ac = new AbortController();
@@ -134,31 +126,32 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
     return () => matchAbort.current?.abort();
   }, [runMatch]);
 
-  /* La cola recibe la MISMA funcion de descarga que usa una fila. La credito
-     por grupo para que el toast final y el progreso de la pildora salgan de un
-     solo sitio, aunque la ficha se cierre antes de que terminen. */
-  const enqueue = useCallback(
-    (list, id, title) => {
-      queueStore.addGroup({
-        id,
-        title,
-        artwork_url: album.artwork_url,
-        tracks: list,
-        /* Igual que una fila: cada pista bajada refresca la biblioteca, asi el
-           album va apareciendo en Escuchar mientras la cola sigue. */
-        run: async (t) => {
-          const res = await downloadTrack(t, { query: query || `${album.artist} ${album.title}` });
-          onLibraryChanged?.();
-          return res;
-        },
-        onFinish: (g, s) => show(groupToast(g.title, s)),
-        downloaded: downloadedIds,
-      });
+  const spec = useCallback(
+    (t) => {
+      const copy = { ...t };
+      delete copy.downloadable;
+      return { source: copy.source, track: copy, fmt: "m4a", media: "audio", query: ask };
     },
-    [album.artwork_url, album.artist, album.title, query, show, onLibraryChanged, downloadedIds]
+    [ask]
   );
 
-  const btn = albumButton({ matching, full, done, running, owned: ownedCount });
+  /* Un solo POST con todas las pistas y el grupo: el servidor deduce lo que
+     falta encolar y dedupe por archivo de salida. */
+  const enqueue = useCallback(
+    (list) =>
+      queueStore.enqueue({
+        items: list.map(spec),
+        group: { id: gid, title: album.title, artwork_url: album.artwork_url },
+      }),
+    [album.artwork_url, album.title, gid, spec]
+  );
+
+  /* Mientras baja, el boton cuenta el grupo entero («3 de 12»): lo ya bajado
+     pasa enseguida a la biblioteca y saldria de `full`. Parado, lo bajado ya es
+     de la biblioteca (`owned`) y no se resta dos veces. */
+  const btn = running
+    ? albumButton({ matching, full: items.length, done, running, owned: ownedCount })
+    : albumButton({ matching, full, done: 0, running, owned: ownedCount + done });
   const ytOff = match && match.ytdlp === false;
   const header = match?.album || detail?.album || album;
   const meta = [header.artist, header.year, `${album.track_count ?? tracks.length} ${album.track_count === 1 ? "canción" : "canciones"}`]
@@ -189,6 +182,7 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
         </div>
 
         <div className="als__body">
+          {queue.offline && <p className="qsh__net" role="status">{OFFLINE_BANNER}</p>}
           {ytOff ? (
             <p className="als__note">Las descargas necesitan YouTube activado en este servidor.</p>
           ) : (
@@ -197,7 +191,7 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
               className="als__btn"
               data-busy={running || undefined}
               aria-disabled={btn.disabled || undefined}
-              onClick={() => !btn.disabled && enqueue(fullTracks, gid, album.title)}
+              onClick={() => !btn.disabled && enqueue(fullTracks)}
             >
               {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
               {btn.text}
@@ -218,8 +212,9 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
             <ol className="als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
               {tracks.map((t, i) => {
                 const key = rowKey(t);
-                const item = queueStore.getItem(gid, key);
+                const item = queueStore.itemFor(key, gid);
                 const mine = isOwned(t);
+                const busy = item && BUSY_STATES.has(item.status);
                 return (
                   <li className={cx("altr", t.extra?.has_full === false && !mine && "is-miss")} key={key}>
                     <span className="altr__no num" aria-hidden="true">{i + 1}</span>
@@ -230,19 +225,29 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
                         item={item}
                         failed={Boolean(err)}
                         owned={mine}
-                        onRetry={() => queueStore.retry(gid, key)}
+                        onRetry={() => item && queueStore.retry(item.id)}
                       />
                     </span>
                     <span className="altr__acts">
+                      {busy && (
+                        <button
+                          type="button"
+                          className="altr__x"
+                          aria-label={`Cancelar ${t.title}`}
+                          onClick={() => queueStore.cancel(item.id)}
+                        >
+                          <Ico n="x" size={16} />
+                        </button>
+                      )}
                       {t.preview_url && <PreviewButton t={t} />}
                       {t.extra?.has_full === true && !mine && (
                         <DlRing
                           t={t}
                           name={t.title}
                           small
-                          busy={item?.state === "running" || item?.state === "queued"}
-                          downloaded={item?.state === "done"}
-                          onDl={(one) => enqueue([one], `single:${rowKey(one)}`, one.title)}
+                          busy={BUSY_STATES.has(item?.status)}
+                          downloaded={item?.status === "done"}
+                          onDl={(one) => queueStore.enqueue({ items: [spec(one)] })}
                         />
                       )}
                     </span>
@@ -261,10 +266,25 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
   );
 }
 
+function itemText(i, offline) {
+  if (i.status === "done") return i.match === "partial" ? "Parecido: otra versión" : "Descargada";
+  if (i.status === "cancelled") return "Cancelada";
+  if (i.status === "error") return "Falló";
+  if (i.status === "queued") return "En cola";
+  if (i.resumedFrom != null) return resumingText(i.resumedFrom);
+  if (offline) return pausedText(i.progress);
+  return `Descargando · ${Math.round(i.progress || 0)} %`;
+}
+
 /* La hoja que abre la pildora: grupos, sus pistas y cancelar lo que falta. */
 export function QueueSheet({ anchor, onClose }) {
-  const queue = useQueue();
-  const groups = queue.filter((g) => g.items.length);
+  const queue = useQueueState();
+  const groups = queue.groups.filter((g) => g.items.length);
+
+  useEffect(() => {
+    queueStore.setSheetOpen(true);
+    return () => queueStore.setSheetOpen(false);
+  }, []);
 
   return (
     <Sheet title="Descargas" onClose={onClose} anchor={anchor}>
@@ -276,14 +296,19 @@ export function QueueSheet({ anchor, onClose }) {
           </button>
         </div>
         <div className="qsh__body">
+          {queue.offline && (
+            <p className="qsh__net" role="status">{OFFLINE_BANNER}</p>
+          )}
           {!groups.length && <p className="als__note">No hay descargas en curso.</p>}
           {groups.map((g) => {
-            const s = groupSummary(g);
+            const s = serverSummary(g);
             const f = s.total ? s.done / s.total : 0;
             const state = s.ended
               ? s.failed
                 ? `Terminado · ${s.failed} ${s.failed === 1 ? "falló" : "fallaron"}`
                 : "Terminado"
+              : queue.offline && s.running
+              ? "En pausa hasta que vuelva la red"
               : s.running
               ? `Bajando · ${s.done} de ${s.total}`
               : "Esperando turno";
@@ -301,29 +326,27 @@ export function QueueSheet({ anchor, onClose }) {
                 </div>
                 <ol className="ql">
                   {g.items.map((i) => (
-                    <li key={i.key}>
+                    <li key={i.id}>
                       <span className="ql__tt">
-                        <b>{i.track.title}</b>
-                        <span>
-                          {i.state === "done"
-                            ? i.result?.match === "partial"
-                              ? "Parecido: otra versión"
-                              : "Descargada"
-                            : i.state === "running"
-                            ? "Descargando…"
-                            : i.state === "queued"
-                            ? "En cola"
-                            : i.state === "cancelled"
-                            ? "Cancelada"
-                            : "Falló"}
-                        </span>
+                        <b>{i.title}</b>
+                        <span>{itemText(i, queue.offline)}</span>
                       </span>
-                      {(i.state === "failed" || i.state === "cancelled") && (
+                      {BUSY_STATES.has(i.status) && (
+                        <button
+                          type="button"
+                          className="ql__x"
+                          aria-label={`Cancelar ${i.title}`}
+                          onClick={() => queueStore.cancel(i.id)}
+                        >
+                          <Ico n="x" size={18} />
+                        </button>
+                      )}
+                      {(i.status === "failed" || i.status === "error" || i.status === "cancelled") && (
                         <button
                           type="button"
                           className="ql__retry"
-                          aria-label={`Reintentar ${i.track.title}`}
-                          onClick={() => queueStore.retry(g.id, i.key)}
+                          aria-label={`Reintentar ${i.title}`}
+                          onClick={() => queueStore.retry(i.id)}
                         >
                           Reintentar
                         </button>
@@ -335,7 +358,7 @@ export function QueueSheet({ anchor, onClose }) {
                   <button
                     type="button"
                     className="ql__cancel"
-                    onClick={() => queueStore.cancelPending(g.id)}
+                    onClick={() => queueStore.cancelGroup(g.id)}
                   >
                     Cancelar las que faltan
                   </button>

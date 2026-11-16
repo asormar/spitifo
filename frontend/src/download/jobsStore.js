@@ -66,5 +66,5 @@ export const useJobs = () => useSyncExternalStore(jobsStore.subscribe, jobsStore
 export const useJob = (key) =>
   useSyncExternalStore(jobsStore.subscribe, () => jobsStore.getJobs()[key]);
 
-/* Lo que reciben pollJob y onDownload. */
+/* Lo que publica el espejo de la cola en jobsStore. */
 export const setJobFor = jobsStore.setJobFor;
