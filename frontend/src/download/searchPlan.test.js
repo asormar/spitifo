@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dlState,
   dlText,
+  dlWaiting,
   libraryQuery,
   noticeFromError,
   noticeFromJob,
@@ -218,6 +219,13 @@ describe("dlState", () => {
     expect(dlState({ busy: true, job: job("pending") }).id).toBe("queued");
     expect(dlState({ busy: true, job: job("downloading", 41.6) })).toEqual({ id: "down", pct: 42 });
     expect(dlState({ busy: true, job: job("processing", 100) }).id).toBe("proc");
+    expect(dlState({ busy: true, job: { status: "downloading", phase: "preparing" } }))
+      .toEqual({ id: "prep", pct: 0 });
+    expect(dlState({ busy: true, job: { status: "downloading", phase: "downloading", progress: 30 } }).id)
+      .toBe("down");
+    expect(dlState({ busy: true, job: { status: "processing", phase: "saving" } }).id).toBe("save");
+    expect(dlWaiting({ id: "prep" })).toBe(true);
+    expect(dlWaiting({ id: "save" })).toBe(true);
     expect(dlState({ busy: true, job: job("done", 100) }).id).toBe("done");
   });
 
@@ -246,6 +254,8 @@ describe("dlState", () => {
     expect(dlText({ id: "idle", pct: 0 })).toBe("Descargar");
     expect(dlText({ id: "down", pct: 62 })).toBe("Descargando, 62 %");
     expect(dlText({ id: "proc", pct: 100 })).toBe("Procesando el archivo…");
+    expect(dlText({ id: "prep", pct: 0 })).toBe("Preparando…");
+    expect(dlText({ id: "save", pct: 100 })).toBe("Guardando en tu biblioteca…");
     expect(dlText({ id: "done", pct: 100 })).toBe("Descargado");
   });
 });

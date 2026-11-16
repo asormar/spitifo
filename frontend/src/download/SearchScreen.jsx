@@ -50,7 +50,9 @@ export default function SearchScreen({
   const run = useSearchRun();
   const { q, setQ, mode, setMode, query, results, loading, searched, err, filter, setFilter } = run;
 
-  const [fmt, setFmt] = useState("mp3");
+  /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
+     (la descarga mas rapida, ver M4A_AUDIO_SELECTOR en ytdlp_source.py). */
+  const [fmt, setFmt] = useState("m4a");
   /* Qué partes se bajan en modo YouTube. Vive acá y no en el selector para que
      cambiar de modo y volver no lo reinicie (como fmt). */
   const [media, setMedia] = useState("audio");

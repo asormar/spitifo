@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg } from "../shared/api.js";
-import { buildSearchParams } from "./api.js";
+import { buildSearchParams, warmTopResults } from "./api.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
 import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
@@ -62,8 +62,10 @@ export default function useSearchRun() {
       const d = await r.json();
       if (!r.ok) throw new Error(errMsg(d, "error de búsqueda"));
       if (seq !== searchSeq.current) return;
-      setResults(uniqueResults(d.results));
+      const list = uniqueResults(d.results);
+      setResults(list);
       setQuery(t);
+      warmTopResults(list);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);

@@ -1,6 +1,7 @@
 import Ico from "../shared/ico.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";
+import { dlState, dlText } from "./searchPlan.js";
 
 /* Un toast por descarga en curso. Con dos a la vez se apilan en columna: el
    primero se apila pegado al borde inferior. Cada uno se retira solo a los 5 s
@@ -56,11 +57,7 @@ export function ProgressBar({ job }) {
             ? job.status === "gone"
               ? "El servidor ya no tiene esta descarga"
               : "Sigue descargando en el servidor"
-            : job.status === "pending"
-            ? "En cola"
-            : job.status === "processing"
-            ? "Procesando el archivo…"
-            : `Descargando, ${pct} %`}
+            : dlText(dlState({ busy: true, job }))}
         </span>
       </div>
       <div
