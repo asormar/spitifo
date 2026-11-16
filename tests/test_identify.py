@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from backend.app.identify import _derive_from_name, norm, parse_id3, verdict
-from backend.app.identify import similarity
+from backend.app.identify import similarity, version_conflict
 
 
 @pytest.mark.parametrize("titulo,esperado", [
@@ -27,6 +27,11 @@ from backend.app.identify import similarity
     # dando match porque "numb" esta de las dos lados. Documentado para que
     # nadie lo lea como bug al ampliar _STOP.
     ("Numb (Remastered 2015)", "numb remastered 2015"),
+    # tildes fuera y cualquier escritura se conserva: antes un titulo en
+    # japones o coreano quedaba vacio y nada podia coincidir
+    ("Rosalía - Despechá", "rosalia despecha"),
+    ("YOASOBI「夜に駆ける」", "yoasobi 夜に駆ける"),
+    ("BTS (방탄소년단) '봄날'", "bts 방탄소년단 봄날"),
     ("", ""),
     (None, ""),
 ])
@@ -62,7 +67,15 @@ def test_similarity_sin_titulo_es_cero(a, b):
     ("Bohemian Rhapsody", "Bohemian Rhapsody (Official Video)", ("match", "coincide")),
     # el caso que motivo todo identify.py: el item era del show, no la cancion
     ("Bohemian Rhapsody", "Ghost>", ("mismatch", "NO es lo que buscabas")),
-    ("Numb", "Numb (Live at Milton Keynes)", ("match", "coincide")),
+    # mismo titulo, otra grabacion: no es la cancion que se pidio
+    ("Numb", "Numb (Live at Milton Keynes)", ("partial", "otra versión")),
+    ("Creep", "Radiohead - Creep (Acoustic Cover)", ("partial", "otra versión")),
+    ("Levels", "Avicii - Levels (Skrillex Remix)", ("partial", "otra versión")),
+    # si se pidio esa version, si coincide
+    ("Numb live", "Numb (Live at Milton Keynes)", ("match", "coincide")),
+    # escrituras no latinas: el archivo correcto ya no sale "NO es lo que buscabas"
+    ("YOASOBI 夜に駆ける", "YOASOBI「夜に駆ける」Official Music Video", ("match", "coincide")),
+    ("rosalía despechá", "ROSALÍA - DESPECHÁ (Official Video)", ("match", "coincide")),
     ("a b c", "a x c", ("partial", "parecido")),
     ("Numb", "In The End", ("mismatch", "NO es lo que buscabas")),
     # sin identificar: NO se inventa un veredicto
@@ -72,6 +85,25 @@ def test_similarity_sin_titulo_es_cero(a, b):
 def test_verdict_tabla(consulta, real, esperado):
     """`verdict` es el texto que ve la persona: los tres estados y su etiqueta."""
     assert verdict(consulta, real) == esperado
+
+
+@pytest.mark.parametrize("pedido,real,esperado", [
+    ("Numb", "Numb (Official Video)", set()),
+    ("Numb", "Numb (Live)", {"live"}),
+    ("Yellow", "Coldplay - Yellow (Live in Buenos Aires)", {"live"}),
+    ("Yellow (Live)", "Coldplay - Yellow LIVE", set()),
+    ("Creep", "Creep - Karaoke Version", {"karaoke"}),
+    ("Delilah", "Fred again.. - Delilah (pull me out of this) [Sped Up]", {"sped up"}),
+    ("Despacito", "Despacito (En Vivo)", {"en vivo"}),
+    ("夜に駆ける", "【ストリートピアノ】「夜に駆ける/YOASOBI」を弾いてみた", {"弾いてみた"}),
+    ("Spring Day", "BTS - Spring Day | Piano Cover", {"piano", "cover", "piano cover"}),
+    ("Piano Man", "Billy Joel - Piano Man (Official Video)", set()),
+    # "live" dentro de otra palabra no cuenta
+    ("Alive", "Pearl Jam - Alive", set()),
+    ("Oliver", "Oliver Tree - Life Goes On", set()),
+])
+def test_version_conflict(pedido, real, esperado):
+    assert version_conflict(pedido, real) == esperado
 
 
 def test_verdict_es_coherente_con_similarity():
