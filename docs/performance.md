@@ -708,6 +708,24 @@ Both limits are again the measured size plus 500 B, rounded up to 50. The CI
 count adds every `.js` and `.css`, so the lazy chunk counts in full even though
 most sessions never load it.
 
+**Full albums: Escuchar.** The album page orders its rows by disc and track
+number. Files downloaded before the feature keep today's order, after the
+numbered ones. The page asks `/api/album/{id}` once per album per session for
+the real tracklist. Tracks without a matching library entry show up as
+rows that do not play, in their disc position, with a Descargar button that
+opens the album sheet from any tab. Nothing is fetched on a cold start or
+outside an album page with an id, and an error or being offline leaves the
+list as it was. The missing row lives in its own module in the pages chunk,
+so the boot script only grows by 752 B: the disc order, the three new entry
+fields and the App-level sheet.
+
+| Bundle | Before | Full albums: Escuchar | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 417,275 B | 422,157 B (+4,882) | 417,800 B | 422,700 B |
+| CSS | 115,384 B | 115,872 B (+488) | 115,900 B | 116,400 B |
+
+Both limits are again the measured size plus 500 B, rounded up to 50.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

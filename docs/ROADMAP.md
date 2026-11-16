@@ -934,7 +934,7 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
   the Disco mark (installer and launcher), and the logo decision in
   `PRODUCT.md`.
 
-### 26. Full albums — PRs 1 and 2 in review
+### 26. Full albums — PRs 1 to 3 in review
 
 A user study found that songs could only be fetched one at a time and that an
 album never showed in its real order. The approved design: an «Álbumes» shelf
@@ -954,7 +954,7 @@ the tracks you do not have greyed out.
    index version is unchanged, so old indexes keep loading. The local media
    cache moves to version 2, so the first listing after the update reads every
    file once.
-2. **Descargar.** In Música mode an «Álbumes» shelf sits above the songs, and
+2. **Descargar (#45).** In Música mode an «Álbumes» shelf sits above the songs, and
    its search runs in parallel so it never delays them. A card opens the album
    sheet: the tracklist appears at once with «Buscando…», then each track says
    «Completa» or «Solo 30 s». The button queues only the full tracks, and a
@@ -965,7 +965,15 @@ the tracks you do not have greyed out.
    one toast closes each album. A pill above the mini player shows the progress
    in every mode and opens the Descargas sheet. While the pill shows, toasts
    move above it. Both sheets live in a lazy chunk.
-3. **Escuchar.** Disc order and missing tracks on the album page.
+3. **Escuchar.** The album page sorts by disc and track number. When the album
+   has an iTunes id, the page asks for the real tracklist once per session, and
+   the tracks you do not have show greyed out in their place with «No está en
+   tu biblioteca». They do not play and are not counted by «Reproducir». The
+   line under the title reads «9 de 10 en tu biblioteca · 39 min · Todo
+   coincide». «Descargar» on a missing row opens the album sheet in any tab.
+   The sheet now knows what is already in the library: it marks those tracks
+   «En tu biblioteca», never queues them again, and its button reads
+   «Descargar la que falta».
 
 - **Truthful by construction.** «Completa» means the match found a video that
   passes the version and title rules; the rest say «Solo 30 s» and are not
