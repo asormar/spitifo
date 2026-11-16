@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg } from "../shared/api.js";
 import { buildSearchParams, warmTopResults } from "./api.js";
+import { searchAlbums } from "./albumApi.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
 import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
@@ -18,6 +19,8 @@ export default function useSearchRun() {
   const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  /* Los albumes van en paralelo y aparte: nunca retrasan a las canciones. */
+  const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -30,6 +33,7 @@ export default function useSearchRun() {
   const lastSig = useRef("");
   const searchSeq = useRef(0);
   const searchAbort = useRef(null);
+  const albumAbort = useRef(null);
   /* El modo que vale ahora, para las funciones estables (run, el pedido). */
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -57,6 +61,19 @@ export default function useSearchRun() {
     searchAbort.current?.abort();
     const ac = new AbortController();
     searchAbort.current = ac;
+    /* Los albumes solo existen en modo Musica. Se piden aparte y sin esperar:
+       las canciones no dependen de iTunes ni de lo que tarde esta respuesta. */
+    albumAbort.current?.abort();
+    setAlbums([]);
+    if (m === "matched") {
+      const aa = new AbortController();
+      albumAbort.current = aa;
+      searchAlbums(t, aa.signal)
+        .then((list) => {
+          if (seq === searchSeq.current && !aa.signal.aborted) setAlbums(list);
+        })
+        .catch(() => {});
+    }
     try {
       const r = await fetch(`${API}/search?${params.toString()}`, { signal: ac.signal });
       const d = await r.json();
@@ -91,9 +108,11 @@ export default function useSearchRun() {
   const reset = useCallback(() => {
     searchSeq.current += 1;
     searchAbort.current?.abort();
+    albumAbort.current?.abort();
     lastSig.current = "";
     setLoading(false);
     setResults([]);
+    setAlbums([]);
     setQuery("");
     setErr(null);
     setFilter("all");
@@ -160,5 +179,8 @@ export default function useSearchRun() {
   }, [loading]);
   useEffect(() => () => searchBusy.set(false), []);
 
-  return { q, setQ, mode, setMode, query, results, loading, searched, err, filter, setFilter, runs, run, submit, reset };
+  return {
+    q, setQ, mode, setMode, query, results, albums, loading, searched, err, filter, setFilter,
+    runs, run, submit, reset,
+  };
 }

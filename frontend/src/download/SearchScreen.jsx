@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
 import { rowKey } from "../shared/api.js";
 import SearchField from "../shared/SearchField.jsx";
@@ -15,6 +15,8 @@ import {
 import { noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
+import AlbumShelf from "./AlbumShelf.jsx";
+import { loadAlbumChunk } from "./albumChunk.js";
 import Choice from "./Choice.jsx";
 import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
@@ -38,6 +40,10 @@ import "./notices.css";
 
 const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
 
+/* La ficha del album (y la hoja de Descargas) viven en un chunk aparte, que se
+   adelanta al enfocar una tarjeta de album. */
+const AlbumSheet = lazy(() => loadAlbumChunk().then((m) => ({ default: m.AlbumSheet })));
+
 export default function SearchScreen({
   active,
   health,
@@ -48,7 +54,7 @@ export default function SearchScreen({
 }) {
   const pc = usePc();
   const run = useSearchRun();
-  const { q, setQ, mode, setMode, query, results, loading, searched, err, filter, setFilter } = run;
+  const { q, setQ, mode, setMode, query, results, albums, loading, searched, err, filter, setFilter } = run;
 
   /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
      (la descarga mas rapida, ver M4A_AUDIO_SELECTOR en ytdlp_source.py). */
@@ -75,10 +81,12 @@ export default function SearchScreen({
   const stack = nav.stackOf("search");
   const menuAt = stack.at(-1)?.type === "resmenu" ? stack.at(-1) : null;
   const fichaAt = stack.find((e) => e.type === "ficha");
+  const albumAt = stack.find((e) => e.type === "albumsheet");
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
   const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
+  const albumT = albumAt && albums.find((a) => String(a.id) === String(albumAt.id));
   /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
-  const gone = (menuAt && !menuT) || (fichaAt && !fichaT);
+  const gone = (menuAt && !menuT) || (fichaAt && !fichaT) || (albumAt && !albumT);
   useEffect(() => {
     if (gone) nav.back();
   }, [gone, stack.length, nav.back]);
@@ -106,6 +114,14 @@ export default function SearchScreen({
       dl.onDownload(t, height);
     },
     [nav.back, dl.onDownload]
+  );
+
+  /* La ficha del album es otra entrada de la pila, como la de un resultado:
+     atras, Escape y el atras de Android la cierran y el foco vuelve a la
+     tarjeta que la abrio (lo hace Sheet). */
+  const onOpenAlbum = useCallback(
+    (album, anchor) => nav.open({ type: "albumsheet", id: album.id, anchor }),
+    [nav.open]
   );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
@@ -287,6 +303,8 @@ export default function SearchScreen({
         <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
       )}
 
+      <AlbumShelf albums={albums} onOpen={onOpenAlbum} />
+
       {results.length > 0 && (
         <section className={cx("rsec", loading && "is-stale")} aria-labelledby="rs-h">
           <div className="rhead">
@@ -368,6 +386,20 @@ export default function SearchScreen({
             buscar en iTunes, Internet Archive, Wikimedia y YouTube.
           </p>
         </div>
+      )}
+
+      {albumAt && albumT && (
+        <Suspense fallback={null}>
+          <AlbumSheet
+            key={`a${albumAt.id}`}
+            album={albumT}
+            query={query}
+            anchor={albumAt.anchor}
+            onClose={nav.back}
+            onLibraryChanged={onLibraryChanged}
+            downloadedIds={dl.downloadedIds}
+          />
+        </Suspense>
       )}
 
       {fichaT && (

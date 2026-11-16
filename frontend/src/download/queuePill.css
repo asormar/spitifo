@@ -1,0 +1,95 @@
+/* ---------------------------------------------------------------------------
+   PILDORA DE LA COLA
+   Va con el shell (carga en el arranque): por eso aparte del estante, que va
+   con Buscar. Se pega a la misma altura que los avisos, y mientras se ve los
+   avisos suben por encima (body.has-queue). Solo transform y opacity.
+   ------------------------------------------------------------------------- */
+
+:root {
+  /* Alto de la pildora mas su aire: lo que suben los avisos. */
+  --queue-h: 56px;
+}
+
+.qpike {
+  position: fixed;
+  z-index: 46;
+  left: 10px;
+  right: 10px;
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(560px, calc(100% - 20px));
+  min-height: 44px;
+  margin: 0 auto;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--ink);
+  color: var(--on);
+  box-shadow: var(--shadow);
+  font: 700 13px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  animation: var(--rise-enter);
+  transition: var(--tr-press);
+}
+
+body.has-mini .qpike {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + var(--mini-h) + 20px);
+}
+
+body.has-queue .lnotice {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + var(--queue-h) + 8px);
+}
+
+body.has-queue.has-mini .lnotice {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + var(--mini-h) + var(--queue-h) + 20px);
+}
+
+.qpike:active {
+  transform: scale(0.98);
+}
+
+.qpike__t {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qpike__bar {
+  flex: 1 1 60px;
+  height: 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--on) 25%, transparent);
+  overflow: hidden;
+}
+
+.qpike__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--pink);
+  transform-origin: left center;
+  transition: transform var(--t-enter) var(--ease);
+}
+
+@media (min-width: 960px) {
+  .qpike {
+    left: var(--dock-l);
+    right: 12px;
+    width: auto;
+    max-width: none;
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qpike,
+  .qpike__bar i {
+    animation: none;
+    transition: none;
+  }
+}

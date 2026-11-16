@@ -682,6 +682,32 @@ from the tap on «...» to the sheet painted, 11 warm opens per batch:
 The 4 cover requests are the Inicio cards (200 px) and the rows (100 px). The
 menu header reuses the row's cover and adds no request.
 
+**Full albums.** The «Álbumes» shelf in Buscar (Música mode), the album sheet
+with the real tracklist and per-track matching, and the download queue (two at a
+time) with its pill in the shell are new code, not a replacement. The shelf ships
+with the Buscar chunk. The album sheet and the Descargas sheet wait in an
+`AlbumSheets-*` chunk, fetched when an album card or the pill is hovered or
+focused. Only the pill, its small store and its styles load at start-up: the
+boot script grows by 3,363 B (234,510 B to 237,873 B). The album search runs in
+parallel with the song search, with its own abort, so it never delays the
+results. The download function moved into a `downloadTrack-*` chunk shared by
+the result rows and the queue, so a track's ring shows the same state wherever
+it appears.
+
+| Bundle | `main` before | Full albums | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 402,343 B | 417,275 B (+14,932) | 402,350 B | 417,800 B |
+| CSS | 107,857 B | 115,384 B (+7,527) | 108,400 B | 115,900 B |
+
+| Chunk | Size |
+| --- | --- |
+| `AlbumSheets-*` (album sheet and Descargas sheet) | 8,383 B of script, 4,777 B of style |
+| `downloadTrack-*` (shared by the rows and the queue) | 5,716 B of script |
+
+Both limits are again the measured size plus 500 B, rounded up to 50. The CI
+count adds every `.js` and `.css`, so the lazy chunk counts in full even though
+most sessions never load it.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:

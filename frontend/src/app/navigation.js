@@ -93,7 +93,11 @@ export function modeDirection(from, to) {
    para que atras, Escape y el atras de Android las cierren, pero la pantalla
    sigue a la vista debajo, sin pagina propia. */
 const OVERLAYS = new Set(["menu", "picker", "lmenu", "file"]);
-const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", ...OVERLAYS]);
+/* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
+   cola que abre la pildora del shell. Las dos son hojas, no paginas ("album"
+   ya es la pagina de un album de la biblioteca): no esconden la pantalla de
+   debajo ni cuentan para el scroll recordado. */
+const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "albumsheet", "descargas", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */
 export const isOverlay = (type) => OVERLAYS.has(type);

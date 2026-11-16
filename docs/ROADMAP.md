@@ -934,7 +934,7 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
   the Disco mark (installer and launcher), and the logo decision in
   `PRODUCT.md`.
 
-### 26. Full albums — PR 1 of 3 in review
+### 26. Full albums — PRs 1 and 2 in review
 
 A user study found that songs could only be fetched one at a time and that an
 album never showed in its real order. The approved design: an «Álbumes» shelf
@@ -943,7 +943,7 @@ says, before anything downloads, which tracks have a full version; a download
 queue that runs two at a time; and the album page in Escuchar in disc order, with
 the tracks you do not have greyed out.
 
-1. **Backend (this PR).** `GET /api/albums/search` (iTunes `entity=album`),
+1. **Backend (#44).** `GET /api/albums/search` (iTunes `entity=album`),
    `GET /api/album/{id}` (iTunes `lookup`, the tracklist in disc order, no
    YouTube yet) and `GET /api/album/{id}/match`. The match makes one YouTube
    search for the whole album and then one per track still without a video,
@@ -954,8 +954,17 @@ the tracks you do not have greyed out.
    index version is unchanged, so old indexes keep loading. The local media
    cache moves to version 2, so the first listing after the update reads every
    file once.
-2. **Descargar.** The album shelf, the album sheet and the download queue with
-   its pill above the mini player.
+2. **Descargar.** In Música mode an «Álbumes» shelf sits above the songs, and
+   its search runs in parallel so it never delays them. A card opens the album
+   sheet: the tracklist appears at once with «Buscando…», then each track says
+   «Completa» or «Solo 30 s». The button queues only the full tracks, and a
+   note names the ones without a full version. The queue is a small store
+   outside React: two downloads at a time, first in first out, no duplicates,
+   with «Reintentar» and «Cancelar las que faltan». It calls the same download
+   function as the result rows. Each finished track refreshes the library, and
+   one toast closes each album. A pill above the mini player shows the progress
+   in every mode and opens the Descargas sheet. While the pill shows, toasts
+   move above it. Both sheets live in a lazy chunk.
 3. **Escuchar.** Disc order and missing tracks on the album page.
 
 - **Truthful by construction.** «Completa» means the match found a video that

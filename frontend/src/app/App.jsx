@@ -3,6 +3,8 @@ import { flushSync } from "react-dom";
 import { API } from "../shared/api.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
+import QueuePill from "../download/QueuePill.jsx";
+import { loadAlbumChunk } from "../download/albumChunk.js";
 import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { panel, panelMode, usePanel } from "../player/panel.js";
@@ -90,6 +92,9 @@ function DiscoverView(props) {
 const SettingsView = React.lazy(loadSettingsView);
 /* Las paginas de la pila de Buscar (Explorar la biblioteca, «Ver las N canciones»). */
 const SearchPage = React.lazy(() => import("../download/SearchPage.jsx"));
+/* La hoja de Descargas comparte chunk con la ficha del album; se adelanta al
+   enfocar la pildora o una tarjeta de album. */
+const QueueSheet = React.lazy(() => loadAlbumChunk().then((m) => ({ default: m.QueueSheet })));
 
 /* Mientras la pantalla esta oculta no se reconcilia su arbol: los cambios de
    pestana y de "Ahora suena" no recorren las cuatro pantallas que no se ven. Lo
@@ -546,6 +551,11 @@ export default function App() {
 
   const searchPage = nav.pageOf("search");
 
+  /* La hoja de Descargas es una entrada mas de la pila: atras, Escape y el
+     atras de Android la cierran, y el foco vuelve a la pildora. */
+  const queueAt = nav.stack.at(-1)?.type === "descargas" ? nav.stack.at(-1) : null;
+  const openQueue = useCallback((anchor) => nav.open({ type: "descargas", anchor }), [nav.open]);
+
   return (
     <NavContext.Provider value={nav}>
       {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
@@ -633,6 +643,10 @@ export default function App() {
             )}
           </div>
 
+          {/* Sobre el reproductor, en cualquier modo: la cola sigue contando
+              aunque Buscar este oculta. */}
+          <QueuePill onOpen={openQueue} />
+
           {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
               marcha. En escritorio las tarjetas van en el menu lateral. */}
           {pc ? <PlayerBar onOpen={openNp} npOpen={false} tab={np ? panelState.tab : -1} /> : (
@@ -657,6 +671,11 @@ export default function App() {
         {np && NowPlaying && (
             <NowPlaying mode={mode} onClose={closeNp} onReveal={revealFromNp} onWide={onWide} />
           )}
+        {queueAt && (
+          <Suspense fallback={null}>
+            <QueueSheet anchor={queueAt.anchor} onClose={nav.back} />
+          </Suspense>
+        )}
       </ListenProvider>
     </NavContext.Provider>
   );

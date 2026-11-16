@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { API, errMsg, fetchErr, rowKey } from "../shared/api.js";
+import { fetchErr, rowKey } from "../shared/api.js";
 import { JOB_DISMISS_MS } from "./constants.js";
-import { pollJob } from "./api.js";
-import { setJobFor } from "./jobsStore.js";
+import { downloadTrack } from "./downloadTrack.js";
 import { noticeFromError, noticeFromJob, noticeFromSuccess } from "./searchPlan.js";
-import { verdictStore } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------
    DESCARGAS DE LA PANTALLA
@@ -57,86 +55,19 @@ export default function useDownloads({ query, mode, fmt, media, runs, onLibraryC
       setBusyIds((cur) => new Set(cur).add(key));
       setNotice(null);
       try {
-        let track = { ...t };
-        delete track.downloadable;
-        // Las pistas del setlist ya vienen resueltas por /api/setlist.
-        // En modo "matched" el video de YouTube ya viene en webpage_url:
-        // no hay nada que resolver, la descarga va directo a yt-dlp.
-        const isMatched = t.source === "itunes" && t.extra?.webpage_url;
-        if (!track.audio_url && !isMatched && t.source !== "ytdlp" && t.extra?.needs_resolve) {
-          const rr = await fetch(`${API}/resolve?query=${encodeURIComponent(query)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(track),
-          });
-          if (!rr.ok) {
-            const d = await rr.json();
-            throw new Error(errMsg(d, "no se pudo resolver"));
-          }
-          track = await rr.json();
-          delete track.downloadable;
-        }
-        // /api/setlist devuelve el veredicto en la raiz, /api/resolve en extra
-        const vmatch = t.match || track.extra?.match || track.match;
-        const vtitle = t.real_title || track.extra?.real_title || track.real_title;
-        const rd = await fetch(`${API}/download?query=${encodeURIComponent(query)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source: track.source,
-            track,
-            fmt,
-            /* Solo el modo YouTube sabe bajar video. En el resto el cuerpo
-               queda exactamente como estaba. */
-            ...(mode === "ytdlp" ? { media } : {}),
-            /* Altura elegida en el menu. Solo viaja cuando se baja video: en
-               audio el backend no la espera (y "Mejor disponible" = omitirla). */
-            ...(mode === "ytdlp" && media !== "audio" && Number.isInteger(height) ? { height } : {}),
-          }),
-        });
-        const j = await rd.json();
-        if (!rd.ok) throw Object.assign(new Error(errMsg(j, "falló la descarga")), { cookies: j.code === "youtube_bot_check" });
-
-        const done = (d) => {
-          const match = d.match || vmatch;
-          const real = d.real_title || vtitle;
-          setNotice(noticeFromSuccess({ filename: d.filename, size_mb: d.size_mb, match, real_title: real }, query));
-          /* Sin veredicto (fuente que no lo calcula) la fila sigue «Sin verificar». */
-          if (match) verdictStore.setFromDownload(t, query, { match, real_title: real });
-          setDownloadedIds((cur) => new Set(cur).add(key));
-          onLibraryChanged();
-        };
-
-        // yt-dlp devuelve job_id: la descarga corre en background, hacer polling
-        if (j.job_id) {
-          setJobFor(key, { status: "pending", progress: 0, title: t.title });
-          const finished = await pollJob(j.job_id, setJobFor, key, t.title);
-          if (finished?.status === "timeout" || finished?.status === "gone" || finished?.status === "error") {
-            setNotice(noticeFromJob(finished));
-          } else if (finished) {
-            // El veredicto lo publica el backend DENTRO del job (lo calcula
-            // en download contra el titulo real del video).
-            done({
-              ...j,
-              ...finished,
-              filename: finished.filename || finished.key,
-              match: finished.match || j.match,
-              real_title: finished.real_title || j.real_title,
-            });
-          }
-          return;
-        }
-
-        done(j);
+        const res = await downloadTrack(t, { query, fmt, media, mode, height });
+        setNotice(noticeFromSuccess(res, query));
+        setDownloadedIds((cur) => new Set(cur).add(key));
+        onLibraryChanged();
       } catch (e) {
-        setNotice(noticeFromError(fetchErr(e, e.message), e.cookies === true));
+        if (e.finished) setNotice(noticeFromJob(e.finished));
+        else setNotice(noticeFromError(fetchErr(e, e.message), e.cookies === true));
       } finally {
         /* Solo se saca ESTA clave del Set. */
         setBusyIds((cur) => withoutKey(cur, key));
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fmt, media, mode, query]
+    [fmt, media, mode, query, onLibraryChanged]
   );
 
   return { onDownload, onBotCheck, busyIds, downloadedIds, notice, clearNotice };
