@@ -120,27 +120,36 @@ def _first(audio, name: str) -> str:
     return str(value[0])
 
 
-def _read_tags(path: Path) -> tuple[str, str, str, float | None]:
-    """Titulo, artista, album y duracion del archivo LOCAL antes de subirlo.
+def _read_tags(path: Path) -> tuple[str, str, str, float | None,
+                                     int | None, int | None, str | None]:
+    """Titulo, artista, album, duracion y orden de disco del archivo LOCAL.
 
-    Se leen una sola vez y viajan en el indice: los demas dispositivos muestran
-    la biblioteca sin bajar los archivos.
+    Se leen de UNA sola apertura con mutagen y viajan en el indice: los demas
+    dispositivos muestran la biblioteca sin bajar los archivos.
     """
     title = artist = album = ""
     duration: float | None = None
+    track_no: int | None = None
+    disc_no: int | None = None
+    album_id: str | None = None
     try:
+        # tagkeys importa mutagen: aqui y no arriba, el arranque no lo carga.
         from mutagen import File as MFile
+        from ..tagkeys import easy_album_id, easy_number
         audio = MFile(str(path), easy=True)
         if audio is not None:
             title = _first(audio, "title")
             artist = _first(audio, "artist")
             album = _first(audio, "album")
+            track_no = easy_number(audio, "tracknumber")
+            disc_no = easy_number(audio, "discnumber")
+            album_id = easy_album_id(audio)
             info = getattr(audio, "info", None)
             if info is not None:
                 duration = round(float(info.length), 1)
     except Exception:
         pass
-    return title, artist, album, duration
+    return title, artist, album, duration, track_no, disc_no, album_id
 
 
 def _read_path(path: Path, start: int, n: int) -> Iterator[bytes]:
@@ -841,7 +850,10 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                                   duration=entry.duration,
                                   title=entry.title or None,
                                   artist=entry.artist or None,
-                                  album=entry.album or None))
+                                  album=entry.album or None,
+                                  track_no=entry.track_no,
+                                  disc_no=entry.disc_no,
+                                  album_id=entry.album_id))
         out.sort(key=lambda f: f.key)
         return out
 
@@ -851,7 +863,9 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         if entry is None:
             raise FileNotFoundError(key)
         return StoredFile(key=key, size=entry.size, mtime=entry.updated_at,
-                          etag=entry.revision or None, duration=entry.duration)
+                          etag=entry.revision or None, duration=entry.duration,
+                          track_no=entry.track_no, disc_no=entry.disc_no,
+                          album_id=entry.album_id)
 
     def open_range(self, key: str, start: int = 0,
                    end: int | None = None) -> Iterator[bytes]:
@@ -963,8 +977,12 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 if Path(key).suffix.lower() in IMAGE_EXTS:
                     title = artist = album = ""
                     duration: float | None = None
+                    track_no: int | None = None
+                    disc_no: int | None = None
+                    album_id: str | None = None
                 else:
-                    title, artist, album, duration = _read_tags(src)
+                    (title, artist, album, duration,
+                     track_no, disc_no, album_id) = _read_tags(src)
                 existing = self._entry(key)
                 existing_id = existing.remote_id if existing is not None else None
                 remote_id, revision = self._upload(
@@ -975,7 +993,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             entry = IndexEntry(key=key, remote_id=remote_id, revision=revision,
                                title=title, artist=artist, album=album,
                                duration=duration, size=size, format=ext,
-                               updated_at=self._clock())
+                               updated_at=self._clock(), track_no=track_no,
+                               disc_no=disc_no, album_id=album_id)
             prepared.append((entry, existing, src))
 
         if prepared:

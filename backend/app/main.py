@@ -62,6 +62,14 @@ FRONTEND_DIST = Path(os.getenv(
 # no las recolecte a mitad de camino
 BG_TASKS: set = set()
 
+# Cache del match de albumes: {album_id: (timestamp, respuesta)}. Media hora y
+# ~50 albumes: abrir el mismo album dos veces no vuelve a buscar en YouTube.
+_ALBUM_MATCH_CACHE: dict = {}
+_ALBUM_MATCH_TTL_S = 30 * 60
+_ALBUM_MATCH_MAX = 50
+_ALBUM_MATCH_SEMAPHORE = 3   # busquedas puntuales simultaneas por pista
+_ALBUM_TRACK_LIMIT = 8       # candidatos por busqueda puntual de una pista
+
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
@@ -359,6 +367,199 @@ async def search(request: Request):
     })
 
 
+# ------------------------------------------------------------------- albumes
+# Los dicts crudos de iTunes traen collectionId/trackNumber/discNumber (y sus
+# totales) en CADA pista; el buscador de antes los descartaba. Una sola fabrica
+# de Track para /api/search y para las rutas de album, asi el downloader recibe
+# siempre los mismos campos en `extra`.
+
+
+def _track_key(raw: dict) -> str:
+    return str(raw.get("trackId") or raw.get("collectionId") or
+               raw.get("trackName", ""))
+
+
+def _itunes_album_fields(raw: dict) -> dict:
+    """Campos de album de una pista de iTunes (None si iTunes no los trae)."""
+    def _int(v):
+        if v is None or isinstance(v, bool):
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+    return {
+        "collection_id": _int(raw.get("collectionId")),
+        "track_number": _int(raw.get("trackNumber")),
+        "disc_number": _int(raw.get("discNumber")),
+        "track_count": _int(raw.get("trackCount")),
+        "disc_count": _int(raw.get("discCount")),
+    }
+
+
+def _itunes_track(raw: dict, match: dict | None = None,
+                  *, checked: bool = True) -> Track:
+    """Track desde un dict crudo de iTunes (busqueda, album o album matcheado).
+
+    `checked=False` es la tracklist recien abierta: aun no se busco en YouTube,
+    asi que `has_full` queda en None ("no verificado") en vez de False.
+    """
+    m = match or {}
+    vid = m.get("video")
+    extra = dict(_itunes_album_fields(raw))
+    extra["item_url"] = raw.get("trackViewUrl")
+    if checked:
+        extra.update({
+            "match_score": m.get("score"),
+            "match_why": m.get("why"),
+            "has_full": bool(vid),
+            "needs_resolve": bool(vid),
+            "downloader": "ytdlp" if vid else None,
+        })
+        if vid:
+            extra["webpage_url"] = m["webpage_url"]
+            extra["video_title"] = vid.get("title")
+            extra["channel"] = vid.get("uploader")
+    else:
+        extra.update({"match_score": None, "match_why": None,
+                      "has_full": None, "needs_resolve": None,
+                      "downloader": None})
+    return Track(
+        source="itunes", source_id=_track_key(raw),
+        title=raw.get("trackName", ""),
+        artist=raw.get("artistName", ""),
+        album=raw.get("collectionName"),
+        duration_s=(raw.get("trackTimeMillis") or 0) // 1000 or None,
+        artwork_url=(raw.get("artworkUrl100") or "").replace(
+            "100x100", "300x300") or None,
+        preview_url=raw.get("previewUrl"),
+        year=(raw.get("releaseDate") or "")[:4] or None,
+        license=(("ToS de YouTube (uso personal, riesgo legal)" if vid
+                  else "preview de iTunes (30s)") if checked else None),
+        extra=extra,
+    )
+
+
+def _album_dict(raw: dict) -> dict:
+    return {
+        "id": raw.get("collectionId"),
+        "title": raw.get("collectionName"),
+        "artist": raw.get("artistName"),
+        "year": (raw.get("releaseDate") or "")[:4] or None,
+        "track_count": raw.get("trackCount"),
+        "artwork_url": (raw.get("artworkUrl100") or "").replace(
+            "100x100", "300x300") or None,
+        "explicit": raw.get("collectionExplicitness") == "explicit",
+    }
+
+
+def _album_sorted(raws: list[dict]) -> list[dict]:
+    """Orden de disco: disco primero y luego numero de pista."""
+    def _n(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+    return sorted(raws, key=lambda r: (_n(r.get("discNumber")),
+                                       _n(r.get("trackNumber"))))
+
+
+async def _album_lookup(album_id: str) -> tuple[dict, list[dict]]:
+    """Cabecera y tracklist de un album, con id validado y errores acotados."""
+    album_id = str(album_id)
+    if not album_id.isdigit():
+        # Un id raro no puede llegar a iTunes: es directamente 404.
+        raise HTTPException(404, "album no encontrado")
+    itunes = BY_NAME["itunes"]  # fuente registrada: reutiliza su httpx.Client
+    try:
+        collection, raws = await itunes.lookup(album_id)
+    except Exception as e:
+        # Red o HTTP de iTunes caido: nunca un 500 en estas rutas.
+        log.warning("iTunes lookup fallo: %s", e)
+        raise HTTPException(502, "iTunes no respondio") from e
+    if not raws:
+        raise HTTPException(404, "album no encontrado")
+    # El wrapper trae el artistName del album; si no vino, se usa la primera
+    # pista como antes. En compilaciones eso evita mostrar un solista cualquiera.
+    base = collection or raws[0]
+    return _album_dict(base), _album_sorted(raws)
+
+
+async def albums_search(request: Request):
+    q = _query_str(request, "q", required=True, min_length=1, max_length=200)
+    limit = _query_int(request, "limit", 8, 1, 50)
+    try:
+        raws = await BY_NAME["itunes"].search_albums(q, limit=limit)
+    except Exception as e:
+        # iTunes caido no puede tumbar la busqueda de albumes.
+        log.warning("albums search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "albums": [_album_dict(a) for a in raws]})
+
+
+async def album_detail(request: Request):
+    album, raws = await _album_lookup(request.path_params["id"])
+    return JSONResponse({
+        "album": album,
+        "tracks": [_itunes_track(r, checked=False).to_dict() for r in raws],
+    })
+
+
+async def album_match(request: Request):
+    album_id = str(request.path_params["id"])
+    ahora = time.time()
+    hit = _ALBUM_MATCH_CACHE.get(album_id)
+    if hit and ahora - hit[0] < _ALBUM_MATCH_TTL_S:
+        return JSONResponse(hit[1])
+
+    from .matcher import enrich_with_ytdlp
+    from .sources import BY_NAME
+    _register_ytdlp()
+    ysrc = BY_NAME.get("ytdlp")
+    yt_on = bool(ysrc and ysrc.available())
+
+    album, raws = await _album_lookup(album_id)
+    matched: dict = {}
+    if yt_on:
+        artista = album.get("artist") or ""
+        titulo = album.get("title") or ""
+        # 1) una busqueda para TODO el album: reparte los videos entre pistas.
+        matched = await enrich_with_ytdlp(
+            raws, f"{artista} {titulo}".strip(), ysrc)
+        # 2) las que quedaron sin video se buscan sueltas, de a 3 como maximo.
+        misses = [r for r in raws
+                  if not (matched.get(_track_key(r)) or {}).get("video")]
+        if misses:
+            sem = asyncio.Semaphore(_ALBUM_MATCH_SEMAPHORE)
+
+            async def _una(raw):
+                async with sem:
+                    # En recopilatorios el artista del album es "Varios
+                    # artistas": la pista busca con el SUYO, no con ese.
+                    track_artist = raw.get("artistName") or artista
+                    return await enrich_with_ytdlp(
+                        [raw],
+                        f"{track_artist} {raw.get('trackName', '')}".strip(),
+                        ysrc, limit=_ALBUM_TRACK_LIMIT)
+
+            for res in await asyncio.gather(*(_una(r) for r in misses)):
+                matched.update(res)
+
+    tracks = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
+              for r in raws]
+    payload = {
+        "album": album, "tracks": tracks, "ytdlp": yt_on,
+        "full": sum(1 for t in tracks if t["extra"].get("has_full")),
+    }
+    if yt_on:
+        _ALBUM_MATCH_CACHE[album_id] = (ahora, payload)
+        if len(_ALBUM_MATCH_CACHE) > _ALBUM_MATCH_MAX:
+            vieja = min(_ALBUM_MATCH_CACHE,
+                        key=lambda k: _ALBUM_MATCH_CACHE[k][0])
+            _ALBUM_MATCH_CACHE.pop(vieja, None)
+    return JSONResponse(payload)
+
+
 async def _search_matched(q: str, limit: int) -> dict:
     """iTunes da el catalogo (metadata limpia + portada); yt-dlp, la descarga.
 
@@ -383,40 +584,9 @@ async def _search_matched(q: str, limit: int) -> dict:
     # 2) una sola busqueda en YouTube y emparejar
     matched = await enrich_with_ytdlp(it_items, q, ysrc) if yt_on else {}
 
-    # 3) armar los Tracks
-    out: list[Track] = []
-    for it in it_items:
-        key = str(it.get("trackId") or it.get("collectionId") or
-                  it.get("trackName", ""))
-        m = matched.get(key) or {}
-        vid = m.get("video")
-        t = Track(
-            source="itunes",
-            source_id=key,
-            title=it.get("trackName", ""),
-            artist=it.get("artistName", ""),
-            album=it.get("collectionName"),
-            duration_s=(it.get("trackTimeMillis") or 0) // 1000 or None,
-            artwork_url=(it.get("artworkUrl100") or "").replace(
-                "100x100", "300x300") or None,
-            preview_url=it.get("previewUrl"),
-            year=(it.get("releaseDate") or "")[:4] or None,
-            license="ToS de YouTube (uso personal, riesgo legal)" if vid
-            else "preview de iTunes (30s)",
-            extra={
-                "match_score": m.get("score"),
-                "match_why": m.get("why"),
-                "has_full": bool(vid),
-                "needs_resolve": bool(vid),
-                "downloader": "ytdlp" if vid else None,
-                "item_url": it.get("trackViewUrl"),
-            },
-        )
-        if vid:
-            t.extra["webpage_url"] = m["webpage_url"]
-            t.extra["video_title"] = vid.get("title")
-            t.extra["channel"] = vid.get("uploader")
-        out.append(t)
+    # 3) armar los Tracks con la misma fabrica que usan las rutas de album
+    out = [_itunes_track(it, matched.get(_track_key(it)))
+           for it in it_items]
 
     # con version entera primero
     out.sort(key=lambda t: 0 if t.extra.get("has_full") else 1)
@@ -1571,6 +1741,9 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/albums/search", albums_search),
+    Route("/api/album/{id}/match", album_match),
+    Route("/api/album/{id}", album_detail),
     Route("/api/resolve", resolve, methods=["POST"]),
     Route("/api/verify", verify),
     Route("/api/download/progress/{job_id}", progress),

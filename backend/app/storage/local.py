@@ -38,7 +38,7 @@ PLAYLISTS_FILE = "playlists.json"
 DEVICE_ID_FILE = "device-id"
 #: Duracion y etiquetas ya leidas, por clave. Ver `LocalStorage._media`.
 MEDIA_CACHE_FILE = "media-cache.json"
-MEDIA_CACHE_VERSION = 1
+MEDIA_CACHE_VERSION = 2  # v2 agrega track_no/disc_no/album_id
 
 
 def _device_id(directory: Path) -> str:
@@ -78,8 +78,10 @@ def _tag(audio, name: str) -> str | None:
     return text or None
 
 
-def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | None]:
-    """Duracion real en segundos y titulo, artista y album, en UNA lectura.
+def _media_info(p: Path) -> tuple[float | None, str | None, str | None,
+                                  str | None, int | None, int | None,
+                                  str | None]:
+    """Duracion, titulo, artista, album, track_no, disc_no y album_id.
 
     `list()` ya abria cada archivo con mutagen para la duracion; las etiquetas
     salen del mismo objeto, asi que no suman otra lectura del disco. `easy`
@@ -87,19 +89,23 @@ def _media_info(p: Path) -> tuple[float | None, str | None, str | None, str | No
     pueda leer queda en None.
     """
     try:
+        # tagkeys importa mutagen: aqui y no arriba, el arranque no lo carga.
         from mutagen import File as MFile
+        from ..tagkeys import easy_album_id, easy_number
         f = MFile(p, easy=True)
     except Exception:
-        return None, None, None, None
+        return None, None, None, None, None, None, None
     if f is None:
-        return None, None, None, None
+        return None, None, None, None, None, None, None
     duration = None
     try:
         if f.info is not None:
             duration = round(float(f.info.length), 1)
     except Exception:
         pass
-    return duration, _tag(f, "title"), _tag(f, "artist"), _tag(f, "album")
+    return (duration, _tag(f, "title"), _tag(f, "artist"),
+            _tag(f, "album"), easy_number(f, "tracknumber"),
+            easy_number(f, "discnumber"), easy_album_id(f))
 
 
 class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
@@ -139,9 +145,11 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         st = p.stat()
         if not duration:
             return StoredFile(key=key, size=st.st_size, mtime=st.st_mtime)
-        dur, title, artist, album = self._media(p, key, st.st_size, st.st_mtime)
+        dur, title, artist, album, track_no, disc_no, album_id = self._media(
+            p, key, st.st_size, st.st_mtime)
         return StoredFile(key=key, size=st.st_size, mtime=st.st_mtime,
-                          duration=dur, title=title, artist=artist, album=album)
+                          duration=dur, title=title, artist=artist, album=album,
+                          track_no=track_no, disc_no=disc_no, album_id=album_id)
 
     # -------------------------------------------------------- cache de media
     # Parsear cada archivo con mutagen en cada `/api/library` era lo mas lento
@@ -174,15 +182,18 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             hit = self._media_cache.get(key)
         if hit and hit.get("size") == size and hit.get("mtime") == mtime:
             return (hit.get("duration"), hit.get("title"), hit.get("artist"),
-                    hit.get("album"))
+                    hit.get("album"), hit.get("track_no"), hit.get("disc_no"),
+                    hit.get("album_id"))
         # Una miniatura no tiene nada que leer: no se abre con mutagen.
-        info = ((None, None, None, None) if p.suffix.lower() in IMAGE_EXTS
+        info = ((None,) * 7 if p.suffix.lower() in IMAGE_EXTS
                 else _media_info(p))
-        dur, title, artist, album = info
+        dur, title, artist, album, track_no, disc_no, album_id = info
         with self._media_lock:
             self._media_cache[key] = {"size": size, "mtime": mtime,
                                       "duration": dur, "title": title,
-                                      "artist": artist, "album": album}
+                                      "artist": artist, "album": album,
+                                      "track_no": track_no, "disc_no": disc_no,
+                                      "album_id": album_id}
             self._media_dirty = True
         return info
 
@@ -288,10 +299,12 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 yield StoredFile(key=key, size=size, mtime=mtime)
                 continue
             seen.add(key)
-            dur, title, artist, album = self._media(self.root / key, key, size,
-                                                    mtime)
+            dur, title, artist, album, track_no, disc_no, album_id = self._media(
+                self.root / key, key, size, mtime)
             yield StoredFile(key=key, size=size, mtime=mtime, duration=dur,
-                             title=title, artist=artist, album=album)
+                             title=title, artist=artist, album=album,
+                             track_no=track_no, disc_no=disc_no,
+                             album_id=album_id)
         # Solo con el listado completo se sabe que claves ya no estan.
         self._save_media_cache(seen)
 

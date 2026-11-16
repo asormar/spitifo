@@ -47,6 +47,30 @@ class IndexEntry:
     format: str
     updated_at: float
     deleted: bool = False
+    # Orden de disco dentro del album. Los indices viejos no lo tienen: quedan
+    # en None y la UI cae al orden anterior. Van al final para no romper las
+    # construcciones posicionales que ya existen.
+    track_no: int | None = None
+    disc_no: int | None = None
+    album_id: str | None = None
+
+
+def _optional_int(value: object) -> int | None:
+    """Entero opcional: None si falta o no es un numero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_text(value: object) -> str | None:
+    """Texto opcional: None si falta o esta vacio."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _entry_from_dict(raw: object) -> IndexEntry | None:
@@ -67,6 +91,9 @@ def _entry_from_dict(raw: object) -> IndexEntry | None:
             format=str(raw.get("format", "")),
             updated_at=float(raw.get("updated_at", 0.0)),
             deleted=bool(raw.get("deleted", False)),
+            track_no=_optional_int(raw.get("track_no")),
+            disc_no=_optional_int(raw.get("disc_no")),
+            album_id=_optional_text(raw.get("album_id")),
         )
     except (KeyError, TypeError, ValueError):
         return None
