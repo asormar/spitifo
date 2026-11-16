@@ -10,6 +10,8 @@ import asyncio
 import io
 import logging
 import re
+import unicodedata
+from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -156,12 +158,62 @@ _STOP = {"the", "a", "an", "and", "or", "feat", "featuring", "live",
          "version", "remaster", "radio", "edit", "mix", "mono", "stereo"}
 
 
-def norm(s: str | None) -> str:
+@lru_cache(maxsize=4096)
+def fold(s: str | None) -> str:
+    """Minusculas, sin tildes y con la puntuacion como espacio, en cualquier
+    escritura: "Rosalía" -> "rosalia", "BTS (방탄소년단)" -> "bts 방탄소년단",
+    "夜に駆ける" se conserva. Antes solo sobrevivia [a-z0-9], asi que un titulo
+    en japones o coreano quedaba vacio y el veredicto decia "NO es lo que
+    buscabas" al archivo correcto."""
     if not s:
         return ""
-    s = re.sub(r"[^a-z0-9 ]", " ", s.lower())
-    words = [w for w in s.split() if w and w not in _STOP]
+    s = unicodedata.normalize("NFKD", str(s).lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    # NFKC recompone lo que NFKD separo sin ser tilde (las silabas del coreano)
+    s = unicodedata.normalize("NFKC", s)
+    return " ".join("".join(c if c.isalnum() else " " for c in s).split())
+
+
+@lru_cache(maxsize=4096)
+def norm(s: str | None) -> str:
+    words = [w for w in fold(s).split() if w not in _STOP]
     return " ".join(words)
+
+
+#: Palabras que dicen que una grabacion es OTRA version de la cancion: si estan
+#: en el titulo real y no en lo que se pidio, no es "la" cancion. `norm` ignora
+#: algunas a proposito (live, mix, edit) para que el titulo se parezca; esto es
+#: la otra mitad, que las mira. Se comparan sobre `fold`.
+VERSION_MARKERS = (
+    "live", "en vivo", "en directo", "concert", "concierto", "unplugged",
+    "cover", "acoustic", "acustico", "acustica", "karaoke", "instrumental",
+    "remix", "rmx", "sped up", "speed up", "slowed", "nightcore", "8d",
+    "reverb", "piano version", "piano cover", "orchestral", "lullaby",
+    "extended", "club mix", "reaction", "tutorial", "dance practice",
+    "choreography", "flashmob", "parody", "parodia", "medley", "mashup",
+    "piano", "violin", "cello", "guitar cover",
+    # "lo toque" / "lo cante" / cover en japones, coreano y chino
+    "弾いてみた", "歌ってみた", "カバー", "커버", "翻唱",
+)
+# Limite de palabra solo en escrituras con espacios: en japones o chino el
+# marcador va pegado al resto ("夜に駆けるを弾いてみた").
+_MARKER_RES = [(m, re.compile(re.escape(m) if not m.isascii()
+                              else rf"(?<!\w){re.escape(m)}(?!\w)"))
+               for m in VERSION_MARKERS]
+
+
+@lru_cache(maxsize=4096)
+def version_markers(s: str | None) -> frozenset[str]:
+    """Marcadores de version presentes en `s` (ver VERSION_MARKERS). Con cache:
+    el matcher compara cada titulo contra decenas de candidatos."""
+    f = fold(s)
+    return frozenset(m for m, rx in _MARKER_RES if rx.search(f)) if f else frozenset()
+
+
+def version_conflict(wanted: str | None, real: str | None) -> set[str]:
+    """Marcadores que tiene `real` y no `wanted`: "Numb" frente a
+    "Numb (Live at Milton Keynes)" da {"live"}."""
+    return set(version_markers(real) - version_markers(wanted))
 
 
 def similarity(a: str | None, b: str | None) -> float:
@@ -183,6 +235,10 @@ def verdict(query: str, real_title: str | None) -> tuple[str, str]:
     if not real_title:
         return "unknown", "no se pudo identificar"
     s = similarity(query, real_title)
+    # Mismo titulo, otra grabacion (en directo, cover, remix...): no es lo que
+    # se pidio aunque las palabras coincidan.
+    if s >= 0.4 and version_conflict(query, real_title):
+        return "partial", "otra versión"
     if s >= 0.8:
         return "match", "coincide"
     if s >= 0.4:
