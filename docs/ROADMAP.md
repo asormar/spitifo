@@ -980,7 +980,7 @@ the tracks you do not have greyed out.
   queued. Files downloaded before this change have no track number and keep the
   old order.
 
-### 27. Artists and downloads that are not lost — PR 1 of 4 in review
+### 27. Artists and downloads that are not lost — PRs 1 and 2 done
 
 The user study's worst complaints were downloads, not discovery: a three
 second network drop showed a false «Falló la descarga» and lost the download
@@ -989,7 +989,7 @@ a reload lost the queue. The approved design also adds an artist page in
 Buscar with «Descargar discografía» (a checklist with the studio albums
 preselected and a live total), and «Más de <artista>» in Escuchar.
 
-1. **Downloads backend (this PR).** Every YouTube download goes through one
+1. **Downloads backend (#47).** Every YouTube download goes through one
    server-side queue, two at a time, first in first out, with the job id as
    its id, so the progress route keeps working. The queue is saved to
    `downloads-queue.json` in the data folder. After a restart, what was
@@ -999,8 +999,15 @@ preselected and a live total), and «Más de <artista>» in Escuchar.
    hook and deletes the partial files. Each track works in a stable
    `partial-<hash>` folder with `continuedl`, so a retry continues instead
    of starting over. A failed download keeps its folder for 24 hours.
-2. **Downloads frontend.** Polling that survives network drops, a «Sin
-   conexión» pause, cancel on every row, and reattaching after a reload.
+2. **Downloads frontend.** The app mirrors `GET /api/downloads` with one
+   shared poll, and only one request is in flight at a time. A network error
+   never fails a download. The app shows «Sin conexión» and «En pausa · sin
+   red», retries after 1, 2, 4, 8 and then every 15 s, and polls again when
+   the network or the app comes back. After a reload it reattaches and says
+   «Seguimos con N descargas que dejaste en marcha.» Every row can be
+   cancelled. The queue code stays out of the boot chunk: at start a tiny
+   module asks once whether anything is pending, so the boot script is
+   smaller than before the chain (236,576 B).
 3. **Artists backend.** The iTunes `artistId`, artist search and the
    discography by id.
 4. **Artists frontend.** The artist as «Mejor resultado», the artist page,

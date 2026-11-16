@@ -726,6 +726,42 @@ fields and the App-level sheet.
 
 Both limits are again the measured size plus 500 B, rounded up to 50.
 
+**Downloads that are not lost: frontend.** The client-side queue (two downloads
+at a time, its own runner and its own retry) is gone. The frontend now mirrors
+the one persisted queue in the backend: one poller reads `/api/downloads` every
+second while something is queued or running, every ten seconds while the
+Descargas sheet is open, and not at all otherwise. A dropped request marks the
+mirror offline and retries at 1, 2, 4, 8 and 15 s instead of calling the download
+failed; the pill says «Sin conexión · en pausa», the sheet shows the warning
+banner and each running row keeps its last percentage. Coming back from a reload
+is one GET on mount that shows a single toast when it finds work still running.
+Album downloads now go through one POST with the whole group, and every item is
+published to the row store so the ring shows the same state from a result row,
+the album sheet and the Descargas sheet. Only one poll is in flight at a time:
+the timer, a cancel/retry and an enqueue share it, and a second caller asks for
+one more pass when it ends, so an old response cannot roll the state back. With
+no network, no work and no open sheet the retries stop after two 15 s caps; the
+next online/visible event or user action starts them again.
+
+The album sheet, the sheet styles and the offline banner ship in the lazy
+`AlbumSheets-*` chunk. The mirror, its text helpers, the pill and the row
+publishing no longer load with the shell: the shell only imports a tiny
+`queueBoot.js`, which probes `/api/downloads` once after the first paint and
+loads the mirror only if the payload still has queued or running work (the first
+download loads it the same way). The mirror and its verdicts sit in a
+`queueStore-*` chunk and the pill and its styles in a small `QueuePill-*` pair, so
+the boot script is 236,576 B instead of the 245,696 B the first version of this
+feature reached — 9,120 B less, and about 2 KB below the 238,625 B it had before
+the feature. Nothing extra is fetched on a cold start beyond the one reattach
+GET: with nothing pending it starts no repeating timer.
+
+| Bundle | Full albums: Escuchar | Downloads that are not lost | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 422,157 B | 428,755 B (+6,598) | 427,200 B | 429,300 B |
+| CSS | 115,872 B | 116,235 B (+363) | 116,400 B | 116,750 B |
+
+Both limits are again the measured size plus 500 B, rounded up to 50.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
