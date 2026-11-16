@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { rowKey } from "../shared/api.js";
 import { useShow } from "../listen/Notice.jsx";
+import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { VerdictPill } from "../shared/Verdict.jsx";
@@ -11,7 +12,7 @@ import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, fetchAlbumMatch } from "./albumApi.js";
 import { downloadTrack } from "./downloadTrack.js";
-import { albumButton, groupToast, missingSentence } from "./albumText.js";
+import { albumButton, groupToast, missingSentence, ownedSlots, trackSlot } from "./albumText.js";
 import { groupSummary, queueStore, useQueue } from "./queueStore.js";
 import "./album.css";
 
@@ -55,7 +56,8 @@ function Cover({ album, className = "als__cv" }) {
 }
 
 /* La pastilla del estado de una pista, antes y despues de emparejar. */
-function TrackPill({ track, item, failed, onRetry }) {
+function TrackPill({ track, item, failed, onRetry, owned }) {
+  if (owned) return <span className="alp alp--ok">En tu biblioteca</span>;
   if (track.extra?.has_full === false) return <span className="alp alp--mut">Solo 30 s</span>;
   if (track.extra?.has_full == null) {
     return <span className="alp alp--mut">{failed ? "Sin verificar" : "Buscando…"}</span>;
@@ -88,9 +90,15 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
   const done = items.filter((i) => i.state === "done").length;
   const running = items.some((i) => i.state === "queued" || i.state === "running");
   const tracks = match?.tracks || detail?.tracks || [];
-  const fullTracks = tracks.filter((t) => t.extra?.has_full === true);
-  const missing = tracks.filter((t) => t.extra?.has_full === false);
-  const full = match ? match.full : fullTracks.length;
+  /* Lo que ya esta en la biblioteca (mismo album de iTunes, mismo disco y
+     numero) no se vuelve a bajar: ni entra en el boton ni en la cola. */
+  const entries = useListen()?.model?.entries;
+  const owned = useMemo(() => ownedSlots(entries, album.id), [entries, album.id]);
+  const isOwned = (t) => owned.has(trackSlot(t.extra?.disc_number, t.extra?.track_number));
+  const ownedCount = tracks.filter(isOwned).length;
+  const fullTracks = tracks.filter((t) => t.extra?.has_full === true && !isOwned(t));
+  const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
+  const full = fullTracks.length;
 
   useEffect(() => {
     const ac = new AbortController();
@@ -150,7 +158,7 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
     [album.artwork_url, album.artist, album.title, query, show, onLibraryChanged, downloadedIds]
   );
 
-  const btn = albumButton({ matching, full, done, running });
+  const btn = albumButton({ matching, full, done, running, owned: ownedCount });
   const ytOff = match && match.ytdlp === false;
   const header = match?.album || detail?.album || album;
   const meta = [header.artist, header.year, `${album.track_count ?? tracks.length} ${album.track_count === 1 ? "canción" : "canciones"}`]
@@ -171,7 +179,8 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
           <p className="als__meta">{meta}</p>
           {!matching && match && (
             <div className="als__sums">
-              <span className="alp alp--acc">{full} {full === 1 ? "completa" : "completas"}</span>
+              {ownedCount > 0 && <span className="alp alp--ok">{ownedCount} en tu biblioteca</span>}
+              {full > 0 && <span className="alp alp--acc">{full} {full === 1 ? "completa" : "completas"}</span>}
               {missing.length > 0 && (
                 <span className="alp alp--mut">{missing.length} solo 30 s</span>
               )}
@@ -210,8 +219,9 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
               {tracks.map((t, i) => {
                 const key = rowKey(t);
                 const item = queueStore.getItem(gid, key);
+                const mine = isOwned(t);
                 return (
-                  <li className={cx("altr", t.extra?.has_full === false && "is-miss")} key={key}>
+                  <li className={cx("altr", t.extra?.has_full === false && !mine && "is-miss")} key={key}>
                     <span className="altr__no num" aria-hidden="true">{i + 1}</span>
                     <span className="altr__tt">
                       <b>{t.title || "sin título"}</b>
@@ -219,12 +229,13 @@ export function AlbumSheet({ album, query, anchor, onClose, onLibraryChanged, do
                         track={t}
                         item={item}
                         failed={Boolean(err)}
+                        owned={mine}
                         onRetry={() => queueStore.retry(gid, key)}
                       />
                     </span>
                     <span className="altr__acts">
                       {t.preview_url && <PreviewButton t={t} />}
-                      {t.extra?.has_full === true && (
+                      {t.extra?.has_full === true && !mine && (
                         <DlRing
                           t={t}
                           name={t.title}

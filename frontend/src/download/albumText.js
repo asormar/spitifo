@@ -6,12 +6,19 @@
 
 /* El boton principal de la ficha. `done` cuenta solo las pistas completas ya
    bajadas; `running` vale mientras queda algo en cola o descargandose. */
-export function albumButton({ matching, full, done = 0, running = false }) {
+export function albumButton({ matching, full, done = 0, running = false, owned = 0 }) {
   if (matching) return { text: "Buscando versiones…", disabled: true };
-  if (full === 0) return { text: "Sin versiones completas", disabled: true };
+  if (full === 0) {
+    return { text: owned > 0 ? "Ya está en tu biblioteca" : "Sin versiones completas", disabled: true };
+  }
   if (done >= full) return { text: "Álbum descargado", disabled: true };
   if (running) return { text: `Descargando · ${done} de ${full}`, disabled: true };
-  if (done > 0) return { text: `Descargar las ${full - done} que faltan`, disabled: false };
+  /* Con parte del album ya en la biblioteca o ya bajada, el boton habla de lo
+     que falta, no del album entero. */
+  if (done > 0 || owned > 0) {
+    const left = full - done;
+    return { text: left === 1 ? "Descargar la que falta" : `Descargar las ${left} que faltan`, disabled: false };
+  }
   return { text: `Descargar álbum · ${full} ${full === 1 ? "canción" : "canciones"}`, disabled: false };
 }
 
@@ -37,4 +44,23 @@ export function groupToast(title, { done, total, failed }) {
     return `${title}: ${done} de ${total}, ${failed} ${failed === 1 ? "falló" : "fallaron"}`;
   }
   return `${title}: ${done} ${done === 1 ? "descargada" : "descargadas"}`;
+}
+
+/* El hueco de una pista en su disco: «1-9». Una pista de iTunes trae
+   disc_number/track_number en `extra`; una entrada de la biblioteca, disc_no y
+   track_no. Sin numero de pista no hay hueco. */
+export const trackSlot = (disc, track) => (track == null ? null : `${disc ?? 1}-${track}`);
+
+/* Los huecos de un album que ya estan en la biblioteca, por su id de iTunes.
+   Con ellos la ficha no vuelve a bajar lo que ya tienes. */
+export function ownedSlots(entries, albumId) {
+  const id = albumId == null ? "" : String(albumId);
+  const out = new Set();
+  if (!id) return out;
+  for (const e of entries || []) {
+    if (e?.album_id == null || String(e.album_id) !== id) continue;
+    const slot = trackSlot(e.disc_no, e.track_no);
+    if (slot) out.add(slot);
+  }
+  return out;
 }
