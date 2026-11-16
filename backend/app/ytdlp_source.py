@@ -1186,6 +1186,9 @@ class YtDlpSource(Source):
                     album=track.album,
                     year=track.year,
                     duration_s=int(info.get("duration") or 0) or track.duration_s,
+                    # Los campos de album viven en extra; sin esta copia el
+                    # tag_track nuevo los perderia y no habria orden de disco.
+                    extra=dict(track.extra or {}),
                 )
                 _write_tags(path, tag_track)
                 # La extension es la del archivo real: con "both" el merge deja

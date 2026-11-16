@@ -162,6 +162,34 @@ class ITunesSource(Source):
         return [t for t in r.json().get("results", [])
                 if t.get("kind") == "song"]
 
+    async def search_albums(self, q: str, limit: int = 8) -> list[dict]:
+        """Buscar albumes (entity=album): los dicts crudos, sin transformar."""
+        r = await self.client.get(
+            "https://itunes.apple.com/search",
+            params={"term": q, "media": "music", "entity": "album",
+                    "limit": limit})
+        r.raise_for_status()
+        return [a for a in r.json().get("results", [])
+                if a.get("collectionId") and a.get("collectionName")]
+
+    async def lookup(self, album_id: str | int
+                     ) -> tuple[dict | None, list[dict]]:
+        """(coleccion, canciones) de un album, en dicts crudos.
+
+        La respuesta trae primero el wrapper de collection: su artistName es
+        el del album ("Varios artistas" en un recopilatorio), no el de cada
+        pista. El llamador lo usa para la cabecera y para la busqueda grupal.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/lookup",
+            params={"id": album_id, "entity": "song", "limit": 200})
+        r.raise_for_status()
+        results = r.json().get("results", [])
+        collection = next((x for x in results
+                           if x.get("wrapperType") == "collection"), None)
+        songs = [t for t in results if t.get("kind") == "song"]
+        return collection, songs
+
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         r = await self.client.get(
             "https://itunes.apple.com/search",

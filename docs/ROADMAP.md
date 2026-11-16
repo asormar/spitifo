@@ -934,6 +934,35 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
   the Disco mark (installer and launcher), and the logo decision in
   `PRODUCT.md`.
 
+### 26. Full albums — PR 1 of 3 in review
+
+A user study found that songs could only be fetched one at a time and that an
+album never showed in its real order. The approved design: an «Álbumes» shelf
+above the songs in Música results; an album sheet with the real tracklist that
+says, before anything downloads, which tracks have a full version; a download
+queue that runs two at a time; and the album page in Escuchar in disc order, with
+the tracks you do not have greyed out.
+
+1. **Backend (this PR).** `GET /api/albums/search` (iTunes `entity=album`),
+   `GET /api/album/{id}` (iTunes `lookup`, the tracklist in disc order, no
+   YouTube yet) and `GET /api/album/{id}/match`. The match makes one YouTube
+   search for the whole album and then one per track still without a video,
+   three at a time, using the same rules as single songs. It is cached in memory
+   for 30 minutes. Every iTunes track keeps its collection id and its track and
+   disc numbers, and they are written to the file tags. The local library and
+   the Drive index then expose `track_no`, `disc_no` and `album_id`. The Drive
+   index version is unchanged, so old indexes keep loading. The local media
+   cache moves to version 2, so the first listing after the update reads every
+   file once.
+2. **Descargar.** The album shelf, the album sheet and the download queue with
+   its pill above the mini player.
+3. **Escuchar.** Disc order and missing tracks on the album page.
+
+- **Truthful by construction.** «Completa» means the match found a video that
+  passes the version and title rules; the rest say «Solo 30 s» and are not
+  queued. Files downloaded before this change have no track number and keep the
+  old order.
+
 ## Dependencies
 
 ```

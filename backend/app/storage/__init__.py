@@ -46,6 +46,11 @@ class StoredFile:
     title: str | None = None
     artist: str | None = None
     album: str | None = None
+    # Orden dentro del album (lectura de los tags de la pista). Los archivos
+    # viejos no los tienen: quedan en None y la UI cae al orden anterior.
+    track_no: int | None = None
+    disc_no: int | None = None
+    album_id: str | None = None
 
 
 class InvalidKey(ValueError):

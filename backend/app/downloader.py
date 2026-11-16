@@ -72,11 +72,18 @@ def _write_tags(path: Path, t: Track) -> None:
     try:
         from mutagen import File as MFile
         from mutagen.id3 import (TIT2, TPE1, TALB, TDRC, TCON, APIC,
-                                 ID3, ID3NoHeaderError)
+                                 TRCK, TPOS, TXXX, ID3, ID3NoHeaderError)
         from mutagen.flac import FLAC, Picture
-        from mutagen.mp4 import MP4, MP4Cover
+        from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 
         ext = path.suffix.lower()
+        # Campos de album de una pista de iTunes: se escriben solo los que
+        # existen (un single no tiene numero de disco ni collectionId).
+        num = t.extra.get("track_number")
+        total = t.extra.get("track_count")
+        disc = t.extra.get("disc_number")
+        discs = t.extra.get("disc_count")
+        coll = t.extra.get("collection_id")
         if ext == ".mp3":
             try:
                 id3 = ID3(path)
@@ -92,6 +99,15 @@ def _write_tags(path: Path, t: Track) -> None:
                 id3.add(TDRC(encoding=3, text=t.year))
             if t.license:
                 id3.add(TCON(encoding=3, text=t.license))
+            if num is not None:
+                id3.add(TRCK(encoding=3, text=f"{num}/{total}" if total is not None
+                             else str(num)))
+            if disc is not None:
+                id3.add(TPOS(encoding=3, text=f"{disc}/{discs}" if discs is not None
+                             else str(disc)))
+            if coll is not None:
+                id3.add(TXXX(encoding=3, desc="ITUNES_COLLECTION_ID",
+                             text=str(coll)))
             id3.save(path, v2_version=3)
         elif ext == ".flac":
             f = FLAC(path)
@@ -103,6 +119,16 @@ def _write_tags(path: Path, t: Track) -> None:
                 f["album"] = t.album
             if t.year:
                 f["date"] = t.year
+            if num is not None:
+                f["tracknumber"] = str(num)
+                if total is not None:
+                    f["tracktotal"] = str(total)
+            if disc is not None:
+                f["discnumber"] = str(disc)
+                if discs is not None:
+                    f["disctotal"] = str(discs)
+            if coll is not None:
+                f["itunes_collection_id"] = str(coll)
             f.save()
         elif ext in (".m4a", ".mp4"):
             f = MP4(path)
@@ -112,6 +138,13 @@ def _write_tags(path: Path, t: Track) -> None:
                 f["\xa9ART"] = t.artist
             if t.album:
                 f["\xa9alb"] = t.album
+            if num is not None:
+                f["trkn"] = [(int(num), int(total) if total is not None else 0)]
+            if disc is not None:
+                f["disk"] = [(int(disc), int(discs) if discs is not None else 0)]
+            if coll is not None:
+                f["----:com.apple.iTunes:ITUNES_COLLECTION_ID"] = [
+                    MP4FreeForm(str(coll).encode("utf-8"))]
             f.save()
         elif ext in (".ogg", ".opus"):
             # Vorbis comments: mismo esquema de claves que FLAC.
@@ -123,6 +156,16 @@ def _write_tags(path: Path, t: Track) -> None:
                              ("album", t.album), ("date", t.year)):
                     if v:
                         f[k] = str(v)
+                if num is not None:
+                    f["tracknumber"] = str(num)
+                    if total is not None:
+                        f["tracktotal"] = str(total)
+                if disc is not None:
+                    f["discnumber"] = str(disc)
+                    if discs is not None:
+                        f["disctotal"] = str(discs)
+                if coll is not None:
+                    f["itunes_collection_id"] = str(coll)
                 f.save()
     except Exception as e:  # tags son un extra, no deben tumbar la descarga
         log.warning("tags fallaron en %s: %s", os.path.basename(str(path)), e)
@@ -300,6 +343,10 @@ def library_scan() -> list[dict]:
             "title": f.title,
             "artist": f.artist,
             "album": f.album,
+            # Orden de disco dentro del album (None en archivos viejos/sin tags).
+            "track_no": f.track_no,
+            "disc_no": f.disc_no,
+            "album_id": f.album_id,
             "modified": f.mtime,
             "kind": "video" if es_video else "audio",
             "thumb_key": sidecar if sidecar in thumbs else None,
