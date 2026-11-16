@@ -96,7 +96,9 @@ export function resultsHead(total, full, query) {
 export function dlState({ busy = false, job, downloaded = false }) {
   const s = job?.status;
   if (s === "error") return { id: "err", pct: 0 };
-  if (s === "pending") return { id: "queued", pct: 0 };
+  /* "queued" es la cola del servidor (dos a la vez); "pending", esperar el
+     candado de la misma pista. Para la fila son lo mismo: en cola. */
+  if (s === "pending" || s === "queued") return { id: "queued", pct: 0 };
   /* `phase` afina el estado: "preparing" es la extraccion de yt-dlp (antes de
      que llegue un byte) y "saving" la escritura en la biblioteca. */
   if (s === "downloading") {

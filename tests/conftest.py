@@ -46,6 +46,10 @@ os.environ["SPITIFO_LIBRARY"] = str(LIBRARY_TEMPORAL)
 DATOS_TEMPORALES = Path(tempfile.mkdtemp(prefix="spitifo-tests-data-"))
 os.environ["SPITIFO_DATA_DIR"] = str(DATOS_TEMPORALES)
 os.environ["SPITIFO_CACHE_DIR"] = str(DATOS_TEMPORALES / "cache")
+# Las descargas trabajan en carpetas estables `partial-*` que se guardan tras
+# un error para poder retomar: los tests no pueden dejarlas en el temporal
+# real del usuario (paso el 2026-11-16).
+os.environ["SPITIFO_TEMP_DIR"] = str(DATOS_TEMPORALES / "tmp")
 for _var in ("SPITIFO_STORAGE", "SPITIFO_GOOGLE_CLIENT_ID",
              "SPITIFO_GOOGLE_CLIENT_SECRET", "SPITIFO_YTDLP_DIR",
              "SPITIFO_YTDLP_AUTOUPDATE"):
