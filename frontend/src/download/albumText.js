@@ -46,6 +46,21 @@ export function groupToast(title, { done, total, failed }) {
   return `${title}: ${done} ${done === 1 ? "descargada" : "descargadas"}`;
 }
 
+/* --- Descargas que no se pierden -------------------------------------------- */
+
+/* Al reenganchar tras recargar: una sola frase para toda la cola que venia
+   andando. */
+export function reattachText(n) {
+  return n === 1
+    ? "Seguimos con la descarga que dejaste en marcha."
+    : `Seguimos con ${n} descargas que dejaste en marcha.`;
+}
+
+export const OFFLINE_BANNER = "Sin conexión. Las descargas siguen solas en cuanto vuelva la red.";
+export const OFFLINE_PILL = "Sin conexión · en pausa";
+export const pausedText = (pct) => `En pausa · sin red · ${Math.round(pct)} %`;
+export const resumingText = (pct) => `Retomando desde ${Math.round(pct)} %`;
+
 /* El hueco de una pista en su disco: «1-9». Una pista de iTunes trae
    disc_number/track_number en `extra`; una entrada de la biblioteca, disc_no y
    track_no. Sin numero de pista no hay hueco. */

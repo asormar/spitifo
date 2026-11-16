@@ -60,6 +60,8 @@ export default function useDownloads({ query, mode, fmt, media, runs, onLibraryC
         setDownloadedIds((cur) => new Set(cur).add(key));
         onLibraryChanged();
       } catch (e) {
+        /* Parar una descarga no es un fallo: la hoja ya dice «Cancelada». */
+        if (e.cancelled) return;
         if (e.finished) setNotice(noticeFromJob(e.finished));
         else setNotice(noticeFromError(fetchErr(e, e.message), e.cookies === true));
       } finally {

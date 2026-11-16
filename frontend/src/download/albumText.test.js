@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { albumButton, groupToast, missingSentence, ownedSlots, trackSlot } from "./albumText.js";
+import {
+  OFFLINE_BANNER,
+  OFFLINE_PILL,
+  albumButton,
+  groupToast,
+  missingSentence,
+  ownedSlots,
+  pausedText,
+  reattachText,
+  resumingText,
+  trackSlot,
+} from "./albumText.js";
 
 describe("albumButton", () => {
   it("muestra busqueda mientras empareja", () => {
@@ -88,6 +99,20 @@ describe("ownedSlots", () => {
     expect(trackSlot(1, 9)).toBe("1-9");
     expect(trackSlot(undefined, 2)).toBe("1-2");
     expect(trackSlot(1, null)).toBe(null);
+  });
+});
+
+describe("descargas que no se pierden", () => {
+  it("el aviso de reenganche concuerda con el numero de descargas", () => {
+    expect(reattachText(1)).toBe("Seguimos con la descarga que dejaste en marcha.");
+    expect(reattachText(9)).toBe("Seguimos con 9 descargas que dejaste en marcha.");
+  });
+
+  it("el texto sin red dice donde quedo y desde donde se retoma", () => {
+    expect(OFFLINE_BANNER).toBe("Sin conexión. Las descargas siguen solas en cuanto vuelva la red.");
+    expect(OFFLINE_PILL).toBe("Sin conexión · en pausa");
+    expect(pausedText(62.4)).toBe("En pausa · sin red · 62 %");
+    expect(resumingText(62)).toBe("Retomando desde 62 %");
   });
 });
 

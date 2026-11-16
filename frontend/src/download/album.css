@@ -47,6 +47,19 @@
   font: 700 16px var(--font-display);
 }
 
+/* Aviso de red caida: no es un error de la descarga, es un aviso. */
+.qsh__net {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-inner);
+  background: var(--near-bg);
+  color: var(--near-t);
+  font: 600 13px / 1.45 var(--font-body);
+}
+
 .als__head {
   display: flex;
   flex: none;
@@ -236,6 +249,22 @@
   flex: none;
   align-items: center;
   gap: 6px;
+}
+
+/* El area tactil del boton de cancelar llega a 44 px sin mover el dibujo. */
+.altr__x,
+.ql__x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--mut);
+  cursor: pointer;
 }
 
 .altr.is-miss .altr__no,
