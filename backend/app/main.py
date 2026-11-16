@@ -28,7 +28,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, ytdlp_update
+from . import activity, downloads, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
@@ -74,6 +74,11 @@ _ALBUM_TRACK_LIMIT = 8       # candidatos por busqueda puntual de una pista
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
+    # Recuperar la cola ANTES de servir: lo que estaba en curso vuelve a la
+    # cola (con continuedl reanuda su .part) y se limpian temporales viejos.
+    downloads.load()
+    from .ytdlp_source import cleanup_partials
+    cleanup_partials()
     # El zip de yt-dlp actualizado se prueba ya servido, no antes: importarlo
     # tarda alrededor de un segundo.
     start_ytdlp_zip_check()
@@ -697,13 +702,110 @@ async def verify(request: Request):
 
 
 async def progress(request: Request):
-    """Progreso de una descarga yt-dlp en curso (la UI hace polling)."""
+    """Progreso de una descarga yt-dlp en curso (la UI hace polling).
+
+    Sigue respondiendo igual para jobs sueltos; para items de la cola muestra
+    "queued" mientras esperan el semaforo y, si el proceso se reinicio, utiliza
+    el item persistido cuando el job en memoria ya no existe.
+    """
     job_id = request.path_params["job_id"]
     from .ytdlp_source import get_job
     job = get_job(job_id)
-    if job is None:
-        return JSONResponse({"status": "unknown", "job_id": job_id})
-    return JSONResponse({"job_id": job_id, **job})
+    item = downloads.get_item(job_id)
+    if job is not None:
+        payload = {"job_id": job_id, **job}
+        if item is not None and item.get("status") == "queued":
+            payload["status"] = "queued"
+        return JSONResponse(payload)
+    if item is not None:
+        return JSONResponse({"job_id": job_id, **downloads.job_view(item)})
+    return JSONResponse({"status": "unknown", "job_id": job_id})
+
+
+# --------------------------------------------------------------------- cola
+async def downloads_list(request: Request):
+    """GET /api/downloads: items vigentes (grupo nuevo primero) y contadores."""
+    return JSONResponse(downloads.list_payload())
+
+
+async def downloads_enqueue(request: Request):
+    """POST /api/downloads: encola varios items y devuelve sus ids y claves."""
+    body = await _json_body(request)
+    raw_items = body.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise _invalid(["body", "items"], "Field required")
+    group = body.get("group")
+    if group is not None and not isinstance(group, dict):
+        raise _invalid(["body", "group"], "Input should be a valid dictionary")
+
+    from .ytdlp_source import key_base_for
+    specs: list[dict] = []
+    for i, raw in enumerate(raw_items):
+        if not isinstance(raw, dict):
+            raise _invalid(["body", "items", i], "Input should be a valid dictionary")
+        src = raw.get("source")
+        if not isinstance(src, str):
+            raise _invalid(["body", "items", i, "source"], "Field required")
+        t = raw.get("track")
+        if not isinstance(t, dict):
+            raise _invalid(["body", "items", i, "track"], "Field required")
+        fmt = raw.get("fmt", "original")
+        if not isinstance(fmt, str):
+            raise _invalid(["body", "items", i, "fmt"], "Input should be a valid string")
+        media = raw.get("media", "audio")
+        if not isinstance(media, str) or media not in _MEDIA_CHOICES:
+            raise _invalid(["body", "items", i, "media"], "Input should be a valid string")
+        height = _height_field({"height": raw.get("height")}, media)
+        query = raw.get("query")
+        if query is not None and not isinstance(query, str):
+            raise _invalid(["body", "items", i, "query"], "Input should be a valid string")
+        track = TrackPayload.from_dict(t, ["body", "items", i, "track"]).to_track()
+        specs.append({
+            "source": src, "track": track.to_dict(), "fmt": fmt,
+            "media": media, "height": height, "query": query,
+            "key_base": key_base_for(track, media, height),
+            "ident": {
+                "match": track.extra.get("match"),
+                "match_label": track.extra.get("match_label"),
+                "real_title": track.extra.get("real_title"),
+                "real_artist": track.extra.get("real_artist"),
+                "item_url": track.extra.get("webpage_url") or track.extra.get("item_url"),
+            },
+        })
+    return JSONResponse({"items": downloads.enqueue(specs, group)})
+
+
+async def downloads_cancel(request: Request):
+    """POST /api/downloads/{id}/cancel: cancela un item en cola o en curso."""
+    item_id = request.path_params["id"]
+    try:
+        item = downloads.cancel(item_id)
+    except downloads.NotFound:
+        raise HTTPException(404, "descarga no encontrada")
+    except downloads.AlreadyFinished:
+        raise HTTPException(409, "la descarga ya termino")
+    return JSONResponse({"id": item_id, "status": item["status"]})
+
+
+async def downloads_cancel_group(request: Request):
+    """POST /api/downloads/cancel: cancela todos los items pendientes de un grupo."""
+    body = await _json_body(request)
+    group_id = body.get("group_id")
+    if not isinstance(group_id, str) or not group_id:
+        raise _invalid(["body", "group_id"], "Field required")
+    return JSONResponse({"cancelled": downloads.cancel_group(group_id)})
+
+
+async def downloads_retry(request: Request):
+    """POST /api/downloads/{id}/retry: vuelve a encolar un item fallido/cancelado."""
+    item_id = request.path_params["id"]
+    try:
+        salida = downloads.retry(item_id)
+    except downloads.NotFound:
+        raise HTTPException(404, "descarga no encontrada")
+    except downloads.AlreadyFinished:
+        raise HTTPException(409, "la descarga todavia no termino")
+    return JSONResponse(salida)
 
 
 #: Forma canonica de una URL de UN video de YouTube (`parse_youtube_url`).
@@ -775,15 +877,15 @@ async def download(request: Request):
     if track is None:
         raise HTTPException(400, "payload de track invalido")
 
-    # yt-dlp: su propio pipeline. Por defecto arranca en background y devuelve
-    # job_id al toque (la UI hace polling a /api/download/progress/{id}).
-    # Tambien entra aca lo que viene del modo "matched" (source=itunes con
-    # webpage_url de YouTube): la ficha es de iTunes pero el audio es de yt-dlp.
+    # yt-dlp: su propio pipeline. Pasa por la cola GLOBAL (limite 2, dedupe,
+    # cancelacion y reanudacion); por defecto devuelve job_id al toque y la UI
+    # hace polling a /api/download/progress/{id}. Tambien entra aca lo que viene
+    # del modo "matched" (source=itunes con webpage_url de YouTube): la ficha es
+    # de iTunes pero el audio es de yt-dlp.
     if req.source == "ytdlp" or (
         req.source == "itunes" and track.extra.get("webpage_url")
     ):
-        from .ytdlp_source import BotCheckError, new_job
-        job_id = new_job(track.title)  # el job lo crea main, no hay race
+        from .ytdlp_source import key_base_for
         if req.source == "itunes":
             # ficha canonica de iTunes: el nombre y los tags van de ahi, no
             # del titulo del video de YouTube
@@ -799,43 +901,27 @@ async def download(request: Request):
         if not ysrc or not ysrc.available():
             raise HTTPException(503, "yt-dlp está desactivado (YTDLP_ENABLED=1)")
 
+        key_base = key_base_for(track, req.media, req.height)
+        spec = {"source": req.source, "track": track.to_dict(), "fmt": req.fmt,
+                "media": req.media, "height": req.height, "query": query,
+                "key_base": key_base, "ident": ident}
+        encolados = downloads.enqueue([spec])
+        job_id = encolados[0]["id"]
+
         if wait:
-            try:
-                with activity.busy():
-                    result = await ysrc.download(track, req.fmt, job_id=job_id,
-                                                 query=query, media=req.media,
-                                                 height=req.height)
-            except ValueError as e:
-                raise HTTPException(422, str(e))
-            except BotCheckError as e:
+            await downloads.wait_item(job_id)
+            item = downloads.get_item(job_id) or {}
+            if item.get("error_code") == "youtube_bot_check":
                 # Codigo propio: la UI ofrece importar un cookies.txt en vez de
                 # un "fallo la descarga" generico.
-                return JSONResponse({"detail": str(e), "code": e.code},
-                                    status_code=502)
-            except Exception as e:
-                log.exception("ytdlp descarga fallo")
-                raise HTTPException(502, f"yt-dlp: {e}")
+                return JSONResponse({"detail": item.get("error") or "",
+                                     "code": "youtube_bot_check"}, status_code=502)
+            if item.get("status") == "error":
+                raise HTTPException(502, f"yt-dlp: {item.get('error') or 'error'}")
+            result = item.get("result") or {}
             return JSONResponse({"ok": True, "source": "ytdlp",
                                  "job_id": job_id, **ident, **result})
 
-        async def _bg():
-            try:
-                await ysrc.download(track, req.fmt, job_id=job_id,
-                                    query=query, media=req.media,
-                                    height=req.height)
-            except Exception as e:
-                log.warning("ytdlp bg fallo: %s", e)
-            finally:
-                activity.end()
-
-        # begin() ANTES de crear la tarea: asi no hay ventana en la que el job
-        # ya exista y el contador siga en 0 (el shell podria apagar el servicio
-        # entre el return y el arranque de la tarea). El end() va en el finally
-        # de _bg, pase lo que pase.
-        activity.begin()
-        task = asyncio.create_task(_bg())
-        BG_TASKS.add(task)
-        task.add_done_callback(BG_TASKS.discard)
         return JSONResponse({"ok": True, "source": "ytdlp", "job_id": job_id,
                              **ident})
 
@@ -1750,6 +1836,11 @@ routes = [
     Route("/api/formats", formats),
     Route("/api/download", download, methods=["POST"]),
     Route("/api/download/warm", download_warm, methods=["POST"]),
+    Route("/api/downloads", downloads_list, methods=["GET"]),
+    Route("/api/downloads", downloads_enqueue, methods=["POST"]),
+    Route("/api/downloads/cancel", downloads_cancel_group, methods=["POST"]),
+    Route("/api/downloads/{id}/cancel", downloads_cancel, methods=["POST"]),
+    Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
     Route("/api/playlists", playlists),

@@ -16,16 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import glob
+import hashlib
 import logging
 import os
 import re
 import shutil
-import tempfile
 import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .config import AUDIO_EXTS, USER_AGENT, VIDEO_EXTS
 from .models import Track, safe_name
@@ -194,6 +194,114 @@ def new_job(title: str) -> str:
                         "speed": None, "eta": None, "title": title,
                         "phase": None, "finished_at": None}
     return job_id
+
+
+def ensure_job(job_id: str, title: str) -> None:
+    """Crea (o reinicia) el job de un item de la cola al recargar/reintentar.
+
+    Los jobs viven en memoria: despues de un reinicio la cola se recupera del
+    JSON pero el dict JOBS esta vacio. Esta funcion deja el job en "pending"
+    para que la ruta de progreso siga respondiendo con la misma forma de siempre.
+    """
+    with _JOBS_LOCK:
+        JOBS[job_id] = {"status": "pending", "progress": 0.0,
+                        "speed": None, "eta": None, "title": title,
+                        "phase": None, "finished_at": None}
+
+
+def key_base_for(track, media: str = "audio", height: int | None = None) -> str:
+    """Clave de salida SIN extension: identidad del archivo y de la dedupe.
+
+    La usa `download()` y tambien la cola para saber si dos items apuntan al
+    mismo archivo (y fusionarlos) antes de arrancar ninguna descarga.
+    """
+    folder = safe_name(track.artist or "varios", 60)
+    stem = safe_name(f"{track.artist} - {track.title}", 100)
+    # Con una resolucion elegida, la clave lleva ` [Hp]`: asi dos alturas del
+    # mismo video no comparten clave. El audio no tiene resolucion.
+    if height is not None and media in ("both", "video"):
+        stem = f"{stem} [{int(height)}p]"
+    # `library_scan` deduce `has_audio` mirando si el stem termina asi.
+    if media == "video":
+        stem = f"{stem} (sin audio)"
+    return f"{folder}/{stem}"
+
+
+# ------------------------------------------------------------------- cancelar
+class DownloadCancelledLocal(Exception):
+    """Fallback cuando yt-dlp no expone `utils.DownloadCancelled` (tests)."""
+
+
+def _cancelled_instance() -> BaseException:
+    """Instancia de la excepcion que aborta una bajada desde el progress hook.
+
+    yt-dlp documenta levantar `DownloadCancelled` desde un hook para cortar la
+    descarga. En los tests offline el doble no trae `yt_dlp.utils`, asi que se
+    cae al propio tipo; `download()` reconoce ambos para no confundirlos con un
+    error de red.
+    """
+    try:
+        from yt_dlp.utils import DownloadCancelled
+        return DownloadCancelled()
+    except Exception:
+        return DownloadCancelledLocal()
+
+
+def _es_cancel(error: BaseException) -> bool:
+    """True si `error` es un aborto por cancelacion, no un fallo de descarga."""
+    if isinstance(error, DownloadCancelledLocal):
+        return True
+    try:
+        from yt_dlp.utils import DownloadCancelled
+        return isinstance(error, DownloadCancelled)
+    except Exception:
+        return False
+
+
+#: Prefijo de las carpetas de trabajo estables dentro de TEMP_DIR. El prefijo
+#: distingue las nuestras de los `mkdtemp` del downloader comun.
+_PARTIAL_PREFIX = "partial-"
+
+
+def partial_dir_for(key_base: str) -> Path:
+    """Carpeta de trabajo ESTABLE de una clave (para que continuedl reanude).
+
+    Antes cada intento usaba un `mkdtemp` fresco, asi que un corte de red tiraba
+    el .part y el reintento empezaba de cero. Ahora la ruta sale del sha1 de la
+    clave: la misma pista siempre trabaja en la misma carpeta y yt-dlp puede
+    seguir el .part que quedo. La carpeta se borra al terminar (exito/cancel),
+    se conserva en error y se limpia por vejez al arrancar.
+    """
+    from .downloader import TEMP_DIR
+    digest = hashlib.sha1(key_base.encode("utf-8")).hexdigest()
+    return TEMP_DIR / f"{_PARTIAL_PREFIX}{digest}"
+
+
+def cleanup_partials(ttl_s: float = 24 * 3600.0, now: float | None = None) -> int:
+    """Borra carpetas de trabajo abandonadas hace mas de `ttl_s`. Devuelve cuantas."""
+    from .downloader import TEMP_DIR
+    if not TEMP_DIR.is_dir():
+        return 0
+    now = time.time() if now is None else now
+    borradas = 0
+    for folder in TEMP_DIR.iterdir():
+        try:
+            if (not folder.is_dir() or not folder.name.startswith(_PARTIAL_PREFIX)
+                    or now - folder.stat().st_mtime <= ttl_s):
+                continue
+            shutil.rmtree(folder, ignore_errors=True)
+            borradas += 1
+        except OSError:
+            continue
+    return borradas
+
+
+def _hay_parcial(work: Path) -> bool:
+    """True si quedo algun archivo en la carpeta de trabajo (un .part sirve)."""
+    try:
+        return any(p.is_file() for p in work.iterdir())
+    except OSError:
+        return False
 
 
 # ----------------------------------------------------- reintentos de descarga
@@ -934,7 +1042,9 @@ class YtDlpSource(Source):
                        job_id: str | None = None,
                        query: str | None = None,
                        media: str = "audio",
-                       height: int | None = None) -> dict:
+                       height: int | None = None,
+                       cancel: threading.Event | None = None,
+                       on_progress: Callable[[], None] | None = None) -> dict:
         """Descarga via yt-dlp (usa su postprocessor de ffmpeg) con progreso.
 
         No reutiliza downloader.download_track porque yt-dlp gestiona su propio
@@ -953,6 +1063,10 @@ class YtDlpSource(Source):
         `height` (video/both) acota la resolucion a esa altura o menos; con
         "audio" se ignora. Cuando viene, la clave de salida lleva ` [Hp]` para
         que dos resoluciones del mismo video convivan en la biblioteca.
+
+        `cancel` es un Event que el progress hook mira para abortar de golpe
+        (levanta DownloadCancelled) y `on_progress` avisa a la cola para que
+        persista el avance como maximo una vez por segundo.
         """
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
@@ -971,35 +1085,38 @@ class YtDlpSource(Source):
         if job_id is None:
             job_id = new_job(track.title)
 
-        folder = safe_name(track.artist or "varios", 60)
-        stem = safe_name(f"{track.artist} - {track.title}", 100)
-        # Con una resolucion elegida, la clave lleva ` [Hp]`: asi dos alturas
-        # del mismo video (o el mismo video en "both" y "video") no comparten
-        # clave. `height` se ignora con audio, que no tiene resolucion.
-        if height is not None and media in ("both", "video"):
-            stem = f"{stem} [{int(height)}p]"
-        # Con media=video el archivo NO lleva audio. El sufijo va DESPUES de
-        # ` [Hp]` y tiene que quedar al FINAL del nombre: `library_scan` deduce
-        # `has_audio` mirando si el stem termina en " (sin audio)". El video
-        # mudo tambien se distingue del mp4 de "both".
-        if media == "video":
-            stem = f"{stem} (sin audio)"
-        # Clave de salida SIN extension: es a la vez la identidad del archivo
-        # final en la biblioteca y la clave del lock de una descarga por salida.
-        key_base = f"{folder}/{stem}"
+        # Clave de salida SIN extension: identidad del archivo final, del lock
+        # por ruta y de la dedupe de la cola. La fabrica `key_base_for` es la
+        # misma que usa main.py antes de encolar.
+        key_base = key_base_for(track, media, height)
+        folder = key_base.split("/", 1)[0]
+        stem = key_base.rsplit("/", 1)[-1]
 
         # yt-dlp IGNORA `paths` cuando el outtmpl es absoluto, asi que el outtmpl
-        # va RELATIVO y `paths.home`/`paths.temp` apuntan a la MISMA subcarpeta
-        # fresca de TEMP_DIR: asi los .part y los intermedios .webm nunca caen en
-        # la carpeta publica de la biblioteca. El archivo terminado entra con
-        # `put_file`, no con yt-dlp.
-        work = Path(tempfile.mkdtemp(dir=TEMP_DIR))
+        # va RELATIVO y `paths.home`/`paths.temp` apuntan a la MISMA carpeta de
+        # trabajo: asi los .part y los intermedios .webm nunca caen en la
+        # biblioteca. La carpeta es ESTABLE por clave (no un mkdtemp fresco):
+        # con continuedl un corte de red deja el .part y el reintento sigue
+        # desde ahi. El archivo terminado entra con `put_file`, no con yt-dlp.
+        # Vive directo en TEMP_DIR con prefijo `partial-` para no confundirla
+        # con los temporales del downloader comun.
+        work = partial_dir_for(key_base)
+        work.mkdir(parents=True, exist_ok=True)
         outtmpl = f"{stem}.%(ext)s"
         paths = {"home": str(work), "temp": str(work)}
 
         state = {"total": None, "downloaded": 0, "ultimo_intento": False}
+        cancel = cancel if cancel is not None else threading.Event()
+
+        def _check_cancel():
+            if cancel.is_set():
+                raise _cancelled_instance()
 
         def hook(d):
+            # Aborto real: el hook corre en el thread de yt-dlp, asi que este
+            # check corta la bajada aunque el event loop este esperando el
+            # executor. Es la forma documentada de cancelar un download.
+            _check_cancel()
             estado = d["status"]
             with _JOBS_LOCK:
                 if estado == "downloading":
@@ -1021,6 +1138,9 @@ class YtDlpSource(Source):
                 # Solo en el ULTIMO intento: antes de eso el job sigue
                 # "downloading" y el reintento puede salvarlo.
                 _finish(job_id, status="error")
+            # Aviso a la cola FUERA del lock (get_job lo vuelve a tomar).
+            if on_progress is not None:
+                on_progress()
 
         opts = youtube_opts({
             "quiet": True, "no_warnings": True, "noprogress": True,
@@ -1029,6 +1149,7 @@ class YtDlpSource(Source):
             "progress_hooks": [hook],
             "socket_timeout": 60, "retries": 2,
             "overwrites": True,
+            "continuedl": True,
             **media_opts(media, fmt, height),
         })
         loop = asyncio.get_running_loop()
@@ -1038,6 +1159,7 @@ class YtDlpSource(Source):
             # va a una COPIA plana en un temporal, nunca al sobre cifrado.
             # `raw` es la extraccion adelantada (`warmed_info`): con ella se
             # salta la extraccion y solo se elige formato y se baja.
+            _check_cancel()
             o = dict(opts)
             if cookiefile:
                 o["cookiefile"] = cookiefile
@@ -1073,11 +1195,38 @@ class YtDlpSource(Source):
                 JOBS[job_id]["status"] = "pending"
 
         cover_task: asyncio.Task | None = None
-        try:
-            # El lock cubre tambien `_write_tags` y `put_file`: si se soltara
-            # antes, el otro job podria empezar a reescribir el archivo mientras
-            # mutagen lo tiene abierto.
-            async with lock:
+        exito = False
+        cancelado = False
+
+        def _preparar_reintento():
+            """Vuelve a estado de bajada, SIN borrar el avance si quedo un .part.
+
+            Con continuedl un corte de red deja el parcial en la carpeta estable:
+            reiniciar el progress a 0 en ese caso es la mentira que reportaban
+            los usuarios ("reintenta desde cero"). Si no quedo nada, si se
+            reinicia como siempre.
+            """
+            state["total"] = None
+            hay = _hay_parcial(work)
+            with _JOBS_LOCK:
+                JOBS[job_id].update(
+                    status="downloading",
+                    phase="downloading" if hay else "preparing",
+                    progress=(JOBS[job_id].get("progress") if hay else 0.0),
+                    speed=None, eta=None, downloaded_bytes=0)
+
+        # El lock cubre tambien `_write_tags` y `put_file`: si se soltara antes,
+        # el otro job podria empezar a reescribir el archivo mientras mutagen lo
+        # tiene abierto. La LIMPIEZA va dentro del lock: si otra descarga de la
+        # misma clave esta esperando, no le puede borrar la carpeta debajo.
+        async with lock:
+            # Cancelado mientras esperaba el lock: se va sin bajar nada.
+            _check_cancel()
+            # Otra descarga de la MISMA clave pudo borrar la carpeta al terminar
+            # mientras esperabamos el lock. La recreamos: esta bajada arranca
+            # limpia (o encuentra el .part de un error previo).
+            work.mkdir(parents=True, exist_ok=True)
+            try:
                 with _JOBS_LOCK:
                     JOBS[job_id]["status"] = "downloading"
                     JOBS[job_id]["phase"] = "preparing"
@@ -1097,15 +1246,12 @@ class YtDlpSource(Source):
                     try:
                         info, fp = await loop.run_in_executor(None, _run, None, raw)
                     except Exception as e:
+                        if _es_cancel(e):
+                            raise
                         log.info("ytdlp: fallo la bajada con la extraccion "
                                  "adelantada, se extrae de nuevo: %s", e)
                         info = fp = None
-                        state["total"] = None
-                        with _JOBS_LOCK:
-                            JOBS[job_id].update(
-                                status="downloading", phase="preparing",
-                                progress=0.0, speed=None, eta=None,
-                                downloaded_bytes=0)
+                        _preparar_reintento()
 
                 # Reintentos: ante un error transitorio se rehace TODO (extract +
                 # download) para traer URLs de formato nuevas. El job sigue
@@ -1120,6 +1266,8 @@ class YtDlpSource(Source):
                         info, fp = await loop.run_in_executor(None, _run)
                         break
                     except Exception as e:
+                        if _es_cancel(e):
+                            raise
                         if is_bot_check_error(e):
                             # ULTIMO RECURSO: el muro de verificacion. Con
                             # cookies importadas se reintenta UNA vez con una
@@ -1144,6 +1292,8 @@ class YtDlpSource(Source):
                                         None, lambda: _run(str(cookiefile)))
                                     break
                                 except Exception as e2:
+                                    if _es_cancel(e2):
+                                        raise
                                     code = ("youtube_bot_check"
                                             if is_bot_check_error(e2) else None)
                                     _finish(job_id, status="error", error=str(e2),
@@ -1156,11 +1306,7 @@ class YtDlpSource(Source):
                             log.warning(
                                 "ytdlp download: error transitorio (intento %d/%d), "
                                 "reintento en %.1fs: %s", intento, intentos, espera, e)
-                            state["total"] = None
-                            with _JOBS_LOCK:
-                                JOBS[job_id].update(
-                                    status="downloading", progress=0.0, speed=None,
-                                    eta=None, downloaded_bytes=0)
+                            _preparar_reintento()
                             await asyncio.sleep(espera)
                             continue
                         _finish(job_id, status="error", error=str(e))
@@ -1230,44 +1376,54 @@ class YtDlpSource(Source):
                 else:
                     thumb_key = thumb_sidecar_key(key) if covers else None
 
-            # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
-            # calcula aca y no antes de la descarga porque hasta ahora no se
-            # publicaba en ningun lado del camino con job_id: la UI recibia
-            # status=done sin `match` y no podia avisar nada. La referencia es la ficha
-            # elegida o lo escrito (`identity_reference`); el titulo del video, la otra.
-            referencia = identity_reference(query, track, info_title or track.title)
-            estado, etiqueta = verdict(referencia, info_title)
-            # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
-            # terminar ya trae el veredicto. Sin ficha y sin consulta, o con un
-            # enlace pegado, el titulo del video se compara consigo mismo: no vale.
-            await record_download(
-                key, size, track, via="ytdlp", query=referencia,
-                video_title=info_title,
-                vacuous=bool(query and parse_youtube_url(query))
-                or (not query and not track.extra.get("from_itunes")))
-            # `height` es la altura PEDIDA (None si no se eligio): la UI la
-            # muestra como "1080p" del archivo que acaba de bajar.
-            altura = (int(height) if height is not None
-                      and media in ("both", "video") else None)
-            _finish(job_id, status="done", progress=100.0, key=key,
-                    filename=filename, size_mb=round(size / 1_048_576, 2),
-                    format=path.suffix.lstrip(".").upper(), kind=kind,
-                    thumb_key=thumb_key, height=altura,
-                    match=estado, match_label=etiqueta, real_title=info_title or None)
-            return {
-                "key": key, "filename": filename, "folder": folder,
-                "bytes": size, "size_mb": round(size / 1_048_576, 2),
-                "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
-                "kind": kind, "thumb_key": thumb_key, "height": altura,
-                "match": estado, "match_label": etiqueta,
-                "real_title": info_title or None,
-            }
-        finally:
-            if cover_task is not None and not cover_task.done():
-                cover_task.cancel()
-            # La subcarpeta de trabajo se borra entera pase lo que pase: el
-            # archivo terminado ya salio por `put_file` y no quedan temporales.
-            shutil.rmtree(work, ignore_errors=True)
+                # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
+                # calcula aca y no antes de la descarga porque hasta ahora no se
+                # publicaba en ningun lado del camino con job_id: la UI recibia
+                # status=done sin `match` y no podia avisar nada. La referencia es la
+                # ficha elegida o lo escrito (`identity_reference`); el titulo, la otra.
+                referencia = identity_reference(query, track, info_title or track.title)
+                estado, etiqueta = verdict(referencia, info_title)
+                # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
+                # terminar ya trae el veredicto. Sin ficha y sin consulta, o con un
+                # enlace pegado, el titulo del video se compara consigo mismo: no vale.
+                await record_download(
+                    key, size, track, via="ytdlp", query=referencia,
+                    video_title=info_title,
+                    vacuous=bool(query and parse_youtube_url(query))
+                    or (not query and not track.extra.get("from_itunes")))
+                # `height` es la altura PEDIDA (None si no se eligio): la UI la
+                # muestra como "1080p" del archivo que acaba de bajar.
+                altura = (int(height) if height is not None
+                          and media in ("both", "video") else None)
+                _finish(job_id, status="done", progress=100.0, key=key,
+                        filename=filename, size_mb=round(size / 1_048_576, 2),
+                        format=path.suffix.lstrip(".").upper(), kind=kind,
+                        thumb_key=thumb_key, height=altura,
+                        match=estado, match_label=etiqueta, real_title=info_title or None)
+                exito = True
+                return {
+                    "key": key, "filename": filename, "folder": folder,
+                    "bytes": size, "size_mb": round(size / 1_048_576, 2),
+                    "format": path.suffix.lstrip(".").upper(), "job_id": job_id,
+                    "kind": kind, "thumb_key": thumb_key, "height": altura,
+                    "match": estado, "match_label": etiqueta,
+                    "real_title": info_title or None,
+                }
+            except BaseException as e:
+                if _es_cancel(e):
+                    # La cancelacion no es un error de red: el job se cierra
+                    # como "cancelled" y el progress hook ya aborto la bajada.
+                    cancelado = True
+                    _finish(job_id, status="cancelled")
+                raise
+            finally:
+                if cover_task is not None and not cover_task.done():
+                    cover_task.cancel()
+                # Exito o cancelacion: la carpeta se borra (el archivo terminado
+                # ya salio por put_file). En ERROR se conserva: continuedl
+                # necesita el .part para no empezar de cero en el reintento.
+                if exito or cancelado:
+                    shutil.rmtree(work, ignore_errors=True)
 
 
 def get_job(job_id: str) -> dict | None:

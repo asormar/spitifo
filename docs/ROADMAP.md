@@ -934,7 +934,7 @@ and per-PR numbers live with the PRs; the sizes are in `docs/performance.md`.
   the Disco mark (installer and launcher), and the logo decision in
   `PRODUCT.md`.
 
-### 26. Full albums — PRs 1 to 3 in review
+### 26. Full albums — done (#44, #45, #46)
 
 A user study found that songs could only be fetched one at a time and that an
 album never showed in its real order. The approved design: an «Álbumes» shelf
@@ -965,7 +965,7 @@ the tracks you do not have greyed out.
    one toast closes each album. A pill above the mini player shows the progress
    in every mode and opens the Descargas sheet. While the pill shows, toasts
    move above it. Both sheets live in a lazy chunk.
-3. **Escuchar.** The album page sorts by disc and track number. When the album
+3. **Escuchar (#46).** The album page sorts by disc and track number. When the album
    has an iTunes id, the page asks for the real tracklist once per session, and
    the tracks you do not have show greyed out in their place with «No está en
    tu biblioteca». They do not play and are not counted by «Reproducir». The
@@ -979,6 +979,32 @@ the tracks you do not have greyed out.
   passes the version and title rules; the rest say «Solo 30 s» and are not
   queued. Files downloaded before this change have no track number and keep the
   old order.
+
+### 27. Artists and downloads that are not lost — PR 1 of 4 in review
+
+The user study's worst complaints were downloads, not discovery: a three
+second network drop showed a false «Falló la descarga» and lost the download
+from view, a retry started again from zero, nothing could be cancelled, and
+a reload lost the queue. The approved design also adds an artist page in
+Buscar with «Descargar discografía» (a checklist with the studio albums
+preselected and a live total), and «Más de <artista>» in Escuchar.
+
+1. **Downloads backend (this PR).** Every YouTube download goes through one
+   server-side queue, two at a time, first in first out, with the job id as
+   its id, so the progress route keeps working. The queue is saved to
+   `downloads-queue.json` in the data folder. After a restart, what was
+   waiting or running starts again. `POST /api/downloads` enqueues a batch,
+   `GET /api/downloads` lists the queue so the app can reattach, and there
+   are cancel and retry routes. Cancelling stops yt-dlp from its progress
+   hook and deletes the partial files. Each track works in a stable
+   `partial-<hash>` folder with `continuedl`, so a retry continues instead
+   of starting over. A failed download keeps its folder for 24 hours.
+2. **Downloads frontend.** Polling that survives network drops, a «Sin
+   conexión» pause, cancel on every row, and reattaching after a reload.
+3. **Artists backend.** The iTunes `artistId`, artist search and the
+   discography by id.
+4. **Artists frontend.** The artist as «Mejor resultado», the artist page,
+   «Descargar discografía» and the link from Escuchar.
 
 ## Dependencies
 

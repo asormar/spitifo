@@ -217,6 +217,7 @@ describe("dlState", () => {
   it("los pasos de un job de yt-dlp", () => {
     const job = (status, progress) => ({ status, progress });
     expect(dlState({ busy: true, job: job("pending") }).id).toBe("queued");
+    expect(dlState({ busy: true, job: job("queued") }).id).toBe("queued");
     expect(dlState({ busy: true, job: job("downloading", 41.6) })).toEqual({ id: "down", pct: 42 });
     expect(dlState({ busy: true, job: job("processing", 100) }).id).toBe("proc");
     expect(dlState({ busy: true, job: { status: "downloading", phase: "preparing" } }))

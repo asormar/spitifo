@@ -100,7 +100,7 @@ export async function pollJob(jobId, setJobFor, key, title) {
       return gone;
     }
     setJobFor(key, { ...d, title });
-    if (d.status === "done" || d.status === "error") return d;
+    if (d.status === "done" || d.status === "error" || d.status === "cancelled") return d;
     // eslint-disable-next-line no-await-in-loop
     await new Promise((res) => setTimeout(res, 700));
   }
