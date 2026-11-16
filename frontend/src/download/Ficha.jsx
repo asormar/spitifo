@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { fmtSize, fmtTime } from "../shared/format.js";
 import Sheet from "../shared/Sheet.jsx";
 import { ExtLink } from "../shared/ui.jsx";
 import { provenance, trackState } from "./constants.js";
+import { warmDownload } from "./api.js";
 import { useDl } from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
@@ -90,6 +92,13 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
   const title = t.title || "sin título";
   const sub = [t.artist, t.album && t.album !== t.title ? t.album : null].filter(Boolean).join(" · ");
   const audio = factsOf(t);
+
+  /* Abrir la ficha es la señal mas clara de que se va a bajar: se adelanta la
+     extraccion de yt-dlp mientras el usuario la lee. */
+  const ytUrl = t.extra?.webpage_url;
+  useEffect(() => {
+    if (ytUrl && !downloaded) warmDownload(ytUrl);
+  }, [ytUrl, downloaded]);
 
   return (
     <Sheet title={`Ficha de ${title}`} onClose={onClose} anchor={anchor}>

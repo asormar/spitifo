@@ -187,9 +187,12 @@ def new_job(title: str) -> str:
     _purge_jobs()  # perezoso: aprovecho que se va a crear un job
     job_id = uuid.uuid4().hex[:8]
     with _JOBS_LOCK:
+        # `phase` afina el estado para la UI: "preparing" (extraccion de
+        # yt-dlp), "downloading", "converting" (ffmpeg) y "saving" (escritura
+        # en la biblioteca). None mientras el job espera.
         JOBS[job_id] = {"status": "pending", "progress": 0.0,
                         "speed": None, "eta": None, "title": title,
-                        "finished_at": None}
+                        "phase": None, "finished_at": None}
     return job_id
 
 
@@ -351,6 +354,13 @@ MEDIA_KINDS = ("audio", "video", "both")
 #: reproduce sin una extension del sistema, y el video quedaria negro.
 _NO_AV1 = "[vcodec!^=av01]"
 
+#: Audio para fmt="m4a": YouTube publica una pista AAC (formato 140) ademas de
+#: la Opus. Pidiendo la AAC, FFmpegExtractAudio solo cambia el contenedor y no
+#: recodifica: medido en PC, 0,13 s frente a 5,1 s de Opus -> AAC, y sin la
+#: perdida de pasar de un formato con perdida a otro. Si no hay AAC, cae al
+#: selector de siempre y se recodifica como antes.
+M4A_AUDIO_SELECTOR = "bestaudio[ext=m4a]/bestaudio/best"
+
 #: Timeout de la bajada de la miniatura: es un extra, no puede colgar el job.
 THUMB_TIMEOUT_S = 15.0
 
@@ -413,12 +423,17 @@ def media_opts(media: str, fmt: str = "mp3", height: int | None = None) -> dict:
     no lleva postprocessors (no hay audio que extraer). Un `media` desconocido
     cae a "audio": la validacion del request es de la API.
 
-    `height` solo aplica a video ("both"/"video"): con "audio" se ignora y el
-    selector es el de siempre.
+    `height` solo aplica a video ("both"/"video"): con "audio" se ignora.
+
+    Con "audio" y `fmt="m4a"` se prefiere la pista AAC del origen
+    (`M4A_AUDIO_SELECTOR`), asi la conversion no recodifica.
     """
     elegido = media if media in MEDIA_KINDS else "audio"
     h = height if elegido in ("both", "video") else None
-    opts: dict = {"format": media_selector(elegido, h)}
+    if elegido == "audio" and fmt == "m4a":
+        opts: dict = {"format": M4A_AUDIO_SELECTOR}
+    else:
+        opts = {"format": media_selector(elegido, h)}
     if elegido == "both":
         opts["merge_output_format"] = "mp4"
     opts["postprocessors"] = (postprocessor_opts(fmt) if elegido == "audio"
@@ -683,6 +698,114 @@ def pick_output(found: list[Path], fmt: str, media: str = "audio") -> Path | Non
     return ordenados[0] if ordenados else None
 
 
+# ------------------------------------------- extraccion adelantada (warm-up)
+# De los ~6 s que tarda bajar una cancion, ~3 s son la extraccion de yt-dlp
+# (pagina, player, formatos), y la red apenas medio segundo. La UI avisa con
+# POST /api/download/warm cuando es probable que se descargue un video (abrir
+# la ficha, primeros resultados): la extraccion corre en background y la
+# descarga la reutiliza con `process_ie_result`. Se guarda el resultado SIN
+# procesar (`process=False`): la seleccion de formato la hace la descarga con
+# sus propias opciones (audio, m4a, video...).
+#: Cuanto vale una extraccion adelantada. Las URLs de formato de YouTube
+#: caducan a las ~6 h; 15 min cubre "abrir la ficha y decidirse" con margen.
+WARM_TTL_S = 900.0
+#: Entradas guardadas como mucho (cada una pesa unos cientos de KB).
+WARM_MAX = 16
+#: Extracciones en curso a la vez: no se le puede robar la red a la descarga.
+WARM_PARALLEL = 3
+#: Cuanto espera una descarga a una extraccion adelantada que todavia corre.
+#: Pasado eso extrae por su cuenta, como antes.
+WARM_WAIT_S = 20.0
+_WARM: dict[str, tuple[float, dict]] = {}
+_WARM_TASKS: dict[str, asyncio.Task] = {}
+_WARM_LOCK = threading.Lock()
+
+
+def clear_warm_cache() -> None:
+    """Vacia las extracciones adelantadas (los tests la usan entre casos)."""
+    with _WARM_LOCK:
+        _WARM.clear()
+
+
+def _warm_get(url: str, now: float | None = None) -> dict | None:
+    now = time.time() if now is None else now
+    with _WARM_LOCK:
+        hit = _WARM.get(url)
+        if hit is None:
+            return None
+        if now - hit[0] > WARM_TTL_S:
+            del _WARM[url]
+            return None
+        return hit[1]
+
+
+def _warm_put(url: str, raw: dict, now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    with _WARM_LOCK:
+        _WARM[url] = (now, raw)
+        if len(_WARM) > WARM_MAX:
+            viejos = sorted(_WARM.items(), key=lambda kv: kv[1][0])
+            for clave, _ in viejos[: len(_WARM) - WARM_MAX]:
+                del _WARM[clave]
+
+
+def _warm_take(url: str) -> dict | None:
+    """Saca la extraccion de la cache: se usa UNA vez. Una segunda descarga
+    del mismo video extrae de nuevo, con URLs de formato frescas."""
+    raw = _warm_get(url)
+    if raw is not None:
+        with _WARM_LOCK:
+            _WARM.pop(url, None)
+    return raw
+
+
+def _extract_raw(url: str) -> dict:
+    import yt_dlp
+    opts = youtube_opts({"quiet": True, "no_warnings": True, "skip_download": True,
+                         "socket_timeout": 30, "retries": 1})
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        return ydl.extract_info(url, download=False, process=False)
+
+
+def warm(url: str) -> bool:
+    """Arranca en background la extraccion de `url` (canonica, de video).
+
+    Se llama desde el loop de asyncio. No hace nada si ya esta en cache, si ya
+    corre o si hay `WARM_PARALLEL` en curso. Un fallo (el muro de verificacion
+    incluido) solo se registra: la descarga extraera por su cuenta y manejara
+    las cookies como siempre. Devuelve si arranco una extraccion.
+    """
+    if url in _WARM_TASKS or len(_WARM_TASKS) >= WARM_PARALLEL:
+        return False
+    if _warm_get(url) is not None:
+        return False
+
+    async def _job():
+        try:
+            raw = await asyncio.to_thread(_extract_raw, url)
+            if raw:
+                _warm_put(url, raw)
+        except Exception as e:
+            log.info("ytdlp warm fallo (la descarga extraera de nuevo): %s", e)
+        finally:
+            _WARM_TASKS.pop(url, None)
+
+    _WARM_TASKS[url] = asyncio.create_task(_job())
+    return True
+
+
+async def warmed_info(url: str, wait: float = WARM_WAIT_S) -> dict | None:
+    """La extraccion adelantada de `url`, si la hay; espera a la que este en
+    curso hasta `wait` segundos. None si no hay: la descarga extrae sola."""
+    task = _WARM_TASKS.get(url)
+    if task is not None:
+        try:
+            await asyncio.wait_for(asyncio.shield(task), wait)
+        except Exception:
+            pass
+    return _warm_take(url)
+
+
 class YtDlpSource(Source):
     name = "ytdlp"
 
@@ -888,8 +1011,10 @@ class YtDlpSource(Source):
                     JOBS[job_id]["downloaded_bytes"] = got
                     JOBS[job_id]["speed"] = d.get("speed")
                     JOBS[job_id]["eta"] = d.get("eta")
+                    JOBS[job_id]["phase"] = "downloading"
                 elif estado == "finished":
                     JOBS[job_id]["status"] = "processing"
+                    JOBS[job_id]["phase"] = "converting"
             if estado == "error" and state["ultimo_intento"]:
                 # FUERA del with de arriba: _finish toma el lock y Lock no es
                 # reentrante, asi que llamarlo adentro cuelga el hook.
@@ -908,14 +1033,19 @@ class YtDlpSource(Source):
         })
         loop = asyncio.get_running_loop()
 
-        def _run(cookiefile: str | None = None):
+        def _run(cookiefile: str | None = None, raw: dict | None = None):
             # `cookiefile` solo llega en el reintento del muro de verificacion:
             # va a una COPIA plana en un temporal, nunca al sobre cifrado.
+            # `raw` es la extraccion adelantada (`warmed_info`): con ella se
+            # salta la extraccion y solo se elige formato y se baja.
             o = dict(opts)
             if cookiefile:
                 o["cookiefile"] = cookiefile
             with yt_dlp.YoutubeDL(o) as ydl:
-                info = ydl.extract_info(url, download=True)
+                if raw is not None:
+                    info = ydl.process_ie_result(raw, download=True)
+                else:
+                    info = ydl.extract_info(url, download=True)
                 # Con FFmpegExtractAudio, `info['filepath']` viene None: yt-dlp
                 # lo limpia tras el postprocess. NO usar prepare_filename()
                 # aqui: devuelve el nombre con la extension del stream ORIGINAL
@@ -950,11 +1080,32 @@ class YtDlpSource(Source):
             async with lock:
                 with _JOBS_LOCK:
                     JOBS[job_id]["status"] = "downloading"
+                    JOBS[job_id]["phase"] = "preparing"
+
                 # Las portadas de iTunes no dependen del audio: se piden mientras
                 # yt-dlp baja, y la descarga no espera a un CDN lento al final.
                 if kind == "audio" and track.extra.get("from_itunes"):
                     cover_task = asyncio.create_task(
                         fetch_itunes_covers(track.artwork_url, work))
+
+                # Con extraccion adelantada se baja directo. Si eso falla por lo
+                # que sea, no cuenta como intento: se sigue por el camino de
+                # siempre, que extrae de cero con URLs de formato nuevas.
+                info = fp = None
+                raw = await warmed_info(parse_youtube_url(url) or url)
+                if raw is not None:
+                    try:
+                        info, fp = await loop.run_in_executor(None, _run, None, raw)
+                    except Exception as e:
+                        log.info("ytdlp: fallo la bajada con la extraccion "
+                                 "adelantada, se extrae de nuevo: %s", e)
+                        info = fp = None
+                        state["total"] = None
+                        with _JOBS_LOCK:
+                            JOBS[job_id].update(
+                                status="downloading", phase="preparing",
+                                progress=0.0, speed=None, eta=None,
+                                downloaded_bytes=0)
 
                 # Reintentos: ante un error transitorio se rehace TODO (extract +
                 # download) para traer URLs de formato nuevas. El job sigue
@@ -962,6 +1113,8 @@ class YtDlpSource(Source):
                 delays = tuple(RETRY_DELAYS_S)
                 intentos = len(delays) + 1
                 for intento in range(1, intentos + 1):
+                    if info is not None:
+                        break
                     state["ultimo_intento"] = intento == intentos
                     try:
                         info, fp = await loop.run_in_executor(None, _run)
@@ -1042,6 +1195,8 @@ class YtDlpSource(Source):
                 # Del key y no de `path.name`: yt-dlp puede sanear el nombre a
                 # su manera, y la UI tiene que mostrar lo que quedo guardado.
                 filename = key.rsplit("/", 1)[-1]
+                with _JOBS_LOCK:
+                    JOBS[job_id]["phase"] = "saving"
                 # Audio con ficha de iTunes: su portada en dos tamanos va junto
                 # al audio, en un solo `put_files` (en Drive, una escritura del
                 # indice). Best effort: sin portada la descarga sigue igual.

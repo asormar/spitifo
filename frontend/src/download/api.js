@@ -32,6 +32,28 @@ export async function fetchFormats(url, signal) {
    - YouTube solo filtra con mode=ytdlp&source=ytdlp (mode solo no filtra).
    - mode=matched con un source degrada el emparejamiento, asi que la fuente
      ya no es un filtro del usuario: se deriva siempre del modo. */
+/* Avisa al backend de que este video probablemente se va a bajar: adelanta la
+   extraccion de yt-dlp (~3 s) y la descarga la reutiliza. Es una pista, no una
+   peticion: no se espera, los fallos se ignoran y cada video se avisa una vez
+   por pestana (el JSON va sin Content-Type: el backend lo lee igual y asi no
+   hay preflight). */
+const warmed = new Set();
+export function warmDownload(url) {
+  if (!url || warmed.has(url)) return;
+  warmed.add(url);
+  fetch(`${API}/download/warm`, { method: "POST", body: JSON.stringify({ url }) }).catch(() => {});
+}
+
+/* Tras buscar, adelanta los 2 primeros resultados que se bajan con yt-dlp (los
+   que traen `webpage_url`: en "Música" solo los que tienen archivo completo):
+   son los que mas probablemente se toquen. Pocos, para no gastar datos ni red. */
+export const warmTopResults = (results) =>
+  results
+    .map((t) => t.extra?.webpage_url)
+    .filter(Boolean)
+    .slice(0, 2)
+    .forEach(warmDownload);
+
 export function buildSearchParams(q, mode) {
   const p = new URLSearchParams();
   p.set("q", q);

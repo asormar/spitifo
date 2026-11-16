@@ -97,16 +97,20 @@ export function dlState({ busy = false, job, downloaded = false }) {
   const s = job?.status;
   if (s === "error") return { id: "err", pct: 0 };
   if (s === "pending") return { id: "queued", pct: 0 };
+  /* `phase` afina el estado: "preparing" es la extraccion de yt-dlp (antes de
+     que llegue un byte) y "saving" la escritura en la biblioteca. */
   if (s === "downloading") {
+    if (job.phase === "preparing") return { id: "prep", pct: 0 };
     return { id: "down", pct: Math.min(100, Math.max(0, Math.round(job.progress || 0))) };
   }
-  if (s === "processing") return { id: "proc", pct: 100 };
+  if (s === "processing") return { id: job.phase === "saving" ? "save" : "proc", pct: 100 };
   if (s === "done" || (!busy && downloaded)) return { id: "done", pct: 100 };
   return busy ? { id: "direct", pct: 0 } : { id: "idle", pct: 0 };
 }
 
 /* Hay una descarga en curso (el boton no se pulsa hasta que acabe). */
-export const dlWaiting = ({ id }) => id === "queued" || id === "down" || id === "proc" || id === "direct";
+const WAITING = new Set(["queued", "prep", "down", "proc", "save", "direct"]);
+export const dlWaiting = ({ id }) => WAITING.has(id);
 
 /* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
    de la fila. */
@@ -115,8 +119,10 @@ export function dlText({ id, pct }) {
     idle: "Descargar",
     err: "Falló la descarga",
     queued: "En cola",
+    prep: "Preparando…",
     down: `Descargando, ${pct} %`,
     proc: "Procesando el archivo…",
+    save: "Guardando…",
     direct: "Descargando…",
     done: "Descargado",
   }[id];
