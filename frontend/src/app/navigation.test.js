@@ -184,6 +184,14 @@ describe("pageOf", () => {
     expect(pageOf([album, { type: "menu", key: "k1" }, file])).toBe(album);
     expect(pageOf([file])).toBeNull();
   });
+
+  it("skips the album sheet and the queue sheet, but keeps the album page", () => {
+    const sheet = { type: "albumsheet", id: "a1" };
+    const downloads = { type: "descargas" };
+    expect(pageOf([sheet])).toBeNull();
+    expect(pageOf([downloads])).toBeNull();
+    expect(pageOf([album, sheet, downloads])).toBe(album);
+  });
 });
 
 describe("isOverlay", () => {
