@@ -1126,7 +1126,7 @@ and the skip-link target), 566 in a new `keyNav` chunk shared by the results
 and the library, and the rest in the lazy chunks that use it. The JS budget
 rose from 444,500 to 446,800 bytes.
 
-### 30. First run — in review
+### 30. First run — done (#55)
 
 Three personas from the user study opened the app for the first time with no
 idea what the search modes were or where the music was saved. There was no
