@@ -62,7 +62,7 @@ export default function Sheet({ title, onClose, anchor, sm, children }) {
 
   return createPortal(
     <div className="sh" data-no-swipe="">
-      <div className="sh__scrim" onClick={onClose} />
+      <div className="sh__scrim" aria-hidden="true" onClick={onClose} />
       <div ref={box} className={sm ? "sh__box sh__box--sm" : "sh__box"} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
         <div className="sh__grab" aria-hidden="true" />
         {children}

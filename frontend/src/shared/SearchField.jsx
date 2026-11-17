@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
+import { isComposing } from "./ime.js";
 import { cx } from "./ui.jsx";
 import "./sfield.css";
 
@@ -54,6 +55,11 @@ export default function SearchField({
   };
 
   const onKeyDown = (e) => {
+    /* Enter mientras se compone (IME) confirma el caracter, no la busqueda. */
+    if (e.key === "Enter" && isComposing(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key !== "Escape") return;
     e.stopPropagation();
     if (value) onChange("");
