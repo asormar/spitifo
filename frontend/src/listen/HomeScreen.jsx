@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { useNav } from "../app/useNav.js";
 import BrandLogo from "../app/BrandLogo.jsx";
 import { NavIcon } from "../app/navIcons.jsx";
@@ -5,6 +6,15 @@ import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
 import PageHost from "./pageLoader.jsx";
+import {
+  FALLBACK_FOLDER,
+  shouldShowFirstRun,
+  useFirstRunFlag,
+} from "../onboarding/firstRun.js";
+import { loadFirstRunChunk } from "../onboarding/firstRunChunk.js";
+
+/* Solo se descarga si la tarjeta va a pintarse de verdad. */
+const FirstRunCard = lazy(loadFirstRunChunk);
 
 /* ---------------------------------------------------------------------------
    INICIO
@@ -16,10 +26,15 @@ import PageHost from "./pageLoader.jsx";
    a la raiz mientras estan abiertas.
    ------------------------------------------------------------------------- */
 
-export default function HomeScreen({ ready, error, errorCode, active, onRetry }) {
+export default function HomeScreen({ ready, error, errorCode, active, onRetry, storagePath }) {
   const nav = useNav();
   const { ctx, model } = useListen();
   const page = nav.pageOf("home");
+  const flag = useFirstRunFlag();
+  /* Con la biblioteca aun cargando no se muestra: evitaria un parpadeo si
+     resulta que no esta vacia. */
+  const showFirstRun = ready && shouldShowFirstRun(model.entries.length, flag);
+  const folder = storagePath || FALLBACK_FOLDER;
 
   if (page && ready) return <PageHost view={page} tab="home" active={active} />;
 
@@ -38,7 +53,12 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry })
         </button>
       </header>
       <h1 className="sr-only">Inicio</h1>
-      <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry}>
+      {showFirstRun && (
+        <Suspense fallback={null}>
+          <FirstRunCard folder={folder} />
+        </Suspense>
+      )}
+      <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry} folder={folder}>
         <HomeFeed
           index={model.index}
           byKey={model.byKey}

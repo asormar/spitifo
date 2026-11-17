@@ -96,9 +96,9 @@ describe("driveSub", () => {
     expect(driveSub(null)).toEqual({ text: " ", state: null });
   });
 
-  it("sin configurar lo dice", () => {
+  it("sin configurar explica que la musica se guarda aqui y Drive llega despues", () => {
     expect(driveSub({ providers: providers({ configured: false }) })).toEqual({
-      text: "No disponible en esta versión",
+      text: "Esta versión guarda la música en este dispositivo. Google Drive se podrá conectar en una próxima versión.",
       state: null,
     });
   });

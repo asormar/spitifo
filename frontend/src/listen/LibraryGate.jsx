@@ -19,7 +19,7 @@ export const skeleton = (n) =>
     </div>
   ));
 
-export default function LibraryGate({ ready, error, errorCode, onRetry, children }) {
+export default function LibraryGate({ ready, error, errorCode, onRetry, folder, children }) {
   const nav = useNav();
   const { model } = useListen();
 
@@ -59,6 +59,8 @@ export default function LibraryGate({ ready, error, errorCode, onRetry, children
     return (
       <p className="lnote">
         Todavía no has descargado nada.
+        <br />
+        <span style={{ overflowWrap: "anywhere" }}>Tus descargas se guardan en {folder}.</span>
         <br />
         <button type="button" className="vf" onClick={() => nav.goTab("search")}>
           Ir a Buscar

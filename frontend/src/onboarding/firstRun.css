@@ -1,0 +1,92 @@
+/* Tarjeta de primera ejecucion. Solo entra en la pagina cuando se muestra. */
+
+.fr {
+  margin: 12px var(--gutter) 0;
+  padding: 20px;
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 45%, transparent), var(--shadow-sm);
+  animation: rise var(--t-enter) var(--ease) backwards;
+}
+
+.fr__t {
+  margin: 0 0 16px;
+  font: 700 18px / 1.25 var(--font-display);
+}
+
+.fr__ol {
+  counter-reset: fr;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fr__li {
+  counter-increment: fr;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 3px 12px;
+  align-items: center;
+}
+
+.fr__li + .fr__li {
+  margin-top: 15px;
+}
+
+.fr__li::before {
+  content: counter(fr);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--acc) 14%, var(--s1));
+  color: var(--acc);
+  font: 800 13px var(--font-display);
+}
+
+/* El texto va bajo el titulo, en la columna del texto (sin esto cae en la del
+   numero, de 26 px). Una ruta de carpeta larga puede cortarse donde sea. */
+.fr__li span {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+  color: var(--mut);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fr__f {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.fr__f p {
+  flex: 1;
+  margin: 0;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.fr__btn {
+  flex: none;
+  height: 40px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 14px var(--font-body);
+  cursor: pointer;
+  transition: transform var(--t-press) var(--ease);
+}
+
+.fr__btn:active {
+  transform: scale(0.97);
+}
+
+.fr__btn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
