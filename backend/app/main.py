@@ -384,21 +384,25 @@ def _track_key(raw: dict) -> str:
                raw.get("trackName", ""))
 
 
+def _int_or_none(v):
+    """Entero o None: iTunes a veces manda campos ausentes o como texto."""
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _itunes_album_fields(raw: dict) -> dict:
     """Campos de album de una pista de iTunes (None si iTunes no los trae)."""
-    def _int(v):
-        if v is None or isinstance(v, bool):
-            return None
-        try:
-            return int(v)
-        except (TypeError, ValueError):
-            return None
     return {
-        "collection_id": _int(raw.get("collectionId")),
-        "track_number": _int(raw.get("trackNumber")),
-        "disc_number": _int(raw.get("discNumber")),
-        "track_count": _int(raw.get("trackCount")),
-        "disc_count": _int(raw.get("discCount")),
+        "collection_id": _int_or_none(raw.get("collectionId")),
+        "artist_id": _int_or_none(raw.get("artistId")),
+        "track_number": _int_or_none(raw.get("trackNumber")),
+        "disc_number": _int_or_none(raw.get("discNumber")),
+        "track_count": _int_or_none(raw.get("trackCount")),
+        "disc_count": _int_or_none(raw.get("discCount")),
     }
 
 
@@ -448,6 +452,7 @@ def _itunes_track(raw: dict, match: dict | None = None,
 def _album_dict(raw: dict) -> dict:
     return {
         "id": raw.get("collectionId"),
+        "artist_id": _int_or_none(raw.get("artistId")),
         "title": raw.get("collectionName"),
         "artist": raw.get("artistName"),
         "year": (raw.get("releaseDate") or "")[:4] or None,
@@ -467,6 +472,122 @@ def _album_sorted(raws: list[dict]) -> list[dict]:
             return 0
     return sorted(raws, key=lambda r: (_n(r.get("discNumber")),
                                        _n(r.get("trackNumber"))))
+
+
+# --------------------------------------------------------------- discografia
+# Clasificacion de lanzamientos de iTunes. Se trabaja sobre el titulo "plegado"
+# (sin acentos, en minusculas) para que "En Vivo" y "EN VIVO" den lo mismo.
+_SINGLE_SUFFIX_RE = re.compile(r"\s*-\s*(?:single|ep)\s*$", re.I)
+
+# \b evita que "Alive" u "Oliver" se tomen como en vivo. "tour" suelto no
+# entra: "Tour de France" es un disco de estudio.
+_LIVE_RE = re.compile(
+    r"\b(?:live|en vivo|en directo|ao vivo|mtv unplugged|unplugged|"
+    r"en concierto|conciertos?|concerts?|gira|world tour)\b")
+
+# iTunes no marca los recopilatorios (collectionType es siempre "Album"): se
+# reconocen por el titulo o por el copyright, que dice "Compilacion" o junta
+# los anios de varios discos ("1983, 1984, 1985"). Dos anios no bastan: una
+# reedicion lleva el original y el del remaster ("1977, 2009").
+_COMPILATION_RE = re.compile(
+    r"\b(?:hits|greatest|grandes exitos|exitos|best of|lo mejor|esencial|"
+    r"essentials?|antologia|anthology|coleccion|collection|mix|mixes|"
+    r"remixes|soundtrack|banda sonora|motion picture|the videos)\b")
+_COMPILATION_COPYRIGHT_RE = re.compile(
+    r"compil|\d{4}\s*,\s*\d{4}\s*,\s*\d{4}")
+
+# Calificadores que iTunes pone entre parentesis o corchetes al final del
+# titulo. Al plegar el titulo quedan en minusculas y sin acentos.
+_QUALIFIER_RE = re.compile(r"\s*[(\[][^)\]]*[)\]]\s*$")
+_QUALIFIER_WORDS = (
+    "remaster", "deluxe", "edition", "edicion", "reissue", "reedicion",
+    "expanded", "anniversary", "aniversario", "bonus", "limited", "special",
+    "especial", "version",
+)
+
+
+def classify_release(raw: dict) -> str:
+    """'single', 'live', 'compilation' o 'album'.
+
+    El orden importa: el sufijo de single y las pocas pistas ganan antes que
+    la palabra 'live' (un single en directo sigue siendo un single), y un
+    directo de grandes exitos es un directo.
+    """
+    title = raw.get("collectionName") or ""
+    folded = fold(title)
+    if _SINGLE_SUFFIX_RE.search(title):
+        return "single"
+    tracks = _int_or_none(raw.get("trackCount"))
+    if tracks is not None and tracks <= 3:
+        return "single"
+    if _LIVE_RE.search(folded):
+        return "live"
+    if (_COMPILATION_RE.search(folded)
+            or _COMPILATION_COPYRIGHT_RE.search(fold(raw.get("copyright")))):
+        return "compilation"
+    return "album"
+
+
+def _display_title(title: str) -> str:
+    """Titulo a mostrar: sin el sufijo ' - Single'/' - EP' de iTunes."""
+    return _SINGLE_SUFFIX_RE.sub("", title or "").strip()
+
+
+def _normalized_title(title: str) -> str:
+    """Clave de dedupe: sin acentos, minusculas y sin calificadores finales."""
+    t = fold(_display_title(title))
+    while True:
+        m = _QUALIFIER_RE.search(t)
+        if not m or not any(w in m.group(0) for w in _QUALIFIER_WORDS):
+            return " ".join(t.split())
+        t = t[:m.start()]
+
+
+def _release_dict(raw: dict) -> dict:
+    """Ficha de un lanzamiento, con el mismo formato que _album_dict."""
+    return {
+        "id": _int_or_none(raw.get("collectionId")),
+        "title": _display_title(raw.get("collectionName") or ""),
+        "artist": raw.get("artistName"),
+        "year": (raw.get("releaseDate") or "")[:4] or None,
+        "track_count": _int_or_none(raw.get("trackCount")),
+        "artwork_url": (raw.get("artworkUrl100") or "").replace(
+            "100x100", "300x300") or None,
+        "explicit": raw.get("collectionExplicitness") == "explicit",
+    }
+
+
+def _edition_rank(raw: dict) -> tuple:
+    """Menor = mejor edicion para bajar: la explicita, la que tiene menos
+    pistas (la original y no la deluxe de 60) y, si empatan, la primera."""
+    tracks = _int_or_none(raw.get("trackCount"))
+    return (raw.get("collectionExplicitness") != "explicit",
+            tracks if tracks is not None else 10**6,
+            raw.get("releaseDate") or "")
+
+
+def _build_releases(collections: list[dict]) -> dict[str, list[dict]]:
+    """Clasifica, deduplica y ordena (mas nuevo primero) cada grupo.
+
+    Duplicados = mismo titulo normalizado dentro del grupo; se queda la
+    edicion de `_edition_rank`.
+    """
+    grupos: dict[str, dict[str, dict]] = {
+        "album": {}, "live": {}, "compilation": {}, "single": {}}
+    for raw in collections:
+        kind = classify_release(raw)
+        key = _normalized_title(raw.get("collectionName"))
+        anterior = grupos[kind].get(key)
+        if anterior is None or _edition_rank(raw) < _edition_rank(anterior):
+            grupos[kind][key] = raw
+    # Un disco de estudio cuyo copyright junta anios no es un recopilatorio
+    # si su reedicion ya esta entre los albumes.
+    for key in grupos["album"]:
+        grupos["compilation"].pop(key, None)
+    return {kind: [_release_dict(r) for r in sorted(
+                por_titulo.values(), key=lambda r: r.get("releaseDate") or "",
+                reverse=True)]
+            for kind, por_titulo in grupos.items()}
 
 
 async def _album_lookup(album_id: str) -> tuple[dict, list[dict]]:
@@ -507,6 +628,62 @@ async def album_detail(request: Request):
     return JSONResponse({
         "album": album,
         "tracks": [_itunes_track(r, checked=False).to_dict() for r in raws],
+    })
+
+
+async def artists_search(request: Request):
+    q = _query_str(request, "q", required=True, min_length=1, max_length=200)
+    limit = _query_int(request, "limit", 5, 1, 20)
+    try:
+        raws = await BY_NAME["itunes"].search_artists(q, limit=limit)
+    except Exception as e:
+        # Igual que albums_search: iTunes caido no tumba la busqueda.
+        log.warning("artists search fallo: %s", e)
+        raws = []
+    return JSONResponse({
+        "query": q,
+        "results": [{
+            "id": _int_or_none(a.get("artistId")),
+            "name": a.get("artistName"),
+            "genre": a.get("primaryGenreName"),
+        } for a in raws],
+    })
+
+
+async def artist_detail(request: Request):
+    artista_id = str(request.path_params["id"])
+    if not artista_id.isdigit():
+        # Misma verificacion de digitos que album_detail, pero aqui el id
+        # mal formado es 422 (cuerpo de error FastAPI).
+        raise _invalid(["path", "id"], "Input should be a valid integer")
+    try:
+        raws = await BY_NAME["itunes"].artist_albums(artista_id)
+    except Exception as e:
+        log.warning("artist albums fallo: %s", e)
+        raise HTTPException(502, "iTunes no respondio") from e
+    wrapper = next((r for r in raws
+                    if r.get("wrapperType") == "artist"), None)
+    if not wrapper:
+        raise HTTPException(404, "artista no encontrado")
+    # Las recopilaciones de "Varios artistas" pueden colarse: solo se quedan
+    # las colecciones cuyo artistId es el del artista pedido.
+    colecciones = [r for r in raws
+                   if r is not wrapper
+                   and r.get("collectionId")
+                   and r.get("collectionName")
+                   and str(r.get("artistId")) == artista_id]
+    releases = _build_releases(colecciones)
+    albums = releases["album"]
+    return JSONResponse({
+        "id": _int_or_none(wrapper.get("artistId")) or _int_or_none(artista_id),
+        "name": wrapper.get("artistName"),
+        "genre": wrapper.get("primaryGenreName"),
+        # iTunes no da fotos de artista: se usa la portada del disco mas nuevo.
+        "artwork_url": albums[0]["artwork_url"] if albums else None,
+        "albums": albums,
+        "live": releases["live"],
+        "compilations": releases["compilation"],
+        "singles": releases["single"],
     })
 
 
@@ -1828,6 +2005,7 @@ routes = [
     Route("/api/health", health),
     Route("/api/search", search),
     Route("/api/albums/search", albums_search),
+    Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
     Route("/api/album/{id}", album_detail),
     Route("/api/resolve", resolve, methods=["POST"]),
@@ -1851,6 +2029,9 @@ routes = [
     Route("/api/discover", discover),
     Route("/api/discover/dismiss", discover_dismiss, methods=["POST"]),
     Route("/api/artist/genres", artist_genres_route),
+    # La ruta dinamica va DESPUES de /api/artist/genres: si no, "genres" se
+    # toma como id y la busqueda de generos da 422.
+    Route("/api/artist/{id}", artist_detail),
     Route("/api/youtube/cookies", youtube_cookies_info),
     Route("/api/youtube/cookies", youtube_cookies_import, methods=["POST"]),
     Route("/api/youtube/cookies", youtube_cookies_delete, methods=["DELETE"]),

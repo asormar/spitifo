@@ -172,6 +172,32 @@ class ITunesSource(Source):
         return [a for a in r.json().get("results", [])
                 if a.get("collectionId") and a.get("collectionName")]
 
+    async def search_artists(self, q: str, limit: int = 5) -> list[dict]:
+        """Buscar artistas (entity=musicArtist): dicts crudos, sin transformar.
+
+        El orden que devuelve iTunes es el ranking: no se reordena. Se descartan
+        las entradas sin artistId/artistName, que no sirven para el frontend.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/search",
+            params={"term": q, "media": "music", "entity": "musicArtist",
+                    "limit": limit})
+        r.raise_for_status()
+        return [a for a in r.json().get("results", [])
+                if a.get("artistId") and a.get("artistName")]
+
+    async def artist_albums(self, artist_id: str | int) -> list[dict]:
+        """Discografia de un artista (lookup id + entity=album), cruda.
+
+        El primer resultado suele ser el wrapper del artista (wrapperType
+        "artist"); el resto son colecciones. El llamador separa y clasifica.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/lookup",
+            params={"id": artist_id, "entity": "album", "limit": 200})
+        r.raise_for_status()
+        return r.json().get("results", [])
+
     async def lookup(self, album_id: str | int
                      ) -> tuple[dict | None, list[dict]]:
         """(coleccion, canciones) de un album, en dicts crudos.
