@@ -14,7 +14,8 @@ import { detailMeta, detailOf } from "./detail.js";
 import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
 import { mosaicTones, songs } from "./home.js";
 import { skeleton } from "./LibraryGate.jsx";
-import { ListMenu } from "./Overlays.jsx";
+import { albumDeleteCopy } from "./deletion.js";
+import { AlbumMenu, DeleteAlbumSheet, ListMenu, deferredDelete } from "./Overlays.jsx";
 import { Back, useFocusBack } from "./Pages.jsx";
 import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
@@ -235,6 +236,18 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
         <Icon name="Shuffle" size={18} />
         Aleatorio
       </button>
+      {album && (
+        <button
+          type="button"
+          className="btn btn--ghost dacts__more"
+          aria-label={`Más opciones de ${name}`}
+          title="Más opciones"
+          aria-haspopup="menu"
+          onClick={(e) => ctx.openMenu(view.id, e.currentTarget, "almenu")}
+        >
+          <Ico n="dots" size={20} />
+        </button>
+      )}
     </div>
   );
 
@@ -323,6 +336,45 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
       anchor={top.anchor}
       onClose={nav.back}
       onPick={(kindPicked) => (kindPicked === "rename" ? (nav.back(), setNaming(true)) : deleteList())}
+    />
+  );
+
+  /* Borrar un album es como borrar una lista, pero con confirmacion: el menu
+     y la hoja son entradas de la pila, asi que atras y Escape los cierran. */
+  const stackTop = nav.stack.at(-1);
+  const albumMenu = album && stackTop?.type === "almenu" && stackTop.key === view.id && (
+    <AlbumMenu
+      name={name}
+      anchor={stackTop.anchor}
+      onClose={nav.back}
+      onPick={() => nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor })}
+    />
+  );
+
+  /* Las filas del album son las que agrupa esta pagina. El tamano solo se dice
+     si todas las filas lo traen: nunca inventamos un MB. */
+  const albumKeys = album ? d.rows.map((r) => r.key) : [];
+  const albumSize = album && albumKeys.length && d.rows.every((r) => Number.isFinite(r.sizeMb))
+    ? d.rows.reduce((sum, r) => sum + r.sizeMb, 0)
+    : null;
+  const alDel = album && stackTop?.type === "aldel" && stackTop.key === view.id;
+  const deleteSheet = alDel && (
+    <DeleteAlbumSheet
+      copy={albumDeleteCopy({ name, storage, count: albumKeys.length, sizeMb: albumSize })}
+      anchor={stackTop.anchor}
+      onClose={nav.back}
+      onConfirm={() => {
+        nav.pop(2);  // cierra la hoja y vuelve de la pagina del album
+        deferredDelete({
+          keys: albumKeys,
+          name,
+          notice: `Se borró «${name}» · ${albumKeys.length} canciones`,
+          show: ctx.show,
+          hideKeys: ctx.hideKeys,
+          restoreFiles: ctx.restoreFiles,
+          refreshLibrary: ctx.refreshLibrary,
+        });
+      }}
     />
   );
 
@@ -463,6 +515,8 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
         </div>
       </div>
       {menu}
+      {albumMenu}
+      {deleteSheet}
     </div>
   );
 });

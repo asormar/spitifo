@@ -95,3 +95,29 @@ def is_busy() -> bool:
     """True si hay al menos un trabajo en curso."""
     with _lock:
         return _count > 0
+
+
+# ------------------------------------------------------------ archivos borrados
+# Segundo aviso, aparte del contador: la biblioteca borro archivos. El shell de
+# Android lo necesita para sacarlos del MediaStore; no arranca ningun servicio,
+# por eso no pasa por begin/end (eso mostraria la notificacion de descarga).
+_removed_listeners: list[Callable[[list[str]], None]] = []
+
+
+def add_removed_listener(fn: Callable[[list[str]], None]) -> None:
+    """Registra `fn`, que recibe las claves que la biblioteca acaba de borrar."""
+    with _lock:
+        _removed_listeners.append(fn)
+
+
+def removed(keys: list[str]) -> None:
+    """Avisa de claves borradas. Best-effort: un listener roto no propaga."""
+    if not keys:
+        return
+    with _lock:
+        oyentes = list(_removed_listeners)
+    for fn in oyentes:
+        try:
+            fn(list(keys))
+        except Exception:
+            log.exception("listener de borrados fallo")

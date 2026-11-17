@@ -245,6 +245,48 @@
   }
 }
 
+/* El boton de puntos del album, junto a Reproducir y Aleatorio. */
+.dacts__more {
+  flex: none;
+  min-width: 48px;
+  padding: 0 14px;
+}
+
+/* Hoja de confirmacion de borrado de un album (listen/Overlays.jsx). */
+.delsh {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.delsh__body {
+  margin: 0;
+  color: var(--mut);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.delsh__facts {
+  padding: 14px;
+  border-radius: var(--r-field);
+  background: var(--s2);
+}
+
+.delsh__acts {
+  display: flex;
+  gap: 10px;
+}
+
+.delsh__acts > .btn {
+  flex: 1;
+}
+
+.btn--bad {
+  background: var(--bad-bg);
+  color: var(--bad-t);
+}
+
 @media (min-width: 960px) {
   .sh__box--sm .mlist {
     padding-bottom: 14px;

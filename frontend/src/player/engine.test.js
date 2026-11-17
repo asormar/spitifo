@@ -413,6 +413,54 @@ describe("queue edits", () => {
   });
 });
 
+describe("purge", () => {
+  it("saca las claves borradas de la cola sin tocar la actual", () => {
+    const { engine } = setup();
+    engine.play(C, { queue: [A, B, C, D] });
+    expect(engine.purge([B.key, D.key])).toBe(2);
+    const s = engine.getState();
+    expect(s.track).toBe(C);
+    expect(s.index).toBe(1);
+    expect(s.queue.map((t) => t.key)).toEqual(["a", "c"]);
+  });
+
+  it("salta a la siguiente que sobrevive si borran la que suena", () => {
+    const { engine, audio } = setup();
+    engine.play(A, { queue: [A, B, C, D] });
+    engine.purge([A.key, B.key]);
+    const s = engine.getState();
+    expect(s.track).toBe(C);
+    expect(s.index).toBe(0);
+    expect(s.queue.map((t) => t.key)).toEqual(["c", "d"]);
+    expect(audio().src).toBe(C.src);
+    expect(s.playing).toBe(true);
+  });
+
+  it("se detiene si no queda ninguna despues de la que suena", () => {
+    const { engine, audio } = setup();
+    const events = [];
+    engine.onTrackEvent((e) => events.push(e));
+    engine.play(C, { queue: [A, B, C] });
+    audio().currentTime = 50;
+    expect(engine.purge([C.key])).toBe(1);
+    const s = engine.getState();
+    expect(s.track).toBeNull();
+    expect(s.index).toBe(-1);
+    expect(s.playing).toBe(false);
+    expect(s.queue.map((t) => t.key)).toEqual(["a", "b"]);
+    expect(audio().currentTime).toBe(0);
+    expect(events.at(-1).type).toBe("end");
+  });
+
+  it("no hace nada si ninguna clave esta en la cola", () => {
+    const { engine } = setup();
+    engine.play(A, { queue: [A, B] });
+    const before = engine.getState();
+    expect(engine.purge(["otra"])).toBe(0);
+    expect(engine.getState()).toBe(before);
+  });
+});
+
 describe("shuffle", () => {
   it("keeps the current track first and every other track once", () => {
     const { engine } = setup({ random: () => 0 });

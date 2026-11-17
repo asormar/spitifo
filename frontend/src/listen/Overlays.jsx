@@ -11,6 +11,7 @@ import { Cover } from "./cards.jsx";
 import { checkOf } from "./fileCheck.js";
 import FileSheet from "./FileSheet.jsx";
 import { albumId, artistId, rowArt, toTrack } from "./library.js";
+import { deleteKeys, failedNotice } from "./deletion.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import "./menus.css";
 
@@ -34,6 +35,11 @@ const SONG_ITEMS = [
   ["list", "addlist", "Añadir a una lista…"],
   ["album", "disc", "Ir al álbum"],
   ["artist", "user", "Ir al artista"],
+  ["delete", "trash", "Borrar canción", "bad"],
+];
+
+const ALBUM_ITEMS = [
+  ["delete", "trash", "Borrar álbum", "bad"],
 ];
 
 const LIST_ITEMS = [
@@ -79,6 +85,79 @@ function MenuItems({ items, label, onPick, stack }) {
   );
 }
 
+/* La misma secuencia para una cancion y para un album: ocultar las filas ya,
+   ensenar el aviso con Deshacer y mandar la peticion SOLO si vence la ventana.
+   Si falla alguna, vuelven solo esas filas (las demas si se borraron). */
+export function deferredDelete({ keys, name, notice, show, hideKeys, restoreFiles, refreshLibrary }) {
+  const removed = hideKeys(keys);
+  show(notice, {
+    label: "Deshacer",
+    run: () => restoreFiles(removed),
+    commit: async () => {
+      try {
+        const { failed } = await deleteKeys(keys);
+        const malas = new Set(failed.map((f) => f.key));
+        /* Android puede aceptar el borrado de un archivo de otra app sin
+           hacerlo. Manda lo que liste la biblioteca al recargar: lo que siga
+           ahi no se borro, diga lo que diga la respuesta. */
+        const files = malas.size < keys.length ? await refreshLibrary() : null;
+        if (files) files.forEach((f) => keys.includes(f.key) && malas.add(f.key));
+        /* La lista recargada ya trae las que fallaron; sin recarga se reponen. */
+        if (malas.size && !files) restoreFiles(removed.filter((f) => malas.has(f.key)));
+        const ok = keys.filter((k) => !malas.has(k));
+        if (ok.length) engine.purge(ok);
+        if (malas.size) show(failedNotice(name));
+      } catch {
+        restoreFiles(removed);
+        show(failedNotice(name));
+      }
+    },
+  });
+}
+
+/* El menu del album lo pinta su pagina, igual que el de una lista. */
+export function AlbumMenu({ name, anchor, onClose, onPick }) {
+  return (
+    <Popover anchor={anchor} onClose={onClose} width={232}>
+      <MenuItems items={ALBUM_ITEMS} label={`Opciones de ${name}`} onPick={onPick} />
+    </Popover>
+  );
+}
+
+/* Confirmacion de borrado de un album. Hoja de la app (no window.confirm), con
+   el dialogo etiquetado por el titulo y el foco en la accion destructiva. */
+export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
+  return (
+    <Sheet title={copy.title} onClose={onClose} anchor={anchor} sm>
+      <div className="delsh">
+        <div className="sh__bar">
+          <h2 className="sh__bt">{copy.title}</h2>
+          <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
+            <Ico n="x" size={18} />
+          </button>
+        </div>
+        <p className="delsh__body">{copy.body}</p>
+        <dl className="dfacts delsh__facts">
+          {copy.facts.map((fact) => (
+            <div key={fact.label}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <div className="delsh__acts">
+          <button type="button" className="btn btn--ghost" data-autofocus onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn btn--bad" onClick={onConfirm}>
+            {copy.confirm}
+          </button>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
 export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const pc = usePc();
   const { title, artist, album } = entry;
@@ -86,7 +165,11 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const items = SONG_ITEMS.filter(([kind]) => (kind === "album" ? album : kind === "artist" ? artist : true));
   /* La ficha del archivo: la pastilla solo si hay registro (el archivo anterior
      la dice dentro de la ficha). */
+  /* Borrar va siempre al final, debajo de la ficha: lo destructivo, aparte. */
+  const del = items.findIndex(([kind]) => kind === "delete");
+  const [delItem] = del >= 0 ? items.splice(del, 1) : [];
   items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
+  if (delItem) items.push(delItem);
   const head = (
     <div className="mhead">
       <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} size={pc ? 40 : 56} />
@@ -125,7 +208,7 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
 /* El menu de una cancion, la hoja de listas o la ficha del archivo de la
    entrada de arriba de la pila. `back` cierra (nav.back), `replace` cambia el
    menu por otra cosa y `goTo` por una pagina (ListenProvider). */
-export default function Overlays({ top, byKey, back, replace, goTo, show, storage }) {
+export default function Overlays({ top, byKey, back, replace, goTo, show, storage, hideKeys, restoreFiles, refresh }) {
   const entry = byKey.get(top.key);
 
   /* La biblioteca se refresco y la cancion ya no esta: no hay nada que mostrar. */
@@ -152,6 +235,20 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
   }
 
   const pick = (kind) => {
+    if (kind === "delete") {
+      /* La fila desaparece al instante; el efecto de arriba cierra el menu al
+         dejar de estar la clave en byKey. Durante la ventana sigue sonando. */
+      deferredDelete({
+        keys: [entry.key],
+        name: entry.title,
+        notice: `Se borró «${entry.title}»`,
+        show,
+        hideKeys,
+        restoreFiles,
+        refreshLibrary: refresh,
+      });
+      return;
+    }
     if (kind === "file") {
       replace({ type: "file", key: entry.key, anchor: top.anchor });
       return;

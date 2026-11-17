@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
+import { createDeferred } from "./deferred.js";
 
 /* ---------------------------------------------------------------------------
    AVISO
@@ -27,23 +28,39 @@ const NOTICE_MS = 1600;
 const ACTION_MS = 5000;
 const NOTICE_LEAVE_MS = 180;
 
-/* Devuelve [nodo, show]. `show(text, { label, run })`; la accion es opcional. */
+/* Devuelve [nodo, show]. `show(text, { label, run, commit })`; la accion es
+   opcional. `commit` (si la hay) corre al terminar la ventana SIN deshacer: es
+   el borrado diferido. Deshacer lo cancela. Otro aviso o desmontar lo
+   adelantan; cerrar la app no desmonta nada, asi que dentro de la ventana no
+   se borra. */
 export function useNotice() {
   const [notice, setNotice] = useState(null);
   const timers = useRef([]);
+  const deferred = useRef(null);
 
   const show = useCallback((text, action) => {
     timers.current.forEach(clearTimeout);
+    deferred.current?.flush();
+    deferred.current = null;
     const wait = action ? ACTION_MS : NOTICE_MS;
     setNotice({ text, action, out: false, id: Date.now() });
     timers.current = [
       setTimeout(() => setNotice((n) => n && { ...n, out: true }), wait),
       setTimeout(() => setNotice(null), wait + NOTICE_LEAVE_MS),
     ];
+    if (action?.commit) {
+      deferred.current = createDeferred(action.commit);
+      deferred.current.start(wait);
+    }
   }, []);
-  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  useEffect(() => () => {
+    timers.current.forEach(clearTimeout);
+    deferred.current?.flush();
+  }, []);
 
   const act = () => {
+    deferred.current?.cancel();
+    deferred.current = null;
     notice.action.run();
     timers.current.forEach(clearTimeout);
     setNotice(null);
