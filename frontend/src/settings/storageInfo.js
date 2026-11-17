@@ -56,7 +56,11 @@ export function connectErrorText(error) {
 export function driveSub(info, { pending = false, viaAndroid = false } = {}) {
   if (!info) return { text: " ", state: null };
   const google = info.providers?.find((p) => p.id === "google");
-  if (!google?.configured) return { text: "No disponible en esta versión", state: null };
+  if (!google?.configured)
+    return {
+      text: "Esta versión guarda la música en este dispositivo. Google Drive se podrá conectar en una próxima versión.",
+      state: null,
+    };
   if (pending)
     return { text: viaAndroid ? "Esperando a Google…" : "Esperando al navegador…", state: "pending" };
   if (google.connected) return { text: "Conectada", state: "connected" };

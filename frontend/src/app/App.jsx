@@ -631,6 +631,7 @@ export default function App() {
                   errorCode={libErrCode}
                   active={activeId === "home"}
                   onRetry={loadLib}
+                  storagePath={health?.library}
                 />
               </Screen>
             )}

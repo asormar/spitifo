@@ -1,7 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Ico from "../shared/ico.jsx";
+import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
+import { requestFirstRun } from "../onboarding/firstRun.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./settings.css";
@@ -63,6 +65,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const cookiesHeadRef = useRef(null);
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
+  const nav = useNav();
   const pc = usePc();
   const [finder, setFinder] = useState(false);
   const coversSaved = useRef(false);
@@ -178,6 +181,24 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               <p className="settings__note">Solo en teléfonos. Se guarda en este dispositivo.</p>
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-guide">
+        <h2 id="settings-guide" className="settings__h">
+          Guía
+        </h2>
+        <div className="settings__card">
+          <button
+            type="button"
+            className="settings__act"
+            onClick={() => {
+              requestFirstRun();
+              nav.goTab("home");
+            }}
+          >
+            Ver cómo funciona Spitifo
+          </button>
         </div>
       </section>
 

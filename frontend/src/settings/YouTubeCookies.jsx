@@ -128,11 +128,18 @@ export default function YouTubeCookies({ focus }) {
         )}
       </div>
       <p className="settings__note">
-        Exporta un <code>cookies.txt</code> desde una ventana privada con sesión
-        iniciada en YouTube. Solo se usa si YouTube pide verificar que no eres un
-        bot. Usar tu cuenta tiene riesgo de bloqueo: conviene una cuenta
-        secundaria.
+        Si YouTube frena las descargas desde este equipo, puedes esperar un rato y
+        volver a intentarlo, o buscar en Todas las fuentes.
       </p>
+      <details className="settings__advanced">
+        <summary>Ayuda avanzada</summary>
+        <p className="settings__note">
+          Exporta un <code>cookies.txt</code> desde una ventana privada con sesión
+          iniciada en YouTube. Solo se usa si YouTube pide verificar que no eres un
+          bot. Usar tu cuenta tiene riesgo de bloqueo: conviene una cuenta
+          secundaria.
+        </p>
+      </details>
       {err && (
         <p className="settings__err" role="alert">
           {err}

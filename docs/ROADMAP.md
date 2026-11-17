@@ -1026,7 +1026,7 @@ preselected and a live total), and «Más de <artista>» in Escuchar.
    the same page. The page and the sheet are a lazy chunk, so the boot script
    grew by 263 bytes (236,839 B).
 
-### 28. «Música» with a way out — in review
+### 28. «Música» with a way out — done (#53)
 
 Five personas from the user study got stuck in Música mode: the search came
 back empty, or with fourteen songs by other artists, and the only thing on
@@ -1065,7 +1065,7 @@ exits they choose themselves.
 Accessibility review and the first-run experience follow as the next PRs of
 item 5.
 
-### 29. Accessible search and library — in review
+### 29. Accessible search and library — done (#54)
 
 The keyboard and screen-reader pass over Buscar and Escuchar. Ten confirmed
 defects from the review, all in the frontend and all without a visual change
@@ -1116,6 +1116,52 @@ The fixes cost 1,965 bytes of JS: 586 in the boot script (the Ctrl+K handler
 and the skip-link target), 566 in a new `keyNav` chunk shared by the results
 and the library, and the rest in the lazy chunks that use it. The JS budget
 rose from 444,500 to 446,800 bytes.
+
+### 30. First run — in review
+
+Three personas from the user study opened the app for the first time with no
+idea what the search modes were or where the music was saved. There was no
+onboarding: the empty library only said «Todavía no has descargado nada.» with
+«Ir a Buscar», Google Drive said «No disponible en esta versión» with no way
+forward, and the YouTube bot wall asked for a `cookies.txt` in expert language.
+The approved design answers those questions at the moment they come up.
+
+1. **Inicio card.** A labelled region at the top of Inicio, under the header, shows «Así
+   funciona Spitifo», a real ordered list of three steps (Buscar, descargar,
+   escuchar sin conexión) and a footer with «Puedes volver a verlo en Ajustes»
+   and «Entendido». It is shown only while the library is empty and the card
+   has not been dismissed; Entendido persists `dismissed` in localStorage and
+   hides it for good. Step three names the real storage location and falls back
+   to «la carpeta que ves en Ajustes» while it is not known yet.
+2. **Ajustes entry.** A «Ver cómo funciona Spitifo» row under Guía clears the
+   flag to `show` and returns to Inicio with `nav.goTab("home")`. `show` makes
+   the card appear even with a non-empty library, `dismissed` keeps it away and
+   an absent flag means "only while empty". The three-way decision is a pure
+   `shouldShowFirstRun(count, value)` with Vitest tests.
+3. **Empty library.** The empty state adds a muted line saying where downloads
+   are saved, reusing the same location and fallback.
+4. **Drive.** The dead-end subtitle became «Esta versión guarda la música en
+   este dispositivo. Google Drive se podrá conectar en una próxima versión.»
+   The control keeps its disabled/unconfigured state.
+5. **Cookies.** The bot wall leads with plain language (wait and retry, or
+   search Todas las fuentes); the original cookies.txt, private window and
+   secondary-account instructions keep their wording but move behind «Ayuda
+   avanzada». The import button is untouched.
+
+The card was checked live in headless Chrome with an empty library
+(`SPITIFO_LIBRARY` pointed at an empty folder), at phone and desktop width:
+the card shows, «Entendido» hides it across reloads, and the Ajustes row brings
+it back on Inicio. That check caught two layout bugs, fixed here: each step's
+text fell into the 26 px number column and wrapped word by word, and a long
+storage path overflowed the card and the empty-state line (both now wrap
+anywhere). The cookies note also says «Si YouTube frena…» instead of stating
+that it is blocking, since Ajustes shows it at all times.
+
+The card is a lazy chunk requested only when the conditions hold, so the boot
+script grew by 73 bytes (235,658 -> 235,731 B). The JS bundle grew by 2,925
+bytes to 449,149 B, most of it the new Spanish copy (676 B) and the two lazy
+chunks; CSS grew by 1,383 bytes to 122,463 B. The budgets rose from 446,800 to
+449,700 bytes (JS) and from 122,450 to 123,000 bytes (CSS).
 
 ## Dependencies
 
