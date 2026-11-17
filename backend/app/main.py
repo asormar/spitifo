@@ -750,7 +750,7 @@ async def _search_matched(q: str, limit: int) -> dict:
     muestra igual con su preview de 30s y se dice que no hay version entera.
     """
     import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
-    from .matcher import enrich_with_ytdlp
+    from .matcher import catalog_status, enrich_with_ytdlp
     _register_ytdlp()
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
@@ -760,9 +760,10 @@ async def _search_matched(q: str, limit: int) -> dict:
     # busqueda quedaba abierta y nunca se cerraba).
     isrc = BY_NAME["itunes"]
     it_items = await isrc._raw_search(q, limit=min(limit, 30))
+    catalog = catalog_status(q, it_items)
     if not it_items:
         return {"query": q, "mode": "matched", "count": 0, "results": [],
-                "ytdlp": yt_on}
+                "ytdlp": yt_on, "catalog": catalog}
 
     # 2) una sola busqueda en YouTube y emparejar
     matched = await enrich_with_ytdlp(it_items, q, ysrc) if yt_on else {}
@@ -774,7 +775,7 @@ async def _search_matched(q: str, limit: int) -> dict:
     # con version entera primero
     out.sort(key=lambda t: 0 if t.extra.get("has_full") else 1)
     return {
-        "query": q, "mode": "matched", "ytdlp": yt_on,
+        "query": q, "mode": "matched", "ytdlp": yt_on, "catalog": catalog,
         "count": len(out),
         "full": sum(1 for t in out if t.extra.get("has_full")),
         "results": [t.to_dict() for t in out],

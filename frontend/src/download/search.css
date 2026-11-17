@@ -308,3 +308,60 @@
     display: inline;
   }
 }
+
+/* --- Salidas del catalogo en Música -------------------------------------------- */
+
+.fb__acts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+  animation: hint-in var(--t-quick) var(--ease) backwards;
+}
+
+.fb__acts--in {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fb__acts .btn {
+  width: 100%;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 56px;
+}
+
+.fb__acts .btn small {
+  font: 600 12px / 1.3 var(--font-body);
+  opacity: 0.82;
+}
+
+.fb__acts--in .btn {
+  width: auto;
+  flex: none;
+  flex-direction: row;
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.fbweak {
+  max-width: none;
+  margin: 12px 0 0;
+  padding: 0;
+  text-align: left;
+  animation: hint-in var(--t-quick) var(--ease) backwards;
+}
+
+.fbweak h3 {
+  font-size: 15px;
+}
+
+.fbweak p {
+  margin: 0;
+  color: var(--mut);
+  font-size: 13.5px;
+}

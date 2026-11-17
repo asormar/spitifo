@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  catalogFallback,
   dlState,
   dlText,
   dlWaiting,
@@ -65,6 +66,34 @@ describe("shouldResync", () => {
     const next = { ...base, mode: "ytdlp" };
     expect(shouldResync(next)).toBe(true);
     expect(shouldResync({ ...next, lastSig: searchSig(next.mode, next.query) })).toBe(false);
+  });
+});
+
+describe("catalogFallback", () => {
+  it("solo decide en modo Música", () => {
+    expect(catalogFallback({ mode: "ytdlp", catalog: "none", count: 0 })).toBeNull();
+    expect(catalogFallback({ mode: "sources", catalog: "weak", count: 3 })).toBeNull();
+  });
+
+  it("empty: sin resultados o catalogo none", () => {
+    expect(catalogFallback({ mode: "matched", catalog: "none", count: 0 })).toBe("empty");
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 0 })).toBe("empty");
+  });
+
+  it("weak: catalogo debil con resultados", () => {
+    expect(catalogFallback({ mode: "matched", catalog: "weak", count: 14 })).toBe("weak");
+  });
+
+  it("nofull: hay resultados pero ninguno se baja entero", () => {
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 0 })).toBe("nofull");
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 3 })).toBeNull();
+    expect(catalogFallback({ mode: "matched", catalog: "weak", count: 14, full: 0 })).toBe("weak");
+  });
+
+  it("null con match, con respuestas viejas y con weak sin resultados", () => {
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 3 })).toBeNull();
+    expect(catalogFallback({ mode: "matched", catalog: undefined, count: 3 })).toBeNull();
+    expect(catalogFallback({ mode: "matched", catalog: "weak", count: 0 })).toBe("empty");
   });
 });
 

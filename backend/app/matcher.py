@@ -64,6 +64,27 @@ _ITUNES_QUALIFIER = re.compile(
     re.IGNORECASE)
 
 
+def catalog_status(query: str, items: list[dict]) -> str:
+    """Que tan bien cubre el catalogo de iTunes lo que pidio el usuario.
+
+    "none" no hay items; "match" alguno nombra todas las palabras utiles de la
+    consulta (en artista, titulo o album); "weak" hay items pero ninguno las
+    nombra todas. Acentos y mayusculas se ignoran con `fold`. Sin palabras
+    utiles (menos de dos letras) cuenta como match: no hay con que discriminar.
+    """
+    if not items:
+        return "none"
+    words = [w for w in (fold(p) for p in (query or "").split()) if len(w) >= 2]
+    if not words:
+        return "match"
+    for it in items:
+        text = " ".join(fold(it.get(k)) for k in
+                        ("artistName", "trackName", "collectionName"))
+        if all(w in text for w in words):
+            return "match"
+    return "weak"
+
+
 @lru_cache(maxsize=1024)
 def _credits(artist: str) -> tuple[str, ...]:
     return tuple(f for f in (fold(p) for p in _CREDIT_SPLIT.split(artist or "")) if f)
