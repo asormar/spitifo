@@ -400,3 +400,80 @@ def test_un_aviso_tardio_no_deshace_la_cancelacion(monkeypatch):
     assert d.get_item(jid)["status"] == "cancelled"
     d._sync_from_job(jid, {"status": "cancelled"})
     assert d.get_item(jid)["status"] == "cancelled"
+
+
+# -------------------------------------------------- persistencia del progreso
+def _item_con_job(monkeypatch):
+    """Item quieto en cola + job 'downloading' para disparar el callback."""
+    monkeypatch.setattr(d, "_schedule", lambda jid: None)
+    jid = d.enqueue([spec("Progreso")])[0]["id"]
+    ys.JOBS[jid] = {"status": "downloading", "phase": "downloading",
+                    "progress": 1.0, "speed": None, "eta": None,
+                    "title": "Progreso", "finished_at": None}
+    return jid
+
+
+def _reloj_y_guardados(monkeypatch):
+    """Reloj falso para `downloads` y contador de `_save` (sin tocar el disco)."""
+    ahora = [1000.0]
+
+    class Reloj:
+        @staticmethod
+        def time():
+            return ahora[0]
+
+    monkeypatch.setattr(d, "time", Reloj)
+    guardados: list[int] = []
+    monkeypatch.setattr(d, "_save", lambda: guardados.append(1))
+    return ahora, guardados
+
+
+def test_varios_ticks_dentro_de_5s_no_reescriben_el_json(monkeypatch):
+    jid = _item_con_job(monkeypatch)
+    ahora, guardados = _reloj_y_guardados(monkeypatch)
+    cb = d._progress_cb(jid)
+
+    cb()  # primer tick: cambio de estado, guarda
+    assert len(guardados) == 1
+    ys.JOBS[jid]["progress"] = 50.0
+    ahora[0] = 1001.1
+    cb()  # avance en memoria, sin guardar
+    assert d.get_item(jid)["progress"] == 50.0
+    ahora[0] = 1002.2
+    cb()
+    ahora[0] = 1003.3
+    cb()
+    assert len(guardados) == 1, "los ticks dentro de 5s no tocan el JSON"
+
+
+def test_cambio_de_status_o_phase_guarda_en_el_acto(monkeypatch):
+    jid = _item_con_job(monkeypatch)
+    ahora, guardados = _reloj_y_guardados(monkeypatch)
+    cb = d._progress_cb(jid)
+
+    cb()
+    assert len(guardados) == 1
+    ys.JOBS[jid]["phase"] = "converting"
+    ahora[0] = 1000.5
+    cb()  # gate de 1s: ni corre
+    assert len(guardados) == 1
+    ahora[0] = 1001.1
+    cb()
+    assert len(guardados) == 2, "el cambio de phase guarda sin esperar 5s"
+    assert d.get_item(jid)["phase"] == "converting"
+
+
+def test_tick_despues_de_5s_guarda(monkeypatch):
+    jid = _item_con_job(monkeypatch)
+    ahora, guardados = _reloj_y_guardados(monkeypatch)
+    cb = d._progress_cb(jid)
+
+    cb()  # guardado a t=1000
+    ahora[0] = 1002.0
+    cb()
+    ahora[0] = 1003.0
+    cb()
+    assert len(guardados) == 1
+    ahora[0] = 1000.0 + d.PROGRESS_SAVE_S + 0.1
+    cb()
+    assert len(guardados) == 2, "pasados 5s el tick vuelve a persistir"

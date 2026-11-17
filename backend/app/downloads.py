@@ -38,6 +38,11 @@ MAX_RUNNING = 2
 # tras recargar) y se tiran del JSON al cargar y al guardar.
 FINISHED_TTL_S = 24 * 3600.0
 
+# El avance se copia al item como maximo 1 vez/s, pero el JSON solo se reescribe
+# si cambio el estado o pasaron estos segundos: en el telefono cada write cuesta
+# bateria (ver _progress_cb).
+PROGRESS_SAVE_S = 5.0
+
 # Estados por los que pasa un item. `queued` es "esperando el semaforo", el
 # resto son los estados del job que ya publicaba ytdlp_source.
 QUEUED = "queued"
@@ -120,7 +125,13 @@ def _purge_finished_locked(now: float) -> None:
 
 
 def _save() -> None:
-    """Escribe atomico (temporal + replace) y purga terminados viejos."""
+    """Escribe atomico (temporal + replace) y purga terminados viejos.
+
+    Sin `fsync`: este JSON es un espejo reconstruible de la cola, no un dato
+    cuya durabilidad haya que garantizar. `os.replace` ya deja el archivo
+    siempre en un estado completo (o el viejo o el nuevo), y en un telefono el
+    fsync de cada tick de progreso es bateria y E/S regalados.
+    """
     path = queue_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +142,6 @@ def _save() -> None:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
             f.flush()
-            os.fsync(f.fileno())
         os.replace(tmp, path)
     except OSError as e:
         log.warning("no se pudo guardar la cola de descargas: %s", e)
@@ -220,8 +230,10 @@ def _sync_from_job(item_id: str, job: dict, *, save: bool = False) -> None:
 
 
 def _progress_cb(item_id: str):
-    """Aviso del hook de yt-dlp: persiste el avance como maximo 1 vez/segundo."""
+    """Aviso del hook de yt-dlp: el item se actualiza 1 vez/s, pero el JSON
+    solo se reescribe si cambio status/phase o pasaron PROGRESS_SAVE_S."""
     ultimo = [0.0]
+    ultimo_save = [0.0]
 
     def cb() -> None:
         ahora = time.time()
@@ -229,7 +241,14 @@ def _progress_cb(item_id: str):
             return
         ultimo[0] = ahora
         from .ytdlp_source import get_job
-        _sync_from_job(item_id, get_job(item_id) or {}, save=True)
+        job = get_job(item_id) or {}
+        item = get_item(item_id) or {}
+        cambio = (job.get("status") != item.get("status")
+                  or job.get("phase") != item.get("phase"))
+        guardar = cambio or ahora - ultimo_save[0] >= PROGRESS_SAVE_S
+        if guardar:
+            ultimo_save[0] = ahora
+        _sync_from_job(item_id, job, save=guardar)
 
     return cb
 

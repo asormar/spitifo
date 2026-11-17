@@ -1336,7 +1336,7 @@ class YtDlpSource(Source):
                     # tag_track nuevo los perderia y no habria orden de disco.
                     extra=dict(track.extra or {}),
                 )
-                _write_tags(path, tag_track)
+                await asyncio.to_thread(_write_tags, path, tag_track)
                 # La extension es la del archivo real: con "both" el merge deja
                 # un .mp4, pero el fallback a un unico archivo (`b`) puede ser
                 # .webm, y la clave no puede mentir sobre lo que contiene.
@@ -1423,7 +1423,7 @@ class YtDlpSource(Source):
                 # ya salio por put_file). En ERROR se conserva: continuedl
                 # necesita el .part para no empezar de cero en el reintento.
                 if exito or cancelado:
-                    shutil.rmtree(work, ignore_errors=True)
+                    await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
 
 
 def get_job(job_id: str) -> dict | None:

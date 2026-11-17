@@ -751,13 +751,14 @@ async def _search_matched(q: str, limit: int) -> dict:
     """
     import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
     from .matcher import enrich_with_ytdlp
-    from .sources import ITunesSource
     _register_ytdlp()
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
 
     # 1) catalogo de iTunes (metadata cruda, con duracion y portada)
-    isrc = ITunesSource()
+    # Fuente compartida: reutiliza su httpx.Client (una instancia nueva por
+    # busqueda quedaba abierta y nunca se cerraba).
+    isrc = BY_NAME["itunes"]
     it_items = await isrc._raw_search(q, limit=min(limit, 30))
     if not it_items:
         return {"query": q, "mode": "matched", "count": 0, "results": [],
