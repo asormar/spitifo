@@ -22,6 +22,7 @@ const ACTIVE_STATES = new Set(["pending", "downloading", "processing", "saving"]
 const TERMINAL_STATES = new Set(["done", "error", "cancelled"]);
 const POLL_FAST_MS = 1000;
 const POLL_SLOW_MS = 10000;
+const POLL_TIMEOUT_MS = 10000;
 
 /* Espera del reintento cuando no hay red: 1, 2, 4, 8 y tope de 15 s. Pura, para
    probarla sin temporizadores. */
@@ -260,6 +261,9 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     clearTimeout(timer);
     timer = null;
     if (disposed) return;
+    /* Con la pantalla apagada no sondeamos: en el telefono ahorra bateria.
+       visibilitychange ya llama a wake() en cuanto vuelve a ser visible. */
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     const busy = state.items.some((i) => BUSY_STATES.has(i.status));
     /* Sin trabajo que reanudar y con la hoja cerrada, dos esperas de 15 s son
        suficientes: el siguiente online/visible o una accion del usuario vuelve
@@ -289,8 +293,12 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
   const runPoll = async () => {
     clearTimeout(timer);
     timer = null;
+    /* Un GET colgado no puede dejar el espejo atrapado: se corta a los 10 s y
+       cuenta como fallo, asi que entra la misma espera creciente de siempre. */
+    const ac = new AbortController();
+    const deadline = setTimeout(() => ac.abort(), POLL_TIMEOUT_MS);
     try {
-      const r = await fetchImpl(`${API}/downloads`);
+      const r = await fetchImpl(`${API}/downloads`, { signal: ac.signal });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       markResumed();
@@ -306,6 +314,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
       capHits = retryDelay >= 15000 ? capHits + 1 : 0;
       if (!state.offline) emit({ offline: true });
     } finally {
+      clearTimeout(deadline);
       schedule();
     }
   };

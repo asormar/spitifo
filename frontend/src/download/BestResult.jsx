@@ -1,6 +1,5 @@
-import { useState } from "react";
-import { coverTone, toneClass, toneVars } from "../shared/cover.js";
-import { cx } from "../shared/ui.jsx";
+import { coverTone } from "../shared/cover.js";
+import { Cover } from "../listen/cards.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadArtistChunk } from "./artistChunk.js";
 import "./bestResult.css";
@@ -15,11 +14,7 @@ import "./bestResult.css";
    de artistas fallo, simplemente no se pinta.
    ------------------------------------------------------------------------- */
 
-const initial = (label) => (String(label || "").trim()[0] || "?").toUpperCase();
-
 export default function BestResult({ artist, onOpen }) {
-  const [broken, setBroken] = useState(false);
-  const tone = coverTone(artist.name, "");
   return (
     <button
       type="button"
@@ -29,20 +24,12 @@ export default function BestResult({ artist, onOpen }) {
       onFocus={loadArtistChunk}
       onClick={(e) => onOpen(artist, e.currentTarget)}
     >
-      <span className={cx("best__cv", "cv", toneClass(tone))} style={toneVars(tone)} aria-hidden="true">
-        <span>{initial(artist.name)}</span>
-        {artist.artwork_url && !broken && (
-          <img
-            src={thumbUrl(artist.artwork_url)}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            width={72}
-            height={72}
-            onError={() => setBroken(true)}
-          />
-        )}
-      </span>
+      <Cover
+        tone={coverTone(artist.name, "")}
+        label={artist.name}
+        src={artist.artwork_url ? thumbUrl(artist.artwork_url) : undefined}
+        className="best__cv"
+      />
       <span className="best__txt">
         <span className="best__t">{artist.name}</span>
         <span className="best__m">Artista · {artist.genre || "—"}</span>

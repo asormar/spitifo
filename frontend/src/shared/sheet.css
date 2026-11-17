@@ -192,3 +192,67 @@
     background: var(--s3);
   }
 }
+
+/* El boton principal a todo el ancho de las hojas de descarga: .btn ya da la
+   forma y el color, aqui solo la medida y el area de toque. */
+.btn--wide {
+  display: flex;
+  flex: none;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+}
+
+.btn--wide:hover {
+  filter: none;
+}
+
+/* Barra, cuerpo con scroll y foco compartidos por la ficha del album, la hoja
+   de la cola y la hoja de discografia. */
+:is(.als, .qsh, .dsh) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(.als__top, .qsh__top, .dsh__top) {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 4px 18px;
+}
+
+:is(.als__top, .qsh__top, .dsh__top) h2 {
+  margin: 0;
+  font: 700 16px var(--font-display);
+}
+
+/* El cierre es de 34 px como en el resto de hojas; el area tactil llega a 44. */
+:is(.als__top, .qsh__top, .dsh__top) .cbtn {
+  position: relative;
+}
+
+:is(.als__top, .qsh__top, .dsh__top) .cbtn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+:is(.als__body, .qsh__body, .dsh__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 18px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+:is(.als, .qsh, .dsh, .apage) button:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}

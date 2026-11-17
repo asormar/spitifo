@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
-import { coverTone, toneClass, toneVars } from "../shared/cover.js";
+import { coverTone } from "../shared/cover.js";
 import { rowKey } from "../shared/api.js";
+import { Cover } from "../listen/cards.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
@@ -24,28 +25,8 @@ import "./album.css";
    cualquier modo.
    ------------------------------------------------------------------------- */
 
-const initial = (label) => (String(label || "").trim()[0] || "?").toUpperCase();
 const verdict = (match) =>
   match === "match" ? "match" : match === "partial" ? "partial" : match === "mismatch" ? "mismatch" : "unv";
-
-function Cover({ album, className = "als__cv" }) {
-  const [broken, setBroken] = useState(false);
-  const tone = coverTone(album?.artist, album?.title);
-  return (
-    <span className={cx(className, "cv", toneClass(tone))} style={toneVars(tone)} aria-hidden="true">
-      <span>{initial(album?.artist || album?.title)}</span>
-      {album?.artwork_url && !broken && (
-        <img
-          src={thumbUrl(album.artwork_url)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setBroken(true)}
-        />
-      )}
-    </span>
-  );
-}
 
 /* La pastilla del estado de una pista, antes y despues de emparejar. */
 function TrackPill({ track, item, failed, onRetry, owned }) {
@@ -160,7 +141,12 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           </button>
         </div>
         <div className="als__head">
-          <Cover album={header} />
+          <Cover
+            tone={coverTone(header.artist, header.title)}
+            label={header.artist || header.title}
+            src={header.artwork_url ? thumbUrl(header.artwork_url) : undefined}
+            className="als__cv"
+          />
           <h2 className="als__title">{header.title || album.title}</h2>
           <p className="als__meta">{meta}</p>
           {!matching && match && (
@@ -181,7 +167,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           ) : (
             <button
               type="button"
-              className="als__btn"
+              className="btn btn--acc btn--wide als__btn"
               data-busy={running || undefined}
               aria-disabled={btn.disabled || undefined}
               onClick={() => !btn.disabled && enqueue(fullTracks)}
@@ -308,7 +294,12 @@ export function QueueSheet({ anchor, onClose }) {
             return (
               <section className="qgrp" key={g.id}>
                 <header className="qgrp__h">
-                  <Cover album={g} className="qgrp__cv" />
+                  <Cover
+                    tone={coverTone(g.artist, g.title)}
+                    label={g.artist || g.title}
+                    src={g.artwork_url ? thumbUrl(g.artwork_url) : undefined}
+                    className="qgrp__cv"
+                  />
                   <div>
                     <b>{g.title}</b>
                     <span>{state}</span>

@@ -32,23 +32,10 @@
 
 /* Doble clase: la .cv compartida trae su propio alto y radio. */
 .cv.best__cv {
-  position: relative;
-  display: grid;
-  flex: none;
-  place-items: center;
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  overflow: hidden;
   font: 700 24px var(--font-display);
-}
-
-.best__cv img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .best__txt {

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
 import { useListen } from "../listen/ListenProvider.jsx";
 import { useShow } from "../listen/Notice.jsx";
-import { initial } from "../listen/rows.jsx";
-import { coverTone, toneClass, toneVars } from "../shared/cover.js";
+import { coverTone } from "../shared/cover.js";
+import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
@@ -39,29 +39,6 @@ const SECTIONS = [
   { key: "compilations", title: "Recopilatorios" },
   { key: "singles", title: "Sencillos" },
 ];
-
-function Cover({ name, url, className, round }) {
-  const [broken, setBroken] = useState(false);
-  const tone = coverTone(name, "");
-  return (
-    <span
-      className={cx("acv", className, "cv", toneClass(tone), round && "acv--round")}
-      style={toneVars(tone)}
-      aria-hidden="true"
-    >
-      <span>{initial(name)}</span>
-      {url && !broken && (
-        <img
-          src={thumbUrl(url)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setBroken(true)}
-        />
-      )}
-    </span>
-  );
-}
 
 /* La hoja de «Descargar discografía». Vive en la pila de navegacion: atras,
    Escape y el atras de Android la cierran; Sheet atrapa el foco. */
@@ -134,7 +111,12 @@ function DiscographySheet({ artist, data, entries, anchor, onClose }) {
                       disabled={row.disabled}
                       onClick={() => setSel((s) => ({ ...s, [row.release.id]: !s[row.release.id] }))}
                     >
-                      <Cover name={row.release.artist || artist} url={row.release.artwork_url} className="dcrow__cv" />
+                      <Cover
+                        tone={coverTone(row.release.artist || artist, "")}
+                        label={row.release.artist || artist}
+                        src={row.release.artwork_url ? thumbUrl(row.release.artwork_url) : undefined}
+                        className="acv dcrow__cv"
+                      />
                       <span className="dcrow__t">
                         <b>{row.release.title}</b>
                         <span>{row.sub}</span>
@@ -155,7 +137,7 @@ function DiscographySheet({ artist, data, entries, anchor, onClose }) {
             <b>{totals.songs} {totals.songs === 1 ? "canción" : "canciones"}</b>
             {" · "}unos {totals.mb} MB
           </p>
-          <button type="button" className="dsh__btn" disabled={btn.disabled} onClick={confirm}>
+          <button type="button" className="btn btn--acc btn--wide dsh__btn" disabled={btn.disabled} onClick={confirm}>
             {btn.text}
           </button>
         </div>
@@ -247,7 +229,12 @@ export function ArtistPage({ view, active }) {
   return (
     <div className="apage">
       <header className="aphero">
-        <Cover name={data.name} url={data.artwork_url} className="apcv" round />
+        <Cover
+          tone={coverTone(data.name, "")}
+          label={data.name}
+          src={data.artwork_url ? thumbUrl(data.artwork_url) : undefined}
+          className="acv apcv acv--round"
+        />
         <div className="aphero__t">
           <h1>{data.name}</h1>
           {hero && <p>{hero}</p>}
@@ -256,7 +243,7 @@ export function ArtistPage({ view, active }) {
 
       <button
         type="button"
-        className="apdl"
+        className="btn btn--acc btn--wide apdl"
         data-autofocus
         onClick={(e) => nav.open({ type: "discsheet", anchor: e.currentTarget })}
       >
@@ -280,7 +267,12 @@ export function ArtistPage({ view, active }) {
                   onClick={(e) => openAlbum(r, e.currentTarget)}
                   aria-label={`Abrir el álbum ${r.title}`}
                 >
-                  <Cover name={r.artist || data.name} url={r.artwork_url} className="apcard__cv" />
+                  <Cover
+                    tone={coverTone(r.artist || data.name, "")}
+                    label={r.artist || data.name}
+                    src={r.artwork_url ? thumbUrl(r.artwork_url) : undefined}
+                    className="acv apcard__cv"
+                  />
                   <b className="apcard__t">{r.title}</b>
                   {own.label ? (
                     <span className={cx("apcard__pill", own.full && "is-full")}>{own.label}</span>

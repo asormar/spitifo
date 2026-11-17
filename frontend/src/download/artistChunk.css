@@ -60,32 +60,18 @@
   line-height: 1.4;
 }
 
-/* La portada redonda del artista; cuadrada la de un disco. */
-/* Doble clase: la .cv compartida fija un alto de 40px que, si no, gana al
-   aspect-ratio y aplasta la portada en una franja. */
+/* La portada redonda del artista; cuadrada la de un disco. Doble clase: la .cv
+   compartida fija un alto de 40px que, si no, gana al aspect-ratio. */
 .cv.acv {
-  position: relative;
-  display: grid;
-  flex: none;
-  place-items: center;
   width: 100%;
   height: auto;
   aspect-ratio: 1;
   border-radius: var(--r-cover);
-  overflow: hidden;
   font: 700 2.4em var(--font-display);
 }
 
 .acv.acv--round {
   border-radius: 50%;
-}
-
-.acv img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .acv.apcv {
@@ -95,23 +81,10 @@
 /* --- Boton principal ------------------------------------------------------- */
 
 .apdl {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 9px;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: 800 14px var(--font-body);
-  cursor: pointer;
-  transition: var(--tr-btn);
 }
 
-.apdl:active {
+.btn.apdl:active {
   transform: scale(0.98);
 }
 
@@ -188,41 +161,8 @@
 
 /* --- Hoja de discografia --------------------------------------------------- */
 
-.dsh {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.dsh__top {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 4px 18px;
-}
-
-.dsh__top h2 {
-  margin: 0;
-  font: 700 16px var(--font-display);
-}
-
-.dsh__top .cbtn {
-  position: relative;
-}
-
-/* El area tactil del cierre llega a 44 px sin mover el dibujo. */
-.dsh__top .cbtn::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-}
-
+/* La barra, el cuerpo con scroll y el foco los comparte sheet.css con la
+   hoja del album. Aqui solo el relleno inferior del cuerpo. */
 .dsh__sub {
   flex: none;
   margin: 0;
@@ -233,11 +173,7 @@
 }
 
 .dsh__body {
-  flex: 1 1 auto;
-  min-height: 0;
   padding: 0 18px 12px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .dgrp {
@@ -345,32 +281,15 @@
   color: var(--ink);
 }
 
-.dsh__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 48px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: 800 14px var(--font-body);
-  cursor: pointer;
-  transition: var(--tr-btn);
+.btn.dsh__btn:active {
+  transform: none;
 }
 
-.dsh__btn:disabled {
+.btn.dsh__btn:disabled {
   background: var(--s2);
   color: var(--mut);
+  opacity: 1;
   cursor: default;
-}
-
-.dsh button:focus-visible,
-.apage button:focus-visible {
-  outline: 2px solid var(--acc);
-  outline-offset: 2px;
 }
 
 /* --- Escritorio ------------------------------------------------------------ */
