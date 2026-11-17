@@ -82,7 +82,7 @@ def test_albums_search_forma(cliente, monkeypatch):
     from backend.app.sources import ITunesSource
 
     album = {
-        "wrapperType": "collection", "collectionId": 999,
+        "wrapperType": "collection", "collectionId": 999, "artistId": 777,
         "collectionName": "Meteora", "artistName": "Linkin Park",
         "releaseDate": "2003-03-25T07:00:00Z", "trackCount": 12,
         "artworkUrl100": "http://x/100x100bb.jpg",
@@ -101,7 +101,8 @@ def test_albums_search_forma(cliente, monkeypatch):
     assert body["query"] == "meteora"
     assert vistos == {"q": "meteora", "limit": 8}
     assert body["albums"] == [{
-        "id": 999, "title": "Meteora", "artist": "Linkin Park",
+        "id": 999, "artist_id": 777, "title": "Meteora",
+        "artist": "Linkin Park",
         "year": "2003", "track_count": 12,
         "artwork_url": "http://x/300x300bb.jpg", "explicit": True,
     }]

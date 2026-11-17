@@ -1008,8 +1008,15 @@ preselected and a live total), and «Más de <artista>» in Escuchar.
    cancelled. The queue code stays out of the boot chunk: at start a tiny
    module asks once whether anything is pending, so the boot script is
    smaller than before the chain (236,576 B).
-3. **Artists backend.** The iTunes `artistId`, artist search and the
-   discography by id.
+3. **Artists backend.** Songs and album results carry the iTunes `artistId`.
+   `GET /api/artists/search` returns the ranked artists, and
+   `GET /api/artist/{id}` returns the discography in four lists, newest first:
+   studio `albums`, `live`, `compilations` and `singles`. iTunes does not mark
+   compilations, so the title and the copyright line decide («Lo Esencial»,
+   «Hits», a copyright listing three or more years). Duplicate editions
+   collapse to the one worth downloading: explicit first, then the fewest
+   tracks, so «Ride the Lightning» keeps its 9 tracks and not the 63 of the
+   deluxe box. Releases by other artists are dropped.
 4. **Artists frontend.** The artist as «Mejor resultado», the artist page,
    «Descargar discografía» and the link from Escuchar.
 

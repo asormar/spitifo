@@ -390,6 +390,8 @@ account risks a ban; a secondary account is advisable.
 | --- | --- | --- |
 | `GET` | `/api/health` | Which sources are active right now, and the yt-dlp version in use |
 | `GET` | `/api/search` | Search every active source (`mode`, `source`, `limit`) |
+| `GET` | `/api/artists/search?q=&limit=` | Ranked artists from iTunes (`entity=musicArtist`), as `query` plus `results` with `id`, `name` and `genre`; an upstream failure returns an empty list |
+| `GET` | `/api/artist/{id}` | Discography for an iTunes `artistId`: the artist plus `albums`, `live`, `compilations` and `singles` (deduplicated, newest first), with the cover of the newest studio album as `artwork_url` |
 | `POST` | `/api/resolve` | Turn a catalogue entry into a playable URL |
 | `GET` | `/api/verify` | Inspect what is inside an item without downloading it |
 | `GET` | `/api/setlist` | Expand an Archive concert into its real setlist |
