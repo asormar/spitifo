@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg } from "../shared/api.js";
 import { buildSearchParams, warmTopResults } from "./api.js";
 import { searchAlbums } from "./albumApi.js";
+import { searchArtists } from "./artistApi.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
 import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
@@ -19,8 +20,14 @@ export default function useSearchRun() {
   const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
-  /* Los albumes van en paralelo y aparte: nunca retrasan a las canciones. */
+  /* Los albumes y los artistas van en paralelo y aparte: nunca retrasan a
+     las canciones, y un fallo de iTunes no rompe la busqueda principal. */
   const [albums, setAlbums] = useState([]);
+  const [artists, setArtists] = useState([]);
+  /* El texto que produjo esta lista de artistas: si la busqueda de canciones
+     falla, `query` queda en el anterior y no debe compararse con artistas
+     nuevos. */
+  const [artistQuery, setArtistQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -34,6 +41,7 @@ export default function useSearchRun() {
   const searchSeq = useRef(0);
   const searchAbort = useRef(null);
   const albumAbort = useRef(null);
+  const artistAbort = useRef(null);
   /* El modo que vale ahora, para las funciones estables (run, el pedido). */
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -64,13 +72,28 @@ export default function useSearchRun() {
     /* Los albumes solo existen en modo Musica. Se piden aparte y sin esperar:
        las canciones no dependen de iTunes ni de lo que tarde esta respuesta. */
     albumAbort.current?.abort();
+    artistAbort.current?.abort();
     setAlbums([]);
+    setArtists([]);
+    setArtistQuery("");
     if (m === "matched") {
       const aa = new AbortController();
       albumAbort.current = aa;
       searchAlbums(t, aa.signal)
         .then((list) => {
           if (seq === searchSeq.current && !aa.signal.aborted) setAlbums(list);
+        })
+        .catch(() => {});
+      /* El «Mejor resultado» es un extra: se pide aparte y su fallo no toca
+         ni las canciones ni el estante de albumes. */
+      const ra = new AbortController();
+      artistAbort.current = ra;
+      searchArtists(t, 3, ra.signal)
+        .then((list) => {
+          if (seq === searchSeq.current && !ra.signal.aborted) {
+            setArtists(list);
+            setArtistQuery(t);
+          }
         })
         .catch(() => {});
     }
@@ -109,10 +132,13 @@ export default function useSearchRun() {
     searchSeq.current += 1;
     searchAbort.current?.abort();
     albumAbort.current?.abort();
+    artistAbort.current?.abort();
     lastSig.current = "";
     setLoading(false);
     setResults([]);
     setAlbums([]);
+    setArtists([]);
+    setArtistQuery("");
     setQuery("");
     setErr(null);
     setFilter("all");
@@ -180,7 +206,7 @@ export default function useSearchRun() {
   useEffect(() => () => searchBusy.set(false), []);
 
   return {
-    q, setQ, mode, setMode, query, results, albums, loading, searched, err, filter, setFilter,
+    q, setQ, mode, setMode, query, results, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
     runs, run, submit, reset,
   };
 }

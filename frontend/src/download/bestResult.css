@@ -1,0 +1,70 @@
+/* ---------------------------------------------------------------------------
+   MEJOR RESULTADO (Buscar)
+   Solo transform y opacity; colores de tokens.css.
+   ------------------------------------------------------------------------- */
+
+.bestsec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.best {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.best:active {
+  transform: scale(0.99);
+}
+
+/* Doble clase: la .cv compartida trae su propio alto y radio. */
+.cv.best__cv {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  font: 700 24px var(--font-display);
+}
+
+.best__cv img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.best__txt {
+  min-width: 0;
+}
+
+.best__t {
+  display: block;
+  font: 700 17px / 1.25 var(--font-display);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.best__m {
+  display: block;
+  margin-top: 3px;
+  color: var(--mut);
+  font-size: 13px;
+}

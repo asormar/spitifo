@@ -16,7 +16,10 @@ import { noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
 import AlbumShelf from "./AlbumShelf.jsx";
+import BestResult from "./BestResult.jsx";
 import { loadAlbumChunk } from "./albumChunk.js";
+import { loadArtistChunk } from "./artistChunk.js";
+import { bestArtwork, bestMatch } from "./artistLogic.js";
 import Choice from "./Choice.jsx";
 import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
@@ -54,7 +57,7 @@ export default function SearchScreen({
 }) {
   const pc = usePc();
   const run = useSearchRun();
-  const { q, setQ, mode, setMode, query, results, albums, loading, searched, err, filter, setFilter } = run;
+  const { q, setQ, mode, setMode, query, results, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
 
   /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
      (la descarga mas rapida, ver M4A_AUDIO_SELECTOR en ytdlp_source.py). */
@@ -81,7 +84,9 @@ export default function SearchScreen({
   const stack = nav.stackOf("search");
   const menuAt = stack.at(-1)?.type === "resmenu" ? stack.at(-1) : null;
   const fichaAt = stack.find((e) => e.type === "ficha");
-  const albumAt = stack.find((e) => e.type === "albumsheet");
+  /* Solo la ficha del estante de Buscar (sin `from`); la que abre la pagina
+     del artista o Escuchar trae su propio album en la entrada. */
+  const albumAt = stack.find((e) => e.type === "albumsheet" && !e.from);
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
   const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
   const albumT = albumAt && albums.find((a) => String(a.id) === String(albumAt.id));
@@ -121,6 +126,19 @@ export default function SearchScreen({
      tarjeta que la abrio (lo hace Sheet). */
   const onOpenAlbum = useCallback(
     (album, anchor) => nav.open({ type: "albumsheet", id: album.id, anchor }),
+    [nav.open]
+  );
+
+  /* «Mejor resultado»: solo si el texto nombra de verdad al primer artista.
+     La portada redonda sale del disco mas nuevo que haya entre los resultados
+     de albumes; sin el, la tarjeta cae a la inicial. */
+  const best = bestMatch(artistQuery, artists);
+  const bestArtist = best ? { ...best, artwork_url: bestArtwork(best, albums) } : null;
+  const onOpenArtist = useCallback(
+    (artist, anchor) => {
+      loadArtistChunk();
+      nav.open({ type: "itunesartist", id: artist.id, name: artist.name, genre: artist.genre, anchor });
+    },
     [nav.open]
   );
 
@@ -301,6 +319,13 @@ export default function SearchScreen({
 
       {!searched && (
         <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
+      )}
+
+      {bestArtist && (
+        <section className="bestsec" aria-labelledby="best-h">
+          <h2 className="sh2" id="best-h">Mejor resultado</h2>
+          <BestResult artist={bestArtist} onOpen={onOpenArtist} />
+        </section>
       )}
 
       <AlbumShelf albums={albums} onOpen={onOpenAlbum} />

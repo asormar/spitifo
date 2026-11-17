@@ -10,7 +10,7 @@ import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, fetchAlbumMatch } from "./albumApi.js";
-import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot } from "./albumText.js";
+import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
 
@@ -126,14 +126,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     return () => matchAbort.current?.abort();
   }, [runMatch]);
 
-  const spec = useCallback(
-    (t) => {
-      const copy = { ...t };
-      delete copy.downloadable;
-      return { source: copy.source, track: copy, fmt: "m4a", media: "audio", query: ask };
-    },
-    [ask]
-  );
+  const spec = useCallback((t) => trackSpec(t, ask), [ask]);
 
   /* Un solo POST con todas las pistas y el grupo: el servidor deduce lo que
      falta encolar y dedupe por archivo de salida. */
