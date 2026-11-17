@@ -7,9 +7,15 @@ Reglas:
 from __future__ import annotations
 
 import asyncio
+import copy
+import functools
+import inspect
 import logging
 import os
 import re
+import threading
+import time
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -143,12 +149,99 @@ class Source:
 
 
 # --------------------------------------------------------------------------
+# Cache de resultados de iTunes: acotada (128), TTL de 5 min, desalojo del mas
+# viejo primero. `album_detail` y `album_match` repiten la MISMA lookup: en un
+# telefono eso son dos peticiones de red (y bateria) por cada visita al disco.
+# Los resultados se devuelven copiados para que ningun llamador pueda mutar lo
+# que quedo guardado. Los errores nunca entran: el `raise_for_status` salta
+# antes de guardar.
+# --------------------------------------------------------------------------
+ITUNES_CACHE_TTL_S = 300.0
+ITUNES_CACHE_MAX = 128
+
+_ITUNES_CACHE: "OrderedDict[tuple, tuple[float, Any]]" = OrderedDict()
+_ITUNES_CACHE_LOCK = threading.Lock()
+_CACHE_MISS = object()
+
+
+def clear_itunes_cache() -> None:
+    """Descarta todo lo cacheado (fixture de tests entre casos)."""
+    with _ITUNES_CACHE_LOCK:
+        _ITUNES_CACHE.clear()
+
+
+def _freeze(valor):
+    """Clave hashable para un argumento (str/int, o su repr si no lo es)."""
+    try:
+        hash(valor)
+        return valor
+    except TypeError:
+        return repr(valor)
+
+
+def _cache_get(clave: tuple):
+    ahora = time.time()
+    with _ITUNES_CACHE_LOCK:
+        entrada = _ITUNES_CACHE.get(clave)
+        if entrada is None:
+            return _CACHE_MISS
+        guardado, valor = entrada
+        if ahora - guardado >= ITUNES_CACHE_TTL_S:
+            _ITUNES_CACHE.pop(clave, None)
+            return _CACHE_MISS
+        return valor
+
+
+def _cache_put(clave: tuple, valor) -> None:
+    ahora = time.time()
+    with _ITUNES_CACHE_LOCK:
+        _ITUNES_CACHE[clave] = (ahora, copy.deepcopy(valor))
+        _ITUNES_CACHE.move_to_end(clave)
+        # Primero vencidos, luego recorte por tope (el mas viejo primero).
+        for k, (guardado, _) in list(_ITUNES_CACHE.items()):
+            if ahora - guardado >= ITUNES_CACHE_TTL_S:
+                _ITUNES_CACHE.pop(k, None)
+        while len(_ITUNES_CACHE) > ITUNES_CACHE_MAX:
+            _ITUNES_CACHE.popitem(last=False)
+
+
+def _vacio(valor) -> bool:
+    """Un resultado vacio (o de error) no se guarda."""
+    if not valor:
+        return True
+    return isinstance(valor, tuple) and all(not x for x in valor)
+
+
+def _cached(fn):
+    """Decorador: clave = nombre del metodo + argumentos (sin `self`)."""
+    nombre = fn.__name__
+    firma = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    async def wrapper(self, *args, **kwargs):
+        ligada = firma.bind(self, *args, **kwargs)
+        ligada.apply_defaults()
+        clave = (nombre, tuple((k, _freeze(v)) for k, v in ligada.arguments.items()
+                               if k != "self"))
+        valor = _cache_get(clave)
+        if valor is not _CACHE_MISS:
+            return copy.deepcopy(valor)
+        valor = await fn(self, *args, **kwargs)
+        if not _vacio(valor):
+            _cache_put(clave, valor)
+        return copy.deepcopy(valor)
+
+    return wrapper
+
+
+# --------------------------------------------------------------------------
 # iTunes Search API — catalogo enorme, pero SOLO preview de 30s.
 # Sirve para que el usuario encuentre el tema y vea de donde viene.
 # --------------------------------------------------------------------------
 class ITunesSource(Source):
     name = "itunes"
 
+    @_cached
     async def _raw_search(self, q: str, limit: int = 20) -> list[dict]:
         """Los dicts crudos de la API (con trackTimeMillis, artworkUrl100...).
 
@@ -162,6 +255,7 @@ class ITunesSource(Source):
         return [t for t in r.json().get("results", [])
                 if t.get("kind") == "song"]
 
+    @_cached
     async def search_albums(self, q: str, limit: int = 8) -> list[dict]:
         """Buscar albumes (entity=album): los dicts crudos, sin transformar."""
         r = await self.client.get(
@@ -172,6 +266,7 @@ class ITunesSource(Source):
         return [a for a in r.json().get("results", [])
                 if a.get("collectionId") and a.get("collectionName")]
 
+    @_cached
     async def search_artists(self, q: str, limit: int = 5) -> list[dict]:
         """Buscar artistas (entity=musicArtist): dicts crudos, sin transformar.
 
@@ -186,6 +281,7 @@ class ITunesSource(Source):
         return [a for a in r.json().get("results", [])
                 if a.get("artistId") and a.get("artistName")]
 
+    @_cached
     async def artist_albums(self, artist_id: str | int) -> list[dict]:
         """Discografia de un artista (lookup id + entity=album), cruda.
 
@@ -198,6 +294,7 @@ class ITunesSource(Source):
         r.raise_for_status()
         return r.json().get("results", [])
 
+    @_cached
     async def lookup(self, album_id: str | int
                      ) -> tuple[dict | None, list[dict]]:
         """(coleccion, canciones) de un album, en dicts crudos.

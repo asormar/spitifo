@@ -72,6 +72,15 @@ def _sin_autoupdate_de_ytdlp(monkeypatch):
     (el cuerpo del test corre despues de esta fixture, asi que gana)."""
     monkeypatch.setenv("SPITIFO_YTDLP_AUTOUPDATE", "0")
 
+
+@pytest.fixture(autouse=True)
+def _sin_cache_de_itunes():
+    """La cache de iTunes nunca filtra resultados de un test al siguiente."""
+    from backend.app.sources import clear_itunes_cache
+    clear_itunes_cache()
+    yield
+    clear_itunes_cache()
+
 # --- tiempo maximo para cualquier test que hable con una API externa ----------
 TIMEOUT_RED = 30.0
 
