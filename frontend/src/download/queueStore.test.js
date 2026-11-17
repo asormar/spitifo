@@ -26,6 +26,7 @@ const deferred = () => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("cola: espera ante un corte de red", () => {
@@ -259,5 +260,77 @@ describe("cola: la pildora", () => {
     expect(activeGroup(groups).title).toBe("Signos");
     expect(activeGroup(groupItems([it("a", "Doble vida", "queued")])).title).toBe("Doble vida");
     expect(activeGroup(groupItems([it("a", "Doble vida", "done")]))).toBe(null);
+  });
+});
+
+/* Node no tiene document: el test lo simula para probar visibilitychange. */
+const fakeDocument = (state, listeners) => ({
+  get visibilityState() {
+    return state.value;
+  },
+  addEventListener: vi.fn((type, fn) => {
+    listeners[type] = fn;
+  }),
+});
+
+describe("cola: pantalla oculta", () => {
+  it("con trabajo pendiente y la pantalla apagada no arma el sondeo", async () => {
+    vi.useFakeTimers();
+    const state = { value: "hidden" };
+    const listeners = {};
+    vi.stubGlobal("document", fakeDocument(state, listeners));
+    vi.stubGlobal("window", { addEventListener: vi.fn() });
+    const fetchImpl = vi.fn().mockResolvedValue(ok([]));
+    const s = createQueueStore(fetchImpl);
+    await s.hydrate({ items: [item(60, "downloading")], running: 1, queued: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    s.dispose();
+  });
+
+  it("al volver visible sondea enseguida aunque no quedara temporizador", async () => {
+    vi.useFakeTimers();
+    const state = { value: "hidden" };
+    const listeners = {};
+    vi.stubGlobal("document", fakeDocument(state, listeners));
+    vi.stubGlobal("window", { addEventListener: vi.fn() });
+    const fetchImpl = vi.fn().mockResolvedValue(ok([]));
+    const s = createQueueStore(fetchImpl);
+    await s.hydrate({ items: [item(61, "downloading")], running: 1, queued: 0 });
+    expect(vi.getTimerCount()).toBe(0);
+    state.value = "visible";
+    await listeners.visibilitychange();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+});
+
+describe("cola: sondeo con plazo", () => {
+  it("un GET que no responde aborta a los 10 s, marca offline y permite otro sondeo", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(
+        (url, init) =>
+          new Promise((resolve, reject) => {
+            init.signal.addEventListener("abort", () => reject(new Error("abort")));
+          })
+      )
+      .mockResolvedValueOnce(ok([]));
+    const s = createQueueStore(fetchImpl);
+    s.pollNow();
+    expect(fetchImpl.mock.calls[0][1]).toHaveProperty("signal");
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(s.getOffline()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.getOffline()).toBe(true);
+    /* El fallo entra en la espera creciente: primer reintento a 1 s. */
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(s.getOffline()).toBe(false);
+    s.dispose();
   });
 });

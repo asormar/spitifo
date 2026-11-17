@@ -3,48 +3,10 @@
    Solo transform y opacity en el movimiento; colores de tokens.css.
    ------------------------------------------------------------------------- */
 
-.als,
-.qsh {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.als__top,
-.qsh__top {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 4px 18px;
-}
-
-/* El boton de cerrar es de 34 px como en el resto de hojas; el area tactil
-   llega a 44 sin mover el dibujo. */
-.als__top .cbtn,
-.qsh__top .cbtn {
-  position: relative;
-}
-
-.als__top .cbtn::after,
-.qsh__top .cbtn::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-}
-
+/* La barra, el cuerpo con scroll y el foco los comparte sheet.css con la
+   hoja de discografia. Aqui solo lo que cambia en esta hoja. */
 .qsh__top {
   padding: 2px 12px 10px 18px;
-}
-
-.qsh__top h2 {
-  margin: 0;
-  font: 700 16px var(--font-display);
 }
 
 /* Aviso de red caida: no es un error de la descarga, es un aviso. */
@@ -71,21 +33,10 @@
 }
 
 .als__cv {
-  position: relative;
   width: 160px;
   height: 160px;
   border-radius: var(--r-card);
-  overflow: hidden;
   font-size: 46px;
-}
-
-.als__cv img,
-.qgrp__cv img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .als__title {
@@ -108,46 +59,23 @@
   justify-content: center;
 }
 
-.als__body,
-.qsh__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: 0 18px 18px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 /* --- Boton principal -------------------------------------------------------- */
 
 .als__btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 48px;
   margin: 2px 0 14px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--r-pill);
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: 800 14px var(--font-body);
-  cursor: pointer;
-  transition: var(--tr-btn);
 }
 
 .als__btn:active:not([aria-disabled]) {
   transform: scale(0.97);
 }
 
-.als__btn[aria-disabled] {
+.btn.als__btn[aria-disabled] {
   background: var(--s2);
   color: var(--mut);
   cursor: default;
 }
 
-.als__btn[data-busy] {
+.btn.als__btn[data-busy] {
   cursor: progress;
 }
 
@@ -330,12 +258,9 @@
 }
 
 .qgrp__cv {
-  position: relative;
-  flex: none;
   width: 52px;
   height: 52px;
   border-radius: var(--r-sm);
-  overflow: hidden;
   font-size: 18px;
 }
 
@@ -423,12 +348,6 @@
 .ql__cancel {
   align-self: flex-start;
   padding-left: 0;
-}
-
-.als button:focus-visible,
-.qsh button:focus-visible {
-  outline: 2px solid var(--acc);
-  outline-offset: 2px;
 }
 
 @media (min-width: 960px) {
