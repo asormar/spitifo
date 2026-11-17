@@ -1109,15 +1109,24 @@ Pure helpers (keyboard target, hotkey and IME guards, the SR summary) have
 focused Vitest tests, and the keyboard flows were checked with real key events
 in headless Chrome against the dev library (52 songs): skip link, Ctrl+K,
 arrows, PageUp, Home and End in the library, arrows and End in the results,
-focus after a top-bar search. Real-device NVDA and TalkBack checks are still
-pending.
+focus after a top-bar search.
+
+The accessibility tree was then read on a Pixel 9 Pro (Chrome over `adb reverse`,
+`uiautomator dump`), which is what TalkBack announces. It confirmed the result
+names, the radio-button modes and the skip link first, and it found two defects
+fixed afterwards: the source badge was read letter by letter («iT»), and title,
+artist, verdict and duration ran together without a pause. Rows now read, for
+example, «Persiana Americana, Soda Stereo, Me Verás Volver (Hits & Más), 1986.
+Sin verificar, ficha de iTunes, archivo de YouTube, 4:52». TalkBack itself
+ignores gestures and key events injected through adb, so walking the focus
+order by hand on the device, and an NVDA pass on Windows, are still pending.
 
 The fixes cost 1,965 bytes of JS: 586 in the boot script (the Ctrl+K handler
 and the skip-link target), 566 in a new `keyNav` chunk shared by the results
 and the library, and the rest in the lazy chunks that use it. The JS budget
 rose from 444,500 to 446,800 bytes.
 
-### 30. First run — in review
+### 30. First run — done (#55)
 
 Three personas from the user study opened the app for the first time with no
 idea what the search modes were or where the music was saved. There was no

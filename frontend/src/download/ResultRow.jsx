@@ -78,12 +78,22 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       >
         <Thumb t={t} />
         <span className="res__txt">
+          {/* Las comas ocultas separan las partes al leerlas: sin ellas el
+              lector encadena «Persiana Americana Soda Stereo» sin pausa. La
+              sigla de la fuente («iT») se oye como letras sueltas, asi que el
+              lector recibe el nombre entero en su lugar. */}
           <span className="res__t">{title}</span>
+          <span className="sr-only">, </span>
           <span className="res__s">{subOf(t)}</span>
+          <span className="sr-only">. </span>
           <span className="res__m">
             {v ? <VerdictPill v={v} /> : <span className="res__no">{NODL_TITLE.none}</span>}
+            <span className="sr-only">
+              , {prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo},{" "}
+            </span>
             <span
               className="src"
+              aria-hidden="true"
               title={prov.split ? `ficha: ${prov.ficha} · archivo: ${prov.archivo}` : prov.archivo}
             >
               {SOURCE_CODE[t.source] || prov.ficha}
