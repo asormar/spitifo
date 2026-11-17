@@ -73,6 +73,7 @@ describe("normalizeEntry", () => {
       track_no: null,
       disc_no: null,
       album_id: null,
+      artist_id: null,
       added: 0,
       hasAudio: true,
       search: "song artist album",
@@ -81,11 +82,11 @@ describe("normalizeEntry", () => {
 
   it("carries the disc, track and album id from the backend, or null", () => {
     const tagged = normalizeEntry(
-      file({ track_no: 3, disc_no: 2, album_id: 12345 })
+      file({ track_no: 3, disc_no: 2, album_id: 12345, artist_id: 77 })
     );
-    expect([tagged.track_no, tagged.disc_no, tagged.album_id]).toEqual([3, 2, "12345"]);
+    expect([tagged.track_no, tagged.disc_no, tagged.album_id, tagged.artist_id]).toEqual([3, 2, "12345", "77"]);
     const legacy = normalizeEntry(file({}));
-    expect([legacy.track_no, legacy.disc_no, legacy.album_id]).toEqual([null, null, null]);
+    expect([legacy.track_no, legacy.disc_no, legacy.album_id, legacy.artist_id]).toEqual([null, null, null, null]);
   });
 
   it("reads the stored verdict and provenance, and leaves a legacy file at null", () => {

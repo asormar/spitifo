@@ -139,6 +139,12 @@
   padding: 18px 0 0;
 }
 
+/* «Más de <artista>» sale bajo las acciones de la ficha de Escuchar. */
+.amore {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 .btn--pink {
   background: var(--pink);
   color: var(--on-pink);

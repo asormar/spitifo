@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadAlbumChunk } from "../download/albumChunk.js";
+import { loadArtistChunk } from "../download/artistChunk.js";
+import { resolveArtistLink } from "../download/artistLink.js";
+import { requestSearch } from "../download/searchRequest.js";
 import Ico from "../shared/ico.jsx";
 import { Icon } from "../shared/icons.jsx";
 import { toneVars } from "../shared/cover.js";
@@ -149,6 +152,22 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
       });
     },
     [nav.open, tracklist, tracklistId, d]
+  );
+
+  /* «Más de <artista>» puede tardar (busca el nombre en iTunes). Mientras
+     tanto el boton queda ocupado, y si cambias de ficha o de pestana la
+     respuesta vieja se ignora: nunca te arrastra a Buscar sin pedirlo. */
+  const [linking, setLinking] = useState(false);
+  const linkSeq = useRef(0);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const linkKey = d.state === "ok" ? d.name : "";
+  useEffect(
+    () => () => {
+      linkSeq.current += 1;
+      setLinking(false);
+    },
+    [linkKey]
   );
 
   if (d.state !== "ok") return <Gone d={d} backRef={backRef} ctx={ctx} nav={nav} pc={pc} />;
@@ -307,6 +326,24 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
     />
   );
 
+  /* «Más de <artista>»: con el id guardado se abre la pagina de iTunes; si no,
+     se resuelve por nombre y, sin coincidencia exacta, se cae a una busqueda
+     normal en Buscar. El chunk del artista se adelanta al enfocar. */
+  const moreArtist = async () => {
+    const seq = ++linkSeq.current;
+    loadArtistChunk();
+    setLinking(true);
+    const view = await resolveArtistLink(name, rows);
+    if (seq !== linkSeq.current) return;
+    setLinking(false);
+    if (!activeRef.current) return;
+    if (view) nav.goTo("search", view);
+    else {
+      requestSearch(name);
+      nav.goTab("search");
+    }
+  };
+
   if (artist) {
     const cover = (
       <Cover tone={tone} label={name} src={coverOf(rows)} size={pc ? 156 : 340} round={pc} />
@@ -334,6 +371,17 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
         </header>
         {!pc && <p className="ghead">{meta}</p>}
         {acts}
+        <button
+          type="button"
+          className="btn btn--ghost amore"
+          onPointerEnter={loadArtistChunk}
+          onFocus={loadArtistChunk}
+          onClick={moreArtist}
+          disabled={linking}
+          aria-busy={linking || undefined}
+        >
+          Más de {name}
+        </button>
         {d.albums.length > 0 && (
           <section className="sec dalb" aria-labelledby="h-dalb">
             <SectionHead id="h-dalb" title="Álbumes" />

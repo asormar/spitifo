@@ -61,6 +61,15 @@ export const OFFLINE_PILL = "Sin conexión · en pausa";
 export const pausedText = (pct) => `En pausa · sin red · ${Math.round(pct)} %`;
 export const resumingText = (pct) => `Retomando desde ${Math.round(pct)} %`;
 
+/* La forma de item que espera POST /api/downloads. La usan la ficha del album
+   y la lista de discografia: una sola definicion, sin copias. `downloadable`
+   lo decide el servidor, asi que no se envia. */
+export function trackSpec(track, query) {
+  const copy = { ...track };
+  delete copy.downloadable;
+  return { source: copy.source, track: copy, fmt: "m4a", media: "audio", query };
+}
+
 /* El hueco de una pista en su disco: «1-9». Una pista de iTunes trae
    disc_number/track_number en `extra`; una entrada de la biblioteca, disc_no y
    track_no. Sin numero de pista no hay hueco. */

@@ -65,6 +65,9 @@ export function normalizeEntry(file) {
     track_no: Number.isInteger(f.track_no) ? f.track_no : null,
     disc_no: Number.isInteger(f.disc_no) ? f.disc_no : null,
     album_id: f.album_id == null || f.album_id === "" ? null : String(f.album_id),
+    /* El id de iTunes del artista, cuando la etiqueta llega. Con el se abre
+       directamente su pagina en Buscar sin tener que buscar el nombre. */
+    artist_id: f.artist_id == null || f.artist_id === "" ? null : String(f.artist_id),
     /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
     added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),

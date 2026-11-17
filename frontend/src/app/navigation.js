@@ -94,10 +94,11 @@ export function modeDirection(from, to) {
    sigue a la vista debajo, sin pagina propia. */
 const OVERLAYS = new Set(["menu", "picker", "lmenu", "file"]);
 /* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
-   cola que abre la pildora del shell. Las dos son hojas, no paginas ("album"
-   ya es la pagina de un album de la biblioteca): no esconden la pantalla de
-   debajo ni cuentan para el scroll recordado. */
-const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "albumsheet", "descargas", ...OVERLAYS]);
+   cola que abre la pildora del shell; "discsheet" es la lista de discografia
+   del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
+   la biblioteca): no esconden la pantalla de debajo ni cuentan para el scroll
+   recordado. */
+const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */
 export const isOverlay = (type) => OVERLAYS.has(type);

@@ -980,7 +980,7 @@ the tracks you do not have greyed out.
   queued. Files downloaded before this change have no track number and keep the
   old order.
 
-### 27. Artists and downloads that are not lost — PRs 1 and 2 done
+### 27. Artists and downloads that are not lost — done (#47, #48, #49)
 
 The user study's worst complaints were downloads, not discovery: a three
 second network drop showed a false «Falló la descarga» and lost the download
@@ -1017,8 +1017,14 @@ preselected and a live total), and «Más de <artista>» in Escuchar.
    collapse to the one worth downloading: explicit first, then the fewest
    tracks, so «Ride the Lightning» keeps its 9 tracks and not the 63 of the
    deluxe box. Releases by other artists are dropped.
-4. **Artists frontend.** The artist as «Mejor resultado», the artist page,
-   «Descargar discografía» and the link from Escuchar.
+4. **Artists frontend.** In Música mode the artist shows as «Mejor resultado»
+   when the query names it, and opens the artist page: the discography in
+   Álbumes, En vivo, Recopilatorios and Sencillos, each album saying how much
+   of it you have. «Descargar discografía» is a checklist with the studio
+   albums ticked and a live total of songs and MB; it matches and enqueues one
+   album at a time, skipping what you own. «Más de <artista>» in Escuchar opens
+   the same page. The page and the sheet are a lazy chunk, so the boot script
+   grew by 263 bytes (236,839 B).
 
 ## Dependencies
 

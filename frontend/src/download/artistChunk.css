@@ -1,0 +1,397 @@
+/* ---------------------------------------------------------------------------
+   PAGINA DEL ARTISTA Y HOJA DE DISCOGRAFIA (chunk perezoso)
+   Solo transform y opacity en el movimiento; colores de tokens.css.
+   ------------------------------------------------------------------------- */
+
+.apage {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  /* El gutter de la app en movil, con tope en escritorio. */
+  padding: 18px var(--gutter) 40px;
+}
+
+.apage--msg {
+  align-items: center;
+  gap: 14px;
+  min-height: 50vh;
+  justify-content: center;
+  color: var(--mut);
+  text-align: center;
+}
+
+.apage--msg p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.apbtn {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--acc);
+  font: 800 13px var(--font-body);
+  cursor: pointer;
+}
+
+/* --- Hero ------------------------------------------------------------------ */
+
+.aphero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.aphero__t h1 {
+  margin: 0;
+  font: 700 clamp(24px, 6vw, 34px) / 1.15 var(--font-display);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.aphero__t p {
+  margin: 6px 0 0;
+  color: var(--mut);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+/* La portada redonda del artista; cuadrada la de un disco. */
+/* Doble clase: la .cv compartida fija un alto de 40px que, si no, gana al
+   aspect-ratio y aplasta la portada en una franja. */
+.cv.acv {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: var(--r-cover);
+  overflow: hidden;
+  font: 700 2.4em var(--font-display);
+}
+
+.acv.acv--round {
+  border-radius: 50%;
+}
+
+.acv img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.acv.apcv {
+  width: min(210px, 60vw);
+}
+
+/* --- Boton principal ------------------------------------------------------- */
+
+.apdl {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 14px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.apdl:active {
+  transform: scale(0.98);
+}
+
+/* --- Rejilla de discos ----------------------------------------------------- */
+
+.aps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aps .sh2 {
+  margin: 0;
+}
+
+.apgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 12px;
+}
+
+.apcard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-cover);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.apcard:active {
+  transform: scale(0.97);
+}
+
+.acv.apcard__cv {
+  width: 100%;
+  font-size: 34px;
+}
+
+.apcard__t {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.apcard__m {
+  color: var(--mut);
+  font-size: 12.5px;
+}
+
+.apcard__pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 11.5px / 1 var(--font-body);
+}
+
+.apcard__pill.is-full {
+  background: var(--ok-bg);
+  color: var(--ok-t);
+}
+
+/* --- Hoja de discografia --------------------------------------------------- */
+
+.dsh {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dsh__top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 4px 18px;
+}
+
+.dsh__top h2 {
+  margin: 0;
+  font: 700 16px var(--font-display);
+}
+
+.dsh__top .cbtn {
+  position: relative;
+}
+
+/* El area tactil del cierre llega a 44 px sin mover el dibujo. */
+.dsh__top .cbtn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.dsh__sub {
+  flex: none;
+  margin: 0;
+  padding: 0 18px 12px;
+  color: var(--mut);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dsh__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 18px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dgrp {
+  margin-bottom: 16px;
+}
+
+.dgrp__h {
+  margin: 0 0 8px;
+  font: 800 12px var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+
+.dgrp__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dcrow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-inner);
+  background: var(--s1);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.dcrow:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.acv.dcrow__cv {
+  width: 44px;
+  font-size: 16px;
+  border-radius: var(--r-sm);
+}
+
+.dcrow__t {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dcrow__t b {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dcrow__t span {
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.dcrow__box {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+  color: var(--acc-ink);
+  transition: var(--tr-btn);
+}
+
+.dcrow__box.is-on {
+  background: var(--acc);
+  box-shadow: none;
+}
+
+.dsh__foot {
+  flex: none;
+  padding: 12px 18px 18px;
+  background: var(--s1);
+  box-shadow: inset 0 1.5px 0 0 var(--s3);
+}
+
+.dsh__total {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.dsh__total b {
+  color: var(--ink);
+}
+
+.dsh__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 800 14px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.dsh__btn:disabled {
+  background: var(--s2);
+  color: var(--mut);
+  cursor: default;
+}
+
+.dsh button:focus-visible,
+.apage button:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+/* --- Escritorio ------------------------------------------------------------ */
+
+@media (min-width: 600px) {
+  .apgrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 960px) {
+  .aphero {
+    flex-direction: row;
+    text-align: left;
+  }
+
+  .aphero__t h1 {
+    font-size: 42px;
+  }
+
+  .apgrid {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  }
+}
