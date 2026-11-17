@@ -77,6 +77,58 @@ def test_search_matched_conserva_los_campos_de_album(monkeypatch):
         assert incompleto[clave] is None
 
 
+# -------------------------------------------------- catalog: none / weak / match
+def _matched(monkeypatch, q, crudos):
+    """Corre _search_matched sin red: iTunes y yt-dlp son dobles."""
+    import backend.app.main as main
+
+    async def _raw(self, q, limit=20):
+        return crudos
+
+    monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", _raw)
+    monkeypatch.setattr("backend.app.matcher.enrich_with_ytdlp", _enrich_vacio)
+    return asyncio.run(main._search_matched(q, 10))
+
+
+def test_search_matched_catalog_none_sin_items(monkeypatch):
+    data = _matched(monkeypatch, "rosalia despecha", [])
+    assert data["catalog"] == "none"
+    assert data["count"] == 0
+    assert data["results"] == []
+
+
+def test_search_matched_catalog_match_ignora_acentos_y_mayusculas(monkeypatch):
+    crudo = _song(1, "DESPECHÁ")
+    crudo["artistName"] = "ROSALÍA"
+    data = _matched(monkeypatch, "rosalia despecha", [crudo])
+    assert data["catalog"] == "match"
+    assert data["count"] == 1
+
+
+def test_search_matched_catalog_weak_cuando_solo_cubre_el_titulo(monkeypatch):
+    """El artista no aparece: iTunes trae canciones que no son lo pedido."""
+    crudo = _song(2, "Despechá")
+    crudo["artistName"] = "Otro Artista"
+    data = _matched(monkeypatch, "rosalia despecha", [crudo])
+    assert data["catalog"] == "weak"
+    # weak NO corta: los resultados se siguen mostrando como hoy.
+    assert data["count"] == 1
+
+
+def test_search_matched_catalog_weak_solo_artista(monkeypatch):
+    """La otra mitad: artista si, cancion no."""
+    crudo = _song(3, "Otra canción")
+    crudo["artistName"] = "Rosalía"
+    data = _matched(monkeypatch, "rosalia despecha", [crudo])
+    assert data["catalog"] == "weak"
+
+
+def test_search_matched_catalog_match_sin_palabras_utiles(monkeypatch):
+    """Consultas de una letra no discriminan: cuentan como match."""
+    data = _matched(monkeypatch, "a x", [_song(4, "Cualquiera")])
+    assert data["catalog"] == "match"
+
+
 # ---------------------------------------------------------- /api/albums/search
 def test_albums_search_forma(cliente, monkeypatch):
     from backend.app.sources import ITunesSource

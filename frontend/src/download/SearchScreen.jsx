@@ -12,7 +12,7 @@ import {
   ORIGINAL_HINT_YT,
   PLACEHOLDER,
 } from "./constants.js";
-import { noticeFromError, resultsHead, summarize } from "./searchPlan.js";
+import { catalogFallback, noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
 import AlbumShelf from "./AlbumShelf.jsx";
@@ -42,6 +42,13 @@ import "./notices.css";
    ------------------------------------------------------------------------- */
 
 const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
+const LINK_HINT = "Pega un enlace de YouTube";
+/* [modo, titulo, linea] para las salidas del catalogo. "link" no cambia de modo. */
+const EXITS = [
+  ["ytdlp", "Buscar en YouTube", "Canciones completas, sin ficha del disco"],
+  ["sources", "Buscar en todas las fuentes", "Incluye Internet Archive y Wikimedia"],
+  ["link", "Pegar un enlace de YouTube", "Se descarga directamente"],
+];
 
 /* La ficha del album (y la hoja de Descargas) viven en un chunk aparte, que se
    adelanta al enfocar una tarjeta de album. */
@@ -57,7 +64,7 @@ export default function SearchScreen({
 }) {
   const pc = usePc();
   const run = useSearchRun();
-  const { q, setQ, mode, setMode, query, results, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
+  const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
 
   /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
      (la descarga mas rapida, ver M4A_AUDIO_SELECTOR en ytdlp_source.py). */
@@ -180,6 +187,31 @@ export default function SearchScreen({
     [mode, run.run, setQ]
   );
 
+  /* "Pegar un enlace": deja el campo vacio y abierto con la pista hasta que
+     escriba. El propio input recupera su placeholder al primer caracter; un
+     enlace de YouTube ya fuerza el modo en planSubmit. */
+  const pasteLink = useCallback(() => {
+    setQ("");
+    const f = inputRef.current || document.querySelector('.topbar [data-field="search"]');
+    if (!f) return;
+    f.focus({ preventScroll: true });
+    f.placeholder = LINK_HINT;
+    f.addEventListener("input", () => { f.placeholder = PLACEHOLDER[mode] || PLACEHOLDER.default; }, { once: true });
+  }, [mode, setQ]);
+
+  /* Las mismas acciones en el bloque grande y en el aviso de resultados
+     debiles; en este ultimo solo caben las dos primeras, en pequeno. */
+  const exits = (list, small) => (
+    <div className={cx("fb__acts", small && "fb__acts--in")}>
+      {list.map(([id, label, sub]) => (
+        <button type="button" key={id} className={cx("btn", id === "ytdlp" && "btn--acc")}
+          onClick={() => (id === "link" ? pasteLink() : setMode(id))}>
+          {label}{!small && <small>{sub}</small>}
+        </button>
+      ))}
+    </div>
+  );
+
   /* Se espera a que la busqueda termine: antes no hay nada donde poner el
      foco. Va a la cabecera de resultados (o al aviso de error / sin
      resultados), nunca al input, que abriria el teclado en movil. */
@@ -213,6 +245,12 @@ export default function SearchScreen({
      existia para el modo que se elige a mano (.mode--dead), no para el que
      arranca solo. */
   const matchedDead = ytDead && mode === "matched" && results.length > 0 && fullCount === 0;
+
+  /* iTunes no tiene la cancion (empty) o la tiene pero no es lo pedido (weak).
+     En ambos casos el usuario elige adonde seguir buscando. */
+  /* Sin YouTube, "nofull" ya lo explica el aviso de matchedDead. */
+  const fallback = matchedDead ? null : catalogFallback({ mode, catalog, count: results.length, full: fullCount });
+  const small = fallback === "weak" || fallback === "nofull";
 
   /* Con "solo vídeo" o "audio y vídeo" el archivo que baja YouTube es un
      mp4/webm: ni el formato de audio (mp3/m4a/original) ni su aviso tienen
@@ -330,6 +368,21 @@ export default function SearchScreen({
 
       <AlbumShelf albums={albums} onOpen={onOpenAlbum} />
 
+      {fallback && !loading && searched && !err && (
+        <div className={cx("empty", small && "fbweak")}
+          ref={small ? undefined : resultsRef} tabIndex={-1}>
+          <h3>
+            {small
+              ? fallback === "weak"
+                ? `No encontré exactamente «${query}» en el catálogo`
+                : "Ninguno se puede descargar completo"
+              : "No está en el catálogo"}
+          </h3>
+          {!small && <p>iTunes no tiene «{query}». Puedes buscarla en otro sitio:</p>}
+          {exits(EXITS.filter(([id]) => !(id === "ytdlp" && ytDead) && !(id === "link" && small)), small)}
+        </div>
+      )}
+
       {results.length > 0 && (
         <section className={cx("rsec", loading && "is-stale")} aria-labelledby="rs-h">
           <div className="rhead">
@@ -403,7 +456,7 @@ export default function SearchScreen({
 
       {loading && !results.length && <Skeleton />}
 
-      {!loading && !results.length && searched && !err && (
+      {!loading && !results.length && searched && !err && fallback !== "empty" && (
         <div className="empty" ref={resultsRef} tabIndex={-1}>
           <h3>No encontré nada para «{query}»</h3>
           <p>

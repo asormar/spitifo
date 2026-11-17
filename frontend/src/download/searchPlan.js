@@ -42,6 +42,18 @@ export function shouldResync({ searched, query, mode, lastSig }) {
   return searchSig(mode, query) !== lastSig;
 }
 
+/* Salida del catalogo de iTunes en Música: "empty" (no hay nada o iTunes no
+   tiene la cancion), "weak" (hay resultados pero ninguno es lo pedido), "nofull"
+   (los hay, pero ninguno se baja entero: suelen ser versiones de otros) o null
+   (todo normal). Otros modos y respuestas viejas sin `catalog` siguen igual. */
+export function catalogFallback({ mode, catalog, count, full }) {
+  if (mode !== "matched") return null;
+  if (!count || catalog === "none") return "empty";
+  if (catalog === "weak") return "weak";
+  if (full === 0) return "nofull";
+  return null;
+}
+
 /* El texto con que se consulta la biblioteca mientras se escribe, o null. */
 export function libraryQuery(q) {
   const t = String(q ?? "").trim();
@@ -89,46 +101,9 @@ export function resultsHead(total, full, query) {
   return `${n(total, "resultado", "resultados")} para «${query}», ${n(full, "descargable", "descargables")}`;
 }
 
-/* --- La descarga de una fila ---------------------------------------------------
-   `job` es el del jobsStore (solo yt-dlp tiene); `busy` vale desde que se pulsa
-   hasta que termina, tambien en las fuentes directas (sin job). Un job en error
-   se ve como reposo: el aviso ya dice que fallo. */
-export function dlState({ busy = false, job, downloaded = false }) {
-  const s = job?.status;
-  if (s === "error") return { id: "err", pct: 0 };
-  /* "queued" es la cola del servidor (dos a la vez); "pending", esperar el
-     candado de la misma pista. Para la fila son lo mismo: en cola. */
-  if (s === "pending" || s === "queued") return { id: "queued", pct: 0 };
-  /* `phase` afina el estado: "preparing" es la extraccion de yt-dlp (antes de
-     que llegue un byte) y "saving" la escritura en la biblioteca. */
-  if (s === "downloading") {
-    if (job.phase === "preparing") return { id: "prep", pct: 0 };
-    return { id: "down", pct: Math.min(100, Math.max(0, Math.round(job.progress || 0))) };
-  }
-  if (s === "processing") return { id: job.phase === "saving" ? "save" : "proc", pct: 100 };
-  if (s === "done" || (!busy && downloaded)) return { id: "done", pct: 100 };
-  return busy ? { id: "direct", pct: 0 } : { id: "idle", pct: 0 };
-}
-
-/* Hay una descarga en curso (el boton no se pulsa hasta que acabe). */
-const WAITING = new Set(["queued", "prep", "down", "proc", "save", "direct"]);
-export const dlWaiting = ({ id }) => WAITING.has(id);
-
-/* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
-   de la fila. */
-export function dlText({ id, pct }) {
-  return {
-    idle: "Descargar",
-    err: "Falló la descarga",
-    queued: "En cola",
-    prep: "Preparando…",
-    down: `Descargando, ${pct} %`,
-    proc: "Procesando el archivo…",
-    save: "Guardando…",
-    direct: "Descargando…",
-    done: "Descargado",
-  }[id];
-}
+/* El estado de una fila de descarga vivo aparte (lo usa el shell en el chunk
+   de arranque); se reexporta para no tocar a quien lo importaba de aqui. */
+export { dlState, dlWaiting, dlText } from "./dlState.js";
 
 /* --- Avisos de la descarga --------------------------------------------------------
    Un solo aviso a la vez: { tone: "ok" | "warn" | "err", text, sub?, cookies?,

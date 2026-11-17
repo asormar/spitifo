@@ -20,6 +20,9 @@ export default function useSearchRun() {
   const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  /* Que tan bien cubrio iTunes la consulta en modo Musica: none / weak / match.
+     Vacio en respuestas viejas o en otros modos: la UI sigue como siempre. */
+  const [catalog, setCatalog] = useState("");
   /* Los albumes y los artistas van en paralelo y aparte: nunca retrasan a
      las canciones, y un fallo de iTunes no rompe la busqueda principal. */
   const [albums, setAlbums] = useState([]);
@@ -104,12 +107,14 @@ export default function useSearchRun() {
       if (seq !== searchSeq.current) return;
       const list = uniqueResults(d.results);
       setResults(list);
+      setCatalog(d.catalog || "");
       setQuery(t);
       warmTopResults(list);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);
       setResults([]);
+      setCatalog("");
     } finally {
       if (seq === searchSeq.current) setLoading(false);
     }
@@ -136,6 +141,7 @@ export default function useSearchRun() {
     lastSig.current = "";
     setLoading(false);
     setResults([]);
+    setCatalog("");
     setAlbums([]);
     setArtists([]);
     setArtistQuery("");
@@ -206,7 +212,7 @@ export default function useSearchRun() {
   useEffect(() => () => searchBusy.set(false), []);
 
   return {
-    q, setQ, mode, setMode, query, results, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
+    q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
     runs, run, submit, reset,
   };
 }

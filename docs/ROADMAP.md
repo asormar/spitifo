@@ -1026,6 +1026,45 @@ preselected and a live total), and «Más de <artista>» in Escuchar.
    the same page. The page and the sheet are a lazy chunk, so the boot script
    grew by 263 bytes (236,839 B).
 
+### 28. «Música» with a way out — in review
+
+Five personas from the user study got stuck in Música mode: the search came
+back empty, or with fourteen songs by other artists, and the only thing on
+screen was text telling them to change mode by hand. The accent hypothesis was
+checked against live iTunes and refuted — Café Tacvba returned 32 results with
+accents and 33 without, Rosalía 36 and 36, so the difference was noise. The real
+case is that "Rosalía Despechá" is not in the iTunes catalog in either the US or
+the ES store, and iTunes answers with unrelated songs instead. The approved
+design hands the decision to the user: no automatic YouTube search, explicit
+exits they choose themselves.
+
+1. **Backend.** `GET /api/search?mode=matched` now reports `catalog`: `none`
+   when iTunes returns nothing, `match` when an item covers every usable word
+   of the query (accent- and case-insensitive `fold`, artist + title + album),
+   and `weak` when items exist but none covers it. Weak keeps the current
+   YouTube matching and still shows the results; it only labels them.
+2. **Frontend.** The search state carries `catalog`, and a pure
+   `catalogFallback` maps it to an empty or weak plan (old responses and other
+   modes keep the old behaviour). With no results, Música shows «No está en el
+   catálogo» and three full-width buttons: «Buscar en YouTube», «Buscar en
+   todas las fuentes» and «Pegar un enlace de YouTube». The first two switch
+   mode and rerun the same query through the existing resync path, exactly
+   once; the third clears and focuses the field with a link placeholder until
+   the user types. With weak results, or with results where none downloads in
+   full (the «Rosalía Despechá» case: the catalog answers with covers and
+   karaoke versions that name both words, so `match` is not enough), a compact
+   line above the list offers the first two actions as inline buttons. The
+   YouTube action is hidden when the server reports YouTube off. The code lives
+   in the lazy SearchScreen chunk.
+3. **Size.** `dlState` moved out of `searchPlan.js` into its own module, so the
+   shell no longer pulls the Search decisions into the boot script: boot JS
+   shrank by 1,771 bytes. The new screen costs 1,247 bytes in the lazy
+   SearchScreen chunk, and the total JS budget rose from 443,000 to 444,500
+   bytes.
+
+Accessibility review and the first-run experience follow as the next PRs of
+item 5.
+
 ## Dependencies
 
 ```
