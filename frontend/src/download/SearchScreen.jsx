@@ -3,6 +3,7 @@ import { useNav } from "../app/useNav.js";
 import { rowKey } from "../shared/api.js";
 import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
+import { listKey } from "../shared/keyNav.js";
 import { usePc } from "../shared/viewport.js";
 import {
   FORMATS,
@@ -63,7 +64,14 @@ export default function SearchScreen({
   onOpenLibrary,
 }) {
   const pc = usePc();
-  const run = useSearchRun();
+  /* Foco tras buscar: el boton de un ejemplo se desmonta al buscar y el foco
+     caia al <body>; en escritorio, ademas, toda busqueda terminada lleva el
+     foco a los resultados (tambien las que llegan de la barra de arriba).
+     `resultsRef` es la cabecera de resultados (o el bloque de "sin
+     resultados"). */
+  const focusPending = useRef(false);
+  const fine = () => window.matchMedia("(pointer: fine)").matches;
+  const run = useSearchRun({ onRequest: () => (focusPending.current = fine()) });
   const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
 
   /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
@@ -78,10 +86,6 @@ export default function SearchScreen({
   /* Aviso visible en cada momento: se usa para traerlo a pantalla si una
      descarga lejana lo deja fuera de vista. */
   const msgRef = useRef(null);
-  /* Foco tras pulsar un ejemplo: el boton se desmonta al buscar y el foco caia
-     al <body>. `focusPending` lo marca runExample; `resultsRef` es la cabecera
-     de resultados (o el bloque de "sin resultados"). */
-  const focusPending = useRef(false);
   const resultsRef = useRef(null);
 
   /* La ficha y el menu de resoluciones viven en la pila de navegacion: atras,
@@ -169,10 +173,11 @@ export default function SearchScreen({
   const onSubmit = useCallback(
     (e) => {
       e.preventDefault();
-      /* Una busqueda manual no debe heredar un foco pendiente de un ejemplo. */
-      focusPending.current = false;
+      /* En escritorio (pointer: fine) toda busqueda terminada lleva el foco a
+         los resultados, como los ejemplos. En movil no: el input ya se suelta
+         y mover el foco volveria a abrir el teclado. */
+      focusPending.current = fine();
       run.submit();
-      /* En movil se baja el teclado para ver los resultados. */
       if (window.matchMedia("(pointer: coarse)").matches) inputRef.current?.blur();
     },
     [run.submit]
@@ -257,12 +262,13 @@ export default function SearchScreen({
      sentido, y el selector se esconde. */
   const audioOnly = !(mode === "ytdlp" && media !== "audio");
 
-  /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco. */
+  /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco.
+     resultsHead ya cuenta los descargables, asi que se reutiliza. */
   const srMsg = loading
     ? "Buscando…"
     : searched && !err
     ? results.length
-      ? `${results.length} ${results.length === 1 ? "resultado" : "resultados"} para «${query}»`
+      ? resultsHead(results.length, fullCount, query)
       : "Sin resultados"
     : "";
 
@@ -416,6 +422,7 @@ export default function SearchScreen({
             data-in={fresh ? "" : undefined}
             aria-busy={loading || undefined}
             inert={loading ? "" : undefined}
+            onKeyDown={(e) => listKey(e, ".res__main")}
           >
             {shown.map((t, i) =>
               t.extra?.is_group && t.extra?.track_count > 1 ? (

@@ -673,3 +673,22 @@ html[data-rp="wide"] .mezcla .rec__spin,
 html[data-rp="wide"] .screens .eq i {
   animation-play-state: paused;
 }
+
+/* Enlace de salto: fuera de pantalla hasta que recibe el foco. Sale sobre
+   todo (hojas incluidas) y usa las mismas superficies que el resto del shell. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 999;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--s1);
+  color: var(--ink);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}

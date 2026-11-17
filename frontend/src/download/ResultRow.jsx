@@ -68,10 +68,12 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       <span className="res__n num" aria-hidden="true">
         {i + 1}
       </span>
+      {/* Sin aria-label: el nombre accesible sale del contenido visible (titulo,
+          artista/album, veredicto, fuente y duracion). El numero de orden ya es
+          aria-hidden y la portada lleva alt="". */}
       <button
         type="button"
         className="res__main"
-        aria-label={`Ver la ficha de ${title}`}
         onClick={(e) => onOpen({ type: "ficha", key: rowKey(t), anchor: e.currentTarget })}
       >
         <Thumb t={t} />

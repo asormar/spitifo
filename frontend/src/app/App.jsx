@@ -32,6 +32,7 @@ import { SwipeDots, TabBar } from "./Nav.jsx";
 import LeftNav from "./LeftNav.jsx";
 import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
+import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
 import { swapNowPlaying } from "./screenSwap.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
@@ -127,6 +128,8 @@ function Screen({ id, active, children }) {
       className="screen"
       data-screen={id}
       data-seen={seen ? "" : undefined}
+      id={active ? "main-content" : undefined}
+      tabIndex={active ? -1 : undefined}
       hidden={!active}
       inert={active ? undefined : ""}
     >
@@ -162,37 +165,46 @@ function warmDiscover() {
 }
 if (bootView.tab === "discover" && !bootView.settings) warmDiscover();
 
-const typing = () => {
-  const a = document.activeElement;
-  return a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable);
-};
+const typing = () =>
+  isTypingTarget(document.activeElement?.tagName, document.activeElement?.isContentEditable);
 
-/* Las dos teclas de toda la app, UNA vez.
+/* Las teclas de toda la app, UNA vez.
    Escape, de lo mas pequeno a lo mas grande (gana el primero que actua):
    "Ahora suena" (a pantalla completa la cierra; ampliada en escritorio la
    reduce; la columna no se cierra con Escape), lo de arriba de la pila (un menu, una hoja, la pagina o
    Ajustes).
-   "/" lleva el foco al buscador de la pantalla a la vista o al de la barra
-   de arriba. */
+   "/" y Ctrl/Cmd+K llevan el foco al buscador de la pantalla a la vista o al
+   de la barra de arriba. El ultimo no actua mientras se escribe en otro campo;
+   desde el propio buscador solo selecciona su texto. */
 function Hotkeys({ nav, escapeNp, npOpen, wide }) {
   useEffect(() => {
+    /* El de la pantalla, si se ve (el de Buscar esta oculto en escritorio);
+       si no, el de la barra de arriba. */
+    const field = () =>
+      (!wide &&
+        [...document.querySelectorAll('[data-screen]:not([hidden]) [data-field="search"]')].find(
+          (f) => f.getClientRects().length
+        )) ||
+      document.querySelector('.topbar [data-field="search"]');
     const onKey = (e) => {
       if (e.key === "Escape") {
         if (escapeNp()) return;
         if (nav.getStack().length) nav.back();
       } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
         if (npOpen || typing()) return;
-        /* El de la pantalla, si se ve (el de Buscar esta oculto en escritorio);
-           si no, el de la barra de arriba. */
-        const field =
-          (!wide &&
-            [...document.querySelectorAll('[data-screen]:not([hidden]) [data-field="search"]')].find(
-              (f) => f.getClientRects().length
-            )) ||
-          document.querySelector('.topbar [data-field="search"]');
-        if (!field) return;
+        const f = field();
+        if (!f) return;
         e.preventDefault();
-        field.focus();
+        f.focus();
+      } else if (isSearchShortcut(e)) {
+        if (npOpen) return;
+        const f = field();
+        if (!f) return;
+        const at = document.activeElement;
+        if (at !== f && typing()) return;
+        e.preventDefault();
+        if (at === f) f.select();
+        else f.focus();
       }
     };
     document.addEventListener("keydown", onKey);

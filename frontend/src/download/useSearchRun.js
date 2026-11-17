@@ -16,7 +16,11 @@ import { subscribeSearch, takeSearch } from "./searchRequest.js";
    consulta la red: solo Enter, un ejemplo, un pedido o la URL de arranque.
    ------------------------------------------------------------------------- */
 
-export default function useSearchRun() {
+/* `onRequest` avisa cuando se consume una busqueda pedida desde otra pantalla
+   (la barra de arriba, un genero de Descubrir). */
+export default function useSearchRun({ onRequest } = {}) {
+  const onRequestRef = useRef(onRequest);
+  onRequestRef.current = onRequest;
   const [q, setQ] = useSearchDraft();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -196,6 +200,7 @@ export default function useSearchRun() {
     const take = () => {
       const text = takeSearch();
       if (!text) return;
+      onRequestRef.current?.();
       setQ(text);
       const plan = planSubmit({ q: text, mode: modeRef.current });
       if (plan.mode !== modeRef.current) setMode(plan.mode);

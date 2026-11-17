@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { cx } from "../shared/ui.jsx";
+import { listKey } from "../shared/keyNav.js";
 import { visibleRange } from "./library.js";
 
 /* ---------------------------------------------------------------------------
@@ -115,24 +116,47 @@ const VirtualList = forwardRef(function VirtualList(
 
   useEffect(() => () => clearTimeout(fast.current.id), []);
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      /* Centra la fila en el viewport. El hueco de la cabecera pegajosa no se
-         descuenta: centrada queda lejos de ella en cualquier pantalla. */
-      scrollToIndex(i) {
-        const box = boxRef.current;
-        if (!box) return;
-        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const sc = scroller?.current;
-        const top = sc
-          ? box.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop + i * ROW_H + ROW_H / 2 - sc.clientHeight / 2
-          : box.getBoundingClientRect().top + window.scrollY + i * ROW_H + ROW_H / 2 - window.innerHeight / 2;
-        (sc || window).scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
-      },
-    }),
+  /* Centra la fila en el viewport. El hueco de la cabecera pegajosa no se
+     descuenta: centrada queda lejos de ella en cualquier pantalla. */
+  const scrollToIndex = useCallback(
+    (i, instant) => {
+      const box = boxRef.current;
+      if (!box) return;
+      const reduce = instant || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const sc = scroller?.current;
+      const top = sc
+        ? box.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop + i * ROW_H + ROW_H / 2 - sc.clientHeight / 2
+        : box.getBoundingClientRect().top + window.scrollY + i * ROW_H + ROW_H / 2 - window.innerHeight / 2;
+      (sc || window).scrollTo({ top: Math.max(0, top), behavior: reduce ? "auto" : "smooth" });
+    },
     [scroller]
   );
+
+  useImperativeHandle(ref, () => ({ scrollToIndex }), [scrollToIndex]);
+
+  /* Teclado en la lista virtual: solo las flechas de fila, no las del asa de
+     reordenar (esa ya consume el evento) ni las de un campo de texto. */
+  const onKeyDown = (e) => {
+    const sc = scroller?.current;
+    const page = Math.max(1, Math.floor((sc ? sc.clientHeight : window.innerHeight) / ROW_H) - 1);
+    listKey(e, ".vrow", count, page, (next) => {
+      const find = () => boxRef.current?.querySelector(`[data-index="${next}"] button`);
+      /* Montada: el foco nativo la trae a la vista con el desplazamiento minimo. */
+      const now = find();
+      if (now) return now.focus();
+      /* Fuera de la ventana: salto SIN animar (con el scroll suave la fila con
+         foco se desmonta antes de que llegue la nueva y el foco cae al body) y
+         se enfoca en cuanto el scroll la monte. */
+      scrollToIndex(next, true);
+      let k = 0;
+      const tick = () => {
+        const at = find();
+        if (at) at.focus({ preventScroll: true });
+        else if (++k < 30) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  };
 
   /* El conteo puede bajar entre el render y el layout effect que re-mide. */
   const end = Math.min(range.end, count);
@@ -153,6 +177,8 @@ const VirtualList = forwardRef(function VirtualList(
         role="listitem"
         aria-posinset={i + 1}
         aria-setsize={count}
+        data-index={i}
+        tabIndex={-1}
         style={{ transform: `translateY(${i * ROW_H}px)` }}
       >
         {renderRow(i, entering ? Math.max(0, i - intro.current.from) : undefined)}
@@ -166,6 +192,7 @@ const VirtualList = forwardRef(function VirtualList(
       className={cx("vlist", className)}
       role="list"
       style={{ height: count * ROW_H }}
+      onKeyDown={onKeyDown}
     >
       {rows}
     </div>

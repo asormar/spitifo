@@ -235,6 +235,11 @@ describe("resultsHead", () => {
     expect(resultsHead(1, 1, "creep")).toBe("1 resultado para «creep», 1 descargable");
     expect(resultsHead(3, 0, "x")).toBe("3 resultados para «x», 0 descargables");
   });
+
+  it("sirve de resumen para lectores de pantalla: incluye los descargables", () => {
+    expect(resultsHead(14, 3, "creep")).toBe("14 resultados para «creep», 3 descargables");
+    expect(resultsHead(1, 0, "x")).toBe("1 resultado para «x», 0 descargables");
+  });
 });
 
 describe("dlState", () => {

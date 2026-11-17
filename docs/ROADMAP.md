@@ -1065,6 +1065,58 @@ exits they choose themselves.
 Accessibility review and the first-run experience follow as the next PRs of
 item 5.
 
+### 29. Accessible search and library — in review
+
+The keyboard and screen-reader pass over Buscar and Escuchar. Ten confirmed
+defects from the review, all in the frontend and all without a visual change
+except the focus states and the skip link:
+
+1. **Result names.** Result rows no longer override their accessible name with
+   «Ver la ficha de X»; the name now comes from the visible title, artist/album,
+   verdict, source and duration. Decorative bits stay `aria-hidden`.
+2. **Download progress.** The download button keeps a stable name while busy
+   («Descargando X»); the percentage lives in a `progressbar` inside it with
+   `aria-valuenow`, so polling no longer renames the button or floods the
+   screen reader. No live region was added for the percentage.
+3. **Results keyboard nav.** ArrowDown/ArrowUp move focus between result rows
+   and Home/End jump to the first/last; the list ignores arrows from text
+   fields and from controls that already consume them.
+4. **Ctrl/Cmd+K.** Alongside `/`, Ctrl+K (Cmd+K on Mac) focuses the search field
+   from anywhere, calls `preventDefault`, ignores other text fields, and only
+   selects the field's text when it is already focused.
+5. **Skip link.** «Saltar al contenido» is the first focusable element, hidden
+   until focused, and moves focus to the active screen's main region.
+6. **Focus and SR summary.** On desktop (pointer: fine) any completed search
+   moves focus to the results heading or empty state, as examples already did,
+   including searches typed in the top bar or sent from Discover; touch keeps
+   today's behaviour and does not reopen the keyboard. The polite
+   summary now includes the downloadable count, e.g. «14 resultados para «q»,
+   3 descargables».
+7. **Setlist status.** Loading, result count and errors from the setlist expand
+   are announced through a polite `role="status"` region.
+8. **IME.** Enter during Japanese/Chinese composition (including keyCode 229)
+   no longer submits the search.
+9. **Virtual library list.** Rows support ArrowDown/Up, PageDown/Up, Home and
+   End. A row already rendered takes focus directly; one outside the window is
+   reached with an instant `scrollToIndex` (a smooth scroll unmounted the
+   focused row before the target arrived, and focus fell to the body) and
+   focused once rendered. The list already exposed `role="list"`, `listitem`,
+   `aria-setsize` and `aria-posinset`; no per-frame render work was added.
+10. **Sheet scrim.** The click-only scrim is `aria-hidden` (the dialog keeps its
+    close button and Escape) and stays out of the tab order.
+
+Pure helpers (keyboard target, hotkey and IME guards, the SR summary) have
+focused Vitest tests, and the keyboard flows were checked with real key events
+in headless Chrome against the dev library (52 songs): skip link, Ctrl+K,
+arrows, PageUp, Home and End in the library, arrows and End in the results,
+focus after a top-bar search. Real-device NVDA and TalkBack checks are still
+pending.
+
+The fixes cost 1,965 bytes of JS: 586 in the boot script (the Ctrl+K handler
+and the skip-link target), 566 in a new `keyNav` chunk shared by the results
+and the library, and the rest in the lazy chunks that use it. The JS budget
+rose from 444,500 to 446,800 bytes.
+
 ## Dependencies
 
 ```

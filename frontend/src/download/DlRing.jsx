@@ -1,7 +1,7 @@
 import { rowKey } from "../shared/api.js";
 import Ico from "../shared/ico.jsx";
 import { useJob } from "./jobsStore.js";
-import { dlState, dlText, dlWaiting } from "./searchPlan.js";
+import { dlState, dlWaiting } from "./searchPlan.js";
 
 /* El estado de descarga de un resultado: el job del jobsStore (solo yt-dlp) y
    los Sets de la pantalla. useJob repinta SOLO esta fila con cada sondeo. */
@@ -26,19 +26,21 @@ export default function DlRing({ t, name, busy, downloaded, onDl, small = false 
   const done = s.id === "done";
   const idle = !wait && !done;
 
+  /* Nombre estable mientras corre: el porcentaje no puede renombrar el boton en
+     cada sondeo. El progreso vive en el progressbar de dentro, sin live region. */
   return (
     <button
       type="button"
       className={small ? "dlr dlr--sm" : "dlr"}
       data-s={s.id}
       aria-disabled={wait || undefined}
-      aria-label={idle ? `Descargar ${title}` : done ? `Descargado: ${title}` : dlText(s)}
+      aria-label={idle ? `Descargar ${title}` : done ? `Descargado: ${title}` : `Descargando ${title}`}
       title={idle ? "Descargar a la biblioteca" : done ? "Descargado: pulsa para volver a descargarlo" : undefined}
       style={wait ? { "--p": `${s.pct}%` } : undefined}
       onClick={(e) => !wait && onDl(t, e.currentTarget)}
     >
       {wait ? (
-        <span className="ring">
+        <span className="ring" role="progressbar" aria-valuenow={s.pct}>
           <i />
         </span>
       ) : (

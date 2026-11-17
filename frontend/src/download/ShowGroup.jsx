@@ -103,6 +103,13 @@ export default memo(function ShowGroup({ t, i, query, onDl, busyIds, downloadedI
       {everOpened && (
         <div className="fold" data-open={open ? "" : undefined} inert={open ? undefined : ""}>
           <div className="fold__in">
+            <p className="sr-only" role="status">
+              {loading
+                ? "Cargando el setlist…"
+                : error || !tracks
+                ? "No pude leer las pistas del setlist"
+                : `${tracks.length} ${tracks.length === 1 ? "pista" : "pistas"} en el setlist`}
+            </p>
             <ul className="setl">
               {loading && <li className="tr tr--dim">leyendo las etiquetas de cada pista</li>}
               {!loading && error && (
