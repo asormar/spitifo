@@ -45,6 +45,15 @@ class MainActivity : Activity() {
 
     private var web: WebView? = null
 
+    /**
+     * The playback service forwards notification and headset buttons here for
+     * as long as this Activity is alive. The stub is evaluated on the main
+     * thread against the WebView that is currently mounted (null = dropped).
+     */
+    private val mediaReceiver: (String, Double?) -> Unit = { action, time ->
+        dispatchMediaAction(action, time)
+    }
+
     /** The element the page asked to show full screen, while there is one. */
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -71,6 +80,7 @@ class MainActivity : Activity() {
         if (pendingShare != null) Log.i(TAG, "shared link: $pendingShare")
         showStatus("Starting…")
         backend.addListener(listener)
+        MediaActionRelay.register(mediaReceiver)
     }
 
     override fun onResume() {
@@ -124,6 +134,9 @@ class MainActivity : Activity() {
             view.destroy()
             web = null
         }
+        MediaActionRelay.unregister(mediaReceiver)
+        // The audio dies with the WebView, so the notification must not outlive it.
+        PlaybackService.clear(this)
         super.onDestroy()
     }
 
@@ -147,6 +160,34 @@ class MainActivity : Activity() {
             // consent screen and the Activity lifecycle belong to the UI one.
             runOnUiThread { driveAuth.connect() }
         }
+
+        /** One media snapshot from the page. position and duration are seconds. */
+        @JavascriptInterface
+        fun mediaUpdate(json: String) {
+            // Same thread rule: starting the service and touching its session
+            // is not thread-safe, so hop to the UI thread first.
+            runOnUiThread { PlaybackService.update(this@MainActivity, json) }
+        }
+
+        /** The page has no track left: remove the notification entirely. */
+        @JavascriptInterface
+        fun mediaClear() {
+            runOnUiThread { PlaybackService.clear(this@MainActivity) }
+        }
+    }
+
+    /**
+     * A button from the notification, a headset or the lock screen reaches the
+     * engine through a DOM event, the same channel the browser uses. Actions
+     * are internal constants and `time` is a number we generated, so neither
+     * needs escaping before going into the script.
+     */
+    private fun dispatchMediaAction(action: String, time: Double?) {
+        val view = web ?: return
+        val detail = if (time != null) "{action:'$action',time:$time}" else "{action:'$action'}"
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('spitifo-media',{detail:$detail}))", null,
+        )
     }
 
     /**

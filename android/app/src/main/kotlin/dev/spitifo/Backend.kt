@@ -66,6 +66,14 @@ class Backend(private val app: Application) {
     /** The real listening port, or -1 until [Listener.onReady]. */
     val port: Int get() = bound
 
+    /**
+     * The per-launch secret, for in-app HTTP clients the WebView did not seed
+     * with its session cookie (the media notification fetches artwork with it).
+     * `internal` keeps it inside the app: exposing it to JavaScript is exactly
+     * what the token is meant to prevent.
+     */
+    internal val authToken: String get() = token
+
     /** Boots the backend once per process, on a daemon thread. */
     fun start() {
         if (!started.compareAndSet(false, true)) return

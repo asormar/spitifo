@@ -58,6 +58,11 @@ export function createEngine({
   /* Avisos de cierre/cambio de pista: el historial de escucha necesita saber
      POR QUE se cerro la sesion, cosa que el estado (una foto) no dice. */
   const trackEvents = new Set();
+  /* Un seek es un cambio de tiempo como otro en la foto, pero el puente nativo
+     necesita distinguirlo del timeupdate: la barra del sistema no debe esperar
+     al siguiente informe de posicion. Se avisa ANTES de emitir para que el
+     suscriptor pueda marcar el cambio como forzado. */
+  const seekEvents = new Set();
   let audio = null;
   /* Ultima clave adelantada. Evita repetir el POST al reanudar una pausa. */
   let prefetched = null;
@@ -307,6 +312,7 @@ export function createEngine({
     const raw = Number(seconds) || 0;
     const t = dur > 0 ? Math.min(Math.max(raw, 0), dur) : Math.max(raw, 0);
     a.currentTime = t;
+    seekEvents.forEach((fn) => fn(t));
     /* Se escribe ya, sin esperar al timeupdate: la barra tiene que seguir al
        dedo aunque el evento tarde. */
     emit({ time: t });
@@ -489,9 +495,15 @@ export function createEngine({
     return () => trackEvents.delete(fn);
   };
 
+  const onSeek = (fn) => {
+    seekEvents.add(fn);
+    return () => seekEvents.delete(fn);
+  };
+
   return {
     subscribe,
     onTrackEvent,
+    onSeek,
     getState: () => state,
     play,
     resume,
