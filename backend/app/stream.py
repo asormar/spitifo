@@ -165,7 +165,6 @@ def _new_youtube(visitor: str | None):
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
-        "format": "bestaudio",
         "extractor_args": args,
     })
 
@@ -246,6 +245,31 @@ def expires_of(url: str) -> float:
     return time.time() + 3600.0
 
 
+def pick_audio(info: dict) -> dict:
+    """El mejor formato de solo audio de un info SIN procesar (`process=False`).
+
+    Procesar con yt-dlp es lo que mas CPU gasta: reconstruye la URL de los ~30
+    formatos del video para elegir uno. En el telefono eso pesa mas que la red,
+    asi que la eleccion es esta: solo audio, con URL, la pista original antes
+    que un doblaje y despues la de mas bitrate (251 opus o 140 m4a). Un info ya
+    procesado (camino completo) trae la URL arriba y se devuelve tal cual.
+    """
+    if info.get("url") or not info.get("formats"):
+        return info
+    audios = [f for f in info["formats"]
+              if f.get("url") and f.get("vcodec") == "none"
+              and f.get("acodec") not in (None, "none")]
+    if not audios:
+        raise RuntimeError("el video no tiene formato de solo audio")
+    def orden(f):
+        lp = f.get("language_preference")
+        return (-1 if lp is None else lp, f.get("quality") or 0, f.get("tbr") or 0)
+
+    best = max(audios, key=orden)
+    return {**best, "duration": info.get("duration"),
+            "http_headers": best.get("http_headers") or info.get("http_headers")}
+
+
 def _from_info(info: dict, path: str) -> StreamInfo:
     url = info.get("url") or ""
     if not url:
@@ -316,8 +340,9 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
             # Sin visitor_data el camino rapido choca con el muro: ni se intenta.
             raise RuntimeError("sin visitor_data")
         with _pooled(visitor) as ydl:
-            info = await asyncio.to_thread(ydl.extract_info, url, download=False)
-        salida = _from_info(info, "fast")
+            info = await asyncio.to_thread(ydl.extract_info, url, download=False,
+                                           process=False)
+        salida = _from_info(pick_audio(info), "fast")
     except Exception as e:
         # Un visitor_data viejo es la causa mas comun: se descarta y se reintenta
         # con el camino completo, que es mas lento pero aguanta el muro.

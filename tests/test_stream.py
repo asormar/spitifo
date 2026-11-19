@@ -60,7 +60,7 @@ def fake_pool(monkeypatch, result=None, error=None, calls=None):
     @contextmanager
     def pooled(visitor):
         class Ydl:
-            def extract_info(self, url, download=False):
+            def extract_info(self, url, download=False, process=True):
                 calls.append((visitor, url))
                 if error is not None:
                     raise error
@@ -95,6 +95,32 @@ def test_camino_rapido(monkeypatch):
     assert len(calls) == 1 and calls[0][0] == "visitor-de-prueba"
     assert full == []
 
+
+
+def test_elige_el_mejor_audio_de_un_info_sin_procesar():
+    base = "https://googlevideo.test/{}?expire=9999999999"
+    info = {"duration": 237, "formats": [
+        {"format_id": "139", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.5",
+         "quality": 2.0, "tbr": 48.8, "url": base.format(139)},
+        {"format_id": "251", "ext": "webm", "vcodec": "none", "acodec": "opus",
+         "quality": 3.0, "tbr": 136.4, "url": base.format(251), "filesize": 4032073},
+        {"format_id": "251-dub", "ext": "webm", "vcodec": "none", "acodec": "opus",
+         "quality": 3.0, "tbr": 140.0, "language_preference": -10, "url": base.format(9)},
+        {"format_id": "18", "ext": "mp4", "vcodec": "avc1", "acodec": "mp4a.40.2",
+         "quality": 1.0, "tbr": 600.0, "url": base.format(18)},
+        {"format_id": "sb0", "ext": "mhtml", "vcodec": "none", "acodec": "none",
+         "url": base.format("sb")},
+    ]}
+    elegido = stream.pick_audio(info)
+    assert elegido["format_id"] == "251"
+    assert elegido["duration"] == 237
+    sale = stream._from_info(elegido, "fast")
+    assert sale.mime == "audio/webm" and sale.filesize == 4032073
+
+
+def test_un_info_procesado_se_usa_tal_cual():
+    info = format_info()
+    assert stream.pick_audio(info) is info
 
 
 def test_sin_visitor_no_intenta_el_camino_rapido(monkeypatch):
