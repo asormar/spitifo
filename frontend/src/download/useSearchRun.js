@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg } from "../shared/api.js";
-import { buildSearchParams, warmTopResults } from "./api.js";
+import { buildSearchParams, prepareTopStreams, warmTopResults } from "./api.js";
 import { searchAlbums } from "./albumApi.js";
 import { searchArtists } from "./artistApi.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
@@ -114,6 +114,7 @@ export default function useSearchRun({ onRequest } = {}) {
       setCatalog(d.catalog || "");
       setQuery(t);
       warmTopResults(list);
+      prepareTopStreams(list);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);

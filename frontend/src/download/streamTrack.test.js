@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { canStream, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
 
 const WEB = "https://www.youtube.com/watch?v=abcdefghijk";
@@ -62,5 +62,22 @@ describe("streamQueue", () => {
     const { queue, index } = streamQueue([preview], full);
     expect(index).toBe(0);
     expect(queue).toHaveLength(1);
+  });
+});
+
+describe("prepareTopStreams", () => {
+  it("prepares the first two full results once each", async () => {
+    const { prepareTopStreams } = await import("./api.js");
+    const fetchFn = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("fetch", fetchFn);
+    const full = (id) => ({ source: "ytdlp", extra: { has_full: true, webpage_url: `https://www.youtube.com/watch?v=${id}` } });
+    const preview = { source: "itunes", preview_url: "https://x/p.m4a", extra: {} };
+    const list = [preview, full("aaaaaaaaaaa"), full("bbbbbbbbbbb"), full("ccccccccccc")];
+    prepareTopStreams(list);
+    prepareTopStreams(list);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body).url).toContain("aaaaaaaaaaa");
+    expect(JSON.parse(fetchFn.mock.calls[1][1].body).url).toContain("bbbbbbbbbbb");
+    vi.unstubAllGlobals();
   });
 });

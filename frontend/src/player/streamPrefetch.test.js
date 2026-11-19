@@ -1,16 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { bindStreamPrefetch, nextStreamUrl, PREPARE_WINDOW_S, shouldPrepare } from "./streamPrefetch.js";
+import { bindStreamPrefetch, nextStreamUrl, shouldPrepare } from "./streamPrefetch.js";
 
 const URL1 = "https://www.youtube.com/watch?v=abcdefghijk";
 const URL2 = "https://www.youtube.com/watch?v=abcdefghijl";
 const stream = (url) => ({ key: `stream:${url}`, kind: "stream", result: { extra: { webpage_url: url } } });
 
-const state = (time = 100, next = stream(URL2)) => ({
+const state = (playing = true, next = stream(URL2)) => ({
   track: stream(URL1),
   queue: [stream(URL1), next],
   index: 0,
-  duration: 120,
-  time,
+  playing,
 });
 
 describe("nextStreamUrl", () => {
@@ -19,32 +18,27 @@ describe("nextStreamUrl", () => {
   });
 
   it("ignores a library next or an empty queue", () => {
-    expect(nextStreamUrl(state(100, { key: "lib/x", kind: "library" }))).toBeNull();
+    expect(nextStreamUrl(state(true, { key: "lib/x", kind: "library" }))).toBeNull();
     expect(nextStreamUrl({ track: stream(URL1), queue: [], index: -1 })).toBeNull();
   });
 });
 
 describe("shouldPrepare", () => {
-  it("waits until the window at the end of the song", () => {
-    expect(shouldPrepare(state(99))).toBe(false);
-    expect(shouldPrepare(state(120 - PREPARE_WINDOW_S))).toBe(true);
-    expect(shouldPrepare(state(119))).toBe(true);
+  it("prepares the next one as soon as the current one plays", () => {
+    expect(shouldPrepare(state(false))).toBe(false);
+    expect(shouldPrepare(state(true))).toBe(true);
   });
 
   it("never prepares a library track or a repeated url", () => {
-    expect(shouldPrepare({ ...state(119), track: { kind: "library", key: "lib/x" } })).toBe(false);
-    expect(shouldPrepare(state(119), URL2)).toBe(false);
-  });
-
-  it("does nothing without a duration", () => {
-    expect(shouldPrepare({ ...state(119), duration: 0 })).toBe(false);
+    expect(shouldPrepare({ ...state(), track: { kind: "library", key: "lib/x" } })).toBe(false);
+    expect(shouldPrepare(state(), URL2)).toBe(false);
   });
 });
 
 describe("bindStreamPrefetch", () => {
   it("posts once and re-arms when the track changes", () => {
     let listener = null;
-    let s = state(119);
+    let s = state();
     const engine = {
       subscribe(fn) {
         listener = fn;
@@ -63,7 +57,7 @@ describe("bindStreamPrefetch", () => {
       body: JSON.stringify({ url: URL2 }),
     });
 
-    s = { ...state(119), track: stream(URL2), queue: [stream(URL2)], index: 0 };
+    s = { ...state(), track: stream(URL2), queue: [stream(URL2)], index: 0 };
     listener();
     expect(fetchFn).toHaveBeenCalledTimes(1);
     off();
@@ -71,7 +65,7 @@ describe("bindStreamPrefetch", () => {
 
   it("survives a failing fetch", () => {
     let listener = null;
-    const s = state(119);
+    const s = state();
     const engine = { subscribe(fn) { listener = fn; return () => {}; }, getState: () => s };
     const fetchFn = vi.fn(() => Promise.reject(new Error("sin red")));
     bindStreamPrefetch(engine, { fetchFn });

@@ -3,12 +3,12 @@ import { API } from "../shared/api.js";
 /* ---------------------------------------------------------------------------
    ADELANTAR EL SIGUIENTE STREAM
 
-   El backend resuelve la URL del formato en ~0,2 s con el camino rapido, pero
-   mejor que eso no este en el cambio de pista. Con 20 s de margen se avisa una
-   vez por pista, sin esperar respuesta y sin molestar si no hay siguiente.
+   El backend resuelve la URL del formato en ~0,2 s en el PC, pero en un
+   telefono yt-dlp tarda mas, y "siguiente" se puede tocar en cualquier
+   momento. Por eso la siguiente se prepara en cuanto la actual empieza a
+   sonar: una sola peticion por pista, sin esperar respuesta y sin molestar si
+   no hay siguiente. La URL preparada vale horas (el backend la guarda).
    ------------------------------------------------------------------------- */
-
-export const PREPARE_WINDOW_S = 20;
 
 export function nextStreamUrl(state) {
   const next = state?.queue?.[state.index + 1];
@@ -24,9 +24,7 @@ export function shouldPrepare(state, prepared = null) {
   if (state?.track?.kind !== "stream") return false;
   const url = nextStreamUrl(state);
   if (!url || prepared === url) return false;
-  const duration = Number(state.duration) || Number(state.track.duration) || 0;
-  const time = Number(state.time) || 0;
-  return duration > 0 && duration - time <= PREPARE_WINDOW_S;
+  return Boolean(state.playing);
 }
 
 export function bindStreamPrefetch(engine, { fetchFn = (...a) => fetch(...a) } = {}) {
