@@ -81,3 +81,39 @@ describe("prepareTopStreams", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("archive audition", () => {
+  const item = { source: "archive", source_id: "creep-1992", title: "Creep", artist: "Radiohead", extra: { needs_resolve: true } };
+
+  it("only archive results that still need resolving can be heard first", async () => {
+    const { canAudition } = await import("./streamTrack.js");
+    expect(canAudition(item)).toBe(true);
+    expect(canAudition({ ...item, extra: {} })).toBe(false);
+    expect(canAudition({ ...item, source: "itunes" })).toBe(false);
+  });
+
+  it("plays the exact file the verification found", async () => {
+    const { listenArchive } = await import("./ArchiveListenButton.jsx");
+    const recs = new Map();
+    const store = {
+      get: (k) => recs.get(k),
+      verify: vi.fn(async (t, q) => { recs.set(`archive${t.source_id}|${q}`, { audio: "https://ia.example/creep.mp3" }); }),
+    };
+    const player = { play: vi.fn() };
+    expect(await listenArchive(item, "creep", { store, player })).toBe(true);
+    expect(store.verify).toHaveBeenCalledOnce();
+    const track = player.play.mock.calls[0][0];
+    expect(track).toMatchObject({ key: "archive:creep-1992", src: "https://ia.example/creep.mp3", kind: "stream", result: item });
+
+    await listenArchive(item, "creep", { store, player });
+    expect(store.verify).toHaveBeenCalledOnce(); // la segunda vez reusa la URL
+  });
+
+  it("does not play when the verification found no file", async () => {
+    const { listenArchive } = await import("./ArchiveListenButton.jsx");
+    const store = { get: () => undefined, verify: vi.fn(async () => {}) };
+    const player = { play: vi.fn() };
+    expect(await listenArchive(item, "creep", { store, player })).toBe(false);
+    expect(player.play).not.toHaveBeenCalled();
+  });
+});

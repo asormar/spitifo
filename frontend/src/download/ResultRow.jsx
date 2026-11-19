@@ -10,7 +10,8 @@ import DlRing from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import StreamButton from "./StreamButton.jsx";
-import { canStream } from "./streamTrack.js";
+import ArchiveListenButton from "./ArchiveListenButton.jsx";
+import { canAudition, canStream } from "./streamTrack.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 
@@ -112,7 +113,11 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       <span className="res__acts">
         {canStream(t) ? (
           <StreamButton t={t} queue={queue} source={source || (query ? `search:${query}` : null)} />
-        ) : t.preview_url && <PreviewButton t={t} />}
+        ) : canAudition(t) ? (
+          <ArchiveListenButton t={t} query={query} />
+        ) : (
+          t.preview_url && <PreviewButton t={t} />
+        )}
         {st === "full" ? (
           <DlRing t={t} busy={busy} downloaded={downloaded} onDl={onDl} />
         ) : (

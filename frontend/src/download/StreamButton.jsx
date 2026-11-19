@@ -13,7 +13,7 @@ import { streamKey, streamQueue } from "./streamTrack.js";
    icono gira; es el mismo estado `buffering` que usan los controles.
    ------------------------------------------------------------------------- */
 
-export default function StreamButton({ t, queue, source = null }) {
+export default function StreamButton({ t, queue, source = null, text = false }) {
   const key = streamKey(t.extra?.webpage_url);
   const current = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -35,11 +35,11 @@ export default function StreamButton({ t, queue, source = null }) {
   return (
     <button
       type="button"
-      className="pre"
+      className={text ? "btn btn--ghost" : "pre"}
       disabled={failed}
       aria-pressed={playing}
-      aria-label={`Escuchar ${title}`}
-      title="Escuchar en streaming"
+      aria-label={text ? undefined : `Escuchar ${title}`}
+      title={text ? undefined : "Escuchar en streaming"}
       onClick={toggle}
     >
       {loading ? (
@@ -47,6 +47,7 @@ export default function StreamButton({ t, queue, source = null }) {
       ) : (
         playing ? <Ico n="pause" size={20} /> : <Icon name="Play" size={18} weight="fill" />
       )}
+      {text && "Escuchar"}
     </button>
   );
 }

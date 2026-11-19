@@ -71,13 +71,13 @@ const reply = (body, ok = true) => vi.fn(async () => ({ ok, json: async () => bo
 
 describe("verdictStore", () => {
   it("verificar: carga, termina y guarda el veredicto de las etiquetas", async () => {
-    const fetchFn = reply({ extra: { match: "match", real_title: "Nocturne", match_score: 0.92 } });
+    const fetchFn = reply({ audio_url: "https://ia.example/n.mp3", extra: { match: "match", real_title: "Nocturne", match_score: 0.92 } });
     const store = createVerdictStore(fetchFn);
     const key = verdictKey(archive, "nocturne");
     const p = store.verify(archive, "nocturne");
     expect(store.get(key)).toEqual({ phase: "loading" });
     await p;
-    expect(store.get(key)).toMatchObject({ phase: "done", from: "verify", match: "match", real: "Nocturne", score: 0.92 });
+    expect(store.get(key)).toMatchObject({ phase: "done", from: "verify", match: "match", real: "Nocturne", score: 0.92, audio: "https://ia.example/n.mp3" });
     expect(fetchFn.mock.calls[0][0]).toContain("source=archive&source_id=a1");
   });
 

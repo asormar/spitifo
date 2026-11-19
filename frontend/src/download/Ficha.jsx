@@ -7,6 +7,9 @@ import { warmDownload } from "./api.js";
 import { useDl } from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
+import StreamButton from "./StreamButton.jsx";
+import ArchiveListenButton from "./ArchiveListenButton.jsx";
+import { canAudition, canStream } from "./streamTrack.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { Thumb, factsOf } from "./ResultRow.jsx";
 import { dlText, dlWaiting } from "./searchPlan.js";
@@ -143,7 +146,15 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
           </ExtLink>
         </p>
         <div className="fa">
-          {t.preview_url && <PreviewButton t={t} text />}
+          {/* La misma regla que la fila: la cancion entera si se puede, el
+              preview de 30 s solo cuando no hay otra cosa. */}
+          {canStream(t) ? (
+            <StreamButton t={t} text />
+          ) : canAudition(t) ? (
+            <ArchiveListenButton t={t} query={query} text />
+          ) : (
+            t.preview_url && <PreviewButton t={t} text />
+          )}
           {st === "full" && (
             <button
               type="button"

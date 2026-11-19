@@ -105,6 +105,8 @@ export function createVerdictStore(fetchImpl = (...a) => fetch(...a)) {
             score: x.match_score ?? null,
             by: "file",
             extra: x,
+            /* El archivo exacto que se bajaria: con el se puede escuchar antes. */
+            audio: d.audio_url || null,
           });
         } catch (e) {
           put(key, { phase: "error", error: fetchErr(e, e.message) });

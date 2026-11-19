@@ -35,6 +35,29 @@ export function streamTrack(t, source = null) {
   };
 }
 
+/* Internet Archive no tiene preview: el archivo que se bajaria se encuentra
+   con la misma verificacion de «¿Es esta la cancion?» y suena directo desde
+   archive.org. Solo los que todavia hay que resolver (o ya traen su URL). */
+export const canAudition = (t) =>
+  t?.source === "archive" && Boolean(t?.extra?.needs_resolve || t?.audio_url);
+
+export const auditionKey = (t) => `archive:${t.source_id}`;
+
+export function auditionTrack(t, audio) {
+  const title = t.title || "sin título";
+  return {
+    key: auditionKey(t),
+    src: audio,
+    title,
+    label: title,
+    meta: t.artist || "artista desconocido",
+    duration: t.duration_s ?? null,
+    artwork: t.artwork_url || null,
+    kind: "stream",
+    result: t,
+  };
+}
+
 /* La cola son los resultados de la misma lista con version completa, en orden.
    Asi "siguiente" sigue sonando del mismo sitio (Buscar, un album...). */
 export function streamQueue(results, t, source = null) {
