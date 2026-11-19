@@ -91,6 +91,13 @@ async def lifespan(app: Starlette):
     # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
     # la deja lista para el proximo arranque (no reemplaza la ya importada).
     ytdlp_update.start_background_check()
+    # El visitor_data del streaming se busca al arrancar, nunca en el primer
+    # play: si falla, el camino rapido cae al completo y el usuario no lo nota.
+    if any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
+        from . import stream as stream_mod
+        tarea = asyncio.create_task(stream_mod.warm_visitor())
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
     log.info("biblioteca: %s", get_storage().describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
@@ -1134,6 +1141,106 @@ async def download_warm(request: Request):
     if not ysrc or not ysrc.available():
         return Response(status_code=204)
     return JSONResponse({"warming": warm(canon)}, status_code=202)
+
+
+async def stream_audio(request: Request):
+    """GET /api/stream?url=...: proxy de bytes para el elemento <audio>.
+
+    Igual que `/api/audio`, la peticion lleva la sesion del WebView (cookie del
+    bootstrap con `?token=`), asi que el auth middleware no se toca. YouTube se
+    pide siempre en trozos de 1 MiB: un rango abierto se corta o da 403.
+    """
+    url = _query_str(request, "url", required=True, min_length=1, max_length=500)
+    from . import stream as stream_mod
+    from .ytdlp_source import BotCheckError, parse_youtube_url
+    canon = parse_youtube_url(url)
+    if not canon or "/watch?v=" not in canon:
+        raise HTTPException(400, "url de video de YouTube invalida")
+    ysrc = BY_NAME.get("ytdlp")
+    if not ysrc or not ysrc.available():
+        return Response(status_code=204)
+    vid = stream_mod.video_id(canon) or canon
+    try:
+        info = await stream_mod.resolve(canon)
+    except BotCheckError as e:
+        # Mismo codigo y mensaje que la descarga: la UI ofrece importar cookies.
+        return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
+    except Exception as e:
+        log.warning("ytdlp stream fallo: %s", e)
+        raise HTTPException(502, f"yt-dlp: {e}")
+
+    rango = stream_mod.parse_range(request.headers.get("range"), info.filesize)
+    if rango == "insatisfacible":
+        headers = {"Accept-Ranges": "bytes"}
+        if info.filesize is not None:
+            headers["Content-Range"] = f"bytes */{info.filesize}"
+        return Response(status_code=416, headers=headers)
+    start, end, partial = rango
+
+    cliente = stream_mod.make_client()
+    up = stream_mod.Upstream(info, cliente, start, end)
+    try:
+        await up.open()
+    except stream_mod.UpstreamGone:
+        # La URL del formato vencio antes de mandar nada: se descarta y se
+        # resuelve una sola vez mas. Despues del primer byte ya no se reintenta.
+        stream_mod.drop(vid)
+        try:
+            info = await stream_mod.resolve(canon, force=True)
+        except BotCheckError as e:
+            await cliente.aclose()
+            return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
+        except Exception as e:
+            await cliente.aclose()
+            log.warning("ytdlp stream reintento fallo: %s", e)
+            raise HTTPException(502, f"yt-dlp: {e}")
+        up = stream_mod.Upstream(info, cliente, start, end)
+        try:
+            await up.open()
+        except Exception as e:
+            await cliente.aclose()
+            raise HTTPException(502, f"stream: {e}")
+    except Exception as e:
+        await cliente.aclose()
+        log.warning("stream upstream fallo: %s", e)
+        raise HTTPException(502, f"stream: {e}")
+
+    total = up.total
+    headers = {"Accept-Ranges": "bytes"}
+    if partial:
+        last = end if end is not None else (total - 1 if total is not None else None)
+        if total is not None and last is not None:
+            headers["Content-Range"] = f"bytes {start}-{last}/{total}"
+            headers["Content-Length"] = str(max(0, last - start + 1))
+    elif total is not None:
+        headers["Content-Length"] = str(total)
+    return StreamingResponse(up.body(), status_code=206 if partial else 200,
+                             media_type=info.mime, headers=headers)
+
+
+async def stream_prepare(request: Request):
+    """POST /api/stream/prepare: adelanta la resolucion, contesta 202 ya."""
+    body = await _json_body(request)
+    url = body.get("url")
+    from .ytdlp_source import parse_youtube_url
+    canon = parse_youtube_url(url) if isinstance(url, str) else None
+    if not canon or "/watch?v=" not in canon:
+        raise HTTPException(400, "url de video de YouTube invalida")
+    ysrc = BY_NAME.get("ytdlp")
+    if not ysrc or not ysrc.available():
+        return Response(status_code=204)
+
+    async def _bg():
+        from . import stream as stream_mod
+        try:
+            await stream_mod.resolve(canon)
+        except Exception as e:
+            log.info("stream prepare fallo: %s", e)
+
+    tarea = asyncio.create_task(_bg())
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
+    return JSONResponse({"preparing": True}, status_code=202)
 
 
 async def download(request: Request):
@@ -2272,6 +2379,8 @@ routes = [
     Route("/api/storage/use", storage_use, methods=["POST"]),
     Route("/api/storage/disconnect", storage_disconnect, methods=["POST"]),
     Route("/api/audio", audio),
+    Route("/api/stream", stream_audio),
+    Route("/api/stream/prepare", stream_prepare, methods=["POST"]),
     Route("/api/prefetch", prefetch, methods=["POST"]),
     Route("/api/covers/missing", covers_missing),
     Route("/api/covers/candidates", covers_candidates),

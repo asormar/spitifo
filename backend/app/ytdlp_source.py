@@ -669,16 +669,20 @@ def bot_check_error() -> BotCheckError:
         "Importa un cookies.txt desde la configuracion y reintenta.")
 
 
-async def probe_info(url: str) -> dict:
+async def probe_info(url: str, format: str | None = None) -> dict:
     """`extract_info(url, download=False)` con el manejo de cookies de la descarga.
 
     Mismo ultimo recurso que `YtDlpSource.download`: ante el muro de verificacion
     se reintenta UNA vez con las cookies importadas (copia plana temporal) y, si
     sigue, se levanta `BotCheckError` para que la API conteste 502 con el codigo.
+    `format` permite pedir "bestaudio" para el streaming, que necesita la URL del
+    formato sin bajarlo.
     """
     import yt_dlp
     opts = youtube_opts({"quiet": True, "no_warnings": True, "skip_download": True,
                          "socket_timeout": 30, "retries": 1})
+    if format:
+        opts["format"] = format
 
     def _run(cookiefile: str | None = None):
         o = dict(opts)
