@@ -288,6 +288,27 @@ export default function App() {
      traduce. Sin la API, bindMediaSession devuelve un no-op. */
   useEffect(() => bindMediaSession(engine), []);
 
+  /* El shell Android necesita ademas la notificacion del sistema. Se carga solo
+     cuando el puente existe, asi el chunk del puente no sale en escritorio ni
+     en el navegador; bindAndroidMedia traduce la misma foto del motor. */
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.SpitifoAndroid?.mediaUpdate !== "function"
+    ) {
+      return undefined;
+    }
+    let off = () => {};
+    let alive = true;
+    import("../player/androidMedia.js").then(({ bindAndroidMedia }) => {
+      if (alive) off = bindAndroidMedia(engine);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
   /* Historial de escucha: UNA vez por app. El tracker vive mientras App este
      montada y cierra la sesion abierta con "close" al desmontarse. */
   useEffect(() => {
