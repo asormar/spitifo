@@ -63,6 +63,12 @@ describe("sourceCaption", () => {
     expect(sourceCaption("album:X", preview).head).toBe("Avance de 30 s");
   });
 
+  it("has its own head for a stream", () => {
+    const s = { kind: "stream", meta: "Nick Cave · Skeleton Tree" };
+    expect(sourceCaption("album:X", s)).toEqual({ head: "En streaming", name: "Skeleton Tree" });
+    expect(sourceCaption(null, { kind: "stream", meta: "Nick Cave" })).toEqual({ head: "En streaming", name: "Nick Cave" });
+  });
+
   it("does not break without a track", () => {
     expect(sourceCaption("album:X", null)).toEqual({ head, name: "X" });
     expect(sourceCaption(null, null)).toEqual({ head, name: "" });

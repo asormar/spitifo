@@ -1,9 +1,15 @@
+import { lazy, Suspense } from "react";
 import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { engine } from "./engine.js";
 import { DockArt, PlayButton } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
+
+/* Los bits de streaming (anillo, cola de descarga) no se cargan hasta que suena
+   una pista de ese tipo: no pesan en el primer pintado de la app. */
+const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
+const StreamDownload = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamDownload })));
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR (telefono)
@@ -45,10 +51,18 @@ function MiniPlayer({ onOpen, npOpen }) {
               {info?.title}
             </span>
             <span className="mini__meta" title={meta}>
+              {info?.kind === "stream" && (
+                <>
+                  <Suspense fallback={null}><StreamBadge track={info} /></Suspense>{" "}
+                </>
+              )}
               {meta}
             </span>
           </span>
         </button>
+        {info?.kind === "stream" && (
+          <Suspense fallback={null}><StreamDownload track={info} /></Suspense>
+        )}
         <PlayButton icon={d.icon} playing={d.playing} label={d.label} size={18} />
         <button
           type="button"

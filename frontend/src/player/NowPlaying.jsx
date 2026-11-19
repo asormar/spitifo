@@ -20,6 +20,7 @@ import NowCards, { FichaCard } from "./NowCards.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { panel, usePanel } from "./panel.js";
 import { useTrackPill } from "./useTrackPill.js";
+import { StreamBadge, StreamDownload } from "./StreamBits.jsx";
 import { artTint, toneTint } from "./tint.js";
 import "./nowplaying.css";
 
@@ -131,6 +132,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
   /* El veredicto del archivo, o «Solo 30 s» en un avance: abre la Ficha. */
   const pill = useTrackPill(track);
   const chip = pill && <VerdictChip v={pill} className="np__v" onOpen={() => panel.show(2)} />;
+  const streamDl = track?.kind === "stream" && <StreamDownload track={track} />;
   const art = track?.artwork && badArt !== track.artwork ? track.artwork : null;
   const fallback = toneTint(coverTone(artist, album));
   const [paint, apply, settle] = usePaint(art, fallback);
@@ -315,6 +317,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
     <>
       <h2 className="np__title">{track.title}</h2>
       <p className="np__sub" title={meta}>
+        {track.kind === "stream" && <><StreamBadge track={track} /> </>}
         {meta}
       </p>
     </>
@@ -355,6 +358,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
                 {title}
                 {chip}
               </div>
+              {streamDl}
               {addButton}
             </div>
           ) : (
@@ -471,7 +475,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
                 <small>{caption.head}</small>
                 <b>{caption.name}</b>
               </p>
-              <div className="np__tools">{addButton}</div>
+              <div className="np__tools">{streamDl}{addButton}</div>
             </header>
             {tabs}
           </div>

@@ -12,6 +12,7 @@ import { panel, panelMode, usePanel } from "../player/panel.js";
 import { useEngine } from "../player/useEngine.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
+import StreamErrors from "../player/StreamErrors.jsx";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
 import ListenProvider from "../listen/ListenProvider.jsx";
@@ -287,6 +288,20 @@ export default function App() {
      el motor avisa de cada cambio de pista o de estado y mediaSession solo
      traduce. Sin la API, bindMediaSession devuelve un no-op. */
   useEffect(() => bindMediaSession(engine), []);
+
+  /* El aviso del proximo stream se carga aparte: mientras suena musica de la
+     biblioteca no hace falta ni el modulo ni ninguna peticion. */
+  useEffect(() => {
+    let off = () => {};
+    let alive = true;
+    import("../player/streamPrefetch.js").then(({ bindStreamPrefetch }) => {
+      if (alive) off = bindStreamPrefetch(engine);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
 
   /* El shell Android necesita ademas la notificacion del sistema. Se carga solo
      cuando el puente existe, asi el chunk del puente no sale en escritorio ni
@@ -666,6 +681,7 @@ export default function App() {
         restoreFiles={restoreFiles}
       >
         <QueueHooks onLibrary={loadLib} onReady={onQueueReadyPill} />
+        <StreamErrors />
         <main className="app" inert={full ? "" : undefined}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
               arriba en escritorio; la barra inferior y la pastilla, en telefono. */}

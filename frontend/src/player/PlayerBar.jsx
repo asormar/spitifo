@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import Ico from "../shared/ico.jsx";
 import { clock } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
@@ -6,6 +7,9 @@ import { Controls, DockArt, Volume } from "./controls.jsx";
 import useDock from "./useDock.js";
 import { useTrackPill } from "./useTrackPill.js";
 import Scrub from "./Scrub.jsx";
+
+const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
+const StreamDownload = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamDownload })));
 
 /* ---------------------------------------------------------------------------
    BARRA DEL REPRODUCTOR (escritorio)
@@ -58,6 +62,11 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
                   {info?.title}
                 </span>
                 <span className="lcd__s" title={meta}>
+                  {info?.kind === "stream" && (
+                    <>
+                      <Suspense fallback={null}><StreamBadge track={info} /></Suspense>{" "}
+                    </>
+                  )}
                   {meta}
                 </span>
               </span>
@@ -71,6 +80,9 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
       </div>
 
       <div className="dock__end">
+        {info?.kind === "stream" && (
+          <Suspense fallback={null}><StreamDownload track={info} /></Suspense>
+        )}
         <Volume className="dock__vol" />
         {[
           [1, "Cola", "queue"],
