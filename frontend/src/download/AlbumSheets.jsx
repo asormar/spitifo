@@ -11,6 +11,8 @@ import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
+import { engine } from "../player/engine.js";
+import { streamTrack } from "./streamTrack.js";
 import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
@@ -78,6 +80,14 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
   const ask = query || `${album.artist} ${album.title}`;
+  /* Las pistas emparejadas con video se pueden oir en orden, sin bajarlas. */
+  const escuchables = tracks.filter((t) => t.extra?.webpage_url && t.extra?.has_full !== false);
+  const escuchar = () => {
+    if (!escuchables.length) return;
+    const source = `album:${album.title}`;
+    const lista = escuchables.map((t) => streamTrack(t, source));
+    engine.play(lista[0], { queue: lista, index: 0, source });
+  };
 
   useEffect(() => {
     const ac = new AbortController();
@@ -179,16 +189,23 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           {ytOff ? (
             <p className="als__note">Las descargas necesitan YouTube activado en este servidor.</p>
           ) : (
-            <button
-              type="button"
-              className="btn btn--acc btn--wide als__btn"
-              data-busy={running || undefined}
-              aria-disabled={btn.disabled || undefined}
-              onClick={() => !btn.disabled && enqueue(fullTracks)}
-            >
-              {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
-              {btn.text}
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn btn--acc btn--wide als__btn"
+                data-busy={running || undefined}
+                aria-disabled={btn.disabled || undefined}
+                onClick={() => !btn.disabled && enqueue(fullTracks)}
+              >
+                {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
+                {btn.text}
+              </button>
+              {escuchables.length > 0 && (
+                <button type="button" className="btn btn--ghost btn--wide als__btn" onClick={escuchar}>
+                  <Ico n="hp" size={18} /> Escuchar
+                </button>
+              )}
+            </>
           )}
 
           {err && (
