@@ -10,7 +10,7 @@ import { VerdictPill } from "../shared/Verdict.jsx";
 import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
-import { fetchAlbumDetail, fetchAlbumMatch } from "./albumApi.js";
+import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
 import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
@@ -52,6 +52,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const [detail, setDetail] = useState(null);
   const [detailErr, setDetailErr] = useState(null);
   const [match, setMatch] = useState(null);
+  const [matched, setMatched] = useState([]);
   const [matching, setMatching] = useState(true);
   const [err, setErr] = useState(null);
   const matchAbort = useRef(null);
@@ -61,7 +62,12 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const items = group?.items || [];
   const done = items.filter((i) => i.status === "done").length;
   const running = items.some((i) => BUSY_STATES.has(i.status));
-  const tracks = match?.tracks || detail?.tracks || [];
+  /* La lista sale de /detail y cada lote del stream reemplaza su fila en
+     cuanto llega: esa pista ya se puede bajar sin esperar a las demas. */
+  const tracks = useMemo(
+    () => mergeMatchedTracks(detail?.tracks || [], matched),
+    [detail, matched]
+  );
   /* Lo que ya esta en la biblioteca (mismo album de iTunes, mismo disco y
      numero) no se vuelve a bajar: ni entra en el boton ni en la cola. */
   const entries = useListen()?.model?.entries;
@@ -89,10 +95,18 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     matchAbort.current = ac;
     setMatching(true);
     setErr(null);
-    fetchAlbumMatch(album.id, ac.signal)
+    setMatched([]);
+    streamAlbumMatch(album.id, {
+      signal: ac.signal,
+      onTracks: (lote) => {
+        if (ac.signal.aborted) return;
+        setMatched((prev) => mergeMatchedTracks(prev, lote));
+      },
+    })
       .then((d) => {
         if (ac.signal.aborted) return;
         setMatch(d);
+        setMatched(d.tracks);  // el `done` trae todas, incluso las que no matchearon
         setMatching(false);
       })
       .catch((e) => {

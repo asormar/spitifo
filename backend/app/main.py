@@ -8,6 +8,7 @@ parametros y las respuestas son los mismos que devolvia la version FastAPI.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import mimetypes
 import os
@@ -687,12 +688,29 @@ async def artist_detail(request: Request):
     })
 
 
-async def album_match(request: Request):
-    album_id = str(request.path_params["id"])
+def _guardar_match_en_cache(album_id: str, ahora: float, payload: dict) -> None:
+    """Guarda la respuesta final del match, con expulsion por antiguedad."""
+    _ALBUM_MATCH_CACHE[album_id] = (ahora, payload)
+    if len(_ALBUM_MATCH_CACHE) > _ALBUM_MATCH_MAX:
+        vieja = min(_ALBUM_MATCH_CACHE,
+                    key=lambda k: _ALBUM_MATCH_CACHE[k][0])
+        _ALBUM_MATCH_CACHE.pop(vieja, None)
+
+
+async def _album_match_eventos(album_id: str):
+    """Generador comun de las dos rutas de match.
+
+    Emite (tipo, datos): `album` con la cabecera, un `tracks` por lote de
+    pistas recien matcheadas (a medida que llegan) y `done` con el payload
+    final y TODAS las pistas. La ruta JSON se queda con `done`; la de stream
+    manda todo. Si el consumidor se va, las busquedas sueltas se cancelan.
+    """
     ahora = time.time()
     hit = _ALBUM_MATCH_CACHE.get(album_id)
     if hit and ahora - hit[0] < _ALBUM_MATCH_TTL_S:
-        return JSONResponse(hit[1])
+        yield "album", {"album": hit[1]["album"], "ytdlp": hit[1]["ytdlp"]}
+        yield "done", hit[1]
+        return
 
     from .matcher import enrich_with_ytdlp
     from .sources import BY_NAME
@@ -701,13 +719,27 @@ async def album_match(request: Request):
     yt_on = bool(ysrc and ysrc.available())
 
     album, raws = await _album_lookup(album_id)
+    yield "album", {"album": album, "ytdlp": yt_on}
+
     matched: dict = {}
+    por_clave = {_track_key(r): r for r in raws}
+
+    def _track(clave: str) -> dict:
+        return _itunes_track(por_clave[clave], matched.get(clave)).to_dict()
+
     if yt_on:
         artista = album.get("artist") or ""
         titulo = album.get("title") or ""
         # 1) una busqueda para TODO el album: reparte los videos entre pistas.
-        matched = await enrich_with_ytdlp(
+        res = await enrich_with_ytdlp(
             raws, f"{artista} {titulo}".strip(), ysrc)
+        nuevos = []
+        for clave, m in res.items():
+            if (m or {}).get("video") and clave in por_clave:
+                matched[clave] = m
+                nuevos.append(_track(clave))
+        yield "tracks", {"tracks": nuevos}
+
         # 2) las que quedaron sin video se buscan sueltas, de a 3 como maximo.
         misses = [r for r in raws
                   if not (matched.get(_track_key(r)) or {}).get("video")]
@@ -719,13 +751,29 @@ async def album_match(request: Request):
                     # En recopilatorios el artista del album es "Varios
                     # artistas": la pista busca con el SUYO, no con ese.
                     track_artist = raw.get("artistName") or artista
-                    return await enrich_with_ytdlp(
+                    return raw, await enrich_with_ytdlp(
                         [raw],
                         f"{track_artist} {raw.get('trackName', '')}".strip(),
                         ysrc, limit=_ALBUM_TRACK_LIMIT)
 
-            for res in await asyncio.gather(*(_una(r) for r in misses)):
-                matched.update(res)
+            tareas = [asyncio.create_task(_una(r)) for r in misses]
+            try:
+                for lista in asyncio.as_completed(tareas):
+                    raw, res = await lista
+                    nuevos = []
+                    for clave, m in res.items():
+                        if (m or {}).get("video") and clave in por_clave:
+                            matched[clave] = m
+                            nuevos.append(_track(clave))
+                    # Una linea por busqueda que termina. Puede venir vacia:
+                    # esa pista solo se informa en `done`.
+                    yield "tracks", {"tracks": nuevos}
+            finally:
+                # Cliente desconectado: no dejar busquedas huerfanas.
+                for t in tareas:
+                    if not t.done():
+                        t.cancel()
+                await asyncio.gather(*tareas, return_exceptions=True)
 
     tracks = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
               for r in raws]
@@ -734,11 +782,56 @@ async def album_match(request: Request):
         "full": sum(1 for t in tracks if t["extra"].get("has_full")),
     }
     if yt_on:
-        _ALBUM_MATCH_CACHE[album_id] = (ahora, payload)
-        if len(_ALBUM_MATCH_CACHE) > _ALBUM_MATCH_MAX:
-            vieja = min(_ALBUM_MATCH_CACHE,
-                        key=lambda k: _ALBUM_MATCH_CACHE[k][0])
-            _ALBUM_MATCH_CACHE.pop(vieja, None)
+        _guardar_match_en_cache(album_id, ahora, payload)
+    yield "done", payload
+
+
+def _match_stream_response(eventos, primero) -> StreamingResponse:
+    """NDJSON: un objeto JSON por linea, en el orden de los eventos."""
+    async def cuerpo():
+        try:
+            tipo, datos = primero
+            while True:
+                if tipo == "done":
+                    # En el cable `done` lleva solo el resultado: album e
+                    # ytdlp ya vinieron en la primera linea.
+                    datos = {"full": datos["full"], "tracks": datos["tracks"]}
+                yield (json.dumps({"type": tipo, **datos},
+                                  ensure_ascii=False) + "\n").encode("utf-8")
+                try:
+                    tipo, datos = await eventos.__anext__()
+                except StopAsyncIteration:
+                    break
+        finally:
+            # Si el cliente corto, aclose dispara el finally del generador
+            # compartido y cancela lo que todavia estuviera buscando.
+            await eventos.aclose()
+
+    return StreamingResponse(cuerpo(), media_type="application/x-ndjson")
+
+
+async def album_match(request: Request):
+    album_id = str(request.path_params["id"])
+    if not album_id.isdigit():
+        # Igual que _album_lookup, pero antes de abrir un stream: asi las dos
+        # rutas responden 404 con el mismo cuerpo.
+        raise HTTPException(404, "album no encontrado")
+    if _query_str(request, "stream", default=None) in ("1", "true", "yes"):
+        eventos = _album_match_eventos(album_id)
+        # El primer evento se saca aca, antes de abrir el stream: el lookup de
+        # iTunes puede tirar 404/502 y esos si los maneja Starlette. Ya arrancado
+        # el stream, un HTTPException solo daria un 500 con la respuesta a medias.
+        try:
+            primero = await eventos.__anext__()
+        except StopAsyncIteration:
+            primero = ("done", {"full": 0, "tracks": []})
+        return _match_stream_response(eventos, primero)
+    # Ruta JSON de siempre: se descartan los lotes intermedios y se devuelve
+    # solo el payload final (mismo cuerpo y misma cache que antes).
+    payload = None
+    async for tipo, datos in _album_match_eventos(album_id):
+        if tipo == "done":
+            payload = datos
     return JSONResponse(payload)
 
 
