@@ -445,6 +445,8 @@ export default function SearchScreen({
                   downloaded={dl.downloadedIds.has(rowKey(t))}
                   onDl={onDl}
                   onOpen={nav.open}
+                  queue={shown}
+                  source={query ? `search:${query}` : null}
                 />
               )
             )}

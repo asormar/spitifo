@@ -9,6 +9,8 @@ import { thumbUrl } from "./artwork.js";
 import DlRing from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
+import StreamButton from "./StreamButton.jsx";
+import { canStream } from "./streamTrack.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 
@@ -56,7 +58,7 @@ export const subOf = (t) =>
     .filter(Boolean)
     .join(", ");
 
-export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen }) {
+export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen, queue, source }) {
   const st = trackState(t);
   const v = verdictOf(t, useVerdict(verdictKey(t, query)));
   const title = t.title || "sin título";
@@ -108,7 +110,9 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       </span>
       <span className="res__f num">{facts}</span>
       <span className="res__acts">
-        {t.preview_url && <PreviewButton t={t} />}
+        {canStream(t) ? (
+          <StreamButton t={t} queue={queue} source={source || (query ? `search:${query}` : null)} />
+        ) : t.preview_url && <PreviewButton t={t} />}
         {st === "full" ? (
           <DlRing t={t} busy={busy} downloaded={downloaded} onDl={onDl} />
         ) : (
