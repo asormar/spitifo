@@ -538,3 +538,21 @@
 }
 
 
+
+/* "En streaming" / "Guardada" delante de la meta de una pista de streaming. */
+.spill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.78em;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 1px;
+  color: var(--acc);
+  background: color-mix(in srgb, var(--acc) 14%, transparent);
+}
+.spill--ok {
+  color: var(--ok-t);
+  background: var(--ok-bg);
+}

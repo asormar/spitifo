@@ -45,7 +45,7 @@ export default function StreamButton({ t, queue, source = null }) {
       {loading ? (
         <Icon name="CircleNotch" size={20} weight="bold" className="spin" />
       ) : (
-        <Ico n={playing ? "pause" : "hp"} size={20} />
+        playing ? <Ico n="pause" size={20} /> : <Icon name="Play" size={18} weight="fill" />
       )}
     </button>
   );

@@ -104,6 +104,8 @@ async def lifespan(app: Starlette):
     yield
     for s in ALL_SOURCES:
         await s.aclose()
+    from . import stream as stream_mod
+    await stream_mod.aclose()
 
 
 # --------------------------------------------------------------- validacion
@@ -1177,7 +1179,7 @@ async def stream_audio(request: Request):
         return Response(status_code=416, headers=headers)
     start, end, partial = rango
 
-    cliente = stream_mod.make_client()
+    cliente = stream_mod.client()
     up = stream_mod.Upstream(info, cliente, start, end)
     try:
         await up.open()
@@ -1188,20 +1190,16 @@ async def stream_audio(request: Request):
         try:
             info = await stream_mod.resolve(canon, force=True)
         except BotCheckError as e:
-            await cliente.aclose()
             return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
         except Exception as e:
-            await cliente.aclose()
             log.warning("ytdlp stream reintento fallo: %s", e)
             raise HTTPException(502, f"yt-dlp: {e}")
         up = stream_mod.Upstream(info, cliente, start, end)
         try:
             await up.open()
         except Exception as e:
-            await cliente.aclose()
             raise HTTPException(502, f"stream: {e}")
     except Exception as e:
-        await cliente.aclose()
         log.warning("stream upstream fallo: %s", e)
         raise HTTPException(502, f"stream: {e}")
 
@@ -1209,6 +1207,8 @@ async def stream_audio(request: Request):
     headers = {"Accept-Ranges": "bytes"}
     if partial:
         last = end if end is not None else (total - 1 if total is not None else None)
+        if last is not None and total is not None:
+            last = min(last, total - 1)
         if total is not None and last is not None:
             headers["Content-Range"] = f"bytes {start}-{last}/{total}"
             headers["Content-Length"] = str(max(0, last - start + 1))

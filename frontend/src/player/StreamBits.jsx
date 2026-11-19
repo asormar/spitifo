@@ -11,16 +11,6 @@ import DlRing from "../download/DlRing.jsx";
    usa Buscar: no hay logica nueva ni se toca la reproduccion.
    ------------------------------------------------------------------------- */
 
-const BADGE = {
-  border: "1px solid currentColor",
-  borderRadius: 999,
-  padding: "0 5px",
-  fontSize: "0.72em",
-  lineHeight: 1.5,
-  whiteSpace: "nowrap",
-  opacity: 0.85,
-};
-
 function useItem(track) {
   const state = useQueueState();
   const t = track?.result;
@@ -30,7 +20,8 @@ function useItem(track) {
 
 export function StreamBadge({ track }) {
   const item = useItem(track);
-  return <span style={BADGE}>{item?.status === "done" ? "Guardada" : "En streaming"}</span>;
+  const saved = item?.status === "done";
+  return <span className={saved ? "spill spill--ok" : "spill"}>{saved ? "Guardada" : "En streaming"}</span>;
 }
 
 export function StreamDownload({ track }) {

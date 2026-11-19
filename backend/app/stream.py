@@ -40,6 +40,10 @@ VISITOR_TTL_S = 6 * 60 * 60
 VISITOR_URL = "https://www.youtube.com/"
 VISITOR_RE = re.compile(r'"VISITOR_DATA":"([^"]+)"')
 
+#: Si la home de YouTube no contesta, no se reintenta en cada play: durante este
+#: rato se va directo al camino completo en vez de esperar otro timeout.
+VISITOR_BACKOFF_S = 5 * 60
+
 #: googlevideo corta o niega rangos abiertos: siempre pedimos trozos acotados.
 MAX_CHUNK = 1024 * 1024
 
@@ -68,6 +72,7 @@ class StreamInfo:
 # ---------------------------------------------------------------- visitor data
 _visitor: str | None = None
 _visitor_at = 0.0
+_visitor_failed_at = 0.0
 _visitor_lock = threading.Lock()
 
 _pool: queue.Queue = queue.Queue(maxsize=3)
@@ -98,26 +103,32 @@ async def warm_visitor() -> None:
 
 async def ensure_visitor() -> str | None:
     """Devuelve el visitor_data en cache o lo busca; TTL de 6 h."""
-    global _visitor, _visitor_at
+    global _visitor, _visitor_at, _visitor_failed_at
     now = time.time()
     with _visitor_lock:
         if _visitor and now - _visitor_at < VISITOR_TTL_S:
             return _visitor
+        if now - _visitor_failed_at < VISITOR_BACKOFF_S:
+            return None
     data = await asyncio.to_thread(_fetch_visitor_sync)
-    if data:
-        with _visitor_lock:
+    with _visitor_lock:
+        if data:
             _visitor = data
             _visitor_at = time.time()
+        else:
+            _visitor_failed_at = time.time()
+    if data:
         _reset_pool()
     return data
 
 
 def invalidate() -> None:
     """Descarta el visitor_data y los YoutubeDL construidos con el."""
-    global _visitor, _visitor_at
+    global _visitor, _visitor_at, _visitor_failed_at
     with _visitor_lock:
         _visitor = None
         _visitor_at = 0.0
+        _visitor_failed_at = 0.0
     _reset_pool()
 
 
@@ -271,9 +282,11 @@ def drop(video_key: str) -> None:
 
 def clear() -> None:
     """Solo para tests: limpia entradas y tareas en vuelo."""
+    global _client
     with _lock:
         _cache.clear()
         _pending.clear()
+    _client = None
     invalidate()
 
 
@@ -299,6 +312,9 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
     t0 = time.monotonic()
     try:
         visitor = await ensure_visitor()
+        if not visitor:
+            # Sin visitor_data el camino rapido choca con el muro: ni se intenta.
+            raise RuntimeError("sin visitor_data")
         with _pooled(visitor) as ydl:
             info = await asyncio.to_thread(ydl.extract_info, url, download=False)
         salida = _from_info(info, "fast")
@@ -367,6 +383,27 @@ def make_client() -> httpx.AsyncClient:
     """Cliente async del proxy. Los tests lo cambian por httpx.MockTransport."""
     return httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=60.0),
                              follow_redirects=True, headers={"User-Agent": USER_AGENT})
+
+
+_client: httpx.AsyncClient | None = None
+
+
+def client() -> httpx.AsyncClient:
+    """Un cliente para todo el proceso: cada arranque y cada salto dentro de la
+    cancion reusan la conexion abierta con googlevideo en vez de pagar otro
+    handshake TLS (~0,1 s, mas en el telefono)."""
+    global _client
+    if _client is None or _client.is_closed:
+        _client = make_client()
+    return _client
+
+
+async def aclose() -> None:
+    """Cierra el cliente compartido al apagar la app."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
 
 class Upstream:
@@ -439,4 +476,3 @@ class Upstream:
             if self._resp is not None:
                 await self._cm.__aexit__(None, None, None)
                 self._cm, self._resp = None, None
-            await self.client.aclose()

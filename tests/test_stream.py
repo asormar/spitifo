@@ -96,6 +96,40 @@ def test_camino_rapido(monkeypatch):
     assert full == []
 
 
+
+def test_sin_visitor_no_intenta_el_camino_rapido(monkeypatch):
+    calls = fake_pool(monkeypatch, result=format_info())
+
+    async def sin_visitor():
+        return None
+
+    monkeypatch.setattr(stream, "ensure_visitor", sin_visitor)
+
+    async def probe(url, format=None):
+        return format_info()
+
+    monkeypatch.setattr(ytdlp_source, "probe_info", probe)
+    info = asyncio.run(stream.resolve(URL))
+    assert info.path == "full"
+    assert calls == []
+
+
+def test_si_la_home_no_contesta_no_se_reintenta_en_cada_play(monkeypatch):
+    pedidos = []
+
+    def falla():
+        pedidos.append(1)
+        return None
+
+    monkeypatch.setattr(stream, "_fetch_visitor_sync", falla)
+    assert asyncio.run(stream.ensure_visitor()) is None
+    assert asyncio.run(stream.ensure_visitor()) is None
+    assert pedidos == [1]  # el segundo play va directo al camino completo
+    # Pasado el rato de espera se vuelve a probar.
+    monkeypatch.setattr(stream, "_visitor_failed_at", time.time() - stream.VISITOR_BACKOFF_S - 1)
+    asyncio.run(stream.ensure_visitor())
+    assert pedidos == [1, 1]
+
 def test_fallo_rapido_cae_al_completo_e_invalida_visitor(monkeypatch):
     fake_pool(monkeypatch, error=RuntimeError("muro"))
     invalidados = []

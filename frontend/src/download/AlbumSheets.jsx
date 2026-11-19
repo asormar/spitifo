@@ -11,6 +11,7 @@ import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
+import { Icon } from "../shared/icons.jsx";
 import { engine } from "../player/engine.js";
 import { streamTrack } from "./streamTrack.js";
 import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
@@ -202,7 +203,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
               </button>
               {escuchables.length > 0 && (
                 <button type="button" className="btn btn--ghost btn--wide als__btn" onClick={escuchar}>
-                  <Ico n="hp" size={18} /> Escuchar
+                  <Icon name="Play" size={16} weight="fill" /> Escuchar
                 </button>
               )}
             </>
