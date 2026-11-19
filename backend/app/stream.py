@@ -44,6 +44,15 @@ VISITOR_RE = re.compile(r'"VISITOR_DATA":"([^"]+)"')
 #: rato se va directo al camino completo en vez de esperar otro timeout.
 VISITOR_BACKOFF_S = 5 * 60
 
+#: Topes de cada camino. Ninguna resolucion puede dejar el boton girando para
+#: siempre: el rapido cede al completo y el completo termina en un error que la
+#: UI convierte en aviso. Un hilo vencido sigue hasta que yt-dlp corte (el
+#: socket_timeout del rapido es de 10 s), pero ya nadie lo espera.
+FAST_TIMEOUT_S = 8.0
+FULL_TIMEOUT_S = 45.0
+#: Una resolucion mas lenta que esto se registra como aviso para diagnosticar.
+SLOW_LOG_S = 5.0
+
 #: googlevideo corta o niega rangos abiertos: siempre pedimos trozos acotados.
 MAX_CHUNK = 1024 * 1024
 
@@ -165,6 +174,7 @@ def _new_youtube(visitor: str | None):
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        "socket_timeout": 10,
         "extractor_args": args,
     })
 
@@ -340,8 +350,9 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
             # Sin visitor_data el camino rapido choca con el muro: ni se intenta.
             raise RuntimeError("sin visitor_data")
         with _pooled(visitor) as ydl:
-            info = await asyncio.to_thread(ydl.extract_info, url, download=False,
-                                           process=False)
+            info = await asyncio.wait_for(
+                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                FAST_TIMEOUT_S)
         salida = _from_info(pick_audio(info), "fast")
     except Exception as e:
         # Un visitor_data viejo es la causa mas comun: se descarta y se reintenta
@@ -349,7 +360,8 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
         log.info("stream: camino rapido fallo (%s), probando el completo", type(e).__name__)
         invalidate()
         try:
-            info = await ytdlp_source.probe_info(url, format="bestaudio")
+            info = await asyncio.wait_for(
+                ytdlp_source.probe_info(url, format="bestaudio"), FULL_TIMEOUT_S)
             salida = _from_info(info, "full")
         except BotCheckError:
             raise
@@ -361,8 +373,9 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
         if len(_cache) > CACHE_MAX:
             for clave in sorted(_cache, key=lambda k: _cache[k].expires_at)[:len(_cache) - CACHE_MAX]:
                 del _cache[clave]
-    log.info("stream resolve %s: %s %d ms", vid, salida.path,
-             int((time.monotonic() - t0) * 1000))
+    pasado = time.monotonic() - t0
+    log.log(logging.WARNING if pasado > SLOW_LOG_S else logging.INFO,
+            "stream resolve %s: %s %d ms", vid, salida.path, int(pasado * 1000))
     return salida
 
 

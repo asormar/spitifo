@@ -123,6 +123,42 @@ def test_un_info_procesado_se_usa_tal_cual():
     assert stream.pick_audio(info) is info
 
 
+
+def test_un_camino_rapido_colgado_cede_al_completo(monkeypatch):
+    @contextmanager
+    def colgado(visitor):
+        class Ydl:
+            def extract_info(self, url, download=False, process=True):
+                time.sleep(0.5)
+                return format_info()
+        yield Ydl()
+
+    monkeypatch.setattr(stream, "_pooled", colgado)
+
+    async def visitor():
+        return "v"
+
+    monkeypatch.setattr(stream, "ensure_visitor", visitor)
+    monkeypatch.setattr(stream, "FAST_TIMEOUT_S", 0.05)
+
+    async def probe(url, format=None):
+        return format_info()
+
+    monkeypatch.setattr(ytdlp_source, "probe_info", probe)
+    assert asyncio.run(stream.resolve(URL)).path == "full"
+
+
+def test_un_camino_completo_colgado_termina_en_error(monkeypatch):
+    fake_pool(monkeypatch, error=RuntimeError("muro"))
+    monkeypatch.setattr(stream, "FULL_TIMEOUT_S", 0.05)
+
+    async def probe(url, format=None):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(ytdlp_source, "probe_info", probe)
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(stream.resolve(URL))
+
 def test_sin_visitor_no_intenta_el_camino_rapido(monkeypatch):
     calls = fake_pool(monkeypatch, result=format_info())
 
