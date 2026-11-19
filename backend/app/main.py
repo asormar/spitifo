@@ -17,7 +17,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -39,14 +39,19 @@ from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 configure_runtime()
 
 from .artistinfo import Enricher, fold, library_artists
-from .downloader import download_track, library_scan
+from .downloader import (
+    _thumb_sidecar,
+    download_track,
+    library_scan,
+    thumb_small_sidecar,
+)
 from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
-from .storage import InvalidKey, get_storage, reset_storage
+from .storage import InvalidKey, get_storage, reset_storage, validate_key
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -1294,6 +1299,135 @@ async def library(request: Request):
                          "files": files})
 
 
+# ------------------------------------------------------------ borrado en libro
+#: Limite del pedido: una lista enorme no debe bloquear el hilo de storage.
+MAX_DELETE_KEYS = 500
+#: Solo se borran temas y videos. Las miniaturas van con su media y un .txt
+#: que se cuela en la biblioteca nunca es una clave de este endpoint.
+_DELETE_EXTS = frozenset(e.lower() for e in (*AUDIO_EXTS, *VIDEO_EXTS))
+
+
+def _media_stem(key: str) -> str:
+    """Tronco comun de audio y video (`A/Tema.mp3`, `A/Tema.mp4` -> `A/Tema`)."""
+    return _thumb_sidecar(key)[: -len(".jpg")]
+
+
+def _validate_delete_keys(body: dict) -> list[str]:
+    """Claves del pedido, validadas contra el puerto y limitadas a media."""
+    keys = body.get("keys")
+    if not isinstance(keys, list):
+        raise _invalid(["body", "keys"], "las claves tienen que ser una lista")
+    if not keys:
+        raise _invalid(["body", "keys"], "la lista de claves no puede estar vacia")
+    if len(keys) > MAX_DELETE_KEYS:
+        raise _invalid(["body", "keys"],
+                       f"como maximo {MAX_DELETE_KEYS} claves por pedido")
+    out: list[str] = []
+    for key in keys:
+        try:
+            validate_key(key)
+        except InvalidKey as exc:
+            raise _invalid(["body", "keys"], str(exc))
+        if os.path.splitext(key)[1].lower() not in _DELETE_EXTS:
+            raise _invalid(["body", "keys"], "extension no permitida")
+        if key not in out:
+            out.append(key)
+    return out
+
+
+def _delete_library_files(storage, keys: list[str],
+                          removed: list[str] | None = None,
+                          ) -> tuple[list[str], list[dict]]:
+    """Borra archivos, portadas huerfanas y referencias en playlists.
+
+    Sincrono y con el storage pegado: se llama desde `asyncio.to_thread`. Un
+    fallo de un archivo no cancela los demas: se devuelve en `failed`. Si se
+    pasa `removed`, recibe TODAS las claves que desaparecieron, portadas
+    incluidas (Android las saca del MediaStore).
+    """
+    gone = set(keys)
+    # Un audio y su video comparten portada: si sobrevive cualquiera de los dos,
+    # los sidecars se quedan. Se mira ANTES de borrar, con una sola lista.
+    stems = {_media_stem(f.key) for f in storage.list()
+             if f.key not in gone
+             and os.path.splitext(f.key)[1].lower() in _DELETE_EXTS}
+
+    deleted: list[str] = []
+    failed: list[dict] = []
+    for key in keys:
+        try:
+            storage.delete(key)
+        except FileNotFoundError:
+            pass  # ya no estaba: el resultado es el mismo
+        except Exception as exc:
+            log.warning("no se pudo borrar '%s': %s", key, exc)
+            failed.append({"key": key, "error": str(exc)})
+            continue
+        deleted.append(key)
+        if removed is not None:
+            removed.append(key)
+        if _media_stem(key) not in stems:
+            for side in (_thumb_sidecar(key), thumb_small_sidecar(key)):
+                try:
+                    storage.delete(side)
+                    if removed is not None:
+                        removed.append(side)
+                except FileNotFoundError:
+                    pass
+                except Exception as exc:
+                    log.warning("no se pudo borrar la portada '%s': %s", side, exc)
+
+    if deleted:
+        borradas = set(deleted)
+        now = time.time()
+
+        def change(book) -> None:
+            # Las listas quedan, aunque se queden sin ninguna cancion.
+            for pid, playlist in list(book.playlists.items()):
+                if playlist.deleted or not (borradas & set(playlist.keys)):
+                    continue
+                book.upsert(replace(
+                    playlist,
+                    keys=[k for k in playlist.keys if k not in borradas],
+                    updated_at=_next_updated_at(playlist, now),
+                ))
+
+        try:
+            storage.save_playlist(change)
+        except Exception as exc:
+            log.warning("no se pudieron limpiar las listas tras borrar: %s", exc)
+        # El adapter local guarda duraciones y etiquetas por clave: sacarlas
+        # evita que un listado posterior "recuerde" un archivo ya borrado.
+        forget = getattr(storage, "forget_media", None)
+        if callable(forget):
+            try:
+                forget(deleted)
+            except Exception as exc:
+                log.warning("no se pudo limpiar la cache de media: %s", exc)
+    return deleted, failed
+
+
+async def library_delete(request: Request):
+    """POST /api/library/delete: borra temas/videos de la biblioteca.
+
+    200 aunque fallen algunos (`failed`); el frontend decide que filas vuelve
+    a mostrar. `activity.removed` le pasa a Android las claves borradas para
+    que las saque del MediaStore.
+    """
+    body = await _json_body(request)
+    keys = _validate_delete_keys(body)
+    storage = get_storage()
+    gone: list[str] = []
+    deleted, failed = await asyncio.to_thread(
+        _delete_library_files, storage, keys, gone)
+    activity.removed(gone)
+    if deleted:
+        # Discover guarda un escaneo de la biblioteca: sin esto seguiria
+        # recomendando la cancion borrada hasta que venciera la cache.
+        _forget_cached("scan", storage=storage)
+    return JSONResponse({"deleted": deleted, "failed": failed})
+
+
 # ---------------------------------------------------------------- playlists
 def _playlist_payload(playlist: Playlist) -> dict:
     """Forma JSON de una playlist (la que consume el frontend)."""
@@ -2116,6 +2250,7 @@ routes = [
     Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),
     Route("/api/library", library),
+    Route("/api/library/delete", library_delete, methods=["POST"]),
     Route("/api/playlists", playlists),
     Route("/api/playlists/{id}", playlist_save, methods=["PUT"]),
     Route("/api/playlists/{id}", playlist_delete, methods=["DELETE"]),

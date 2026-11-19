@@ -42,7 +42,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, storage, children }) {
+export default function ListenProvider({ files, nav, storage, refresh, hideKeys, restoreFiles, children }) {
   /* Solo se leen las acciones (estables): depender de `nav` entero
      reconstruiria el contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack, replace: navReplace, getStack } = nav;
@@ -170,6 +170,11 @@ export default function ListenProvider({ files, nav, storage, children }) {
     const ctx = {
       openMenu,
       show,
+      /* Borrado de la biblioteca: ocultar ahora, restaurar si se deshace y
+         volver a consultar /api/library cuando se confirma. */
+      hideKeys,
+      restoreFiles,
+      refreshLibrary: refresh,
       play,
       tap,
       playGroup,
@@ -185,7 +190,7 @@ export default function ListenProvider({ files, nav, storage, children }) {
       ),
     };
     return { ctx, model, show };
-  }, [model, show, navOpen, navBack, navReplace, getStack]);
+  }, [model, show, navOpen, navBack, navReplace, getStack, refresh, hideKeys, restoreFiles]);
 
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */
@@ -206,6 +211,9 @@ export default function ListenProvider({ files, nav, storage, children }) {
             goTo={value.ctx.goTo}
             show={show}
             storage={model.storage}
+            refresh={refresh}
+            hideKeys={hideKeys}
+            restoreFiles={restoreFiles}
           />
         )}
       </ListenContext.Provider>

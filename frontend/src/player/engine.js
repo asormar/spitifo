@@ -431,6 +431,60 @@ export function createEngine({
     return true;
   };
 
+  /* Quitar claves que ya no estan en la biblioteca: salen de la cola y, si la
+     que suena era una, se salta a la siguiente (o se detiene). A diferencia de
+     removeAt, AQUI se puede tocar la pista actual: es la que desaparece del
+     disco. Se llama al confirmar el borrado, nunca durante el Deshacer. */
+  const purge = (keys) => {
+    if (!keys || !keys.length) return 0;
+    const gone = new Set(keys);
+    const before = state.queue;
+    const had = before.reduce((n, t) => n + (gone.has(t.key) ? 1 : 0), 0);
+    if (!had) return 0;
+    if (gone.has(prefetched)) prefetched = null;
+
+    const queue = before.filter((t) => !gone.has(t.key));
+    original = original.filter((t) => !gone.has(t.key));
+    if (!gone.has(state.track?.key)) {
+      /* Las de antes corrigen el indice; la actual sigue siendo la misma. */
+      let index = 0;
+      for (let i = 0; i < state.index && i < before.length; i += 1) {
+        if (!gone.has(before[i].key)) index += 1;
+      }
+      emit({ queue, index });
+      return had;
+    }
+
+    const nextTrack = before.slice(state.index + 1).find((t) => !gone.has(t.key));
+    if (nextTrack) {
+      const index = queue.findIndex((t) => t.key === nextTrack.key);
+      load(nextTrack, queue, index, "change");
+    } else {
+      if (audio) {
+        audio.pause();
+        try {
+          audio.currentTime = 0;
+        } catch {
+          /* un audio falso puede no admitir seek */
+        }
+      }
+      if (state.track) {
+        notifyTrack({ type: "end", track: state.track, repeatOne: false });
+      }
+      emit({
+        track: null,
+        queue,
+        index: -1,
+        playing: false,
+        buffering: false,
+        failed: false,
+        time: 0,
+        duration: 0,
+      });
+    }
+    return had;
+  };
+
   /* Encender shuffle deja la actual primero porque el usuario acaba de elegir
      escuchar eso; apagarlo devuelve el orden de usuario, no el barajado. */
   const setShuffle = (on) => {
@@ -517,6 +571,7 @@ export function createEngine({
     enqueue,
     move,
     removeAt,
+    purge,
     setShuffle,
     setRepeat,
     cycleRepeat,

@@ -251,6 +251,10 @@ export default function App() {
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
+  /* Espejo sincronico de `lib`: el borrado diferido necesita devolver EXACTAMENTE
+     las filas que saco, aunque el deshacer llegue antes del siguiente render. */
+  const libRef = useRef(lib);
+  libRef.current = lib;
 
   const pc = usePc();
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
@@ -330,6 +334,8 @@ export default function App() {
       writeLibCache(d.files || []);
       setLibErr(false);
       setLibErrCode(null);
+      /* El borrado mira esta lista para saber que se fue de verdad. */
+      return d.files || [];
     } catch (e) {
       setLibErr(true);
       setLibErrCode(null);
@@ -337,6 +343,27 @@ export default function App() {
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
+  }, []);
+
+  /* Borrado diferido: la fila desaparece en el acto y vuelve si se deshace. El
+     cache de arranque NO se toca: si la app se cierra antes del commit, el
+     proximo /api/library la trae de vuelta. */
+  const hideKeys = useCallback((keys) => {
+    const gone = new Set(keys);
+    const current = libRef.current || [];
+    const removed = current.filter((f) => gone.has(f.key));
+    const next = current.filter((f) => !gone.has(f.key));
+    libRef.current = next;
+    setLib(next);
+    return removed;
+  }, []);
+  const restoreFiles = useCallback((files) => {
+    if (!files?.length) return;
+    const current = libRef.current || [];
+    const have = new Set(current.map((f) => f.key));
+    const next = [...current, ...files.filter((f) => !have.has(f.key))];
+    libRef.current = next;
+    setLib(next);
   }, []);
 
   /* Cambiar donde vive la biblioteca cambia lo que lista /api/library y la
@@ -630,7 +657,14 @@ export default function App() {
     <NavContext.Provider value={nav}>
       {/* El proveedor de la biblioteca rodea las pantallas Y "Ahora suena" (los
           mosaicos de su hoja de listas); no pinta DOM propio. */}
-      <ListenProvider files={libFiles} nav={nav} storage={storage}>
+      <ListenProvider
+        files={libFiles}
+        nav={nav}
+        storage={storage}
+        refresh={loadLib}
+        hideKeys={hideKeys}
+        restoreFiles={restoreFiles}
+      >
         <QueueHooks onLibrary={loadLib} onReady={onQueueReadyPill} />
         <main className="app" inert={full ? "" : undefined}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de

@@ -48,6 +48,8 @@ class Backend(private val app: Application) {
     interface ServeListener {
         fun onReady(port: Int)
         fun onBusyChanged(busy: Boolean)
+        /** Library keys the backend just deleted, newline-separated. */
+        fun onRemoved(keys: String)
         fun onFailed(message: String)
     }
 
@@ -203,6 +205,19 @@ class Backend(private val app: Application) {
                     main.post { DownloadService.setBusy(app, busy) }
                 }
 
+                override fun onRemoved(keys: String) {
+                    // Scanning a path that no longer exists is what drops it
+                    // from MediaStore, so other players stop listing it.
+                    scanner.execute {
+                        val paths = keys.split('\n').filter { it.isNotEmpty() }
+                            .map { File(library, it).absolutePath }
+                        if (paths.isEmpty()) return@execute
+                        MediaScannerConnection.scanFile(app, paths.toTypedArray(), null) { path, uri ->
+                            Log.i(TAG, "media scan (deleted): $path -> $uri")
+                        }
+                    }
+                }
+
                 override fun onFailed(message: String) {
                     Log.e(TAG, "backend failed: $message")
                     failure = message
@@ -234,19 +249,25 @@ class Backend(private val app: Application) {
             .associate { it.absolutePath to it.lastModified() }
 
     /**
-     * Tells MediaStore about the files the last batch of downloads produced.
+     * Tells MediaStore about the files the last batch of downloads produced
+     * and about the ones the library deleted.
      *
      * Files created through FUSE by a direct path are NOT indexed on their own
      * (measured on Android 16: the folders showed up, the MP3 did not), so other
      * music players would never see them. A snapshot diff is used instead of a
      * "modified since" filter because yt-dlp sets a file's mtime from the
-     * server's Last-Modified header, which can be years old.
+     * server's Last-Modified header, which can be years old. Deleted files are
+     * missing from the new snapshot: scanning their old path is what drops
+     * them from MediaStore too.
      */
     private fun scanChanges(library: File) {
         val before = librarySnapshot
-        val changed = snapshot(library).filter { (path, mtime) -> before[path] != mtime }.keys
-        if (changed.isEmpty()) return
-        MediaScannerConnection.scanFile(app, changed.toTypedArray(), null) { path, uri ->
+        val after = snapshot(library)
+        val changed = after.filter { (path, mtime) -> before[path] != mtime }.keys
+        val removed = before.keys - after.keys
+        val paths = changed + removed
+        if (paths.isEmpty()) return
+        MediaScannerConnection.scanFile(app, paths.toTypedArray(), null) { path, uri ->
             Log.i(TAG, "media scan: $path -> $uri")
         }
     }

@@ -49,6 +49,10 @@ def serve(listener) -> None:
     # here, before the first request can arrive, so no download is ever missed.
     from backend.app import activity
     activity.add_listener(lambda busy: listener.onBusyChanged(busy))
+    # Deleted library files travel as one newline-joined string: keys cannot
+    # contain control characters (storage.validate_key), and a plain String
+    # avoids depending on how Chaquopy maps a Python list.
+    activity.add_removed_listener(lambda keys: listener.onRemoved("\n".join(keys)))
 
     # Port 0: the OS picks a free one. The real port is only known once uvicorn
     # has finished starting, which is what _AndroidServer reports back.

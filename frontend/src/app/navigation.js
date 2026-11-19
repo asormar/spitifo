@@ -88,11 +88,11 @@ export function modeDirection(from, to) {
 /* "ficha" y "resmenu" son las hojas de Buscar (la ficha de un resultado y el
    menu de resoluciones); "menu", "picker", "lmenu" y "file" son el menu de una
    cancion, la hoja "Añadir a una lista", el menu de una lista y la ficha del
-   archivo de una cancion (no es la "ficha" de un resultado de Buscar). Todas
-   viven en la pila
-   para que atras, Escape y el atras de Android las cierren, pero la pantalla
-   sigue a la vista debajo, sin pagina propia. */
-const OVERLAYS = new Set(["menu", "picker", "lmenu", "file"]);
+   archivo de una cancion (no es la "ficha" de un resultado de Buscar).
+   "almenu" y "aldel" son el menu del album y su hoja de confirmacion de borrado.
+   Todas viven en la pila para que atras, Escape y el atras de Android las
+   cierren, pero la pantalla sigue a la vista debajo, sin pagina propia. */
+const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel"]);
 /* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
    cola que abre la pildora del shell; "discsheet" es la lista de discografia
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de

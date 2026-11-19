@@ -365,9 +365,38 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
     def delete(self, key: str) -> None:
         p = self._path(key)
-        if not p.is_file():
+        existed = p.is_file()
+        if existed:
+            p.unlink()
+        # Android (FUSE, API 30+) no deja borrar por ruta un archivo que creo
+        # otra app (una copia desde el PC, una instalacion anterior) y puede no
+        # avisarlo con un error. Lo que manda es si el nombre sigue en la
+        # carpeta: si sigue, el borrado fallo aunque nadie lo haya dicho.
+        try:
+            still = p.name in os.listdir(p.parent)
+        except FileNotFoundError:
+            still = False
+        if still:
+            raise PermissionError(f"el sistema no dejo borrar '{key}'")
+        if not existed:
             raise FileNotFoundError(key)
-        p.unlink()
+
+    def forget_media(self, keys) -> None:
+        """Saca claves borradas de la cache de duraciones y etiquetas.
+
+        `list()` ya las descarta al no encontrarlas en disco, pero el borrado
+        las quita en el acto para que un listado en vuelo no reponga la ficha
+        vieja. Falla en silencio: sin cache la biblioteca solo es mas lenta.
+        """
+        with self._media_lock:
+            if self._media_cache is None:
+                return
+            for key in keys:
+                self._media_cache.pop(key, None)
+            self._media_dirty = True
+            seen = set(self._media_cache)
+        # Fuera del lock: `_save_media_cache` lo toma de nuevo.
+        self._save_media_cache(seen)
 
     def describe(self) -> str:
         return str(self.root)
