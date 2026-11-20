@@ -31,6 +31,7 @@ export function savedEntry(song) {
     duration: song.duration ?? null,
     artworkUrl: song.artwork_url || null,
     thumbKey: null,
+    downloaded: false,
     search: fold(`${title} ${artist} ${song.album || ""}`),
   };
 }

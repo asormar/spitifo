@@ -76,6 +76,7 @@ describe("normalizeEntry", () => {
       artist_id: null,
       added: 0,
       hasAudio: true,
+      downloaded: true,
       search: "song artist album",
     });
   });

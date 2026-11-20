@@ -22,9 +22,10 @@ import { useSaved } from "./saved.js";
    pinta (home.css).
    ------------------------------------------------------------------------- */
 
-/* La primera portada real de un grupo de canciones, o null. */
+/* La primera portada real de un grupo de canciones, o null. Una guardada sin
+   archivo trae la portada de la fuente en `artworkUrl`: rowArt la resuelve. */
 export const coverOf = (entries) => {
-  const hit = entries.find((e) => e.thumbKey);
+  const hit = entries.find((e) => e.thumbKey || e.artworkUrl);
   return hit ? rowArt(hit, keyUrl) : null;
 };
 

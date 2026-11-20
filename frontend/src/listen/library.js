@@ -71,6 +71,9 @@ export function normalizeEntry(file) {
     /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
     added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),
+    /* Un archivo de /api/library esta descargado por definicion. Las canciones
+       guardadas sin archivo lo marcan a false al entrar en la mezcla. */
+    downloaded: true,
     /* Precalcular el texto evita normalizar cada fila en cada tecla. */
     search: fold(`${title} ${artist} ${album}`),
   };
