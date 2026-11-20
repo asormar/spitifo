@@ -18,6 +18,8 @@ import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
+import ArtSheet from "./ArtSheet.jsx";
+import { songTarget } from "./artLogic.js";
 import "./menus.css";
 
 /* ---------------------------------------------------------------------------
@@ -39,6 +41,7 @@ const SONG_MENU = {
   next: ["next", "next", "Reproducir a continuación"],
   end: ["end", "queue", "Añadir a la cola"],
   list: ["list", "addlist", "Añadir a una lista…"],
+  photo: ["photo", "upload", "Cambiar foto"],
   album: ["album", "disc", "Ir al álbum"],
   artist: ["artist", "user", "Ir al artista"],
   download: ["download", "dl", "Descargar"],
@@ -53,6 +56,7 @@ function songItems(entry, pc) {
 }
 
 const ALBUM_ITEMS = [
+  ["photo", "upload", "Cambiar foto"],
   ["remove", "trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
@@ -100,10 +104,14 @@ function MenuItems({ items, label, onPick, stack }) {
 }
 
 /* El menu del album lo pinta su pagina, igual que el de una lista. */
-export function AlbumMenu({ name, anchor, onClose, onPick }) {
+export function AlbumMenu({ name, anchor, onClose, onPick, onPhoto }) {
   return (
     <Popover anchor={anchor} onClose={onClose} width={232}>
-      <MenuItems items={ALBUM_ITEMS} label={`Opciones de ${name}`} onPick={onPick} />
+      <MenuItems
+        items={ALBUM_ITEMS}
+        label={`Opciones de ${name}`}
+        onPick={(kind) => (kind === "photo" ? onPhoto?.() : onPick(kind))}
+      />
     </Popover>
   );
 }
@@ -152,7 +160,7 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const items = songItems(entry, pc);
   const head = (
     <div className="mhead">
-      <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} size={pc ? 40 : 56} />
+      <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} target={songTarget(entry)} size={pc ? 40 : 56} />
       <span className="mhead__x">
         <span className="mhead__t">{title}</span>
         <span className="mhead__s">{pc || !album ? artist : `${artist} · ${album}`}</span>
@@ -190,12 +198,26 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
    menu por otra cosa y `goTo` por una pagina (ListenProvider). */
 export default function Overlays({ top, byKey, back, replace, goTo, show, storage, hideKeys, restoreFiles, refresh }) {
   const savedById = useSaved((s) => s.byId);
-  const entry = byKey.get(top.key) || savedEntry(savedById.get(top.key));
+  /* La hoja de foto no necesita la entrada: album y artista solo tienen id. */
+  const entry = top.type === "art" ? null : byKey.get(top.key) || savedEntry(savedById.get(top.key));
 
   /* La biblioteca se refresco y la cancion ya no esta: no hay nada que mostrar. */
   useEffect(() => {
-    if (!entry) back();
-  }, [entry, back]);
+    if (!entry && top.type !== "art") back();
+  }, [entry, top.type, back]);
+
+  if (top.type === "art") {
+    return (
+      <ArtSheet
+        target={top.target}
+        name={top.name}
+        query={top.query || top.name}
+        kind={top.kind}
+        anchor={top.anchor}
+        onClose={back}
+      />
+    );
+  }
   if (!entry) return null;
 
   if (top.type === "picker") {
@@ -216,6 +238,18 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
   }
 
   const pick = (kind) => {
+    if (kind === "photo") {
+      /* La hoja sustituye al menu: atras vuelve a la pagina, no al menu. */
+      replace({
+        type: "art",
+        kind: "song",
+        target: songTarget(entry),
+        name: entry.title,
+        query: `${entry.title} ${entry.artist}`,
+        anchor: top.anchor,
+      });
+      return;
+    }
     if (kind === "download") {
       /* Mi entrada en la cola del servidor: la misma que usa Buscar, con el
          resultado de Buscar que guardamos al anadir la cancion. */

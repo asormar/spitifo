@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { keyUrl } from "../shared/api.js";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
@@ -10,6 +10,8 @@ import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
 import { DOWNLOAD_FILTERS, rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
 import { useSaved } from "./saved.js";
+import { useArtRecord } from "./art.js";
+import { artSrc } from "./artLogic.js";
 
 /* ---------------------------------------------------------------------------
    PIEZAS DEL INICIO DE ESCUCHAR
@@ -29,19 +31,23 @@ export const coverOf = (entries) => {
   return hit ? rowArt(hit, keyUrl) : null;
 };
 
-/* `size` es el lado en px (lo lee el CSS con --s); `round` = artista. */
-export function Cover({ tone, label, src, size, round, className, children }) {
+/* `size` es el lado en px (lo lee el CSS con --s); `round` = artista. `target`
+   es el id de cancion/album/artista: si tiene foto propia, gana a `src`. */
+export function Cover({ tone, label, src, target, size, round, className, children }) {
   const [bad, setBad] = useState(false);
+  const record = useArtRecord(target);
+  const shown = artSrc(record, keyUrl) || src;
+  useEffect(() => setBad(false), [shown]);
   return (
     <span
       className={cx("cv", toneClass(tone), round && "cv--round", className)}
       style={{ ...toneVars(tone), ...(size && { "--s": `${size}px` }) }}
     >
       <span aria-hidden="true">{initial(label)}</span>
-      {src && !bad && (
+      {shown && !bad && (
         <img
           className="cv__img"
-          src={src}
+          src={shown}
           alt=""
           loading="lazy"
           decoding="async"
@@ -122,7 +128,7 @@ export const ArtistCard = ({ g, ctx, sub }) => (
     round
     label={`Abrir artista ${g.name}`}
     onClick={() => ctx.open({ type: "artist", id: g.id })}
-    cover={<Cover tone={toneOf(g.name)} label={g.name} src={coverOf(g.entries)} round />}
+    cover={<Cover tone={toneOf(g.name)} label={g.name} src={coverOf(g.entries)} target={g.id} round />}
     title={g.name}
     sub={sub}
   />
@@ -132,7 +138,7 @@ export const AlbumCard = ({ g, ctx, sub = g.artist }) => (
   <Card
     label={`Abrir álbum ${g.name}, ${g.artist}`}
     onClick={() => ctx.open({ type: "album", id: g.id })}
-    cover={<Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} />}
+    cover={<Cover tone={albumTone(g.artist, g.name)} label={g.name} src={coverOf(g.entries)} target={g.id} />}
     title={g.name}
     sub={sub}
   />

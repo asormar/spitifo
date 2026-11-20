@@ -56,6 +56,9 @@ export function createEngine({
   };
 
   const listeners = new Set();
+  /* Portada original por clave: la foto propia se aplica sobre la pista, pero
+     al volver a la original tiene que volver a la del sidecar/fuente. */
+  const baseArt = new Map();
   /* Avisos de cierre/cambio de pista: el historial de escucha necesita saber
      POR QUE se cerro la sesion, cosa que el estado (una foto) no dice. */
   const trackEvents = new Set();
@@ -227,6 +230,8 @@ export function createEngine({
     const q = queue && queue.length ? queue : [track];
     const i = index >= 0 && index < q.length ? index : 0;
     const a = ensureAudio();
+    /* La cola nunca lleva la foto propia: siempre se guarda la de origen. */
+    baseArt.set(track.key, track.artwork || null);
     /* Se avisa ANTES de reemplazar la foto: quien escucha (el historial)
        todavia puede leer la pista y la posicion que se estan cerrando. */
     if (state.track) {
@@ -540,6 +545,16 @@ export function createEngine({
     emit({ volume, muted });
   };
 
+  /* La hoja de foto cambia la portada de la pista que suena sin tocar el audio.
+     La cola se deja intacta: al pasar a otra pista se carga su imagen original. */
+  const setArtwork = (url) => {
+    const t = state.track;
+    if (!t) return;
+    const artwork = url || baseArt.get(t.key) || null;
+    if (Object.is(t.artwork, artwork)) return;
+    emit({ track: { ...t, artwork } });
+  };
+
   const subscribe = (listener) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -578,6 +593,7 @@ export function createEngine({
     cycleRepeat,
     setVolume,
     toggleMute,
+    setArtwork,
   };
 }
 
