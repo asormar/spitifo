@@ -68,7 +68,7 @@ export default function ArchiveListenButton({ t, query, text = false }) {
       ) : (
         <Icon name="Play" size={text ? 16 : 18} weight="fill" />
       )}
-      {text && "Escuchar"}
+      {text && (playing ? "Pausar" : "Escuchar")}
     </button>
   );
 }

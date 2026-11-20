@@ -47,7 +47,7 @@ export default function StreamButton({ t, queue, source = null, text = false }) 
       ) : (
         playing ? <Ico n="pause" size={20} /> : <Icon name="Play" size={18} weight="fill" />
       )}
-      {text && "Escuchar"}
+      {text && (playing ? "Pausar" : "Escuchar")}
     </button>
   );
 }
