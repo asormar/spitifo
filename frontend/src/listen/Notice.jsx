@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { createDeferred } from "./deferred.js";
+import { bindSwipe } from "./swipe.js";
 
 /* ---------------------------------------------------------------------------
    AVISO
@@ -43,13 +44,16 @@ export function useNotice() {
   const [notice, setNotice] = useState(null);
   const timers = useRef([]);
   const deferred = useRef(null);
+  const toast = useRef(null);
+  const current = useRef(null);
 
   const show = useCallback((text, action) => {
     timers.current.forEach(clearTimeout);
     deferred.current?.flush();
     deferred.current = null;
     const wait = noticeWait(action);
-    setNotice({ text, action, out: false, id: Date.now() });
+    current.current = Date.now();
+    setNotice({ text, action, out: false, id: current.current });
     timers.current = [
       setTimeout(() => setNotice((n) => n && { ...n, out: true }), wait),
       setTimeout(() => setNotice(null), wait + NOTICE_LEAVE_MS),
@@ -63,6 +67,21 @@ export function useNotice() {
     timers.current.forEach(clearTimeout);
     deferred.current?.flush();
   }, []);
+
+  /* Deslizar el aviso es "ya lo vi": el borrado pendiente sale en el acto, no
+     se deshace. Si mientras salia llego otro aviso, ese se queda. */
+  useEffect(() => {
+    const el = toast.current;
+    if (!el || !notice) return undefined;
+    const id = notice.id;
+    return bindSwipe(el, () => {
+      if (current.current !== id) return;
+      timers.current.forEach(clearTimeout);
+      deferred.current?.flush();
+      deferred.current = null;
+      setNotice(null);
+    });
+  }, [notice?.id]);
 
   const act = () => {
     deferred.current?.cancel();
@@ -78,7 +97,7 @@ export function useNotice() {
   const node = (
     <div className="lnotice" aria-live="polite">
       {notice && (
-        <span key={notice.id} className={cx("ltoast", notice.out && "is-out")}>
+        <span key={notice.id} ref={toast} className={cx("ltoast", notice.out && "is-out")}>
           {notice.text}
           {notice.action && (
             <button type="button" className="ltoast__act" autoFocus onClick={act}>
