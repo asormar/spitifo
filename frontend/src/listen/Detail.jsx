@@ -237,6 +237,16 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         <Icon name="Shuffle" size={18} />
         Aleatorio
       </button>
+      {artist && (
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={(e) => ctx.openArt(view.id, "artist", name, e.currentTarget)}
+        >
+          <Ico n="upload" size={18} />
+          Cambiar foto
+        </button>
+      )}
       {album && (
         <button
           type="button"
@@ -349,6 +359,9 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       anchor={stackTop.anchor}
       onClose={nav.back}
       onPick={() => nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor })}
+      onPhoto={() =>
+        ctx.replaceArt(view.id, "album", name, stackTop.anchor, `${d.artist} ${name}`)
+      }
     />
   );
 
@@ -402,7 +415,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   if (artist) {
     const cover = (
-      <Cover tone={tone} label={name} src={coverOf(rows)} size={pc ? 156 : 340} round={pc} />
+      <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} size={pc ? 156 : 340} round={pc} />
     );
     return (
       <div className="lpage dpage dpage--artist">
@@ -456,7 +469,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const art = isList ? (
     <Mosaic tones={mosaicTones(pl.keys, byKey)} className="dcv" />
   ) : (
-    <Cover tone={tone} label={name} src={coverOf(rows)} className="dcv" />
+    <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} className="dcv" />
   );
 
   return (

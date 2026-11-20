@@ -8,7 +8,7 @@ const base = {
 describe("menuKinds", () => {
   it("keeps the common options first and removal last for a file", () => {
     expect(menuKinds(base)).toEqual([
-      "next", "end", "list", "album", "artist", "file", "remove",
+      "next", "end", "list", "album", "artist", "photo", "file", "remove",
     ]);
   });
 
@@ -18,7 +18,7 @@ describe("menuKinds", () => {
       song: { id: "yt:dQw4w9WgXcQ" },
     };
     expect(menuKinds(entry)).toEqual([
-      "next", "end", "list", "album", "artist", "download", "remove",
+      "next", "end", "list", "album", "artist", "photo", "download", "remove",
     ]);
   });
 
@@ -28,13 +28,13 @@ describe("menuKinds", () => {
       song: { id: "yt:dQw4w9WgXcQ" },
     };
     expect(menuKinds(entry)).toEqual([
-      "next", "end", "list", "album", "artist", "undownload", "file", "remove",
+      "next", "end", "list", "album", "artist", "photo", "undownload", "file", "remove",
     ]);
   });
 
   it("skips the navigation items when there is no album or artist", () => {
     expect(menuKinds({ key: "s", sid: "s", song: { id: "s" } })).toEqual([
-      "next", "end", "list", "remove",
+      "next", "end", "list", "photo", "remove",
     ]);
   });
 

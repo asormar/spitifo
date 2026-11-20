@@ -187,6 +187,16 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
       playMix,
       resume,
       open: (v) => whenReady(pageReady, loadPageHost, () => navOpen(v)),
+      /* La hoja de foto vive en el chunk de overlays, como los menus. */
+      openArt: (target, kind, name, anchor, query) =>
+        whenReady(overlaysReady, loadOverlays, () =>
+          navOpen({ type: "art", target, kind, name, query: query || name, anchor })
+        ),
+      /* Desde un menu se sustituye: atras vuelve a la pagina, no al menu. */
+      replaceArt: (target, kind, name, anchor, query) =>
+        whenReady(overlaysReady, loadOverlays, () =>
+          navReplace({ type: "art", target, kind, name, query: query || name, anchor })
+        ),
       /* Cambia el menu de arriba por una pagina ("Ir al album"): atras vuelve
          a donde estaba el menu. */
       goTo: (v) => whenReady(pageReady, loadPageHost, () => navReplace(v)),
@@ -201,7 +211,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */
   const top = nav.stack.at(-1);
-  const overlay = top && (top.type === "menu" || top.type === "picker" || top.type === "file") ? top : null;
+  const overlay = top && (top.type === "menu" || top.type === "picker" || top.type === "file" || top.type === "art") ? top : null;
 
   return (
     <NoticeProvider value={show}>

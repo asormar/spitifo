@@ -12,6 +12,8 @@ export function menuKinds(entry) {
   const out = ["next", "end", "list"];
   if (entry?.album) out.push("album");
   if (entry?.artist) out.push("artist");
+  /* Cambiar foto va antes de lo que descarga o borra. */
+  out.push("photo");
   const saved = Boolean(entry?.sid);
   const downloaded = Boolean(entry?.downloaded);
   if (saved && !downloaded && streamable(entry?.song)) out.push("download");
