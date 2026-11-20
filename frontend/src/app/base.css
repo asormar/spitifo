@@ -89,3 +89,14 @@ body.has-mini .app {
     padding-right: 364px;
   }
 }
+
+/* Titulos sin una palabra colgando y parrafos sin viuda al final. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
