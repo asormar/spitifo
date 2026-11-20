@@ -245,7 +245,18 @@ def test_merge_de_dos_dispositivos(tmp_path):
 
 def test_el_agregado_sin_archivo_devuelve_vacio(tmp_path):
     storage = _storage(tmp_path, D1)
-    assert storage.load_listens_summary(now=T0) == {"tracks": {}, "recent": []}
+    assert storage.load_listens_summary(now=T0) == {
+        "tracks": {}, "recent": [], "artists": {}}
+
+
+def test_summary_expone_el_agregado_por_artista_con_la_etiqueta_a(tmp_path):
+    storage = _storage(tmp_path, D1)
+    storage.append_listens(
+        [dict(_event(key="yt:dQw4w9WgXcQ"), a="Beta")], now=T0)
+    out = storage.load_listens_summary(now=T0 + 100)
+    assert "yt:dQw4w9WgXcQ" in out["tracks"]
+    assert out["artists"]["Beta"]["plays"] == 1
+    assert out["artists"]["Beta"]["score"] == pytest.approx(1.0, abs=1e-3)
 
 
 class _Tokens:
@@ -332,7 +343,7 @@ def api(tmp_path):
 def test_get_summary_arranca_vacio(api):
     r = api.get("/api/listens/summary")
     assert r.status_code == 200
-    assert r.json() == {"tracks": {}, "recent": []}
+    assert r.json() == {"tracks": {}, "recent": [], "artists": {}}
 
 
 def test_post_y_summary_feliz(api):

@@ -454,7 +454,14 @@ def summary(aggregates: list[ListenAggregate], now: float) -> dict:
         for key, m in merged.tracks.items() if m.last
     ]
     recent.sort(key=lambda e: (-e["last"], e["key"]))
-    return {"tracks": tracks, "recent": recent[:30]}
+    # El agregado por artista ya resolvio la etiqueta `a` de los ids guardados
+    # (`yt:`/`ia:`), asi que Discover lo usa para pesarlos sin leer los eventos.
+    artists = {
+        name: {"plays": m.plays, "skips": m.skips,
+               "listened_ms": m.listened_ms, "last": m.last, "score": m.score}
+        for name, m in merged.artists.items()
+    }
+    return {"tracks": tracks, "recent": recent[:30], "artists": artists}
 
 
 # ------------------------------------------------------- flujo de archivos

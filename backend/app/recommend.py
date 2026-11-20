@@ -10,6 +10,7 @@ Formas:
     records   {folded: {name, mbid, genres: [[name, count]], similar: [...],
                         fetched_at, status}}
     tracks    load_listens_summary()["tracks"] -> {key: {score, ...}}
+    artists   load_listens_summary()["artists"] -> {name: {score, ...}}
     dismissed set de nombres plegados
 """
 from __future__ import annotations
@@ -57,6 +58,33 @@ def _name_of(info: object) -> str:
     return ""
 
 
+def saved_entries(saved_book, library_keys=()) -> list[dict]:
+    """Entradas de las guardadas que NO son archivos de la biblioteca.
+
+    Un registro con `file_key` que apunta a un archivo de la biblioteca ya
+    cuenta como pista de ese artista: sumarlo otra vez doblaria el `tracks` del
+    seed. Las demas se devuelven con el id por clave y el artista del registro,
+    para que `artist_weights` resuelva igual un id `yt:`/`ia:` que una ruta.
+    `library_artists` las agrupa por nombre plegado junto a los archivos.
+    """
+    files = {key for key in (library_keys or ())
+             if isinstance(key, str) and key}
+    out: list[dict] = []
+    songs = getattr(saved_book, "songs", None) or {}
+    for song in songs.values():
+        if getattr(song, "deleted", False):
+            continue
+        key = getattr(song, "id", None)
+        if not isinstance(key, str) or not key:
+            continue
+        file_key = getattr(song, "file_key", None)
+        if isinstance(file_key, str) and file_key in files:
+            continue
+        out.append({"key": key, "artist": getattr(song, "artist", "") or "",
+                    "duration_s": getattr(song, "duration", None)})
+    return out
+
+
 def _genre_counts(record: object) -> list[tuple[str, float]]:
     """`[(name, count)]` validos de una ficha."""
     raw = record.get("genres") if isinstance(record, dict) else None
@@ -78,39 +106,49 @@ def _genre_counts(record: object) -> list[tuple[str, float]]:
 
 
 def artist_weights(library: dict, entries: list[dict],
-                   tracks: dict | None = None) -> dict[str, float]:
+                   tracks: dict | None = None, *,
+                   artist_scores: dict | None = None) -> dict[str, float]:
     """Peso de cada artista de la biblioteca.
 
     `log1p(pistas en la biblioteca)` mas la suma del `score` de escucha de sus
-    pistas. Las claves del historial se resuelven con la entrada de la
-    biblioteca (por la etiqueta `artist`) y, si la pista ya no esta, con la
-    misma regla sobre la clave sola. Un credito de colaboracion reparte la
-    escucha entre TODOS sus artistas.
+    pistas. Con `artist_scores` (el agregado por artista de listens.py, que ya
+    resolvio la etiqueta `a` de los ids guardados) ese es el peso de escucha y
+    `tracks` no se usa: asi un id `yt:`/`ia:` cuenta para su artista aunque la
+    cancion ya no este guardada. Sin el, las claves del historial se resuelven
+    con la entrada de la biblioteca (por la etiqueta `artist`) y, si la pista ya
+    no esta, con la misma regla sobre la clave sola. Un credito de colaboracion
+    reparte la escucha entre TODOS sus artistas.
     """
-    by_key: dict[str, list[str]] = {}
-    for entry in entries or ():
-        if not isinstance(entry, dict):
-            continue
-        key = entry.get("key")
-        if not isinstance(key, str) or not key:
-            continue
-        folded = [fold(part) for part in split_artists(artist_name(entry))]
-        folded = [part for part in folded if part]
-        if folded:
-            by_key[key] = folded
     listened: dict[str, float] = {}
-    for key, metric in (tracks or {}).items():
-        if not isinstance(key, str):
-            continue
-        folded_parts = by_key.get(key)
-        if folded_parts is None:
-            folded_parts = [fold(part) for part
-                            in split_artists(artist_name({"key": key}))]
-        contribution = _score(metric)
-        for folded in folded_parts:
-            if not folded or folded not in library:
+    if artist_scores is not None:
+        for artist, metric in artist_scores.items():
+            folded = fold(artist)
+            if folded in library:
+                listened[folded] = listened.get(folded, 0.0) + _score(metric)
+    else:
+        by_key: dict[str, list[str]] = {}
+        for entry in entries or ():
+            if not isinstance(entry, dict):
                 continue
-            listened[folded] = listened.get(folded, 0.0) + contribution
+            key = entry.get("key")
+            if not isinstance(key, str) or not key:
+                continue
+            folded = [fold(part) for part in split_artists(artist_name(entry))]
+            folded = [part for part in folded if part]
+            if folded:
+                by_key[key] = folded
+        for key, metric in (tracks or {}).items():
+            if not isinstance(key, str):
+                continue
+            folded_parts = by_key.get(key)
+            if folded_parts is None:
+                folded_parts = [fold(part) for part
+                                in split_artists(artist_name({"key": key}))]
+            contribution = _score(metric)
+            for folded in folded_parts:
+                if not folded or folded not in library:
+                    continue
+                listened[folded] = listened.get(folded, 0.0) + contribution
     return {folded: math.log1p(_tracks(info)) + listened.get(folded, 0.0)
             for folded, info in library.items()}
 

@@ -2240,10 +2240,27 @@ def _cached_records(storage, stale_ok: bool = True) -> dict:
                    ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
 
 
+def _cached_summary(storage, stale_ok: bool = True) -> dict:
+    return _cached("listens", storage.load_listens_summary, storage=storage,
+                   ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok) or {}
+
+
 def _cached_tracks(storage, stale_ok: bool = True) -> dict:
-    summary = _cached("listens", storage.load_listens_summary, storage=storage,
-                      ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
-    return (summary or {}).get("tracks", {})
+    return _cached_summary(storage, stale_ok).get("tracks", {})
+
+
+def _cached_artists(storage, stale_ok: bool = True) -> dict:
+    # El agregado por artista ya trae el `a` de los ids guardados.
+    return _cached_summary(storage, stale_ok).get("artists", {})
+
+
+def _discover_saved(storage) -> SavedBook:
+    """Una sola lectura del registro de guardadas: el adapter lo cachea."""
+    try:
+        return storage.load_saved()
+    except Exception as exc:
+        log.warning("no se pudieron leer las canciones guardadas: %s", exc)
+        return SavedBook()
 
 
 def _cached_dismissed(storage) -> set[str]:
@@ -2269,13 +2286,15 @@ def _get_enricher() -> Enricher:
             _enricher = Enricher(
                 load_records=lambda storage: _cached_records(storage, False),
                 load_tracks=lambda storage: _cached_tracks(storage, False),
+                load_artists=lambda storage: _cached_artists(storage, False),
+                load_saved=_discover_saved,
                 load_dismissed=_cached_dismissed)
         return _enricher
 
 
 def _discover_payload(enricher=None) -> dict:
     """Generos y candidatos con lo que ya esta cacheado. Bloquea: va a un thread."""
-    from .recommend import artist_weights, candidates, user_genres
+    from .recommend import artist_weights, candidates, saved_entries, user_genres
 
     storage = get_storage()
     if enricher is None:
@@ -2287,11 +2306,18 @@ def _discover_payload(enricher=None) -> dict:
                           ttl=DISCOVER_CACHE_SECONDS)
     records = pool.submit(_discover_records, storage, enricher)
     dismissed = pool.submit(_cached_dismissed, storage)
-    tracks = pool.submit(_cached_tracks, storage)
+    summary = pool.submit(_cached_summary, storage)
+    saved = pool.submit(_discover_saved, storage)
     entries, records = entries.result(), records.result()
-    dismissed, tracks = dismissed.result(), tracks.result()
+    dismissed, summary, saved = (dismissed.result(), summary.result(),
+                                 saved.result())
+    # Las guardadas sin archivo cuentan como pistas del seed; las que ya tienen
+    # un archivo en la biblioteca no se suman dos veces (`saved_entries`).
+    entries = list(entries) + saved_entries(
+        saved, [entry.get("key") for entry in entries if isinstance(entry, dict)])
     library = library_artists(entries)
-    weights = artist_weights(library, entries, tracks)
+    weights = artist_weights(library, entries, summary.get("tracks", {}),
+                             artist_scores=summary.get("artists") or None)
     return {"genres": user_genres(library, records, weights),
             "artists": candidates(library, records, weights, dismissed)}
 

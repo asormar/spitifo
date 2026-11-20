@@ -15,6 +15,7 @@ from starlette.testclient import TestClient
 from backend.app import main
 from backend.app.discover import discover_file
 from backend.app.main import create_app
+from backend.app.saved import SavedSong, song_id
 from backend.app.storage import set_storage
 from backend.app.storage.local import STATE_DIR, LocalStorage
 
@@ -127,6 +128,47 @@ def test_get_discover_arma_generos_y_candidatos(api):
         "because": ["Alfa"], "genres": ["indie"],
     }]
     assert fake.started == 1
+
+
+def test_get_discover_usa_las_guardadas_como_seed_y_excluye_sus_artistas(api):
+    client, storage, _ = api
+    # Sin archivos en la biblioteca: solo dos canciones guardadas por streaming.
+    for sid, artist in ((song_id("youtube", "dQw4w9WgXcQ"), "Beta"),
+                        (song_id("youtube", "abcdefghijk"), "Gamma")):
+        storage.save_saved(lambda book, sid=sid, artist=artist: book.upsert(
+            SavedSong(id=sid, title="Tema", artist=artist, album=None,
+                      duration=180.0, artwork_url=None, source="youtube",
+                      source_id=sid[3:], itunes={}, file_key=None,
+                      added_at=1.0, updated_at=1.0)))
+    storage.save_artistinfo({
+        "beta": _record("Beta", genres=[["jazz", 2]], similar=[
+            {"name": "Gamma", "mbid": "m-Gamma", "score": 2.0},
+            {"name": "Y", "mbid": "m-Y", "score": 1.0}]),
+        "y": _record("Y", genres=[["indie", 1]]),
+    })
+    body = client.get("/api/discover").json()
+    assert body["genres"] == [{"name": "jazz", "share": 1.0}]
+    # Gamma tambien es artista guardado: no se recomienda a si mismo.
+    assert [a["name"] for a in body["artists"]] == ["Y"]
+
+
+def test_get_discover_pesa_los_streams_de_una_guardada_en_su_artista(api):
+    client, storage, _ = api
+    sid = song_id("youtube", "dQw4w9WgXcQ")
+    storage.save_saved(lambda book: book.upsert(
+        SavedSong(id=sid, title="Tema", artist="Beta", album=None,
+                  duration=180.0, artwork_url=None, source="youtube",
+                  source_id=sid[3:], itunes={}, file_key=None,
+                  added_at=1.0, updated_at=1.0)))
+    storage.save_artistinfo({"beta": _record("Beta", genres=[["jazz", 2]])})
+    storage.append_listens([{
+        "t": 1_772_000_000, "k": sid, "d": 200_000, "l": 200_000,
+        "p": 200_000, "r": "end", "o": "play", "a": "Beta",
+    }], now=1_772_000_000)
+    # El id no esta en la biblioteca de archivos: sin el agregado por artista
+    # el peso del stream se perderia y no habria generos.
+    assert client.get("/api/discover").json()["genres"] == [
+        {"name": "jazz", "share": 1.0}]
 
 
 def test_get_discover_sigue_si_el_enricher_falla(api):
