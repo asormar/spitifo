@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Protocol
 
 if TYPE_CHECKING:  # solo para las anotaciones: `playlists` importa de aca
+    from ..art import ArtBook
     from ..playlists import PlaylistBook
     from ..saved import SavedBook
 
@@ -143,6 +144,11 @@ class Storage(Protocol):
 
     def save_saved(
             self, change: Callable[["SavedBook"], None]) -> "SavedBook": ...
+
+    # Imagenes personalizadas: el mismo puerto chico que saved (ADR 0005).
+    def load_art(self) -> "ArtBook": ...
+
+    def save_art(self, change: Callable[["ArtBook"], None]) -> "ArtBook": ...
 
     # Historial de escucha: archivos por dispositivo, igual que playlists.
     def append_listens(self, events: list[dict]) -> int: ...
