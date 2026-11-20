@@ -251,3 +251,112 @@ def test_drive_borra_con_tombstone_y_papelera(tmp_path):
         assert len(trashed) == 1  # el archivo remoto fue a la papelera
     finally:
         set_storage(None)
+
+
+def _subidas(fake) -> int:
+    """Escrituras de archivos chicos (indice, listas): toda subida a /upload."""
+    return sum(1 for method, path in fake.calls
+               if method in ("POST", "PATCH") and path.startswith("/upload/"))
+
+
+def _papeleras(fake) -> int:
+    return sum(1 for method, path in fake.calls
+               if method == "PATCH" and not path.startswith("/upload/"))
+
+
+def test_drive_un_tema_con_portadas_escribe_el_indice_dos_veces_y_no_las_listas(tmp_path):
+    """Antes: una escritura del indice por archivo y otra de las listas (unos
+    9,5 s en un telefono). Ahora: una por tanda (temas, portadas) y ninguna de
+    listas si ninguna tiene el tema."""
+    from backend.app.storage import set_storage as instalar
+
+    fake, drive = _drive_storage(tmp_path)
+    key = "A/A - Tema.mp3"
+    items = []
+    for nombre in ("A - Tema.mp3", "A - Tema.jpg", "A - Tema.s.jpg"):
+        src = tmp_path / nombre
+        src.write_bytes(DATA)
+        items.append((f"A/{nombre}", src))
+    drive.put_files(items)
+    instalar(drive)
+    try:
+        with TestClient(create_app()) as c:
+            fake.reset_calls()
+            r = _borrar(c, [key])
+
+        assert r.json() == {"deleted": [key], "failed": []}
+        assert _papeleras(fake) == 3
+        assert _subidas(fake) == 2
+        assert [f.key for f in drive.list()] == []
+    finally:
+        set_storage(None)
+
+
+def test_drive_un_album_escribe_el_indice_dos_veces(tmp_path):
+    from backend.app.storage import set_storage as instalar
+
+    fake, drive = _drive_storage(tmp_path)
+    keys = []
+    for i in range(12):
+        src = tmp_path / f"t{i}.mp3"
+        src.write_bytes(DATA)
+        cover = tmp_path / f"t{i}.jpg"
+        cover.write_bytes(DATA)
+        drive.put_files([(f"A/Tema {i}.mp3", src), (f"A/Tema {i}.jpg", cover)])
+        keys.append(f"A/Tema {i}.mp3")
+    instalar(drive)
+    try:
+        with TestClient(create_app()) as c:
+            fake.reset_calls()
+            r = _borrar(c, keys)
+
+        assert r.json() == {"deleted": keys, "failed": []}
+        assert _papeleras(fake) == 24
+        assert _subidas(fake) == 2
+    finally:
+        set_storage(None)
+
+
+def test_drive_limpia_la_lista_que_tenia_el_tema(tmp_path):
+    from backend.app.storage import set_storage as instalar
+
+    fake, drive = _drive_storage(tmp_path)
+    src = tmp_path / "x.mp3"
+    src.write_bytes(DATA)
+    drive.put_file("A/a.mp3", src)
+    instalar(drive)
+    try:
+        with TestClient(create_app()) as c:
+            assert c.put("/api/playlists/viaje", json={
+                "name": "Viaje", "keys": ["A/a.mp3"]}).status_code == 200
+            fake.reset_calls()
+            assert _borrar(c, ["A/a.mp3"]).status_code == 200
+            listas = c.get("/api/playlists").json()["playlists"]
+
+        assert _subidas(fake) == 2  # el indice (sin portadas) y las listas
+        assert listas[0]["keys"] == []
+    finally:
+        set_storage(None)
+
+
+def test_drive_una_papelera_que_falla_no_frena_las_demas(tmp_path):
+    fake, drive = _drive_storage(tmp_path)
+    for nombre in ("bien", "mal"):
+        src = tmp_path / f"{nombre}.mp3"
+        src.write_bytes(DATA)
+        drive.put_file(f"A/{nombre}.mp3", src)
+    mal_id = next(fid for fid, f in fake.files.items() if f["name"] == "mal.mp3")
+    real = drive._trash
+
+    def trash(remote_id):
+        if remote_id == mal_id:
+            raise OSError("sin permiso")
+        real(remote_id)
+
+    drive._trash = trash
+    failed = drive.delete_files(["A/bien.mp3", "A/mal.mp3", "A/nada.mp3"])
+
+    assert set(failed) == {"A/mal.mp3", "A/nada.mp3"}
+    assert isinstance(failed["A/nada.mp3"], FileNotFoundError)
+    assert "sin permiso" in str(failed["A/mal.mp3"])
+    assert [f.key for f in drive.list()] == ["A/mal.mp3"]

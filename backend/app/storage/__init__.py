@@ -118,6 +118,14 @@ class Storage(Protocol):
 
     def delete(self, key: str) -> None: ...
 
+    def delete_files(self, keys: list[str]) -> dict[str, Exception]:
+        """Como `delete` para varios: en la nube, UNA sola escritura del indice.
+
+        Devuelve el error de cada clave que no se borro (FileNotFoundError si no
+        estaba); las que no aparecen se borraron.
+        """
+        ...
+
     # Playlists: puerto chico y SEPARADO del de archivos. Lo implementan los
     # dos adapters; la API lo usa desde un thread para no frenar el loop.
     def load_playlists(self) -> "PlaylistBook": ...
