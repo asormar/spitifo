@@ -93,25 +93,29 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
   };
 
   /* Guarda en el servidor y deja la foto definitiva que devuelve, o vuelve a
-     la anterior si falla: lo que se ve y lo guardado no se separan. */
-  const save = async (record) => {
-    if (!record?.id) return false;
+     la anterior si falla: lo que se ve y lo guardado no se separan. Un solo
+     PUT admite varias canciones (el boton "Guardar album"). */
+  const saveAll = async (records) => {
+    const list = (records || []).filter((s) => s?.id);
+    if (!list.length) return false;
     const before = state.byId;
-    upsert(record);
+    const byId = new Map(state.byId);
+    list.forEach((s) => byId.set(s.id, s));
+    emit({ byId });
     try {
       const r = await fetchFn(`${API}/saved`, {
         method: "PUT",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ songs: [record] }),
+        body: JSON.stringify({ songs: list }),
       });
       if (!r.ok) throw new Error("http");
       const d = await r.json().catch(() => ({}));
       if (Array.isArray(d.songs)) {
-        const byId = new Map(state.byId);
+        const fresh = new Map(state.byId);
         d.songs.forEach((s) => {
-          if (s && s.id) byId.set(s.id, s);
+          if (s && s.id) fresh.set(s.id, s);
         });
-        emit({ byId });
+        emit({ byId: fresh });
       }
       return true;
     } catch {
@@ -120,7 +124,9 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
     }
   };
 
-  return { subscribe, getState: () => state, load, upsert, save, hide, restore, remove };
+  const save = (record) => saveAll([record]);
+
+  return { subscribe, getState: () => state, load, upsert, save, saveAll, hide, restore, remove };
 }
 
 export const saved = createSaved();

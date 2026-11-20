@@ -11,6 +11,7 @@ import Ico from "../shared/ico.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import StreamButton from "./StreamButton.jsx";
 import ArchiveListenButton from "./ArchiveListenButton.jsx";
+import SaveHeart from "../listen/SaveHeart.jsx";
 import { canAudition, canStream } from "./streamTrack.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
@@ -118,6 +119,7 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
         ) : (
           t.preview_url && <PreviewButton t={t} />
         )}
+        <SaveHeart t={t} query={query} />
         {st === "full" ? (
           <DlRing t={t} busy={busy} downloaded={downloaded} onDl={onDl} />
         ) : (

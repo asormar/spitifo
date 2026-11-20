@@ -361,6 +361,15 @@
   background: var(--ok);
 }
 
+/* En la tabla de escritorio el punto va dentro de la celda del titulo, mas
+   pequeno y centrado con el texto. */
+.srow__dl--t {
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  align-self: center;
+}
+
 .tag {
   display: inline-block;
   margin-right: 6px;

@@ -1,0 +1,45 @@
+/* El corazon comparte sitio con el circulo de descarga en la fila y con la
+   flecha en el reproductor. Un area de 36 px basta para el dedo sin comerse
+   la fila; solo se anima transform, y el global de movimiento reducido ya
+   acorta esta animacion a 1 ms. */
+.shrt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--mut);
+  cursor: pointer;
+}
+
+.shrt.is-on {
+  color: var(--acc);
+}
+
+.shrt.is-pop {
+  animation: sh-pop 220ms var(--ease-spring);
+}
+
+@keyframes sh-pop {
+  50% {
+    transform: scale(1.22);
+  }
+}
+
+@media (pointer: coarse) {
+  .shrt {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .shrt:not(.is-on):hover {
+    color: var(--ink);
+  }
+}

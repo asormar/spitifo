@@ -6,6 +6,7 @@ import { Mosaic } from "./cards.jsx";
 import { mosaicTones, songs } from "./home.js";
 import { playlists, usePlaylists } from "./playlists.js";
 import { saved } from "./saved.js";
+import { maybeAutoDownload } from "./saveSong.js";
 import "./menus.css";
 import "./playlists.css";
 
@@ -110,9 +111,14 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice, anch
      tema suena por streaming, se guarda primero (la foto se actualiza al
      instante) y solo despues se anade su id a la lista. */
   const pick = async (apply, message) => {
-    if (savedRecord && !(await saved.save(savedRecord))) {
-      onNotice("No se pudo guardar la cancion. No se anadio a la lista.");
-      return;
+    if (savedRecord) {
+      if (!(await saved.save(savedRecord))) {
+        onNotice("No se pudo guardar la cancion. No se anadio a la lista.");
+        return;
+      }
+      maybeAutoDownload(savedRecord, null, {
+        downloaded: Boolean(byKey?.get(songKey)?.downloaded),
+      });
     }
     done(message(apply()));
   };

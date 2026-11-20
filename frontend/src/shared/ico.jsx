@@ -22,6 +22,8 @@ const D = {
   music: "M9 18V6l10-2v12M4 18a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0M14 16a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0",
   dots: "M5 12h.01M12 12h.01M19 12h.01",
   grip: "M9 7h.01M9 12h.01M9 17h.01M15 7h.01M15 12h.01M15 17h.01",
+  heart: "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z",
+  "heart-fill": "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z",
   pen: "M4 20h4L19 9l-4-4L4 16z",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
   next: "M4 6h12M4 12h8M4 18h8M15 14l5 4-5 4z",
@@ -46,7 +48,7 @@ const D = {
 const SW = { dots: 3.4, grip: 3 };
 
 export default function Ico({ n, size = 20, sw = SW[n] ?? 2, className }) {
-  const fill = n === "pause";
+  const fill = n === "pause" || n === "heart-fill";
   return (
     <svg
       viewBox="0 0 24 24"

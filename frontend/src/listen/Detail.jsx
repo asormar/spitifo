@@ -15,7 +15,8 @@ import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./album
 import { mosaicTones, songs } from "./home.js";
 import { skeleton } from "./LibraryGate.jsx";
 import { albumDeleteCopy } from "./deletion.js";
-import { AlbumMenu, DeleteAlbumSheet, ListMenu, deferredDelete } from "./Overlays.jsx";
+import { AlbumMenu, DeleteAlbumSheet, ListMenu } from "./Overlays.jsx";
+import { deferredDelete } from "./deleteSong.js";
 import { Back, useFocusBack } from "./Pages.jsx";
 import { NameField } from "./PlaylistPicker.jsx";
 import PlaylistSongs from "./PlaylistSongs.jsx";
