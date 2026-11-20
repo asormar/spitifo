@@ -359,33 +359,42 @@ class InternetArchiveSource(Source):
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         # archive matchea TODAS las palabras con AND: "linkin park numb" con
-        # frase exacta da 0. Se prueban variantes de menor a mayor especificidad
-        # y se corta en cuanto se juntan suficientes resultados.
-        queries = [
+        # frase exacta da 0. Las tres consultas estrictas van en paralelo: la
+        # general sola puede llenarse de programas de radio y podcasts (para
+        # "blues", 12 de 12), y antes eso cortaba la busqueda antes de mirar las
+        # colecciones de musica. Lo que cuenta es lo que pasa el filtro.
+        strict = [
             f'({q}) AND mediatype:(audio)',
             f'({q}) AND mediatype:(audio) AND collection:(audio_music)',
             f'({q}) AND mediatype:(audio) AND collection:(opensource_audio)',
-            _loose(q),
         ]
-        queries = [x for x in queries if x]
-
+        batches = await asyncio.gather(
+            *(self._search_one(query, limit) for query in strict),
+            return_exceptions=True)
+        errors = [b for b in batches if isinstance(b, BaseException)]
+        if len(errors) == len(batches):
+            raise errors[0]
         out: list[Track] = []
         seen: set[str] = set()
-        used_loose = False
-        for i, query in enumerate(queries):
-            if len(out) >= limit:
-                break
-            if i == len(queries) - 1 and query == _loose(q):
-                used_loose = True  # el OR_relajado genera falsos positivos
-            batch = await self._search_one(query, limit - len(out))
+
+        def add(batch: list[Track]) -> None:
             for t in batch:
                 if t.source_id in seen:
                     continue
                 seen.add(t.source_id)
                 t.extra["match_query"] = q
                 out.append(t)
-        # si hubo que recurrir al OR, descartar lo que no coincide en nada
-        return self._rank(q, out, min_relevance=0.01 if used_loose else 0.0)[:limit]
+
+        for batch in batches:
+            if not isinstance(batch, BaseException):
+                add(batch)
+        ranked = self._rank(q, out)
+        loose = _loose(q)
+        if len(ranked) >= limit or not loose:
+            return ranked[:limit]
+        add(await self._search_one(loose, limit))
+        # con el OR, descartar lo que no coincide en nada
+        return self._rank(q, out, min_relevance=0.01)[:limit]
 
     def _rank(self, query: str, tracks: list[Track],
               min_relevance: float = 0.0) -> list[Track]:
