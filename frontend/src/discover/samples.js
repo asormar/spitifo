@@ -38,6 +38,7 @@ export function pickSamples(results, genre, n = SAMPLE_COUNT, metaOf) {
     duration: 30,
     artwork: t.artwork_url,
     kind: "preview",
+    result: t,
   }));
 }
 

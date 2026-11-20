@@ -15,6 +15,8 @@ import { bindMediaSession } from "../player/mediaSession.js";
 import StreamErrors from "../player/StreamErrors.jsx";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
+import { loadArtistChunk } from "../download/artistChunk.js";
+import { requestSearch } from "../download/searchRequest.js";
 import ListenProvider from "../listen/ListenProvider.jsx";
 import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
@@ -656,6 +658,36 @@ export default function App() {
     [leaveNp, revealSong]
   );
 
+  /* El artista o el album de "Ahora suena" (npLinks.js): primero se cierra la
+     vista y despues se abre la pagina, como "Ver en tu biblioteca". */
+  const goFromNp = useCallback(
+    (link) => {
+      const go = async () => {
+        if (link.sheet) {
+          loadAlbumChunk();
+          nav.open(link.sheet);
+          return;
+        }
+        if (link.view) {
+          if (link.view.type === "itunesartist") loadArtistChunk();
+          nav.goTo(link.tab, link.view);
+          return;
+        }
+        loadArtistChunk();
+        /* Solo hace falta aqui: no entra en el primer script. */
+        const { resolveArtistLink } = await import("../download/artistLink.js");
+        const view = await resolveArtistLink(link.name, []);
+        if (view) nav.goTo("search", view);
+        else {
+          requestSearch(link.name);
+          nav.goTab("search");
+        }
+      };
+      if (!leaveNp(go)) go();
+    },
+    [leaveNp, nav.open, nav.goTo, nav.goTab]
+  );
+
   /* /api/library se pide al montar y no solo al abrir una pantalla: es una lista
      de archivos locales (no toca red) y asi las pantallas ya la tienen. */
   useEffect(() => {
@@ -804,7 +836,7 @@ export default function App() {
         {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
             completa. */}
         {np && NowPlaying && (
-            <NowPlaying mode={mode} onClose={closeNp} onReveal={revealFromNp} onWide={onWide} />
+            <NowPlaying mode={mode} onClose={closeNp} onReveal={revealFromNp} onWide={onWide} onGo={goFromNp} />
           )}
         {queueAt && (
           <Suspense fallback={null}>

@@ -18,6 +18,7 @@ import { Controls } from "./controls.jsx";
 import Scrub from "./Scrub.jsx";
 import NowCards, { FichaCard } from "./NowCards.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
+import { npLinks } from "./npLinks.js";
 import { panel, usePanel } from "./panel.js";
 import { useTrackPill } from "./useTrackPill.js";
 import { StreamBadge, StreamDownload } from "./StreamBits.jsx";
@@ -87,7 +88,7 @@ function usePaint(art, fallback) {
   return [paint, apply, settle];
 }
 
-export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
+export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const pc = mode !== "full";
   const wide = mode === "wide";
   /* Ampliar solo existe en la columna (no flotando sobre Descubrir). */
@@ -252,6 +253,22 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
 
   const duration = engineDuration || track.duration || 0;
   const library = track.kind === "library";
+  /* El artista y el album llevan a sus paginas (npLinks.js). */
+  const links = npLinks(track, library ? listen.model.byKey.get(track.key) : null);
+  const named = (text, link) =>
+    link && onGo && link.name === text ? (
+      <a
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          onGo(link);
+        }}
+      >
+        {text}
+      </a>
+    ) : (
+      text
+    );
   const caption = sourceCaption(source, track);
 
   /* Salir de la pestana 0 suelta el ampliado: con su misma transicion. */
@@ -318,7 +335,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide }) {
       <h2 className="np__title">{track.title}</h2>
       <p className="np__sub" title={meta}>
         {track.kind === "stream" && <><StreamBadge track={track} /> </>}
-        {meta}
+        {named(artist, links.artist)}
+        {album && <> · {named(album, links.album)}</>}
       </p>
     </>
   );

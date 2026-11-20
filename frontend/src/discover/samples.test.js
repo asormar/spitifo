@@ -10,7 +10,8 @@ const hit = (title, artist, preview = `https://p/${title}.m4a`) => ({
 
 describe("pickSamples", () => {
   it("turns results into preview tracks the engine can play", () => {
-    const [t] = pickSamples([hit("Uno", "A")], "bebop");
+    const src = hit("Uno", "A");
+    const [t] = pickSamples([src], "bebop");
     expect(t).toEqual({
       key: "preview:https://p/Uno.m4a",
       src: "https://p/Uno.m4a",
@@ -20,6 +21,8 @@ describe("pickSamples", () => {
       duration: 30,
       artwork: "https://a/Uno.jpg",
       kind: "preview",
+      /* El resultado viaja con el avance: "Ahora suena" enlaza su artista. */
+      result: src,
     });
   });
 

@@ -33,6 +33,7 @@ export default function PreviewButton({ t, text = false }) {
         duration: 30,
         artwork: t.artwork_url,
         kind: "preview",
+        result: t,
       });
     }
   };
