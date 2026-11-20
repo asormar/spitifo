@@ -77,6 +77,20 @@ _ALBUM_MATCH_SEMAPHORE = 3   # busquedas puntuales simultaneas por pista
 _ALBUM_TRACK_LIMIT = 8       # candidatos por busqueda puntual de una pista
 
 
+#: Espera antes de preparar la busqueda de YouTube: importar yt-dlp es CPU
+#: pura y no debe competir con la primera pantalla.
+PREWARM_DELAY_S = 4.0
+
+
+async def _prewarm_search() -> None:
+    try:
+        await asyncio.sleep(PREWARM_DELAY_S)
+        from .ytdlp_source import prewarm_search
+        await asyncio.to_thread(prewarm_search)
+    except Exception as e:
+        log.info("ytdlp: preparacion de la busqueda fallo: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
@@ -95,9 +109,10 @@ async def lifespan(app: Starlette):
     # play: si falla, el camino rapido cae al completo y el usuario no lo nota.
     if any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
         from . import stream as stream_mod
-        tarea = asyncio.create_task(stream_mod.warm_visitor())
-        BG_TASKS.add(tarea)
-        tarea.add_done_callback(BG_TASKS.discard)
+        for coro in (stream_mod.warm_visitor(), _prewarm_search()):
+            tarea = asyncio.create_task(coro)
+            BG_TASKS.add(tarea)
+            tarea.add_done_callback(BG_TASKS.discard)
     log.info("biblioteca: %s", get_storage().describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
@@ -865,15 +880,25 @@ async def _search_matched(q: str, limit: int) -> dict:
     # 1) catalogo de iTunes (metadata cruda, con duracion y portada)
     # Fuente compartida: reutiliza su httpx.Client (una instancia nueva por
     # busqueda quedaba abierta y nunca se cerraba).
+    # La busqueda en YouTube solo depende de la consulta: arranca ya, en
+    # paralelo con iTunes, en vez de esperar a que iTunes conteste.
     isrc = BY_NAME["itunes"]
-    it_items = await isrc._raw_search(q, limit=min(limit, 30))
+    videos = asyncio.ensure_future(ysrc.search_candidates(q, limit=40)) if yt_on else None
+    try:
+        it_items = await isrc._raw_search(q, limit=min(limit, 30))
+    except BaseException:
+        if videos:
+            videos.cancel()
+        raise
     catalog = catalog_status(q, it_items)
     if not it_items:
+        if videos:
+            videos.cancel()
         return {"query": q, "mode": "matched", "count": 0, "results": [],
                 "ytdlp": yt_on, "catalog": catalog}
 
-    # 2) una sola busqueda en YouTube y emparejar
-    matched = await enrich_with_ytdlp(it_items, q, ysrc) if yt_on else {}
+    # 2) emparejar con esa unica busqueda en YouTube
+    matched = await enrich_with_ytdlp(it_items, q, ysrc, videos=videos) if yt_on else {}
 
     # 3) armar los Tracks con la misma fabrica que usan las rutas de album
     out = [_itunes_track(it, matched.get(_track_key(it)))

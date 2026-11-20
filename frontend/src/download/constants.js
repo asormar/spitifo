@@ -74,10 +74,14 @@ export const PLACEHOLDER = {
 export const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube conserva su audio, sin recomprimir (normalmente Opus o AAC).";
 export const ORIGINAL_HINT_YT = "Original: el audio tal como viene de YouTube, sin recomprimir (normalmente Opus o AAC).";
 
+/* Sugerencias que encuentran la cancion completa en modo Musica (medido el
+   2026-11-20: 10 a 16 resultados completos cada una). «Radiohead Creep» y
+   «Chopin Nocturne» daban 0: la primera busqueda de alguien nuevo no puede
+   acabar en "ninguno se puede descargar". */
 export const EXAMPLES = [
   "Nick Cave Into My Arms",
-  "Chopin Nocturne",
-  "Radiohead Creep",
+  "Soda Stereo De Música Ligera",
+  "Fleetwood Mac Dreams",
   "Miles Davis So What",
 ];
 /* El estado que domina la fila: se baja entero / solo preview / nada.
