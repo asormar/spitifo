@@ -17,6 +17,9 @@ body {
 
 html {
   background-color: var(--bg);
+  /* El resaltado azul de Android al tocar: se hereda, asi cubre tambien lo
+     que no es <button> (la barra de tiempo es un div con role="slider"). */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -32,7 +35,6 @@ body {
 
 button {
   font-family: inherit;
-  -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 

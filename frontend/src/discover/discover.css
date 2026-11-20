@@ -82,7 +82,6 @@ body.has-mini .gmap {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
 }
 
 /* --- Controles sobre el mapa ---------------------------------------------- */
