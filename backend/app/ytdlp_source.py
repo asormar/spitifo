@@ -1246,6 +1246,12 @@ class YtDlpSource(Source):
                 # siempre, que extrae de cero con URLs de formato nuevas.
                 info = fp = None
                 raw = await warmed_info(parse_youtube_url(url) or url)
+                if raw is None and kind == "audio":
+                    # Sin extraccion adelantada, el audio sale por el camino
+                    # rapido del streaming (~0,2 s en vez de ~2 s). Si no hay o
+                    # la bajada con ella falla, se extrae como siempre (abajo).
+                    from . import stream
+                    raw = await stream.fast_raw(parse_youtube_url(url) or url)
                 if raw is not None:
                     try:
                         info, fp = await loop.run_in_executor(None, _run, None, raw)

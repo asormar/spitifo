@@ -167,6 +167,36 @@ async def ensure_visitor() -> str | None:
     return data
 
 
+def cached_visitor() -> str | None:
+    """El visitor_data si ya esta y no vencio; nunca sale a buscarlo."""
+    with _visitor_lock:
+        if _visitor and time.time() - _visitor_at < VISITOR_TTL_S:
+            return _visitor
+    return None
+
+
+async def fast_raw(url: str) -> dict | None:
+    """Extraccion SIN procesar por el camino rapido, para una descarga de audio.
+
+    Con ella la descarga se salta la extraccion completa (~2 s de ~3,3 s en el
+    PC) y solo elige formato y baja. Usa el visitor_data que ya haya (lo pide
+    el arranque): una descarga nunca espera a la home de YouTube. None si no
+    hay o si algo falla: la descarga sigue por su camino de siempre.
+    """
+    visitor = cached_visitor()
+    if not visitor:
+        return None
+    try:
+        with _pooled(visitor) as ydl:
+            raw = await asyncio.wait_for(
+                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                FAST_TIMEOUT_S)
+    except Exception as e:
+        log.info("stream: extraccion rapida para descargar fallo (%s)", type(e).__name__)
+        return None
+    return raw if isinstance(raw, dict) and raw.get("formats") else None
+
+
 def invalidate() -> None:
     """Descarta el visitor_data y los YoutubeDL construidos con el."""
     global _visitor, _visitor_at, _visitor_failed_at
