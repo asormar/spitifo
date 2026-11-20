@@ -142,3 +142,12 @@ describe("candidatos", () => {
     expect(buildCandidates("otro", { results: [] })).toEqual([]);
   });
 });
+
+describe("buildCandidates for an artist with singles only", () => {
+  it("uses the artwork of singles and live records", () => {
+    const art = "https://is1-ssl.mzstatic.com/image/thumb/a/300x300bb.jpg";
+    const live = "https://is1-ssl.mzstatic.com/image/thumb/b/300x300bb.jpg";
+    const out = buildCandidates("artist", [{ name: "X", albums: [], singles: [{ artwork_url: art, title: "S" }], live: [{ artwork_url: live, title: "L" }] }]);
+    expect(out.map((c) => c.url)).toEqual([art, live]);
+  });
+});

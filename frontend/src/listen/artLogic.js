@@ -115,7 +115,10 @@ export function buildCandidates(kind, data, limit = 6) {
   } else if (kind === "artist") {
     for (const a of data || []) {
       add(a?.artwork_url, a?.name);
-      for (const al of a?.albums || []) add(al?.artwork_url, al?.title);
+      /* Un artista con solo sencillos o directos tambien tiene portadas. */
+      for (const k of ["albums", "singles", "live", "compilations"]) {
+        for (const al of a?.[k] || []) add(al?.artwork_url, al?.title);
+      }
     }
   }
   return out.slice(0, limit);
