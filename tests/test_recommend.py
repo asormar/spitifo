@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import pytest
 
+from backend.app.artistinfo import library_artists
 from backend.app.recommend import (
     artist_weights,
     candidates,
+    saved_entries,
     user_genres,
 )
+from backend.app.saved import SavedBook, SavedSong, song_id
 
 
 def _library(**tracks: int) -> dict:
@@ -238,3 +242,75 @@ def test_candidates_diversifica_los_seeds_que_se_solapan():
     assert out[1]["score"] == pytest.approx(1.0)
     assert out[3]["score"] == pytest.approx(1 / 3)
     assert all("_seed" not in item for item in out)
+
+
+# -------------------------------------------------- guardadas como semilla (PR 7)
+def _saved(*songs: tuple[str, str, str | None]) -> SavedBook:
+    """`(id, artista, file_key)` -> libro guardado."""
+    book = SavedBook()
+    for i, (sid, artist, file_key) in enumerate(songs):
+        source = "youtube" if sid.startswith("yt:") else "archive"
+        book.upsert(SavedSong(
+            id=sid, title=f"Tema {i}", artist=artist, album=None,
+            duration=180.0, artwork_url=None, source=source,
+            source_id=sid.split(":", 1)[1], itunes={}, file_key=file_key,
+            added_at=float(i + 1), updated_at=float(i + 1)))
+    return book
+
+
+_YT = song_id("youtube", "dQw4w9WgXcQ")
+_IA = song_id("archive", "olivia-1969/01 Olivia.mp3")
+
+
+def test_saved_entries_devuelve_las_guardadas_sin_archivo():
+    book = _saved((_YT, "Beta", None), (_IA, "Gamma", None))
+    entries = saved_entries(book, ["Alfa/Alfa - Uno.mp3"])
+    assert [entry["key"] for entry in entries] == [_YT, _IA]
+    assert [entry["artist"] for entry in entries] == ["Beta", "Gamma"]
+    assert all(entry["duration_s"] == 180.0 for entry in entries)
+
+
+def test_saved_entries_salta_la_guardada_con_archivo_y_los_tombstones():
+    key = "Alfa/Alfa - Uno.mp3"
+    book = _saved((_YT, "Alfa", key), (_IA, "Gamma", None))
+    book.songs[_IA] = replace(book.songs[_IA], deleted=True)
+    assert [entry["key"] for entry in saved_entries(book, [key])] == []
+    # Sin la clave de archivo solo sobrevive la que no es tombstone.
+    assert [entry["key"] for entry in saved_entries(book, [])] == [_YT]
+
+
+def test_library_con_guardadas_cuenta_el_seed_sin_duplicar_lo_descargado():
+    files = [{"key": "Alfa/Alfa - Uno.mp3", "artist": "Alfa"}]
+    book = _saved(
+        (_YT, "Beta", None),
+        (_IA, "Gamma", None),
+        (song_id("youtube", "abcdefghijk"), "Alfa", "Alfa/Alfa - Uno.mp3"),
+    )
+    entries = files + saved_entries(book, [e["key"] for e in files])
+    library = library_artists(entries)
+    assert library == {
+        "alfa": {"name": "Alfa", "tracks": 1},
+        "beta": {"name": "Beta", "tracks": 1},
+        "gamma": {"name": "Gamma", "tracks": 1},
+    }
+
+
+def test_artist_weights_resuelve_el_id_con_la_entrada_guardada():
+    library = {"beta": {"name": "Beta", "tracks": 1}}
+    entries = saved_entries(_saved((_YT, "Beta", None)), [])
+    weights = artist_weights(library, entries, {_YT: {"score": 2.0}})
+    assert weights["beta"] == pytest.approx(math.log1p(1) + 2.0)
+
+
+def test_candidates_excluye_un_artista_solo_guardado():
+    files = [{"key": "Alfa/Alfa - Uno.mp3", "artist": "Alfa"}]
+    book = _saved((_YT, "Beta", None))
+    entries = files + saved_entries(book, [e["key"] for e in files])
+    library = library_artists(entries)
+    records = {
+        "alfa": _record(similar=[{"name": "Beta", "mbid": "mb", "score": 1.0},
+                                 {"name": "X", "mbid": "mx", "score": 1.0}]),
+    }
+    out = candidates(library, records, {"alfa": 1.0, "beta": 1.0}, set())
+    assert [item["name"] for item in out] == ["X"]
+

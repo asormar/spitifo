@@ -57,6 +57,33 @@ def _name_of(info: object) -> str:
     return ""
 
 
+def saved_entries(saved_book, library_keys=()) -> list[dict]:
+    """Entradas de las guardadas que NO son archivos de la biblioteca.
+
+    Un registro con `file_key` que apunta a un archivo de la biblioteca ya
+    cuenta como pista de ese artista: sumarlo otra vez doblaria el `tracks` del
+    seed. Las demas se devuelven con el id por clave y el artista del registro,
+    para que `artist_weights` resuelva igual un id `yt:`/`ia:` que una ruta.
+    `library_artists` las agrupa por nombre plegado junto a los archivos.
+    """
+    files = {key for key in (library_keys or ())
+             if isinstance(key, str) and key}
+    out: list[dict] = []
+    songs = getattr(saved_book, "songs", None) or {}
+    for song in songs.values():
+        if getattr(song, "deleted", False):
+            continue
+        key = getattr(song, "id", None)
+        if not isinstance(key, str) or not key:
+            continue
+        file_key = getattr(song, "file_key", None)
+        if isinstance(file_key, str) and file_key in files:
+            continue
+        out.append({"key": key, "artist": getattr(song, "artist", "") or "",
+                    "duration_s": getattr(song, "duration", None)})
+    return out
+
+
 def _genre_counts(record: object) -> list[tuple[str, float]]:
     """`[(name, count)]` validos de una ficha."""
     raw = record.get("genres") if isinstance(record, dict) else None
@@ -84,8 +111,10 @@ def artist_weights(library: dict, entries: list[dict],
     `log1p(pistas en la biblioteca)` mas la suma del `score` de escucha de sus
     pistas. Las claves del historial se resuelven con la entrada de la
     biblioteca (por la etiqueta `artist`) y, si la pista ya no esta, con la
-    misma regla sobre la clave sola. Un credito de colaboracion reparte la
-    escucha entre TODOS sus artistas.
+    misma regla sobre la clave sola. Las guardadas entran en `entries` con su
+    id por clave (`saved_entries`), asi que un id `yt:`/`ia:` se resuelve igual
+    que la ruta de un archivo. Un credito de colaboracion reparte la escucha
+    entre TODOS sus artistas.
     """
     by_key: dict[str, list[str]] = {}
     for entry in entries or ():

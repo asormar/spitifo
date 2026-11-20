@@ -14,6 +14,8 @@ import { useSaved } from "./saved.js";
 import { tracksFor } from "../player/savedTrack.js";
 import { useNotice, NoticeProvider } from "./Notice.jsx";
 import { SongRow } from "./rows.jsx";
+import { useOnline } from "../shared/online.js";
+import { allBlocked, OFFLINE_EMPTY, playableEntries, rowState } from "./offline.js";
 
 /* ---------------------------------------------------------------------------
    LO QUE COMPARTEN LAS PANTALLAS DE LA BIBLIOTECA
@@ -57,6 +59,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   const listsReady = usePlaylists((s) => s.ready);
   const savedById = useSaved((s) => s.byId);
   const hist = useHistory();
+  const online = useOnline();
 
   /* Archivos y guardadas se juntan en UN useMemo: ni una segunda pasada por
      fila, ni dos mapas que se puedan desincronizar. */
@@ -82,6 +85,13 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   }, [show]);
 
   const value = useMemo(() => {
+    /* Sin red solo entran en la cola las que tienen archivo. Si no queda
+       ninguna y habia algo, se dice por que en vez de callar. */
+    const usable = (list) => {
+      if (allBlocked(list, online)) show(OFFLINE_EMPTY);
+      return playableEntries(list, online);
+    };
+
     /* `from` es el origen ("album:X", "library:", ...): lo que dice "Sonando
        desde" en Ahora suena. Una cadena estable, no un objeto: SongRow es memo. */
     const play = (entry, el, list, from) => {
@@ -93,7 +103,12 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
         );
         return;
       }
-      const queue = tracksFor(list, model.byKey, model.savedById, keyUrl);
+      const state = rowState(entry, online);
+      if (state.blocked) {
+        show(state.notice);
+        return;
+      }
+      const queue = tracksFor(usable(list), model.byKey, model.savedById, keyUrl);
       const at = queue.findIndex((t) => t.key === entry.key || (entry.sid && t.sid === entry.sid));
       const track = at >= 0 ? queue[at] : tracksFor([entry], model.byKey, model.savedById, keyUrl)[0];
       engine.play(track, { queue, index: at, source: from });
@@ -109,7 +124,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
        al azar, no siempre por la primera; restart: aunque ya suene esa pista,
        el grupo nuevo sustituye a la cola. */
     const playGroup = (group, shuffle = false, from) => {
-      const queue = tracksFor(group, model.byKey, model.savedById, keyUrl);
+      const queue = tracksFor(usable(group), model.byKey, model.savedById, keyUrl);
       if (!queue.length) return;
       if (shuffle) engine.setShuffle(true);
       const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
@@ -120,7 +135,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
        esa mezcla. La cola es una foto: no se vacia a medida que se oyen. */
     const playMix = (key) => {
       const queue = tracksFor(
-        mixEntries(key, model.entries, history.getState(), model.byKey),
+        usable(mixEntries(key, model.entries, history.getState(), model.byKey)),
         model.byKey, model.savedById, keyUrl
       );
       if (!queue.length) return;
@@ -139,10 +154,11 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
        donde se quedo. */
     const resume = (item, items, from) => {
       const queue = tracksFor(
-        items.map((i) => i.entry),
+        usable(items.map((i) => i.entry)),
         model.byKey, model.savedById, keyUrl
       );
       const at = queue.findIndex((t) => t.key === item.entry.key);
+      if (at < 0) return;
       engine.play(queue[at], { queue, index: at, at: item.at, source: from });
     };
 
@@ -206,7 +222,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
       ),
     };
     return { ctx, model, show };
-  }, [model, show, navOpen, navBack, navReplace, getStack, refresh, hideKeys, restoreFiles]);
+  }, [model, show, online, navOpen, navBack, navReplace, getStack, refresh, hideKeys, restoreFiles]);
 
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */

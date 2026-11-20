@@ -23,9 +23,12 @@ from backend.app.main import create_app
 from backend.app.storage import set_storage
 from fake_drive import FakeDrive
 
-#: Lo que lista un GET frio: el indice (la biblioteca), las fichas, los
-#: descartes y, en un solo `q`, los meses y agregados de escucha.
-COLD_LISTINGS = 4
+#: Lo que lista un GET frio: el indice (la biblioteca), el registro de guardadas,
+#: las fichas, los descartes y, en un solo `q`, los meses y agregados de escucha.
+COLD_LISTINGS = 5
+#: El indice y el registro de guardadas comparten lock: cuatro listados pueden
+#: correr a la vez, el quinto (library-) va justo despues del indice.
+PARALLEL_LISTINGS = 4
 
 
 class _Tokens:
@@ -112,8 +115,8 @@ def test_el_get_frio_lista_cada_prefijo_una_sola_vez(launch, monkeypatch):
     assert _artists(body) == ["X"]  # Y esta descartado
     assert len(fake.list_queries) == COLD_LISTINGS
     listed = " | ".join(fake.list_queries)
-    for prefix in ("index-", "artistinfo-", "discover-", "listens-",
-                   "listenagg-"):
+    for prefix in ("index-", "library-", "artistinfo-", "discover-",
+                   "listens-", "listenagg-"):
         assert listed.count(f"'{prefix}'") == 1, prefix
     # Los meses y los agregados de escucha salen del mismo listado.
     assert any("'listens-'" in q and "'listenagg-'" in q
@@ -124,8 +127,15 @@ def test_los_listados_del_get_frio_van_en_paralelo(launch, monkeypatch):
     fake, _ = launch
     monkeypatch.setattr(main, "_enricher", FakeEnricher())
     # Cada listado espera a los demas: en serie, el primero no pasa nunca.
-    barrier = threading.Barrier(COLD_LISTINGS, timeout=5)
-    fake.on_list = lambda q: barrier.wait()
+    barrier = threading.Barrier(PARALLEL_LISTINGS, timeout=5)
+    seen = []
+
+    def _on_list(q):
+        if len(seen) < PARALLEL_LISTINGS:
+            seen.append(q)
+            barrier.wait()
+
+    fake.on_list = _on_list
     with TestClient(create_app()) as client:
         response = client.get("/api/discover")
 

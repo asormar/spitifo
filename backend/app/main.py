@@ -2240,10 +2240,35 @@ def _cached_records(storage, stale_ok: bool = True) -> dict:
                    ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
 
 
+def _cached_summary(storage, stale_ok: bool = True) -> dict:
+    return _cached("listens", storage.load_listens_summary, storage=storage,
+                   ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok) or {}
+
+
 def _cached_tracks(storage, stale_ok: bool = True) -> dict:
-    summary = _cached("listens", storage.load_listens_summary, storage=storage,
-                      ttl=DISCOVER_CACHE_SECONDS, stale_ok=stale_ok)
-    return (summary or {}).get("tracks", {})
+    return _cached_summary(storage, stale_ok).get("tracks", {})
+
+
+def _discover_saved(storage) -> SavedBook:
+    """Una sola lectura del registro de guardadas: el adapter lo cachea."""
+    try:
+        return storage.load_saved()
+    except Exception as exc:
+        log.warning("no se pudieron leer las canciones guardadas: %s", exc)
+        return SavedBook()
+
+
+def _discover_entries(storage) -> list[dict]:
+    """Escaneo de archivos mas guardadas sin archivo, en UNA sola tarea.
+
+    El listado del indice y el del registro comparten el lock del storage, asi
+    que van juntos: cuatro entradas en paralelo, no cinco esperando el lock.
+    """
+    from .recommend import saved_entries
+    files = library_scan()
+    return list(files) + saved_entries(
+        _discover_saved(storage),
+        [entry.get("key") for entry in files if isinstance(entry, dict)])
 
 
 def _cached_dismissed(storage) -> set[str]:
@@ -2269,6 +2294,7 @@ def _get_enricher() -> Enricher:
             _enricher = Enricher(
                 load_records=lambda storage: _cached_records(storage, False),
                 load_tracks=lambda storage: _cached_tracks(storage, False),
+                load_saved=_discover_saved,
                 load_dismissed=_cached_dismissed)
         return _enricher
 
@@ -2283,15 +2309,17 @@ def _discover_payload(enricher=None) -> dict:
     # En frio cada entrada es una request a la nube: se piden a la vez, asi
     # se espera la mas lenta y no la suma. Con todo cacheado no cuesta nada.
     pool = _discover_loader_pool()
-    entries = pool.submit(_cached, "scan", library_scan, storage=storage,
-                          ttl=DISCOVER_CACHE_SECONDS)
+    entries = pool.submit(_cached, "scan", lambda: _discover_entries(storage),
+                          storage=storage, ttl=DISCOVER_CACHE_SECONDS)
     records = pool.submit(_discover_records, storage, enricher)
     dismissed = pool.submit(_cached_dismissed, storage)
-    tracks = pool.submit(_cached_tracks, storage)
+    summary = pool.submit(_cached_summary, storage)
     entries, records = entries.result(), records.result()
-    dismissed, tracks = dismissed.result(), tracks.result()
+    dismissed, summary = dismissed.result(), summary.result()
     library = library_artists(entries)
-    weights = artist_weights(library, entries, tracks)
+    # Las guardadas van en `entries` con su artista: un id `yt:`/`ia:` del
+    # historial se resuelve igual que la ruta de un archivo.
+    weights = artist_weights(library, entries, summary.get("tracks", {}))
     return {"genres": user_genres(library, records, weights),
             "artists": candidates(library, records, weights, dismissed)}
 

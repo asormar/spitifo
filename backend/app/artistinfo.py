@@ -676,6 +676,14 @@ def _default_tracks(storage) -> dict:
     return (storage.load_listens_summary() or {}).get("tracks", {})
 
 
+def _default_saved(storage):
+    try:
+        return storage.load_saved()
+    except Exception as exc:  # sin red no se pierde lo que ya se estaba haciendo
+        log.warning("no se pudieron leer las canciones guardadas: %s", exc)
+        return None
+
+
 def _default_dismissed(storage) -> set[str]:
     return storage.load_discover().dismissed_set()
 
@@ -689,9 +697,9 @@ class Enricher:
     Tres errores de red seguidos lo dejan `offline` 60 s; la proxima llamada a
     `ensure_started()` lo vuelve a arrancar pasado ese tiempo.
 
-    `load_records`, `load_tracks` y `load_dismissed` reciben el storage y leen
-    sus entradas; el default va directo al storage. Discover pasa las suyas,
-    cacheadas: asi el hilo no vuelve a listar la nube que la request acaba de leer.
+    `load_records`, `load_tracks`, `load_saved` y `load_dismissed` reciben el
+    storage y leen sus entradas; el default va directo al storage. Discover pasa las suyas, cacheadas: asi el hilo no vuelve
+    a listar la nube que la request acaba de leer.
     """
 
     def __init__(self, *, source: ArtistSource | None = None,
@@ -699,13 +707,14 @@ class Enricher:
                  batch_size: int = ENRICH_BATCH,
                  cooldown: float = OFFLINE_COOLDOWN,
                  rerun_after: float = RERUN_AFTER,
-                 load_records=None, load_tracks=None,
+                 load_records=None, load_tracks=None, load_saved=None,
                  load_dismissed=None) -> None:
         self._source = source
         self._scan = scan or _default_scan
         self._storage = storage or _default_storage
         self._load_records = load_records or _default_records
         self._load_tracks = load_tracks or _default_tracks
+        self._load_saved = load_saved or _default_saved
         self._load_dismissed = load_dismissed or _default_dismissed
         self._clock = clock
         self._batch_size = max(1, int(batch_size))
@@ -808,7 +817,13 @@ class Enricher:
 
     def _work(self) -> None:
         storage = self._storage()
-        entries = self._scan()
+        from . import recommend
+        entries = list(self._scan())
+        # Las guardadas sin archivo son pistas de la biblioteca para el perfil:
+        # suman al seed y resuelven el artista de un id `yt:`/`ia:` en escuchas.
+        entries += recommend.saved_entries(
+            self._load_saved(storage),
+            [entry.get("key") for entry in entries if isinstance(entry, dict)])
         library = library_artists(entries)
         # Copia: `_remember` la va completando y puede venir de una cache ajena.
         records = dict(self._load_records(storage))

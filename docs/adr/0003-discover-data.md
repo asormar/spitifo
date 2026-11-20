@@ -30,7 +30,15 @@
 5. **Recommendations are content-based and run on the device** (session 23):
    a decayed genre and artist profile from plays and likes, candidates from
    the similarity data, and a way to hear and download them through the
-   existing Download search.
+   existing Download search. The seeds are every artist in the downloaded
+   files **plus every artist of a live saved song** (ADR 0004): a saved song
+   counts as one library track (`log1p(tracks)`) and is grouped by folded artist
+   name, but a record whose `file_key` points at a library file is the same
+   song and is not counted twice. Listen weights are resolved per key as for
+   files: a saved song enters the profile with its id as key and the artist of
+   its record, so a streamed id (`yt:`/`ia:`) is credited to that artist. A
+   stream of a song that is no longer saved adds no weight. Candidates exclude
+   every seed artist, saved-only ones included.
 
 ## Why not the obvious sources
 
