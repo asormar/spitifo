@@ -797,6 +797,25 @@ Compressed sizes inside the APK:
 | SQLite | 0.5 MB |
 | Frontend | 0.2 MB |
 
+## Streaming and downloads (2026-11-20)
+
+Playing a search result without downloading it goes through `/api/stream`,
+which resolves the format URL with a fast yt-dlp path (`backend/app/stream.py`:
+the `visionos` client, no video page, no `next` call, visitor data fetched once
+at start, `process=False` and our own audio pick) and proxies the bytes in
+1 MiB ranges. Any failure falls back to the full extraction.
+
+| Measure (PC, server) | Before | Now |
+| --- | --- | --- |
+| Tap to first audio bytes, not prepared | 2.9 s (full extraction) | median 0.22 s, p90 0.53 s (20 songs) |
+| First play right after start | 0.87 s | 0.52 s (yt-dlp and the proxy client warmed 4 s after start) |
+| Seek to the middle | — | median 0.06 s |
+| Four m4a downloads, one after another | 18.8 s | 9.2 s (audio downloads take the fast path's raw info) |
+
+On the Pixel_3a emulator (ARM code translated on x86, so far slower than a
+phone) a prepared result starts in about 1 s from the tap. The first two full
+search results and the next queued stream are prepared ahead.
+
 ## How to measure
 
 Everything below lives in `scripts/perf/`. Measure the **release** builds:
