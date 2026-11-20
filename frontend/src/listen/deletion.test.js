@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "./deferred.js";
 import { albumDeleteCopy, failedNotice, isDrive } from "./deletion.js";
+import { noticeWait } from "./Notice.jsx";
 
 describe("albumDeleteCopy", () => {
   it("dice 'de este dispositivo' en la biblioteca local", () => {
@@ -105,5 +106,13 @@ describe("createDeferred (borrado diferido)", () => {
     vi.advanceTimersByTime(5000);
     expired.flush();
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("noticeWait", () => {
+  it("da mas tiempo a deshacer un borrado que a otro aviso con boton", () => {
+    expect(noticeWait(undefined)).toBe(1600);
+    expect(noticeWait({ label: "Deshacer", run() {} })).toBe(5000);
+    expect(noticeWait({ label: "Deshacer", run() {}, commit() {} })).toBe(8000);
   });
 });
