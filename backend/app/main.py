@@ -8,18 +8,24 @@ parametros y las respuestas son los mismos que devolvia la version FastAPI.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import mimetypes
 import os
 import re
+import shutil
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from urllib.parse import urljoin
 
+import httpx
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -30,7 +36,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import activity, downloads, ytdlp_update
-from .config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
+from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -39,6 +45,20 @@ from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 configure_runtime()
 
 from .artistinfo import Enricher, fold, library_artists
+from .art import (
+    ART_DIR,
+    MAX_IMAGE_BYTES,
+    MAX_SMALL_BYTES,
+    SOURCE_ITUNES,
+    SOURCE_UPLOAD,
+    ArtRecord,
+    art_keys,
+    mzstatic_variants,
+    validate_art_url,
+    validate_image,
+    validate_source,
+    validate_target,
+)
 from .downloader import (
     _thumb_sidecar,
     download_track,
@@ -1834,6 +1854,202 @@ async def saved_remove(request: Request):
     return JSONResponse(await asyncio.to_thread(_remove))
 
 
+# ------------------------------------------------ imagenes personalizadas (ADR 0005)
+#: Timeouts y saltos de la bajada de imagenes, los mismos que `covers.py`.
+ART_TIMEOUT_S = 5.0
+ART_MAX_HOPS = 2
+
+
+class ArtFetchError(Exception):
+    """Fallo al bajar una imagen: `status` y `detail` ya son de la API."""
+
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
+
+
+def _art_client() -> httpx.AsyncClient:
+    """Cliente HTTP de las imagenes. Los tests lo cambian por un MockTransport."""
+    return httpx.AsyncClient(timeout=httpx.Timeout(ART_TIMEOUT_S),
+                             follow_redirects=False,
+                             headers={"User-Agent": USER_AGENT})
+
+
+async def _art_get(client: httpx.AsyncClient, url: str, source: str) -> bytes:
+    """Baja un JPG de la lista, sin seguir redirecciones fuera de ella."""
+    for _ in range(ART_MAX_HOPS + 1):
+        try:
+            resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            raise ArtFetchError(
+                502, f"no se pudo bajar la imagen: {exc}") from exc
+        if resp.is_redirect:
+            target = urljoin(url, resp.headers.get("location", ""))
+            try:
+                validate_art_url(target, source)
+            except ValueError as exc:
+                raise ArtFetchError(
+                    422, "redireccion fuera de la lista") from exc
+            url = target
+            continue
+        if resp.status_code >= 400:
+            raise ArtFetchError(502, "la imagen no esta disponible")
+        try:
+            return validate_image(resp.content, MAX_IMAGE_BYTES, "url")
+        except ValueError as exc:
+            raise ArtFetchError(422, str(exc)) from exc
+    raise ArtFetchError(422, "demasiadas redirecciones")
+
+
+async def _fetch_art_images(source: str, url: str) -> tuple[bytes, bytes]:
+    """`(grande, chica)`. mzstatic reescala por URL; en las otras fuentes no
+    hay libreria de imagenes (Android), asi que usamos los mismos bytes.
+    """
+    if source == SOURCE_ITUNES:
+        variants = mzstatic_variants(url)
+        if variants is None:
+            raise ArtFetchError(422, "la url de iTunes no es una portada jpg")
+        big_url, small_url = variants
+    else:
+        big_url = small_url = url
+    async with _art_client() as client:
+        return await asyncio.gather(_art_get(client, big_url, source),
+                                    _art_get(client, small_url, source))
+
+
+def _art_target(body: dict) -> str:
+    try:
+        return validate_target(body.get("target"))
+    except ValueError as exc:
+        raise _invalid(["body", "target"], str(exc)) from exc
+
+
+def _art_image(body: dict, field: str, limit: int) -> bytes:
+    """Decodifica base64 y valida el JPG. Errores 422 como el resto de la API."""
+    value = body.get(field)
+    if not isinstance(value, str) or not value:
+        raise _invalid(["body", field], "Field required")
+    try:
+        data = base64.b64decode(value, validate=True)
+    except ValueError as exc:
+        raise _invalid(["body", field], "base64 invalido") from exc
+    try:
+        return validate_image(data, limit, field)
+    except ValueError as exc:
+        raise _invalid(["body", field], str(exc)) from exc
+
+
+def _next_art_updated_at(old: ArtRecord | None, now: float) -> float:
+    """`updated_at` nuevo, SIEMPRE mayor que el guardado (como saved)."""
+    if old is None or old.deleted:
+        return now
+    return max(now, old.updated_at + 0.001)
+
+
+def _art_payload(record: ArtRecord) -> dict:
+    """Lo que consume el frontend: solo claves y procedencia."""
+    return {"key": record.key, "small_key": record.small_key,
+            "source": record.source}
+
+
+def _art_map(book) -> dict:
+    return {"art": {r.target: _art_payload(r) for r in book.live()}}
+
+
+def _store_art(storage, target: str, big: bytes, small: bytes,
+               source: str) -> ArtRecord:
+    """Escribe los dos JPG content-addressed y upserta el registro. Sincrono.
+
+    La misma imagen da siempre la misma clave, asi que dos dispositivos no
+    pueden chocar y un re-upload no vuelve a escribir nada.
+    """
+    big_key, small_key = art_keys(hashlib.sha256(big).hexdigest())
+    try:
+        storage.stat(big_key)
+        storage.stat(small_key)
+        exists = True
+    except (FileNotFoundError, OSError):
+        exists = False
+    if not exists:
+        work = Path(tempfile.mkdtemp())
+        try:
+            big_path, small_path = work / "big.jpg", work / "small.jpg"
+            big_path.write_bytes(big)
+            small_path.write_bytes(small)
+            storage.put_files([(big_key, big_path), (small_key, small_path)])
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+    now = time.time()
+
+    def change(book) -> None:
+        old = book.records.get(target)
+        book.upsert(ArtRecord(target=target, key=big_key,
+                              small_key=small_key, source=source,
+                              updated_at=_next_art_updated_at(old, now)))
+
+    return storage.save_art(change).records[target]
+
+
+async def art_list(request: Request):
+    """GET /api/art: imagenes vigentes por objetivo."""
+    book = await asyncio.to_thread(get_storage().load_art)
+    return JSONResponse(_art_map(book))
+
+
+async def art_upload(request: Request):
+    """POST /api/art/upload {target, image, small}: JPGs ya reescalados."""
+    body = await _json_body(request)
+    target = _art_target(body)
+    image = _art_image(body, "image", MAX_IMAGE_BYTES)
+    small = _art_image(body, "small", MAX_SMALL_BYTES)
+
+    def _work() -> dict:
+        record = _store_art(get_storage(), target, image, small, SOURCE_UPLOAD)
+        return {"target": target, **_art_payload(record)}
+
+    return JSONResponse(await asyncio.to_thread(_work))
+
+
+async def art_from_url(request: Request):
+    """POST /api/art/from-url {target, url, source}: baja la imagen permitida."""
+    body = await _json_body(request)
+    target = _art_target(body)
+    try:
+        source = validate_source(body.get("source"))
+        url = validate_art_url(body.get("url"), source)
+    except ValueError as exc:
+        raise _invalid(["body"], str(exc)) from exc
+    try:
+        big, small = await _fetch_art_images(source, url)
+    except ArtFetchError as exc:
+        raise HTTPException(exc.status, exc.detail) from exc
+
+    def _work() -> dict:
+        record = _store_art(get_storage(), target, big, small, source)
+        return {"target": target, **_art_payload(record)}
+
+    return JSONResponse(await asyncio.to_thread(_work))
+
+
+async def art_reset(request: Request):
+    """POST /api/art/reset {target}: tombstone. Las imagenes se quedan."""
+    body = await _json_body(request)
+    target = _art_target(body)
+
+    def _work() -> dict:
+        storage = get_storage()
+        now = time.time()
+
+        def change(book) -> None:
+            old = book.records.get(target)
+            book.remove(target, _next_art_updated_at(old, now))
+
+        return _art_map(storage.save_art(change))
+
+    return JSONResponse(await asyncio.to_thread(_work))
+
+
 # ------------------------------------------------------------------ listens
 async def listens_append(request: Request):
     """POST /api/listens: agrega eventos de ESTE dispositivo.
@@ -2365,6 +2581,9 @@ _UNIT = "bytes"
 _SERVE_EXTS = AUDIO_EXTS + VIDEO_EXTS + IMAGE_EXTS
 # Una semana: la miniatura `.jpg` de un tema (privada: la API es del usuario).
 _THUMB_CACHE = {"Cache-Control": "private, max-age=604800"}
+# Un ano: los JPG de `.art/` son content-addressed, el nombre CAMBIA si cambian
+# los bytes. Se pueden cachear sin miedo a servir una imagen vieja.
+_ART_CACHE = {"Cache-Control": "private, max-age=31536000, immutable"}
 #: Extensiones que tiene sentido adelantar con `/api/prefetch` (el video tambien
 #: se reproduce: la UI precarga el proximo tema). Una miniatura no se precarga.
 _PREFETCH_EXTS = AUDIO_EXTS + VIDEO_EXTS
@@ -2429,7 +2648,8 @@ async def audio(request: Request):
     # La miniatura no cambia mientras el archivo exista: sin esto cada fila que
     # se monta de nuevo en la lista virtual la vuelve a pedir (con Drive, un
     # viaje a la red). El audio y el video ya viajan con `Range` y no se cachean.
-    cache = _THUMB_CACHE if Path(key).suffix.lower() in IMAGE_EXTS else {}
+    cache = _ART_CACHE if key.startswith(f"{ART_DIR}/") else (
+        _THUMB_CACHE if Path(key).suffix.lower() in IMAGE_EXTS else {})
     rango = _parse_range(request.headers.get("range"), size)
     if rango == "insatisfacible":
         return Response(status_code=416, headers={
@@ -2597,6 +2817,10 @@ routes = [
     Route("/api/saved", saved_list),
     Route("/api/saved", saved_save, methods=["PUT"]),
     Route("/api/saved/remove", saved_remove, methods=["POST"]),
+    Route("/api/art", art_list),
+    Route("/api/art/upload", art_upload, methods=["POST"]),
+    Route("/api/art/from-url", art_from_url, methods=["POST"]),
+    Route("/api/art/reset", art_reset, methods=["POST"]),
     Route("/api/listens", listens_append, methods=["POST"]),
     Route("/api/listens/summary", listens_summary),
     Route("/api/discover", discover),
