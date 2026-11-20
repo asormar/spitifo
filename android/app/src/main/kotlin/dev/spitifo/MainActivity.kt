@@ -1,7 +1,6 @@
 package dev.spitifo
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -18,9 +17,13 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import com.chaquo.python.Python
 
 /**
@@ -33,7 +36,7 @@ import com.chaquo.python.Python
  * `singleTask` so a shared link does not stack a second window on top of a
  * running one; the new intent arrives through [onNewIntent].
  */
-class MainActivity : Activity() {
+class MainActivity : ComponentActivity() {
 
     private val backend: Backend get() = (application as SpitifoApp).backend
 
@@ -44,6 +47,21 @@ class MainActivity : Activity() {
     private val driveAuth by lazy { DriveAuth(this) }
 
     private var web: WebView? = null
+
+    /**
+     * Selector de archivos de la WebView: <input type=file> (la foto y las
+     * cookies de YouTube en Ajustes) no hace nada sin onShowFileChooser. El
+     * documento llega como content Uri, asi que no hacen falta permisos nuevos.
+     */
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val fileChooser: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            // Siempre se contesta: sin respuesta la WebView se queda colgada.
+            val cb = filePathCallback
+            filePathCallback = null
+            cb?.onReceiveValue(uri?.let { arrayOf(it) })
+        }
 
     /**
      * The playback service forwards notification and headset buttons here for
@@ -284,6 +302,26 @@ class MainActivity : Activity() {
                 }
 
                 override fun onHideCustomView() = hideFullscreen()
+
+                override fun onShowFileChooser(
+                    view: WebView,
+                    callback: ValueCallback<Array<Uri>>,
+                    params: WebChromeClient.FileChooserParams,
+                ): Boolean {
+                    // Un selector nuevo cancela el anterior y lo despierta con null.
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
+                    val accept = params.acceptTypes.firstOrNull()
+                    val mime = accept?.takeIf { it.contains("/") && it.length < 100 } ?: "*/*"
+                    try {
+                        fileChooser.launch(mime)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "file chooser failed", e)
+                        filePathCallback = null
+                        callback.onReceiveValue(null)
+                    }
+                    return true
+                }
             }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
