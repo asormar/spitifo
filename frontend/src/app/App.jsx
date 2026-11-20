@@ -132,7 +132,7 @@ function Screen({ id, active, children }) {
       id={active ? "main-content" : undefined}
       tabIndex={active ? -1 : undefined}
       hidden={!active}
-      inert={active ? undefined : ""}
+      inert={!active}
     >
       <Suspense fallback={null}>
         <Hold hold={!active}>{children}</Hold>
@@ -682,7 +682,7 @@ export default function App() {
       >
         <QueueHooks onLibrary={loadLib} onReady={onQueueReadyPill} />
         <StreamErrors />
-        <main className="app" inert={full ? "" : undefined}>
+        <main className="app" inert={full}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
               arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
           {pc && (
@@ -693,7 +693,7 @@ export default function App() {
           )}
 
           <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={full} wide={wide} />
-          <div className="screens" ref={screensRef} inert={wide ? "" : undefined}>
+          <div className="screens" ref={screensRef} inert={wide}>
             {visited.has("home") && (
               <Screen id="home" active={activeId === "home"}>
                 <HomeScreen
