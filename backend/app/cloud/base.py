@@ -1026,14 +1026,66 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         return out
 
     def delete(self, key: str) -> None:
-        validate_key(key)
-        entry = self._entry(key)
-        if entry is None:
-            raise FileNotFoundError(key)
-        self._trash(entry.remote_id)
-        self._write_own(lambda index: index.remove(key, self._clock()))
-        if self.cache is not None:
-            self.cache.unpin(entry.remote_id, entry.revision)
+        failed = self.delete_files([key])
+        if key in failed:
+            raise failed[key]
+
+    def delete_files(self, keys: list[str]) -> dict[str, Exception]:
+        """Manda varios archivos a la papelera con UNA sola escritura del indice.
+
+        El indice propio se reescribe entero en cada cambio: borrar un tema y sus
+        dos portadas de a uno lo subia tres veces (en Drive, 1,6 s cada vez). Las
+        papeleras van en paralelo. Devuelve el error de cada clave que no se
+        borro; una que no estaba vuelve como FileNotFoundError. Si falla la
+        escritura del indice, se levanta: lo ya enviado a la papelera queda ahi.
+        """
+        for key in keys:
+            validate_key(key)
+        index = self._load_index()
+        if any(key not in index.entries for key in keys):
+            index = self._load_index(force=True)
+        failed: dict[str, Exception] = {}
+        entries: list[IndexEntry] = []
+        for key in keys:
+            entry = index.entries.get(key)
+            if entry is None or entry.deleted:
+                failed[key] = FileNotFoundError(key)
+            else:
+                entries.append(entry)
+
+        def trash(entry: IndexEntry) -> Exception | None:
+            try:
+                self._trash(entry.remote_id)
+            except Exception as exc:
+                return exc
+            return None
+
+        if len(entries) > 1:
+            workers = min(SMALL_FILE_WORKERS, len(entries))
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="trash") as pool:
+                results = list(pool.map(trash, entries))
+        else:
+            results = [trash(entry) for entry in entries]
+        gone: list[IndexEntry] = []
+        for entry, exc in zip(entries, results):
+            if exc is None:
+                gone.append(entry)
+            else:
+                failed[entry.key] = exc
+
+        if gone:
+            now = self._clock()
+
+            def change(own: LibraryIndex) -> None:
+                for entry in gone:
+                    own.remove(entry.key, now)
+
+            self._write_own(change)
+            if self.cache is not None:
+                for entry in gone:
+                    self.cache.unpin(entry.remote_id, entry.revision)
+        return failed
 
     def quota(self) -> dict:
         """Espacio de la cuenta: `{limit, usage, app}` en bytes.

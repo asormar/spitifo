@@ -497,6 +497,15 @@ body.has-mini .lnotice {
   box-shadow: var(--shadow);
   --rise: 12px;
   animation: var(--rise-both);
+  /* Se desliza en horizontal para quitarlo (swipe.js); lo vertical es scroll. */
+  pointer-events: auto;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* Mientras se arrastra manda el transform del dedo, no el de la entrada. */
+.ltoast.is-drag {
+  animation: none;
 }
 
 @media (min-width: 960px) {
