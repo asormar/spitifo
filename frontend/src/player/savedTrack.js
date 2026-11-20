@@ -35,6 +35,48 @@ export function savedEntry(song) {
   };
 }
 
+/* Los ids de iTunes del registro con los nombres de un resultado de Buscar. */
+const ITUNES_EXTRA = {
+  track_id: "track_id",
+  collection_id: "collection_id",
+  artist_id: "artist_id",
+  track_no: "track_number",
+  disc_no: "disc_number",
+  track_count: "track_count",
+};
+
+/* La pista lleva un resultado con la forma de uno de Buscar: con el se
+   descarga (en el backend la fuente de YouTube es "ytdlp", no "youtube"), se
+   enlazan artista y album en "Ahora suena" y songIdOf vuelve al mismo id. */
+export function resultOf(song) {
+  const yt = song.id.startsWith("yt:");
+  const sourceId = String(song.source_id || song.id.slice(3));
+  const extra = {};
+  for (const [from, to] of Object.entries(ITUNES_EXTRA)) {
+    if (song.itunes?.[from] != null) extra[to] = song.itunes[from];
+  }
+  extra.needs_resolve = true;
+  let id = sourceId;
+  if (yt) {
+    extra.webpage_url = WATCH(sourceId);
+  } else {
+    const cut = sourceId.indexOf("/");
+    id = sourceId.slice(0, cut);
+    extra.filename = sourceId.slice(cut + 1);
+    extra.item_ids = [id];
+  }
+  return {
+    source: yt ? "ytdlp" : "archive",
+    source_id: id,
+    title: song.title || "sin título",
+    artist: song.artist || UNKNOWN,
+    album: song.album || null,
+    duration_s: song.duration ?? null,
+    artwork_url: song.artwork_url || null,
+    extra,
+  };
+}
+
 export function savedTrack(song, byKey = null) {
   if (!song?.id) return null;
   const title = song.title || "sin título";
@@ -54,7 +96,8 @@ export function savedTrack(song, byKey = null) {
       key: song.id,
       sid: song.id,
       artist,
-      result: song,
+      result: resultOf(song),
+      song,
     };
   }
 
@@ -71,7 +114,8 @@ export function savedTrack(song, byKey = null) {
       kind: "stream",
       sid: song.id,
       artist,
-      result: song,
+      result: resultOf(song),
+      song,
     };
   }
   if (song.id.startsWith("ia:")) {
@@ -87,7 +131,8 @@ export function savedTrack(song, byKey = null) {
       kind: "stream",
       sid: song.id,
       artist,
-      result: song,
+      result: resultOf(song),
+      song,
     };
   }
   return null;
