@@ -15,6 +15,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field, replace
 
+from . import saved
 from .storage import validate_key
 
 #: Version del formato. Un major distinto se rechaza en vez de adivinar.
@@ -146,12 +147,28 @@ class PlaylistBook:
         return merged
 
 
+def _entry_ok(entry: str) -> bool:
+    """Una entrada es una clave de archivo o el id de una cancion guardada."""
+    try:
+        validate_key(entry)
+        return True
+    except ValueError:
+        pass
+    try:
+        saved.validate_song_id(entry)
+        return True
+    except ValueError:
+        return False
+
+
 def validate_playlist(playlist_id: str, name: object,
                       keys: object) -> tuple[str, list[str]]:
     """Valida lo que llega por la API y devuelve `(nombre limpio, claves)`.
 
     El nombre se recorta; las claves repetidas se descartan conservando la
     primera aparicion (el orden de la playlist es lo que el usuario eligio).
+    Ademas de claves de archivo se aceptan ids de canciones guardadas: todo lo
+    que suena desde una lista tiene que estar en la biblioteca, bajado o no.
     Levanta `ValueError` con un mensaje corto en castellano.
     """
     if not isinstance(playlist_id, str) or not _ID_RE.match(playlist_id):
@@ -170,7 +187,8 @@ def validate_playlist(playlist_id: str, name: object,
     out: list[str] = []
     seen: set[str] = set()
     for key in keys:
-        validate_key(key)  # InvalidKey es un ValueError
+        if not _entry_ok(key):
+            raise ValueError("las entradas tienen que ser claves o ids de cancion")
         if key in seen:
             continue
         seen.add(key)

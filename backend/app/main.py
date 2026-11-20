@@ -1479,6 +1479,34 @@ def _playlists_hold(storage, keys: set[str]) -> bool:
                for p in book.playlists.values())
 
 
+def _drop_playlist_keys(storage, keys: set[str], now: float) -> None:
+    """Saca claves o ids borrados de las listas vivas que los tengan.
+
+    Todo lo que suena desde una lista esta en la biblioteca: si se borra el
+    archivo o se quita la cancion guardada, la entrada no puede quedar colgada.
+    Reescribir las listas cuesta una subida en la nube, solo se hace si alguna
+    las tenia. Un fallo aqui no invalida el borrado principal.
+    """
+    if not keys or not _playlists_hold(storage, keys):
+        return
+
+    def change(book) -> None:
+        # Las listas quedan, aunque se queden sin ninguna cancion.
+        for pid, playlist in list(book.playlists.items()):
+            if playlist.deleted or not (keys & set(playlist.keys)):
+                continue
+            book.upsert(replace(
+                playlist,
+                keys=[k for k in playlist.keys if k not in keys],
+                updated_at=_next_updated_at(playlist, now),
+            ))
+
+    try:
+        storage.save_playlist(change)
+    except Exception as exc:
+        log.warning("no se pudieron limpiar las listas tras borrar: %s", exc)
+
+
 def _delete_library_files(storage, keys: list[str],
                           removed: list[str] | None = None,
                           ) -> tuple[list[str], list[dict]]:
@@ -1525,26 +1553,7 @@ def _delete_library_files(storage, keys: list[str],
                 log.warning("no se pudo borrar la portada '%s': %s", side, side_exc)
 
     borradas = set(deleted)
-    # Reescribir las listas cuesta una subida en la nube: solo si alguna las
-    # tiene.
-    if borradas and _playlists_hold(storage, borradas):
-        now = time.time()
-
-        def change(book) -> None:
-            # Las listas quedan, aunque se queden sin ninguna cancion.
-            for pid, playlist in list(book.playlists.items()):
-                if playlist.deleted or not (borradas & set(playlist.keys)):
-                    continue
-                book.upsert(replace(
-                    playlist,
-                    keys=[k for k in playlist.keys if k not in borradas],
-                    updated_at=_next_updated_at(playlist, now),
-                ))
-
-        try:
-            storage.save_playlist(change)
-        except Exception as exc:
-            log.warning("no se pudieron limpiar las listas tras borrar: %s", exc)
+    _drop_playlist_keys(storage, borradas, time.time())
     if deleted:
         # El adapter local guarda duraciones y etiquetas por clave: sacarlas
         # evita que un listado posterior "recuerde" un archivo ya borrado.
@@ -1726,7 +1735,11 @@ async def saved_remove(request: Request):
                 old = b.songs.get(sid)
                 b.remove(sid, _next_saved_updated_at(old, now))
 
-        return _saved_list_payload(storage.save_saved(change))
+        result = _saved_list_payload(storage.save_saved(change))
+        # Una cancion quitada no puede seguir en una lista: ya no estaria en
+        # la biblioteca y la fila no se podria resolver.
+        _drop_playlist_keys(storage, set(ids), now)
+        return result
 
     return JSONResponse(await asyncio.to_thread(_remove))
 
