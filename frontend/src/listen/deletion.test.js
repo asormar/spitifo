@@ -33,6 +33,12 @@ describe("albumDeleteCopy", () => {
     expect(copy.facts).toEqual([{ label: "Canciones", value: "3" }]);
   });
 
+  it("un album de una sola cancion habla en singular", () => {
+    const copy = albumDeleteCopy({ name: "Rumours", storage: "este dispositivo", count: 1, sizeMb: 3.9 });
+    expect(copy.confirm).toBe("Borrar 1 canción");
+    expect(copy.body).toBe("La canción también sale de las listas donde esté. Puedes descargarla otra vez desde Buscar.");
+  });
+
   it("reconoce Drive", () => {
     expect(isDrive("Google Drive · 5 GB")).toBe(true);
     expect(isDrive("este dispositivo")).toBe(false);
