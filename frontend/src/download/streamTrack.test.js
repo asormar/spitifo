@@ -117,3 +117,18 @@ describe("archive audition", () => {
     expect(player.play).not.toHaveBeenCalled();
   });
 });
+
+describe("restricted archive items", () => {
+  it("does not play an item archive.org will not serve", async () => {
+    const { listenArchive } = await import("./ArchiveListenButton.jsx");
+    const item = { source: "archive", source_id: "x", title: "X", extra: { needs_resolve: true } };
+    const recs = new Map();
+    const store = {
+      get: (k) => recs.get(k),
+      verify: vi.fn(async (t, q) => { recs.set(`archive${t.source_id}|${q}`, { audio: "https://ia/x.mp3", extra: { unreadable: true } }); }),
+    };
+    const player = { play: vi.fn() };
+    expect(await listenArchive(item, "x", { store, player })).toBe(false);
+    expect(player.play).not.toHaveBeenCalled();
+  });
+});

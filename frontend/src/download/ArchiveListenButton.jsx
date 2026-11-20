@@ -19,12 +19,16 @@ import { verdictKey, verdictStore } from "./verdict.js";
 /* Pura para poder probarla: resuelve (o reusa) la URL y la manda al motor. */
 export async function listenArchive(t, query, { store = verdictStore, player = engine } = {}) {
   const key = verdictKey(t, query);
-  let audio = t.audio_url || store.get(key)?.audio;
+  let rec = store.get(key);
+  let audio = t.audio_url || rec?.audio;
   if (!audio) {
     await store.verify(t, query);
-    audio = store.get(key)?.audio;
+    rec = store.get(key);
+    audio = rec?.audio;
   }
-  if (!audio) return false;
+  /* Un item restringido (archive.org responde 403) no se intenta: el
+     reproductor fallaria sin decir por que. */
+  if (!audio || rec?.extra?.unreadable) return false;
   player.play(auditionTrack(t, audio));
   return true;
 }
@@ -51,7 +55,8 @@ export default function ArchiveListenButton({ t, query, text = false }) {
       /* Sin archivo no hay que tocar: el aviso dice por que (por ejemplo, un
          item que Internet Archive tiene restringido). */
       if (!(await listenArchive(t, q))) {
-        const why = verdictStore.get(verdictKey(t, q))?.error;
+        const rec = verdictStore.get(verdictKey(t, q));
+        const why = rec?.extra?.unreadable ? "archive.org no deja leer el archivo" : rec?.error;
         show?.(`No se puede escuchar «${title}»${why ? `: ${why}` : ""}`);
       }
     } finally {

@@ -8,8 +8,6 @@ from __future__ import annotations
 import asyncio
 
 import httpx
-import pytest
-
 from backend.app import identify
 from backend.app.models import Track
 from backend.app.sources import InternetArchiveSource
@@ -43,10 +41,11 @@ def _resolver(monkeypatch, tags_por_archivo):
     return asyncio.run(_fuente().resolve(track, query="uno"))
 
 
-def test_si_todos_los_archivos_dan_403_se_dice_por_que(monkeypatch):
+def test_si_todos_los_archivos_dan_403_queda_marcado_ilegible(monkeypatch):
     error = "Client error '403 Forbidden' for url 'https://ia000.us.archive.org/x'"
-    with pytest.raises(LookupError, match="no deja bajar"):
-        _resolver(monkeypatch, {"uno.mp3": {"_error": error}, "dos.mp3": {"_error": error}})
+    t = _resolver(monkeypatch, {"uno.mp3": {"_error": error}, "dos.mp3": {"_error": error}})
+    assert t.extra["match"] == "unknown"
+    assert t.extra["unreadable"] is True
 
 
 def test_se_elige_un_archivo_legible_antes_que_uno_prohibido(monkeypatch):
@@ -57,10 +56,9 @@ def test_se_elige_un_archivo_legible_antes_que_uno_prohibido(monkeypatch):
     assert t.audio_url.endswith("/dos.mp3")
 
 
-def test_un_error_pasajero_no_bloquea_la_descarga(monkeypatch):
-    # Un timeout al leer las etiquetas no dice nada del archivo: se sigue.
+def test_un_archivo_legible_no_queda_marcado(monkeypatch):
     t = _resolver(monkeypatch, {
-        "uno.mp3": {"_error": "ReadTimeout"},
-        "dos.mp3": {"_error": "ReadTimeout"},
+        "uno.mp3": {"title": "Uno", "_source": "tags"},
+        "dos.mp3": {"title": "Dos", "_source": "tags"},
     })
-    assert t.audio_url
+    assert "unreadable" not in t.extra
