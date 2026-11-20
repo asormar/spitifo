@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, Iterator, Protocol
 
 if TYPE_CHECKING:  # solo para las anotaciones: `playlists` importa de aca
     from ..playlists import PlaylistBook
+    from ..saved import SavedBook
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +137,12 @@ class Storage(Protocol):
 
     def save_playlist(
             self, change: Callable[["PlaylistBook"], None]) -> "PlaylistBook": ...
+
+    # Canciones guardadas: el mismo puerto chico que playlists (ADR 0004).
+    def load_saved(self) -> "SavedBook": ...
+
+    def save_saved(
+            self, change: Callable[["SavedBook"], None]) -> "SavedBook": ...
 
     # Historial de escucha: archivos por dispositivo, igual que playlists.
     def append_listens(self, events: list[dict]) -> int: ...

@@ -84,6 +84,7 @@ audio event. With repeat one, every `ended` is a play.
 | `listens-<device>-YYYY-MM.json` | That month's events. Only the current month is rewritten. | Concatenate. |
 | `listenagg-<device>.json` | Per track `{plays, skips, listened_ms, last, score}` and per artist the same, plus `folded_through`. | Sum counters, max of `last`, recompute `score`. |
 | `likes-<device>.json` | `{key, liked, updated_at}` | Newest `updated_at` per key, like playlists. |
+| `library-<device>.json` | Saved songs registry (ADR 0004), next to `playlists-*.json`. | Newest `updated_at` per id, tombstone wins ties. |
 
 `score` decays with a 60-day half-life (`w = w·2^(-Δdays/60) + 1` per play,
 −0.5 per skip); the half-life is a starting value to tune in session 23.

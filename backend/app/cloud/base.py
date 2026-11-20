@@ -35,6 +35,7 @@ from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
 from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
 from ..listens import AGG_PREFIX, MONTH_PREFIX, ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
+from ..saved import SavedBook, SavedFormatError
 from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
 from .cache import AudioCache
@@ -52,11 +53,15 @@ FOLDER_NAME = "Spitifo"
 #: merge de todos.
 INDEX_PREFIX = "index-"
 PLAYLIST_PREFIX = "playlists-"
+LIBRARY_PREFIX = "library-"
 
 #: Prefijos de los archivos chicos por dispositivo que se guardan en la copia
-#: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea.
-SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, MONTH_PREFIX, AGG_PREFIX,
-                  ARTISTINFO_PREFIX, DISCOVER_PREFIX, FILEINFO_PREFIX)
+#: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea. `library-`
+#: no es substring de ningun otro prefijo (ni al reves), asi que `name contains`
+#: no mezcla canciones guardadas con indice, listas ni escuchas.
+SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, LIBRARY_PREFIX, MONTH_PREFIX,
+                  AGG_PREFIX, ARTISTINFO_PREFIX, DISCOVER_PREFIX,
+                  FILEINFO_PREFIX)
 #: Cuantos archivos chicos se bajan a la vez al cargar el indice y compania.
 SMALL_FILE_WORKERS = 4
 
@@ -315,6 +320,12 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         self._own_playlists = PlaylistBook()
         self._own_playlists_id: str | None = None
         self._own_playlists_unreadable = False
+        # Mismo esquema para las canciones guardadas (ADR 0004).
+        self._saved: SavedBook | None = None
+        self._saved_at = float("-inf")
+        self._own_saved = SavedBook()
+        self._own_saved_id: str | None = None
+        self._own_saved_unreadable = False
         self._quota_cache: dict | None = None
         self._quota_cache_at = float("-inf")
         # Prefetch del proximo tema: el par (remote_id, revision) que YA se esta
@@ -760,6 +771,76 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             self._playlists = own.merge(self._playlists or PlaylistBook())
             self._playlists_at = self._clock()
             return self._playlists
+
+    # ---------------------------------------------------------------- guardadas
+    def _own_saved_name(self) -> str:
+        return f"{LIBRARY_PREFIX}{self.device_id}.json"
+
+    def load_saved(self, force: bool = False) -> SavedBook:
+        """Merge de todos los `library-*.json`, con el mismo TTL del indice.
+
+        Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
+        PROPIO: escribir encima perderia las canciones guardadas del usuario.
+        """
+        with self._lock:
+            if (not force and self._saved is not None
+                    and (self._clock() - self._saved_at) < INDEX_TTL):
+                return self._saved
+            merged = SavedBook()
+            own = SavedBook()
+            own_id: str | None = None
+            own_unreadable = False
+            files = [rf for rf in self._list_small(LIBRARY_PREFIX)
+                     if rf.name.startswith(LIBRARY_PREFIX)]
+            blobs = self._read_many(files)
+            for rf in files:
+                remote_id, name = rf.remote_id, rf.name
+                try:
+                    parsed = self._parse_small(rf, blobs[remote_id],
+                                               SavedBook.from_bytes)
+                except (httpx.HTTPError, SavedFormatError) as exc:
+                    log.warning("canciones guardadas ilegibles %s: %s", name, exc)
+                    if name == self._own_saved_name():
+                        own_id = remote_id
+                        own_unreadable = True
+                    continue
+                merged = merged.merge(parsed)
+                if name == self._own_saved_name():
+                    own_id = remote_id
+                    own = parsed
+            self._saved = merged
+            self._saved_at = self._clock()
+            self._own_saved_id = own_id
+            self._own_saved = own
+            self._own_saved_unreadable = own_unreadable
+            return merged
+
+    def save_saved(self, change: Callable[[SavedBook], None]) -> SavedBook:
+        """Aplica `change` al archivo PROPIO y lo sube (crear o reemplazar).
+
+        Un solo escritor por archivo, como el indice: no hace falta escritura
+        condicional. Despues mergea el resultado en la vista en memoria.
+        """
+        with self._lock:
+            self.load_saved()
+            if self._own_saved_unreadable:
+                # Un corte de red pasajero: se reintenta una vez antes de rendirse.
+                self.load_saved(force=True)
+            if self._own_saved_unreadable:
+                raise RuntimeError(
+                    f"no se pudieron leer {self._own_saved_name()}: "
+                    "no se sobrescribe")
+            own = SavedBook(songs=dict(self._own_saved.songs))
+            change(own)
+            body = own.to_bytes()
+            self._own_saved_id = self._store_small(
+                self._own_saved_name(), body, self._own_saved_id)
+            self._own_saved = own
+            # Lo recien escrito gana los empates de `updated_at` contra la copia
+            # que ya estaba en memoria (el reloj de Windows tiene poca precision).
+            self._saved = own.merge(self._saved or SavedBook())
+            self._saved_at = self._clock()
+            return self._saved
 
     # ------------------------------------------------------------------ listens
     def _listens_device(self) -> str:

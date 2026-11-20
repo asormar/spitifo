@@ -650,7 +650,9 @@ any song's menu and from "Ahora suena". What changed:
   follow the same model: `playlists-<device>.json` next to the index files on
   Drive, `.spitifo/playlists.json` (atomic write, hidden from the library) on
   disk. Per playlist the newest edit wins; different playlists never clash. An
-  own file that cannot be read is never overwritten.
+  own file that cannot be read is never overwritten. The saved-songs registry
+  (ADR 0004) uses the same per-device files: `library-<device>.json` on Drive and
+  `.spitifo/library.json` on disk.
 - **API:** `GET /api/playlists`, `PUT /api/playlists/{id}` with the whole
   playlist (the client makes the UUID, so creating and editing are the same
   call) and `DELETE /api/playlists/{id}` (tombstone). A save always gets a
