@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { coverTone, toneClass, toneVars } from "../shared/cover.js";
+import { coverOwner, coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadAlbumChunk } from "./albumChunk.js";
@@ -23,7 +23,7 @@ function AlbumCover({ album }) {
   const tone = coverTone(album.artist, album.title);
   return (
     <span className={cx("alcard__cv", "cv", toneClass(tone))} style={toneVars(tone)} aria-hidden="true">
-      <span>{initial(album.artist || album.title)}</span>
+      <span>{initial(coverOwner(album.artist, album.title) || album.title)}</span>
       {album.artwork_url && !broken && (
         <img
           src={thumbUrl(album.artwork_url)}

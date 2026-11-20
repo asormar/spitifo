@@ -14,10 +14,19 @@ export function hash32(text) {
   return h;
 }
 
+/* "Varios", "Various Artists"...: no es una persona. Si el color saliera de
+   ahi, todos los recopilatorios serian la misma portada magenta con una V. */
+const GENERIC_ARTIST = /^(?:varios(?: artistas)?|various(?: artists)?|va|artista desconocido|unknown artist|desconocido)$/i;
+export const isGenericArtist = (name) => GENERIC_ARTIST.test(String(name || "").trim());
+
+/* De quien es la portada: el artista, o el album cuando el artista es generico. */
+export const coverOwner = (artist, album) => (isGenericArtist(artist) && album ? album : artist);
+
 /* Tono de una portada: el color es del artista (todos sus albumes comparten
-   color) y la trama, del album; sin album, la trama sale del artista. */
+   color) y la trama, del album; sin album, la trama sale del artista. Con un
+   artista generico el color sale del album. */
 export function coverTone(artist, album) {
-  const who = artist ?? "";
+  const who = coverOwner(artist, album) ?? "";
   const color = hash32(who) % GENRE_COLORS;
   const pattern = hash32(album ? `${who}|${album}` : `${who}#`) % PATTERNS;
   return color + GENRE_COLORS * pattern;

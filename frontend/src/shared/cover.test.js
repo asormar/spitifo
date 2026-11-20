@@ -54,3 +54,16 @@ describe("tone to style", () => {
     expect(toneClass(0)).toBe("cv-p0");
   });
 });
+
+describe("generic artists", () => {
+  it("takes the colour from the album when the artist is Varios", async () => {
+    const { coverOwner, coverTone, isGenericArtist, toneColor } = await import("./cover.js");
+    expect(isGenericArtist("Varios")).toBe(true);
+    expect(isGenericArtist("Various Artists")).toBe(true);
+    expect(isGenericArtist("Variosaurio")).toBe(false);
+    expect(coverOwner("Varios", "Grandes éxitos 1990")).toBe("Grandes éxitos 1990");
+    expect(coverOwner("Soda Stereo", "Canción Animal")).toBe("Soda Stereo");
+    const colours = new Set(["Éxitos 1990", "Bachata Hits", "Rock Nacional", "Navidad"].map((a) => toneColor(coverTone("Varios", a))));
+    expect(colours.size).toBeGreaterThan(1);
+  });
+});
