@@ -381,14 +381,23 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         if not existed:
             raise FileNotFoundError(key)
 
-    def delete_files(self, keys: list[str]) -> dict[str, Exception]:
-        """`delete` de cada clave; aqui no hay indice que agrupar."""
+    def delete_files(self, keys: list[str],
+                     followers: dict[str, list[str]] | None = None,
+                     ) -> dict[str, Exception]:
+        """`delete` de cada clave y de sus seguidores; aqui no hay indice."""
         failed: dict[str, Exception] = {}
         for key in keys:
             try:
                 self.delete(key)
             except Exception as exc:
                 failed[key] = exc
+                if not isinstance(exc, FileNotFoundError):
+                    continue
+            for follower in (followers or {}).get(key, ()):
+                try:
+                    self.delete(follower)
+                except Exception as exc:
+                    failed[follower] = exc
         return failed
 
     def forget_media(self, keys) -> None:

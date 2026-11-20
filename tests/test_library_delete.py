@@ -264,10 +264,10 @@ def _papeleras(fake) -> int:
                if method == "PATCH" and not path.startswith("/upload/"))
 
 
-def test_drive_un_tema_con_portadas_escribe_el_indice_dos_veces_y_no_las_listas(tmp_path):
+def test_drive_un_tema_con_portadas_escribe_el_indice_una_vez_y_no_las_listas(tmp_path):
     """Antes: una escritura del indice por archivo y otra de las listas (unos
-    9,5 s en un telefono). Ahora: una por tanda (temas, portadas) y ninguna de
-    listas si ninguna tiene el tema."""
+    9,5 s en un telefono). Ahora: una sola, con las portadas incluidas, y
+    ninguna de listas si ninguna tiene el tema."""
     from backend.app.storage import set_storage as instalar
 
     fake, drive = _drive_storage(tmp_path)
@@ -286,13 +286,13 @@ def test_drive_un_tema_con_portadas_escribe_el_indice_dos_veces_y_no_las_listas(
 
         assert r.json() == {"deleted": [key], "failed": []}
         assert _papeleras(fake) == 3
-        assert _subidas(fake) == 2
+        assert _subidas(fake) == 1
         assert [f.key for f in drive.list()] == []
     finally:
         set_storage(None)
 
 
-def test_drive_un_album_escribe_el_indice_dos_veces(tmp_path):
+def test_drive_un_album_escribe_el_indice_una_vez(tmp_path):
     from backend.app.storage import set_storage as instalar
 
     fake, drive = _drive_storage(tmp_path)
@@ -312,7 +312,7 @@ def test_drive_un_album_escribe_el_indice_dos_veces(tmp_path):
 
         assert r.json() == {"deleted": keys, "failed": []}
         assert _papeleras(fake) == 24
-        assert _subidas(fake) == 2
+        assert _subidas(fake) == 1
     finally:
         set_storage(None)
 
@@ -360,3 +360,61 @@ def test_drive_una_papelera_que_falla_no_frena_las_demas(tmp_path):
     assert isinstance(failed["A/nada.mp3"], FileNotFoundError)
     assert "sin permiso" in str(failed["A/mal.mp3"])
     assert [f.key for f in drive.list()] == ["A/mal.mp3"]
+
+
+def test_drive_la_portada_se_queda_si_su_tema_falla(tmp_path):
+    fake, drive = _drive_storage(tmp_path)
+    items = []
+    for nombre in ("mal.mp3", "mal.jpg", "bien.mp3", "bien.jpg"):
+        src = tmp_path / nombre
+        src.write_bytes(DATA)
+        items.append((f"A/{nombre}", src))
+    drive.put_files(items)
+    mal_id = next(fid for fid, f in fake.files.items() if f["name"] == "mal.mp3")
+    real = drive._trash
+
+    def trash(remote_id):
+        if remote_id == mal_id:
+            raise OSError("sin permiso")
+        real(remote_id)
+
+    drive._trash = trash
+    fake.reset_calls()
+    failed = drive.delete_files(
+        ["A/mal.mp3", "A/bien.mp3"],
+        {"A/mal.mp3": ["A/mal.jpg"], "A/bien.mp3": ["A/bien.jpg"]})
+
+    assert set(failed) == {"A/mal.mp3"}
+    assert sorted(f.key for f in drive.list()) == ["A/mal.jpg", "A/mal.mp3"]
+    assert _subidas(fake) == 1
+
+
+def test_drive_borra_la_portada_de_un_tema_que_ya_no_estaba(tmp_path):
+    fake, drive = _drive_storage(tmp_path)
+    src = tmp_path / "huerfana.jpg"
+    src.write_bytes(DATA)
+    drive.put_file("A/huerfana.jpg", src)
+    failed = drive.delete_files(["A/huerfana.mp3"], {"A/huerfana.mp3": ["A/huerfana.jpg"]})
+
+    assert isinstance(failed["A/huerfana.mp3"], FileNotFoundError)
+    assert "A/huerfana.jpg" not in failed
+    assert [f.key for f in drive.list()] == []
+
+
+def test_local_la_portada_se_queda_si_su_tema_falla(api, monkeypatch):
+    c, root = api
+    _plantar(root, "A/mal.mp3")
+    _plantar(root, "A/mal.jpg")
+    storage = get_storage()
+    real = storage.delete
+
+    def delete(key):
+        if key.endswith("mal.mp3"):
+            raise OSError("disco de solo lectura")
+        return real(key)
+
+    monkeypatch.setattr(storage, "delete", delete)
+    r = _borrar(c, ["A/mal.mp3"])
+
+    assert r.json()["failed"][0]["key"] == "A/mal.mp3"
+    assert (root / "A" / "mal.jpg").exists()
