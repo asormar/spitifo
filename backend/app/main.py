@@ -1742,7 +1742,11 @@ def link_saved_download(track: dict, key: str | None) -> bool:
         return False
     storage = get_storage()
     now = time.time()
-    old = storage.load_saved().songs.get(sid)
+    try:
+        old = storage.load_saved().songs.get(sid)
+    except Exception as exc:
+        log.warning("no se pudo leer guardadas para enlazar '%s': %s", key, exc)
+        return False
     if old is None or old.deleted or old.file_key == key:
         return False
 

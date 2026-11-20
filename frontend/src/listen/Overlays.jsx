@@ -122,7 +122,7 @@ export function deferredDelete({ files = [], sids = [], name, notice, show, hide
            claves pendientes, guardadas incluidas. */
         const fresh = await refreshLibrary({ release: allKeys });
         if (fresh) fresh.forEach((f) => files.includes(f.key) && bad.add(f.key));
-        const savedOk = sids.length ? await saved.remove(sids) : true;
+        const savedOk = !sids.length || (!bad.size && (await saved.remove(sids)));
         const back = [
           ...removed.filter((r) => !r.song && bad.has(r.key)),
           ...(savedOk ? [] : removed.filter((r) => r.song)),
@@ -273,7 +273,7 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
       const hadFile = Boolean(entry.downloaded);
       deferredDelete({
         files: hadFile ? [entry.key] : [],
-        sids: entry.sid ? [entry.sid] : [],
+        sids: kind === "remove" && entry.sid ? [entry.sid] : [],
         name: entry.title,
         notice: kind === "undownload"
           ? `Se quitó la descarga de «${entry.title}»`

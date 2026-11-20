@@ -342,8 +342,9 @@ export default function App() {
   const loadLib = useCallback(async (opts) => {
     /* El registro de guardadas se pide junto con la biblioteca, pero NO se
        espera: una lista con Drive tarda y las filas de archivos tienen que
-       pintarse igual. `saved.load()` se hace una sola vez. */
-    saved.load(false, (songs) => pendingDeletes.current.filterSaved(songs));
+       pintarse igual. Se pide en cada recarga: una descarga terminada enlaza
+       su archivo con la guardada en el servidor (el backend lo tiene en cache). */
+    saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);

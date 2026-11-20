@@ -83,3 +83,16 @@ describe("mergeLibrary", () => {
     expect(r.songs.map((e) => e.key)).toEqual(["A/a.mp3", saved.id]);
   });
 });
+
+describe("mergeLibrary names", () => {
+  it("keeps the saved names on a downloaded song", () => {
+    const { entries } = mergeLibrary(
+      [file("Artista/Artista - Tema.m4a", { title: "Tema (Official Video)", album: "" })],
+      new Map([["yt:abcdefghijk", song("yt:abcdefghijk", { file_key: "Artista/Artista - Tema.m4a" })]])
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toBe("Tema");
+    expect(entries[0].album).toBe("Disco");
+    expect(entries[0].search).toContain("disco");
+  });
+});

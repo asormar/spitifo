@@ -1,4 +1,4 @@
-import { normalizeLibrary } from "./library.js";
+import { fold, normalizeLibrary } from "./library.js";
 import { savedEntry } from "../player/savedTrack.js";
 
 /* ---------------------------------------------------------------------------
@@ -23,7 +23,17 @@ export function mergeLibrary(files, savedById) {
   const linked = new Map();
   for (const song of records) {
     if (!song?.file_key || !fileByKey.has(song.file_key) || linked.has(song.file_key)) continue;
-    linked.set(song.file_key, { ...fileByKey.get(song.file_key), sid: song.id, song });
+    /* Los nombres los manda lo que se guardo: una descarga de YouTube trae
+       etiquetas como «Tema (Official Video)» y la fila no puede cambiar de
+       nombre al bajarla. Lo que el registro no tenga sale del archivo. */
+    const f = fileByKey.get(song.file_key);
+    const title = song.title || f.title;
+    const artist = song.artist || f.artist;
+    const album = song.album || f.album;
+    linked.set(song.file_key, {
+      ...f, title, artist, album, sid: song.id, song,
+      search: fold(`${title} ${artist} ${album}`),
+    });
   }
 
   const entries = base.map((e) => linked.get(e.key) || e);
