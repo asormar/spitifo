@@ -92,7 +92,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
         return;
       }
       const queue = tracksFor(list, model.byKey, model.savedById, keyUrl);
-      const at = queue.findIndex((t) => t.key === entry.key);
+      const at = queue.findIndex((t) => t.key === entry.key || (entry.sid && t.sid === entry.sid));
       const track = at >= 0 ? queue[at] : tracksFor([entry], model.byKey, model.savedById, keyUrl)[0];
       engine.play(track, { queue, index: at, source: from });
     };

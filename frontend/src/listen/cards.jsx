@@ -9,6 +9,7 @@ import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
 import { rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
+import { useSaved } from "./saved.js";
 
 /* ---------------------------------------------------------------------------
    PIEZAS DEL INICIO DE ESCUCHAR
@@ -139,7 +140,11 @@ export const AlbumCard = ({ g, ctx, sub = g.artist }) => (
 /* `sub` por defecto: cuantas canciones suyas siguen en la biblioteca. */
 export function ListCard({ list, byKey, ctx, sub }) {
   const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
-  const count = useMemo(() => list.keys.filter((k) => byKey.has(k)).length, [list.keys, byKey]);
+  const savedById = useSaved((s) => s.byId);
+  const count = useMemo(
+    () => list.keys.filter((k) => byKey.has(k) || savedById.has(k)).length,
+    [list.keys, byKey, savedById]
+  );
   const text = songs(count);
   return (
     <Card

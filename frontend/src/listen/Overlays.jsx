@@ -10,7 +10,9 @@ import { VerdictPill } from "../shared/Verdict.jsx";
 import { Cover } from "./cards.jsx";
 import { checkOf } from "./fileCheck.js";
 import FileSheet from "./FileSheet.jsx";
-import { albumId, artistId, rowArt, toTrack } from "./library.js";
+import { albumId, artistId, rowArt } from "./library.js";
+import { useSaved } from "./saved.js";
+import { savedEntry, tracksFor } from "../player/savedTrack.js";
 import { deleteKeys, failedNotice } from "./deletion.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import "./menus.css";
@@ -162,13 +164,17 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const pc = usePc();
   const { title, artist, album } = entry;
   const label = `Opciones de ${title}`;
-  const items = SONG_ITEMS.filter(([kind]) => (kind === "album" ? album : kind === "artist" ? artist : true));
+  /* Una cancion guardada de una lista no es un archivo: ni ficha ni borrar. */
+  const file = !entry.sid;
+  const items = SONG_ITEMS.filter(([kind]) =>
+    kind === "album" ? album : kind === "artist" ? artist : kind === "delete" ? file : true
+  );
   /* La ficha del archivo: la pastilla solo si hay registro (el archivo anterior
      la dice dentro de la ficha). */
   /* Borrar va siempre al final, debajo de la ficha: lo destructivo, aparte. */
   const del = items.findIndex(([kind]) => kind === "delete");
   const [delItem] = del >= 0 ? items.splice(del, 1) : [];
-  items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
+  if (file) items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
   if (delItem) items.push(delItem);
   const head = (
     <div className="mhead">
@@ -209,7 +215,8 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
    entrada de arriba de la pila. `back` cierra (nav.back), `replace` cambia el
    menu por otra cosa y `goTo` por una pagina (ListenProvider). */
 export default function Overlays({ top, byKey, back, replace, goTo, show, storage, hideKeys, restoreFiles, refresh }) {
-  const entry = byKey.get(top.key);
+  const savedById = useSaved((s) => s.byId);
+  const entry = byKey.get(top.key) || savedEntry(savedById.get(top.key));
 
   /* La biblioteca se refresco y la cancion ya no esta: no hay nada que mostrar. */
   useEffect(() => {
@@ -265,7 +272,7 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
       goTo({ type: "artist", id: artistId(entry) });
       return;
     }
-    const track = toTrack(entry, keyUrl);
+    const [track] = tracksFor([entry], byKey, savedById, keyUrl);
     /* Con el motor parado las dos opciones arrancan la cancion: el aviso tiene
        que decir eso y no "a continuacion". */
     const idle = !engine.getState().track;

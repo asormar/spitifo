@@ -525,7 +525,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
           songKey={track.sid || track.key}
           title={track.title}
           byKey={listen.model.byKey}
-          savedRecord={track.sid ? songFromResult(track.result) : null}
+          savedRecord={
+            track.sid && !listen.model.savedById.has(track.sid) ? songFromResult(track.result) : null
+          }
           onNotice={show}
           onClose={() => {
             setAdding(false);
