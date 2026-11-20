@@ -29,7 +29,9 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
     return () => listeners.delete(fn);
   };
 
-  const load = (force = false) => {
+  /* `filter` deja fuera lo que se esta borrando con deshacer pendiente: una
+     recarga no puede resucitar la fila que acabamos de ocultar. */
+  const load = (force = false, filter = null) => {
     if (loading) return loading;
     if (state.ready && !force) return Promise.resolve();
     loading = fetchFn(`${API}/saved`)
@@ -37,7 +39,9 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error("http");
         const byId = new Map();
-        (Array.isArray(d.songs) ? d.songs : []).forEach((s) => {
+        let songs = Array.isArray(d.songs) ? d.songs : [];
+        if (filter) songs = filter(songs) || [];
+        songs.forEach((s) => {
           if (s && s.id) byId.set(s.id, s);
         });
         emit({ ready: true, error: false, byId });
@@ -54,6 +58,38 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
     const byId = new Map(state.byId);
     byId.set(song.id, song);
     emit({ byId });
+  };
+
+  /* Ocultar/restaurar es la foto local del borrado con deshacer: el tombstone
+     definitivo lo escribe `remove` solo si vence la ventana. */
+  const hide = (ids) => {
+    if (!ids?.length) return;
+    const byId = new Map(state.byId);
+    ids.forEach((id) => byId.delete(id));
+    emit({ byId });
+  };
+
+  const restore = (songs) => {
+    if (!songs?.length) return;
+    const byId = new Map(state.byId);
+    songs.forEach((s) => s?.id && byId.set(s.id, s));
+    emit({ byId });
+  };
+
+  const remove = async (ids) => {
+    if (!ids?.length) return true;
+    try {
+      const r = await fetchFn(`${API}/saved/remove`, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ ids }),
+      });
+      if (!r.ok) return false;
+      hide(ids);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   /* Guarda en el servidor y deja la foto definitiva que devuelve, o vuelve a
@@ -84,7 +120,7 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
     }
   };
 
-  return { subscribe, getState: () => state, load, upsert, save };
+  return { subscribe, getState: () => state, load, upsert, save, hide, restore, remove };
 }
 
 export const saved = createSaved();

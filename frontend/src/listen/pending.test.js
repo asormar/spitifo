@@ -24,6 +24,17 @@ describe("createPendingDeletes", () => {
     expect(p.size).toBe(0);
   });
 
+  it("una recarga de guardadas no trae de vuelta un id pendiente", () => {
+    const p = createPendingDeletes();
+    const songs = [{ id: "yt:a" }, { id: "yt:b" }];
+    expect(p.filterSaved(songs)).toBe(songs);
+    p.hide(["yt:a"]);
+    expect(p.filterSaved(songs)).toEqual([{ id: "yt:b" }]);
+    expect(p.has("yt:a")).toBe(true);
+    p.release(["yt:a"]);
+    expect(p.filterSaved(songs)).toEqual(songs);
+  });
+
   it("soltar sin nada no rompe", () => {
     const p = createPendingDeletes();
     p.release(undefined);

@@ -28,15 +28,15 @@ export function albumDeleteCopy({ name, storage, count, sizeMb }) {
   const where = isDrive(storage) ? "de tu Drive" : "de este dispositivo";
   const size = Number.isFinite(sizeMb) ? fmtSize(sizeMb) : null;
   return {
-    title: `¿Borrar «${name}» ${where}?`,
+    title: `¿Quitar «${name}» de tu biblioteca ${where}?`,
     body: count === 1
-      ? "La canción también sale de las listas donde esté. Puedes descargarla otra vez desde Buscar."
-      : "Las canciones también salen de las listas donde estén. Puedes descargarlas otra vez desde Buscar.",
+      ? "La canción y su archivo salen de la biblioteca y de las listas donde estén. También se borra de tus guardadas."
+      : "Las canciones y sus archivos salen de la biblioteca y de las listas donde estén. También se borran de tus guardadas.",
     facts: [
       { label: "Canciones", value: String(count) },
       ...(size === null ? [] : [{ label: "Espacio que se libera", value: size }]),
     ],
-    confirm: count === 1 ? "Borrar 1 canción" : `Borrar ${count} canciones`,
+    confirm: count === 1 ? "Quitar 1 canción" : `Quitar ${count} canciones`,
   };
 }
 

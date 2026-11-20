@@ -8,22 +8,22 @@ describe("albumDeleteCopy", () => {
     const copy = albumDeleteCopy({
       name: "Abbey Road", storage: "este dispositivo", count: 12, sizeMb: 94.5,
     });
-    expect(copy.title).toBe("¿Borrar «Abbey Road» de este dispositivo?");
+    expect(copy.title).toBe("¿Quitar «Abbey Road» de tu biblioteca de este dispositivo?");
     expect(copy.body).toBe(
-      "Las canciones también salen de las listas donde estén. Puedes descargarlas otra vez desde Buscar."
+      "Las canciones y sus archivos salen de la biblioteca y de las listas donde estén. También se borran de tus guardadas."
     );
     expect(copy.facts).toEqual([
       { label: "Canciones", value: "12" },
       { label: "Espacio que se libera", value: "95 MB" },
     ]);
-    expect(copy.confirm).toBe("Borrar 12 canciones");
+    expect(copy.confirm).toBe("Quitar 12 canciones");
   });
 
   it("dice 'de tu Drive' cuando la biblioteca esta en la nube", () => {
     const copy = albumDeleteCopy({
       name: "Rumours", storage: "Google Drive · 12 GB", count: 11, sizeMb: 88,
     });
-    expect(copy.title).toBe("¿Borrar «Rumours» de tu Drive?");
+    expect(copy.title).toBe("¿Quitar «Rumours» de tu biblioteca de tu Drive?");
     expect(copy.facts.at(-1)).toEqual({ label: "Espacio que se libera", value: "88 MB" });
   });
 
@@ -36,8 +36,8 @@ describe("albumDeleteCopy", () => {
 
   it("un album de una sola cancion habla en singular", () => {
     const copy = albumDeleteCopy({ name: "Rumours", storage: "este dispositivo", count: 1, sizeMb: 3.9 });
-    expect(copy.confirm).toBe("Borrar 1 canción");
-    expect(copy.body).toBe("La canción también sale de las listas donde esté. Puedes descargarla otra vez desde Buscar.");
+    expect(copy.confirm).toBe("Quitar 1 canción");
+    expect(copy.body).toBe("La canción y su archivo salen de la biblioteca y de las listas donde estén. También se borra de tus guardadas.");
   });
 
   it("reconoce Drive", () => {

@@ -343,7 +343,7 @@ export default function App() {
     /* El registro de guardadas se pide junto con la biblioteca, pero NO se
        espera: una lista con Drive tarda y las filas de archivos tienen que
        pintarse igual. `saved.load()` se hace una sola vez. */
-    saved.load();
+    saved.load(false, (songs) => pendingDeletes.current.filterSaved(songs));
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
@@ -379,17 +379,27 @@ export default function App() {
   const hideKeys = useCallback((keys) => {
     const gone = new Set(keys);
     const current = libRef.current || [];
-    const removed = current.filter((f) => gone.has(f.key));
+    const removedFiles = current.filter((f) => gone.has(f.key));
+    const removedSongs = [...saved.getState().byId.values()].filter((s) => gone.has(s.id));
     const next = current.filter((f) => !gone.has(f.key));
     /* Solo lo que estaba a la vista: es lo que restoreFiles va a soltar. */
-    pendingDeletes.current.hide(removed.map((f) => f.key));
+    pendingDeletes.current.hide([
+      ...removedFiles.map((f) => f.key),
+      ...removedSongs.map((s) => s.id),
+    ]);
+    if (removedSongs.length) saved.hide(removedSongs.map((s) => s.id));
     libRef.current = next;
     setLib(next);
-    return removed;
+    /* Las guardadas vuelven con su registro en `song`, sin otra consulta. */
+    return [...removedFiles, ...removedSongs.map((s) => ({ key: s.id, song: s }))];
   }, []);
-  const restoreFiles = useCallback((files) => {
-    if (!files?.length) return;
-    pendingDeletes.current.release(files.map((f) => f.key));
+  const restoreFiles = useCallback((removed) => {
+    if (!removed?.length) return;
+    pendingDeletes.current.release(removed.map((r) => r.key));
+    const songs = removed.filter((r) => r.song).map((r) => r.song);
+    if (songs.length) saved.restore(songs);
+    const files = removed.filter((r) => !r.song);
+    if (!files.length) return;
     const current = libRef.current || [];
     const have = new Set(current.map((f) => f.key));
     const next = [...current, ...files.filter((f) => !have.has(f.key))];

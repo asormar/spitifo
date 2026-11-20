@@ -20,6 +20,14 @@ export function createPendingDeletes() {
     filter(files) {
       return keys.size ? files.filter((f) => !keys.has(f.key)) : files;
     },
+    /* El registro de guardadas llega por otra ruta: misma ventana, misma
+       regla. Los ids y las claves de archivo no se solapan. */
+    filterSaved(songs) {
+      return keys.size ? (songs || []).filter((s) => !keys.has(s.id)) : songs;
+    },
+    has(key) {
+      return keys.has(key);
+    },
     get size() {
       return keys.size;
     },
