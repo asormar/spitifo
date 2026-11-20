@@ -2263,6 +2263,19 @@ def _discover_saved(storage) -> SavedBook:
         return SavedBook()
 
 
+def _discover_entries(storage) -> list[dict]:
+    """Escaneo de archivos mas guardadas sin archivo, en UNA sola tarea.
+
+    El listado del indice y el del registro comparten el lock del storage, asi
+    que van juntos: cuatro entradas en paralelo, no cinco esperando el lock.
+    """
+    from .recommend import saved_entries
+    files = library_scan()
+    return list(files) + saved_entries(
+        _discover_saved(storage),
+        [entry.get("key") for entry in files if isinstance(entry, dict)])
+
+
 def _cached_dismissed(storage) -> set[str]:
     # No vence: cada descarte lo actualiza en el acto (`_apply_dismissal`).
     return _cached("discover", lambda: storage.load_discover().dismissed_set(),
@@ -2294,7 +2307,7 @@ def _get_enricher() -> Enricher:
 
 def _discover_payload(enricher=None) -> dict:
     """Generos y candidatos con lo que ya esta cacheado. Bloquea: va a un thread."""
-    from .recommend import artist_weights, candidates, saved_entries, user_genres
+    from .recommend import artist_weights, candidates, user_genres
 
     storage = get_storage()
     if enricher is None:
@@ -2302,19 +2315,13 @@ def _discover_payload(enricher=None) -> dict:
     # En frio cada entrada es una request a la nube: se piden a la vez, asi
     # se espera la mas lenta y no la suma. Con todo cacheado no cuesta nada.
     pool = _discover_loader_pool()
-    entries = pool.submit(_cached, "scan", library_scan, storage=storage,
-                          ttl=DISCOVER_CACHE_SECONDS)
+    entries = pool.submit(_cached, "scan", lambda: _discover_entries(storage),
+                          storage=storage, ttl=DISCOVER_CACHE_SECONDS)
     records = pool.submit(_discover_records, storage, enricher)
     dismissed = pool.submit(_cached_dismissed, storage)
     summary = pool.submit(_cached_summary, storage)
-    saved = pool.submit(_discover_saved, storage)
     entries, records = entries.result(), records.result()
-    dismissed, summary, saved = (dismissed.result(), summary.result(),
-                                 saved.result())
-    # Las guardadas sin archivo cuentan como pistas del seed; las que ya tienen
-    # un archivo en la biblioteca no se suman dos veces (`saved_entries`).
-    entries = list(entries) + saved_entries(
-        saved, [entry.get("key") for entry in entries if isinstance(entry, dict)])
+    dismissed, summary = dismissed.result(), summary.result()
     library = library_artists(entries)
     weights = artist_weights(library, entries, summary.get("tracks", {}),
                              artist_scores=summary.get("artists") or None)
