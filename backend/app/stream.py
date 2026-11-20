@@ -102,12 +102,48 @@ def _fetch_visitor_sync() -> str | None:
         return None
 
 
+#: Espera antes de preparar yt-dlp: importarlo es CPU pura (~1 s en el PC,
+#: varias veces mas en un telefono) y no debe competir con la primera pantalla.
+PREWARM_DELAY_S = 4.0
+
+
+def _prewarm_sync(visitor: str | None) -> None:
+    """Deja un YoutubeDL listo en el pool con la conexion TLS ya abierta.
+
+    El primer play pagaba importar yt-dlp, construir la instancia, cargar los
+    certificados y abrir la conexion con youtube.com (~1,7 s en el PC). Con
+    esto el primer play cuesta lo mismo que el segundo.
+    """
+    global _pool_visitor
+    from yt_dlp.networking import Request
+
+    ydl = _new_youtube(visitor)
+    try:
+        ydl.urlopen(Request("https://www.youtube.com/generate_204")).read()
+    except Exception as e:
+        log.info("stream: no se pudo abrir la conexion de antemano: %s", e)
+    with _pool_lock:
+        if _pool_visitor not in (None, visitor):
+            return
+        try:
+            _pool.put_nowait(ydl)
+        except queue.Full:
+            return
+        _pool_visitor = visitor
+
+
 async def warm_visitor() -> None:
     """Arranca en background al levantar la app; un fallo solo se registra."""
     try:
-        await ensure_visitor()
+        visitor = await ensure_visitor()
+        if visitor:
+            await asyncio.sleep(PREWARM_DELAY_S)
+            await asyncio.to_thread(_prewarm_sync, visitor)
+        # El cliente del proxy carga sus certificados al crearse: mejor ahora
+        # que en el primer play.
+        await asyncio.to_thread(client)
     except Exception as e:
-        log.info("stream: visitor_data en background fallo: %s", e)
+        log.info("stream: preparacion en background fallo: %s", e)
 
 
 async def ensure_visitor() -> str | None:

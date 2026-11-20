@@ -342,3 +342,28 @@ def test_sin_ytdlp_da_204(monkeypatch):
     with TestClient(create_app()) as c:
         assert c.get("/api/stream", params={"url": URL}).status_code == 204
         assert c.post("/api/stream/prepare", json={"url": URL}).status_code == 204
+
+
+def test_la_preparacion_deja_un_youtubedl_listo_para_el_primer_play(monkeypatch):
+    creados, abiertos = [], []
+
+    class Ydl:
+        def urlopen(self, req):
+            abiertos.append(req.url)
+
+            class R:
+                def read(self):
+                    return b""
+            return R()
+
+    def nuevo(visitor):
+        y = Ydl()
+        creados.append(y)
+        return y
+
+    monkeypatch.setattr(stream, "_new_youtube", nuevo)
+    stream._prewarm_sync("v")
+    assert abiertos == ["https://www.youtube.com/generate_204"]
+    with stream._pooled("v") as ydl:
+        assert ydl is creados[0]  # el primer play no construye otro
+    assert len(creados) == 1
