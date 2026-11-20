@@ -33,7 +33,7 @@ function Frame({ narrow, collapsed, covered }) {
   const head = panelHead(useReco());
   if (narrow) {
     return (
-      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" data-covered={covered ? "" : undefined} inert="">
+      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" data-covered={covered ? "" : undefined} inert>
         <div className="fy__top">
           <div className="fy__peek">
             <span className="fy__grip" />
@@ -48,7 +48,7 @@ function Frame({ narrow, collapsed, covered }) {
   }
   if (collapsed) return null;
   return (
-    <section className="fy fy--side fy--stub" aria-hidden="true" inert="">
+    <section className="fy fy--side fy--stub" aria-hidden="true" inert>
       <div className="fy__head">
         <PanelTitle head={head} />
       </div>

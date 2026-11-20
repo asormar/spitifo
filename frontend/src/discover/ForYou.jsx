@@ -520,7 +520,7 @@ export default function ForYou({
         aria-label="Para ti"
         data-snap={snap}
         data-covered={genreOpen ? "" : undefined}
-        inert={genreOpen ? "" : undefined}
+        inert={genreOpen}
         style={{ height: geo.full }}
         onKeyDown={onKeyDown}
       >
@@ -540,12 +540,12 @@ export default function ForYou({
               <Icon name="CaretDown" weight="fill" size={20} />
             </span>
           </button>
-          <div inert={open ? undefined : ""}>{tabs}</div>
+          <div inert={!open}>{tabs}</div>
         </div>
         <div
           ref={listRef}
           className="fy__body"
-          inert={open ? undefined : ""}
+          inert={!open}
           {...bodyDrag}
         >
           {body}
@@ -562,7 +562,7 @@ export default function ForYou({
         ref={sideRef}
         className={cx("fy fy--side", collapsed && "is-collapsed")}
         aria-label="Para ti"
-        inert={collapsed ? "" : undefined}
+        inert={collapsed}
         onKeyDown={onKeyDown}
       >
         <button

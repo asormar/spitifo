@@ -421,7 +421,7 @@ export default function SearchScreen({
             className="rlist"
             data-in={fresh ? "" : undefined}
             aria-busy={loading || undefined}
-            inert={loading ? "" : undefined}
+            inert={loading}
             onKeyDown={(e) => listKey(e, ".res__main")}
           >
             {shown.map((t, i) =>

@@ -28,7 +28,7 @@ function MiniPlayer({ onOpen, npOpen }) {
       data-state={show ? "open" : "closed"}
       data-no-swipe=""
       aria-hidden={show ? undefined : true}
-      inert={show ? undefined : ""}
+      inert={!show}
     >
       <div className="mini__row">
         {/* Tocar la portada o el titulo abre "Ahora suena", como en cualquier

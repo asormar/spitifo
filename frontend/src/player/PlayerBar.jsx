@@ -35,7 +35,7 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
       aria-label="Reproductor"
       data-state={show ? "open" : "closed"}
       aria-hidden={show ? undefined : true}
-      inert={show ? undefined : ""}
+      inert={!show}
     >
       <Controls dock />
 
