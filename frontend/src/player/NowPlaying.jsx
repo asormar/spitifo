@@ -7,10 +7,12 @@ import Ico from "../shared/ico.jsx";
 import { canStartSwipe, swipeTarget } from "../app/navigation.js";
 import { Icon } from "../listen/icons.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
+import SaveHeart from "../listen/SaveHeart.jsx";
+import { fichaText } from "../listen/saveLogic.js";
 import QueueList from "../listen/QueueList.jsx";
 import { useNotice } from "../listen/Notice.jsx";
 import PlaylistPicker from "../listen/PlaylistPicker.jsx";
-import { songFromResult } from "../shared/songId.js";
+import { songFromResult, songIdOf } from "../shared/songId.js";
 import { playlists } from "../listen/playlists.js";
 import { initial } from "../listen/rows.jsx";
 import { useEngine } from "./useEngine.js";
@@ -135,6 +137,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const pill = useTrackPill(track);
   const chip = pill && <VerdictChip v={pill} className="np__v" onOpen={() => panel.show(2)} />;
   const streamDl = track?.kind === "stream" && <StreamDownload track={track} />;
+  const saveHeart = track ? <SaveHeart track={track} /> : null;
   const art = track?.artwork && badArt !== track.artwork ? track.artwork : null;
   const fallback = toneTint(coverTone(artist, album));
   const [paint, apply, settle] = usePaint(art, fallback);
@@ -254,6 +257,17 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
   const duration = engineDuration || track.duration || 0;
   const library = track.kind === "library";
+  const id = songIdOf(track.result);
+  const savedStream = Boolean(
+    (track.sid && listen.model.savedById.has(track.sid)) ||
+      (id && listen.model.savedById.has(id))
+  );
+  const ficha = fichaText({
+    kind: track.kind,
+    source: track.result?.source || track.source,
+    saved: savedStream,
+    sid: track.sid,
+  });
   /* Un stream de una cancion guardada tambien entra en listas: se guarda la
      cancion antes de anadir su id. Un preview o un resultado suelto, no. */
   const addable = library || (track.kind === "stream" && Boolean(track.sid));
@@ -361,9 +375,24 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
         </div>
         {library ? (
           <FichaCard track={track} full onReveal={onReveal} />
-        ) : (
-          <p className="lnote np__lnote">Este audio es un avance de 30 s: no está en tu biblioteca.</p>
-        )}
+        ) : ficha?.note ? (
+          <p className="lnote np__lnote">{ficha.note}</p>
+        ) : ficha ? (
+          <section className="ncard" aria-label="Ficha del audio">
+            <h3 className="ncard__h">Ficha del audio</h3>
+            <p className="ncard__p">{ficha.where}</p>
+            <p className="ncard__p">{ficha.saved}</p>
+            {ficha.link && (
+              <button
+                type="button"
+                className="ncard__go"
+                onClick={() => onReveal(track.sid || track.key)}
+              >
+                Ver en tu biblioteca
+              </button>
+            )}
+          </section>
+        ) : null}
         <button type="button" className="np__back" onClick={() => panel.show(0)}>
           Volver a la portada
         </button>
@@ -381,6 +410,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 {chip}
               </div>
               {streamDl}
+              {saveHeart}
               {addButton}
             </div>
           ) : (
@@ -497,7 +527,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 <small>{caption.head}</small>
                 <b>{caption.name}</b>
               </p>
-              <div className="np__tools">{streamDl}{addButton}</div>
+              <div className="np__tools">{streamDl}{saveHeart}{addButton}</div>
             </header>
             {tabs}
           </div>

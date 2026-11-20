@@ -3,6 +3,7 @@ import Ico from "../shared/ico.jsx";
 import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
+import { useAutoDownload } from "./autoDownload.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -65,6 +66,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const cookiesHeadRef = useRef(null);
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
+  const [autoDownload, setAutoDownload] = useAutoDownload();
   const nav = useNav();
   const pc = usePc();
   const [finder, setFinder] = useState(false);
@@ -156,6 +158,32 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           Cookies de YouTube
         </h2>
         <YouTubeCookies focus={focus === "cookies" && active} />
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-library">
+        <h2 id="settings-library" className="settings__h">
+          Biblioteca
+        </h2>
+        <div className="settings__card">
+          <div className="settings__row settings__switch-row">
+            <div>
+              <p className="settings__label">Descargar todo lo que guardo</p>
+              <p className="settings__note">
+                Al guardar una canción también se bajará a este dispositivo. Lo que ya esté descargado no se vuelve a bajar.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoDownload}
+              aria-label="Descargar todo lo que guardo"
+              className={`settings__switch ${autoDownload ? "is-on" : ""}`}
+              onClick={() => setAutoDownload(!autoDownload)}
+            >
+              <span />
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="settings__sec" aria-labelledby="settings-interface">
