@@ -49,8 +49,8 @@ from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
-from .saved import (MAX_SONGS, SavedBook, SavedSong, validate_saved_payload,
-                    validate_song_id)
+from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
+                    validate_saved_payload, validate_song_id)
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
@@ -1353,6 +1353,8 @@ async def download(request: Request):
 
         try:
             result = await download_track(track, req.fmt)
+            await asyncio.to_thread(
+                link_saved_download, track.to_dict(), result.get("key"))
         except ValueError as e:
             raise HTTPException(422, str(e))
         except Exception as e:
@@ -1479,25 +1481,41 @@ def _playlists_hold(storage, keys: set[str]) -> bool:
                for p in book.playlists.values())
 
 
-def _drop_playlist_keys(storage, keys: set[str], now: float) -> None:
+def _drop_playlist_keys(storage, keys: set[str], now: float,
+                        rewrite: dict[str, str] | None = None) -> None:
     """Saca claves o ids borrados de las listas vivas que los tengan.
 
-    Todo lo que suena desde una lista esta en la biblioteca: si se borra el
-    archivo o se quita la cancion guardada, la entrada no puede quedar colgada.
-    Reescribir las listas cuesta una subida en la nube, solo se hace si alguna
-    las tenia. Un fallo aqui no invalida el borrado principal.
+    `rewrite` son claves de archivo que siguen vivas como canciones guardadas:
+    se cambian por su id en vez de sacarlas. Todo lo que suena desde una lista
+    esta en la biblioteca: si se borra el archivo o se quita la cancion, la
+    entrada no puede quedar colgada. Reescribir cuesta una subida en la nube,
+    solo se hace si alguna lista tenia algo. Un fallo aqui no invalida el
+    borrado principal.
     """
-    if not keys or not _playlists_hold(storage, keys):
+    rewrite = rewrite or {}
+    touched = set(keys) | set(rewrite)
+    if not touched or not _playlists_hold(storage, touched):
         return
 
     def change(book) -> None:
         # Las listas quedan, aunque se queden sin ninguna cancion.
         for pid, playlist in list(book.playlists.items()):
-            if playlist.deleted or not (keys & set(playlist.keys)):
+            if playlist.deleted or not (touched & set(playlist.keys)):
                 continue
+            kept: list[str] = []
+            for key in playlist.keys:
+                if key in rewrite:
+                    sid = rewrite[key]
+                    if sid not in kept:  # la lista ya podia tener el id
+                        kept.append(sid)
+                elif key not in keys:
+                    kept.append(key)
+            if rewrite:
+                # La lista ya podia tener el id y la clave del archivo.
+                kept = list(dict.fromkeys(kept))
             book.upsert(replace(
                 playlist,
-                keys=[k for k in playlist.keys if k not in keys],
+                keys=kept,
                 updated_at=_next_updated_at(playlist, now),
             ))
 
@@ -1553,7 +1571,42 @@ def _delete_library_files(storage, keys: list[str],
                 log.warning("no se pudo borrar la portada '%s': %s", side, side_exc)
 
     borradas = set(deleted)
-    _drop_playlist_keys(storage, borradas, time.time())
+    # Un archivo borrado puede ser la descarga de una cancion guardada: la
+    # cancion sigue en la biblioteca, asi que se desvincula y las listas pasan
+    # a referir el id en vez de la clave del archivo.
+    rewrite: dict[str, str] = {}
+    clears: dict[str, SavedSong] = {}
+    if borradas:
+        try:
+            saved_book = storage.load_saved()
+        except Exception as exc:
+            log.warning("no se pudo leer guardadas tras borrar: %s", exc)
+            saved_book = None
+        if saved_book is not None:
+            for song in saved_book.live():
+                if song.file_key in borradas:
+                    clears[song.id] = song
+                    rewrite[song.file_key] = song.id
+            if clears:
+                def change_saved(book: SavedBook) -> None:
+                    for sid, song in clears.items():
+                        current = book.songs.get(sid)
+                        if (current is None or current.deleted
+                                or current.file_key not in borradas):
+                            continue
+                        book.upsert(replace(
+                            current, file_key=None,
+                            updated_at=_next_saved_updated_at(current, now)))
+
+                now = time.time()
+                try:
+                    # UNA sola escritura para todas las canciones del lote.
+                    storage.save_saved(change_saved)
+                except Exception as exc:
+                    log.warning("no se pudo desvincular guardadas tras borrar: %s", exc)
+                    clears.clear()
+                    rewrite.clear()
+    _drop_playlist_keys(storage, borradas, time.time(), rewrite)
     if deleted:
         # El adapter local guarda duraciones y etiquetas por clave: sacarlas
         # evita que un listado posterior "recuerde" un archivo ya borrado.
@@ -1673,6 +1726,39 @@ def _next_saved_updated_at(old: SavedSong | None, now: float) -> float:
 
 def _saved_list_payload(book: SavedBook) -> dict:
     return {"songs": [_saved_payload(s) for s in book.live()]}
+
+
+def link_saved_download(track: dict, key: str | None) -> bool:
+    """Enlaza una descarga terminada con su cancion guardada, si la hay.
+
+    Sincrono y con el storage pegado: lo llama la cola desde un hilo. Una sola
+    escritura del registro, solo si la cancion sigue viva y no apuntaba ya a
+    esta clave. Un fallo aqui no invalida la descarga.
+    """
+    if not isinstance(key, str) or not key:
+        return False
+    sid = song_id_for_track(track)
+    if not sid:
+        return False
+    storage = get_storage()
+    now = time.time()
+    old = storage.load_saved().songs.get(sid)
+    if old is None or old.deleted or old.file_key == key:
+        return False
+
+    def change(book: SavedBook) -> None:
+        current = book.songs.get(sid)
+        if current is None or current.deleted or current.file_key == key:
+            return
+        book.upsert(replace(current, file_key=key,
+                            updated_at=_next_saved_updated_at(current, now)))
+
+    try:
+        storage.save_saved(change)
+    except Exception as exc:
+        log.warning("no se pudo enlazar '%s' con guardadas: %s", key, exc)
+        return False
+    return True
 
 
 async def saved_list(request: Request):

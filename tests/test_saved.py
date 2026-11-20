@@ -18,6 +18,7 @@ from backend.app.saved import (
     SavedFormatError,
     SavedSong,
     song_id,
+    song_id_for_track,
     validate_saved_payload,
     validate_song_id,
 )
@@ -88,6 +89,46 @@ def test_el_id_nunca_trae_una_url_que_vence():
     # puede colarse como identidad estable.
     with pytest.raises(ValueError):
         validate_song_id("yt:dQw4w9WgXcQ?sig=abc")
+
+
+# ------------------------------------------------- id de una pista descargada
+def test_song_id_for_track_youtube_por_source_id():
+    assert song_id_for_track({
+        "source": "ytdlp", "source_id": "dQw4w9WgXcQ", "extra": {},
+    }) == YT
+    assert song_id_for_track({
+        "source": "youtube", "source_id": "dQw4w9WgXcQ", "extra": {},
+    }) == YT
+
+
+def test_song_id_for_track_youtube_por_webpage_url():
+    assert song_id_for_track({
+        "source": "itunes", "source_id": "123",
+        "extra": {"webpage_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1"},
+    }) == YT
+
+
+def test_song_id_for_track_archive_necesita_archivo():
+    ident = "olivia-1969"
+    assert song_id_for_track({
+        "source": "archive", "source_id": ident,
+        "extra": {"filename": "01 Olivia.mp3"},
+    }) == IA
+    assert song_id_for_track({
+        "source": "archive", "source_id": ident, "extra": {},
+    }) is None
+    assert song_id_for_track({
+        "source": "archive", "source_id": ident,
+        "extra": {"filename": "../fuera.mp3"},
+    }) is None
+
+
+def test_song_id_for_track_sin_identidad():
+    for track in (None, "no", {}, {"source": "ytdlp", "source_id": "corto"},
+                  {"source": "ytdlp", "source_id": "dQw4w9WgXcQ?sig=1"},
+                  {"source": "archive", "source_id": "item/01.mp3",
+                   "extra": {"filename": "01.mp3"}}):
+        assert song_id_for_track(track) is None
 
 
 # --------------------------------------------------------------- validacion
@@ -429,3 +470,35 @@ def test_drive_merge_en_empate_gana_el_tombstone():
     b.save_saved(lambda bk: bk.remove(YT, now=10.0))  # tombstone en empate
     now[0] += INDEX_TTL + 1
     assert a.load_saved().live() == []
+
+# ------------------------------------------------ descarga enlaza la guardada
+def test_link_saved_download_escribe_file_key_una_sola_vez(tmp_path, monkeypatch):
+    from backend.app.main import link_saved_download
+
+    root = tmp_path / "lib"
+    root.mkdir()
+    storage = LocalStorage(root)
+    set_storage(storage)
+    try:
+        storage.save_saved(lambda book: book.upsert(_song(updated_at=1.0)))
+        writes = []
+        real = storage.save_saved
+        def spy(change):
+            writes.append(1)
+            return real(change)
+        monkeypatch.setattr(storage, "save_saved", spy)
+
+        track = {"source": "ytdlp", "source_id": "dQw4w9WgXcQ", "extra": {}}
+        assert link_saved_download(track, "A/Tema.m4a") is True
+        assert len(writes) == 1
+        assert storage.load_saved().songs[YT].file_key == "A/Tema.m4a"
+
+        # Ya apunta a esa clave: no vuelve a escribir.
+        assert link_saved_download(track, "A/Tema.m4a") is False
+        assert len(writes) == 1
+        # Sin registro, tampoco.
+        other = {"source": "ytdlp", "source_id": "AAAAAAAAAAA", "extra": {}}
+        assert link_saved_download(other, "A/Otra.m4a") is False
+        assert len(writes) == 1
+    finally:
+        set_storage(None)

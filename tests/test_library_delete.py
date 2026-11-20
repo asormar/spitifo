@@ -418,3 +418,29 @@ def test_local_la_portada_se_queda_si_su_tema_falla(api, monkeypatch):
 
     assert r.json()["failed"][0]["key"] == "A/mal.mp3"
     assert (root / "A" / "mal.jpg").exists()
+
+# ---------------------------------------------------- guardadas y listas
+def test_borrar_descarga_de_guardada_limpia_file_key_y_deja_el_id(api):
+    c, root = api
+    _plantar(root, "A/a.mp3")
+    sid = "yt:dQw4w9WgXcQ"
+    assert c.put("/api/saved", json={"songs": [{
+        "id": sid, "title": "Tema", "artist": "Artista",
+        "source": "youtube", "source_id": "dQw4w9WgXcQ",
+        "file_key": "A/a.mp3",
+    }]}).status_code == 200
+    assert c.put("/api/playlists/viaje", json={
+        "name": "Viaje", "keys": ["A/a.mp3", sid]}).status_code == 200
+    assert c.put("/api/playlists/sola", json={
+        "name": "Sola", "keys": ["A/a.mp3"]}).status_code == 200
+
+    r = _borrar(c, ["A/a.mp3"])
+    assert r.status_code == 200
+    assert r.json()["failed"] == []
+
+    songs = c.get("/api/saved").json()["songs"]
+    assert len(songs) == 1
+    assert songs[0]["id"] == sid and songs[0]["file_key"] is None
+    listas = {p["id"]: p for p in c.get("/api/playlists").json()["playlists"]}
+    assert listas["viaje"]["keys"] == [sid]  # sin duplicar
+    assert listas["sola"]["keys"] == [sid]
