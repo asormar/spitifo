@@ -762,6 +762,23 @@ GET: with nothing pending it starts no repeating timer.
 
 Both limits are again the measured size plus 500 B, rounded up to 50.
 
+#### Preact instead of react-dom (2026-11-20)
+
+The code still uses the React API, but the build packages `preact/compat`:
+Vite aliases `react`, `react-dom`, `react-dom/client`, `react-dom/server` and
+the JSX runtime to Preact, and Vitest runs through the same aliases.
+`react-dom` alone was about 130 KB, a third of what the phone parses on every
+start. One behaviour changes in the source: Preact sets `inert` as a DOM
+property, so the old `inert=""` meant false and every use is now a boolean.
+
+| Bundle | react-dom | Preact | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 458,450 B (gzip 165,581 B) | 331,366 B (gzip 128,410 B) | 449,700 B | 345,000 B |
+
+The limit drops with the bundle so the saving cannot erode unnoticed. On the
+emulator the warm start shows no difference (its WebView runs JavaScript on a
+fast x86 core); the Pixel is where the 127 KB less to parse should show.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
