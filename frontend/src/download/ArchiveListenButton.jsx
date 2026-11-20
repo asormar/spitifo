@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useShow } from "../listen/Notice.jsx";
 import { Icon } from "../shared/icons.jsx";
 import Ico from "../shared/ico.jsx";
 import { engine } from "../player/engine.js";
@@ -30,6 +31,7 @@ export async function listenArchive(t, query, { store = verdictStore, player = e
 
 export default function ArchiveListenButton({ t, query, text = false }) {
   const key = auditionKey(t);
+  const show = useShow();
   const [waiting, setWaiting] = useState(false);
   const current = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
@@ -44,8 +46,14 @@ export default function ArchiveListenButton({ t, query, text = false }) {
     }
     if (waiting) return;
     setWaiting(true);
+    const q = query || title;
     try {
-      await listenArchive(t, query || title);
+      /* Sin archivo no hay que tocar: el aviso dice por que (por ejemplo, un
+         item que Internet Archive tiene restringido). */
+      if (!(await listenArchive(t, q))) {
+        const why = verdictStore.get(verdictKey(t, q))?.error;
+        show?.(`No se puede escuchar «${title}»${why ? `: ${why}` : ""}`);
+      }
     } finally {
       setWaiting(false);
     }

@@ -529,6 +529,15 @@ class InternetArchiveSource(Source):
                 sim = similarity(track.title, real_title)
             scored.append((sim, best_file, url, info, base))
 
+        # Un archivo que no se dejo leer (403: item restringido) no se elige si
+        # hay otro que si. Si TODOS los rechaza archive, bajarlo fallaria igual:
+        # se dice ya, con un motivo que la UI puede mostrar.
+        legibles = [c for c in scored if not c[3].get("_error")]
+        if not legibles and all(
+                re.search(r"\b40[13]\b", c[3]["_error"]) for c in scored):
+            raise LookupError("Internet Archive no deja bajar este archivo "
+                              "(acceso restringido)")
+        scored = legibles or scored
         scored.sort(key=lambda t: -t[0])
         sim, best_file, url, info, base = scored[0]
 
