@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useShow } from "../listen/Notice.jsx";
+import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 
 /* ---------------------------------------------------------------------------
@@ -26,7 +27,13 @@ export default function StreamErrors() {
     const texto = offline
       ? "Sin conexión: esta canción no está guardada"
       : `No se pudo reproducir «${track.title || "esta canción"}»`;
-    show(texto);
+    /* Reintentar carga la misma pista sin perder la cola: la URL del formato
+       pudo vencer o la red pudo cortarse un momento. */
+    const retry = () => {
+      const st = engine.getState();
+      engine.play(track, { restart: true, queue: st.queue, index: st.index, source: st.source });
+    };
+    show(texto, { label: "Reintentar", run: retry });
   }, [failed, track, show]);
 
   return null;
