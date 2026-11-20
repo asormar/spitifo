@@ -7,7 +7,7 @@ import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
-import { rowArt } from "./library.js";
+import { DOWNLOAD_FILTERS, rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
 import { useSaved } from "./saved.js";
 
@@ -155,6 +155,26 @@ export function ListCard({ list, byKey, ctx, sub }) {
       title={list.name}
       sub={sub ? `${sub} · ${text}` : text}
     />
+  );
+}
+
+/* Filtro de descargas de una lista de canciones: los mismos chips que los
+   ordenes, con el activo senalado tambien para lectores de pantalla. */
+export function DownloadChips({ filter, onChange }) {
+  return (
+    <div className="chips" role="group" aria-label="Mostrar">
+      {DOWNLOAD_FILTERS.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          className={cx("chip", filter === id && "is-on")}
+          aria-pressed={filter === id}
+          onClick={() => onChange(id)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 

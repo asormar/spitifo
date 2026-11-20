@@ -136,7 +136,7 @@ export const SongRow = memo(function SongRow({
         aria-label={
           video
             ? `Abrir el vídeo ${title}`
-            : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}`
+            : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}${entry.downloaded ? ", descargada" : ""}`
         }
         onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list, from))}
       >
@@ -177,6 +177,7 @@ export const SongRow = memo(function SongRow({
           )}
         </span>
         {!table && pill && <VerdictPill v={pill} />}
+        {!table && !video && entry.downloaded && <span className="srow__dl" aria-hidden="true" />}
         {!table && num == null && dur && <span className="srow__d">{dur}</span>}
       </button>
       {lib && <span className="srow__c">{artist}</span>}
