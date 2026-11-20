@@ -87,6 +87,14 @@ describe("mixEntries", () => {
   it("without history, new equals all", () => {
     expect(keys(mixEntries("new", LIB, undefined))).toEqual(keys(mixEntries("all", LIB, undefined)));
   });
+
+  it("a saved song heard under its id is not new under its file key", () => {
+    const saved = { ...file("A/a.mp3"), sid: "yt:dQw4w9WgXcQ" };
+    const other = file("b");
+    const map = new Map([["A/a.mp3", saved], [saved.sid, saved], ["b", other]]);
+    const h = { tracks: { [saved.sid]: rec(2) } };
+    expect(keys(entriesOf("new", [saved, other], h, map))).toEqual(["b"]);
+  });
 });
 
 describe("mixSub", () => {

@@ -31,7 +31,9 @@ export function mixEntries(key, entries, hist, byKey) {
   if (key === "recent") return recentEntries(entries, RECENT_MIX);
   if (key === "top") return topItems(hist, byKey, TOP_MIX).map((t) => t.entry);
   const songs = entries.filter((e) => e.kind !== "video");
-  return key === "new" ? songs.filter((e) => !heard(hist?.tracks?.[e.key])) : songs;
+  /* Una guardada con archivo puede tener escuchas bajo las dos claves. */
+  const listened = (e) => heard(hist?.tracks?.[e.key]) || (e.sid && heard(hist?.tracks?.[e.sid]));
+  return key === "new" ? songs.filter((e) => !listened(e)) : songs;
 }
 
 /* La linea bajo el titulo del disco. Una mezcla vacia dice por que. */

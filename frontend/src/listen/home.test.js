@@ -363,6 +363,36 @@ describe("topItems", () => {
   });
 });
 
+describe("saved songs with plays under two keys", () => {
+  const entry = { key: "A/a.mp3", sid: "yt:dQw4w9WgXcQ", title: "Tema", artist: "Artista", kind: "audio" };
+  const merged = new Map([["A/a.mp3", entry], [entry.sid, entry]]);
+
+  it("topItems dedupes the entry and sums its plays", () => {
+    const state = {
+      tracks: {
+        "A/a.mp3": { plays: 2, last: 5 },
+        [entry.sid]: { plays: 3, last: 9 },
+      },
+    };
+    const items = topItems(state, merged, 5);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ entry, plays: 5, last: 9 });
+  });
+
+  it("continueItems keeps one card, the most recent listen", () => {
+    const state = {
+      recent: [
+        { key: "A/a.mp3", last: 30, pos: 20_000, dur: 100_000 },
+        { key: entry.sid, last: 20, pos: 50_000, dur: 100_000 },
+      ],
+    };
+    const items = continueItems(state, merged, 5);
+    expect(items).toHaveLength(1);
+    expect(items[0].entry).toBe(entry);
+    expect(items[0].pos).toBe(20);
+  });
+});
+
 describe("covers", () => {
   it("gives the same tone to the same name, always in 0..63", () => {
     expect(toneOf("Rosalía")).toBe(toneOf("Rosalía"));
