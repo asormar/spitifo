@@ -25,8 +25,16 @@ jobs:
           cache-dependency-path: requirements.txt
       # ffmpeg is a runtime requirement; without it the conversion tests skip
       # and test_ffmpeg_esta_disponible fails.
+      # apt-get has hung here several times with no output: each try gets
+      # 150 s and the step fails fast instead of waiting for the job timeout.
       - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        timeout-minutes: 9
+        run: |
+          for i in 1 2 3; do
+            timeout 150 sh -c 'sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg' && exit 0
+            echo "apt-get failed or hung (try $i), retrying"
+          done
+          exit 1
       - name: Install dependencies
         run: pip install -r requirements.txt
       # Offline only: -m "not integration" skips the tests that hit the network.
