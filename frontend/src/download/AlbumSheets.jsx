@@ -16,6 +16,10 @@ import { engine } from "../player/engine.js";
 import { streamTrack } from "./streamTrack.js";
 import { toTrack } from "../listen/library.js";
 import { keyUrl } from "../shared/api.js";
+import { songFromResult } from "../shared/songId.js";
+import { saved, useSaved } from "../listen/saved.js";
+import { maybeAutoDownloadMany } from "../listen/saveSong.js";
+import { albumSaveButton, albumSaveSelection, saveNotice } from "../listen/saveLogic.js";
 import { albumButton, missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
@@ -74,8 +78,10 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     [detail, matched]
   );
   /* Lo que ya esta en la biblioteca (mismo album de iTunes, mismo disco y
-     numero) no se vuelve a bajar: ni entra en el boton ni en la cola. */
-  const entries = useListen()?.model?.entries;
+     numero) no se vuelve a bajar ni se vuelve a guardar. */
+  const listen = useListen();
+  const entries = listen?.model?.entries;
+  const savedById = useSaved((s) => s.byId);
   const owned = useMemo(() => ownedSlots(entries, album.id), [entries, album.id]);
   const isOwned = (t) => owned.has(trackSlot(t.extra?.disc_number, t.extra?.track_number));
   const ownedCount = tracks.filter(isOwned).length;
@@ -83,6 +89,25 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
   const ask = query || `${album.artist} ${album.title}`;
+  /* Un solo PUT con las pistas completas que todavia no estan guardadas: el
+     match del disco ya les dio id a las que se pueden guardar. */
+  const toSave = useMemo(
+    () => albumSaveSelection(tracks, { savedIds: savedById, owned }),
+    [tracks, savedById, owned]
+  );
+  const saveBtn = matching
+    ? { text: "Buscando versiones…", disabled: true }
+    : albumSaveButton(toSave.length);
+  const saveAlbum = async () => {
+    if (saveBtn.disabled) return;
+    const pairs = toSave.map((t) => [songFromResult(t), t]).filter(([song]) => song);
+    if (!pairs.length || !(await saved.saveAll(pairs.map(([song]) => song)))) {
+      listen?.show?.(`No se pudo guardar «${album.title}»`);
+      return;
+    }
+    maybeAutoDownloadMany(pairs.map(([song, t]) => [song, t, { downloaded: false }]));
+    listen?.show?.(saveNotice.album(pairs.length, album.title));
+  };
   /* El disco en orden: lo que ya esta en la biblioteca suena desde el archivo
      propio y lo emparejado con video, en streaming, sin bajarlo. */
   const mine = useMemo(() => ownedEntries(entries, album.id), [entries, album.id]);
@@ -207,6 +232,15 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
               >
                 {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
                 {btn.text}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost btn--wide als__btn"
+                disabled={saveBtn.disabled || undefined}
+                onClick={saveAlbum}
+              >
+                <Ico n="heart" size={18} />
+                {saveBtn.text}
               </button>
               {lista.length > 0 && (
                 <button type="button" className="btn btn--ghost btn--wide als__btn" onClick={escuchar}>
