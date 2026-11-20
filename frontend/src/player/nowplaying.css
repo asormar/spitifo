@@ -291,6 +291,11 @@
   white-space: nowrap;
 }
 
+.np__sub a {
+  color: inherit;
+  text-decoration: none;
+}
+
 .np__seek {
   margin-top: 14px;
 }
