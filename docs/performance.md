@@ -200,6 +200,22 @@ measured the same before and after):
 - every `Player` subscribes to the shared player state (`watchers`), so one
   change can re-render every row.
 
+## Música search (2026-11-20)
+
+`_search_matched` used to wait for iTunes before searching YouTube, although the
+YouTube search only depends on the query; both start together now. The
+matcher's YouTube search reuses `YoutubeDL` instances from a small pool (3)
+instead of building one, with its certificates and a new TLS connection, per
+search, and one is prepared four seconds after start.
+
+| `/api/search?mode=matched` (PC, server, two cold starts) | First after start | Next |
+| --- | --- | --- |
+| Before | 2.9-3.5 s | 1.8-1.9 s |
+| Now | 2.0 s | 1.3-1.4 s |
+
+The candidate count stays at 40: 20 would save another ~0.5 s but would match
+fewer album tracks.
+
 ## Size
 
 ### Frontend bundle
@@ -796,22 +812,6 @@ Compressed sizes inside the APK:
 | QuickJS-ng | 1.1 MB |
 | SQLite | 0.5 MB |
 | Frontend | 0.2 MB |
-
-## Música search (2026-11-20)
-
-`_search_matched` used to wait for iTunes before searching YouTube, although the
-YouTube search only depends on the query; both start together now. The
-matcher's YouTube search reuses `YoutubeDL` instances from a small pool (3)
-instead of building one, with its certificates and a new TLS connection, per
-search, and one is prepared four seconds after start.
-
-| `/api/search?mode=matched` (PC, server, two cold starts) | First after start | Next |
-| --- | --- | --- |
-| Before | 2.9-3.5 s | 1.8-1.9 s |
-| Now | 2.0 s | 1.3-1.4 s |
-
-The candidate count stays at 40: 20 would save another ~0.5 s but would match
-fewer album tracks.
 
 ## How to measure
 
