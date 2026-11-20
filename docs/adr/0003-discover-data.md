@@ -77,6 +77,14 @@ audio event. With repeat one, every `ended` is a play.
 {"t": 1792770000, "k": "Rosalía/Rosalía - Saoko.mp3", "d": 137000, "l": 137000, "r": "end", "o": "play", "dev": "d1"}
 ```
 
+`k` is either a library file key or, for a saved song that plays by streaming
+(ADR 0004), its stable id (`yt:<videoId>` or `ia:<identifier>/<file>`). Those
+ids have no path to derive an artist from, so such an event may also carry an
+optional `a` (artist name, at most 200 characters, trimmed). The per-artist
+aggregate uses `a` for those events and "Artista desconocido" when it is
+missing; file-key events keep deriving the artist from the key and never carry
+`a`. Old events stored before this field existed remain valid.
+
 **Files**, next to `index-*.json` and `playlists-*.json`:
 
 | File | Content | Merge |

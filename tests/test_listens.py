@@ -70,6 +70,28 @@ def test_validate_events_acepta_el_limite_exacto():
         MAX_EVENTS
 
 
+def test_validate_event_acepta_id_de_cancion_y_artista():
+    raw = dict(_event(key="yt:dQw4w9WgXcQ"), a="  Radiohead  ", dev="otro")
+    clean = validate_event(raw)
+    assert clean["k"] == "yt:dQw4w9WgXcQ"
+    assert clean["a"] == "Radiohead"
+    assert "dev" not in clean
+
+
+def test_validate_event_rechaza_id_y_artista_invalidos():
+    with pytest.raises(ValueError):
+        validate_event(dict(_event(key="yt:corta")))
+    with pytest.raises(ValueError):
+        validate_event(dict(_event(key="yt:dQw4w9WgXcQ"), a="x" * 201))
+    with pytest.raises(ValueError):
+        validate_event(dict(_event(key="yt:dQw4w9WgXcQ"), a=7))
+
+
+def test_el_artista_es_opcional_y_no_rompe_eventos_viejos():
+    assert "a" not in validate_event(_event())
+    assert "a" not in validate_event(dict(_event(key="yt:dQw4w9WgXcQ")))
+
+
 # --------------------------------------------------------------- ayudantes
 @pytest.mark.parametrize("key,artista", [
     ("Rosalia/Rosalia - Saoko.mp3", "Rosalia"),
@@ -80,6 +102,20 @@ def test_validate_events_acepta_el_limite_exacto():
 ])
 def test_artist_of(key, artista):
     assert artist_of(key) == artista
+
+
+def test_artist_of_id_guardado_usa_el_evento_o_desconocido():
+    assert artist_of("yt:dQw4w9WgXcQ") == "Artista desconocido"
+    assert artist_of("ia:olivia-1969/01 Olivia.mp3", "Olivia") == "Olivia"
+
+
+def test_apply_events_con_id_guardado_agrega_el_artista_del_evento():
+    agg = ListenAggregate()
+    apply_events(agg, [validate_event(dict(_event(key="yt:dQw4w9WgXcQ"),
+                                            a="  Radiohead  "))])
+    assert "yt:dQw4w9WgXcQ" in agg.tracks
+    assert set(agg.artists) == {"Radiohead"}
+    assert agg.artists["Radiohead"].plays == 1
 
 
 def test_month_of_usa_utc():

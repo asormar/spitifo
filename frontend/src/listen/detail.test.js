@@ -71,6 +71,24 @@ describe("detailOf a list", () => {
     expect(d.gone).toBe(false);
   });
 
+  it("resolves saved song ids through savedById and hides unresolved ones", () => {
+    const sid = "yt:dQw4w9WgXcQ";
+    const song = {
+      id: sid, title: "Guardada", artist: "Artista", album: null,
+      duration: 180, artwork_url: null, source: "youtube",
+      source_id: "dQw4w9WgXcQ", file_key: null,
+    };
+    const pl = list([sid, "a1", "yt:desaparecida"]);
+    const d = detailOf({ type: "list", id: "p1" }, env({
+      lists: [pl], savedById: new Map([[sid, song]]),
+    }));
+    expect(d.rows.map((e) => e.key)).toEqual([sid, "a1"]);
+    expect(d.rows[0]).toMatchObject({
+      sid, kind: "stream", title: "Guardada", artist: "Artista",
+    });
+    expect(d.gone).toBe(false);
+  });
+
   it("takes the tone of the first song, or of the name when it is empty", () => {
     const some = detailOf({ type: "list", id: "p1" }, env({ lists: [list(["a1"])] }));
     expect(some.tone).toBe(albumTone("Rosalía", "El mal querer"));

@@ -39,14 +39,15 @@ export function classify({ durationMs, listenedMs, reason, repeatOne = false } =
   return "partial";
 }
 
-/* Solo la musica de la biblioteca. Videos, previews y resultados de busqueda
-   no tienen clave de biblioteca (o su kind no es "library"/"audio"). */
+/* Musica de la biblioteca y streams de canciones guardadas (tienen un sid,
+   su id estable). Videos, previews y resultados de busqueda no cuentan. */
 function trackable(track) {
   return Boolean(
     track &&
       typeof track.key === "string" &&
       track.key &&
-      (track.kind === "library" || track.kind === "audio")
+      ((track.kind === "library" || track.kind === "audio") ||
+       (track.kind === "stream" && Boolean(track.sid)))
   );
 }
 
@@ -133,6 +134,12 @@ export function createListenTracker(engine, {
         repeatOne: Boolean(repeatOne),
       }),
     };
+    /* Un id guardado no es una ruta: el backend necesita el artista aparte.
+       Los eventos de archivos no llevan `a` y mantienen su forma de siempre. */
+    if (track.sid) {
+      event.k = track.sid;
+      if (track.artist) event.a = String(track.artist).trim().slice(0, 200);
+    }
     record(event);
     pending.push(event);
     trim();

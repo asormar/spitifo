@@ -13,6 +13,9 @@ Un evento es una foto de una sesion de escucha:
 - `r`: motivo del cierre (`end|next|prev|change|close`).
 - `o`: resultado (`play|skip|partial`).
 - `dev`: dispositivo que escribe el evento.
+- `a`: artista (opcional), solo en eventos de canciones guardadas. `k` puede ser
+  una clave de biblioteca o un id de cancion guardada (ADR 0004); con id no hay
+  ruta de la que sacar el artista y lo trae este campo.
 
 Igual que las playlists, cada dispositivo escribe SOLO sus archivos y la vista
 se arma mergeando todos:
@@ -33,6 +36,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+from . import saved
 from .storage import validate_key
 
 log = logging.getLogger(__name__)
@@ -42,6 +46,10 @@ VERSION = 1
 
 #: Limites de la API.
 MAX_EVENTS = 200
+MAX_ARTIST_LEN = 200
+
+#: Artista de una cancion guardada que no trajo el nombre con el evento.
+UNKNOWN_ARTIST = "Artista desconocido"
 
 REASONS = frozenset({"end", "next", "prev", "change", "close"})
 OUTCOMES = frozenset({"play", "skip", "partial"})
@@ -69,10 +77,25 @@ def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _key_ok(key: str) -> bool:
+    """Clave de archivo o id de cancion guardada."""
+    try:
+        validate_key(key)
+        return True
+    except ValueError:
+        pass
+    try:
+        saved.validate_song_id(key)
+        return True
+    except ValueError:
+        return False
+
+
 def validate_event(raw: object) -> dict:
     """Valida un evento de la API y lo devuelve sin `dev`.
 
     La API no acepta `dev`: lo pone el backend con el id de ESTE dispositivo.
+    `a` es opcional y solo aparece en la respuesta si el cliente lo mando.
     Levanta `ValueError` con un mensaje corto en castellano.
     """
     if not isinstance(raw, dict):
@@ -83,10 +106,15 @@ def validate_event(raw: object) -> dict:
     key = raw.get("k")
     if not isinstance(key, str):
         raise ValueError("k tiene que ser texto")
-    try:
-        validate_key(key)
-    except ValueError as exc:
-        raise ValueError(f"k invalida: {exc}") from exc
+    if not _key_ok(key):
+        raise ValueError("k invalida: ni clave de biblioteca ni id de cancion")
+    artist = raw.get("a")
+    if artist is not None:
+        if not isinstance(artist, str):
+            raise ValueError("a tiene que ser texto")
+        artist = artist.strip()
+        if len(artist) > MAX_ARTIST_LEN:
+            raise ValueError("a es demasiado largo")
     d = raw.get("d")
     if not _is_int(d) or d < 0:
         raise ValueError("d tiene que ser un entero de milisegundos")
@@ -102,8 +130,11 @@ def validate_event(raw: object) -> dict:
     outcome = raw.get("o")
     if outcome not in OUTCOMES:
         raise ValueError("o tiene que ser play, skip o partial")
-    return {"t": t, "k": key, "d": d, "l": l, "p": p,
-            "r": reason, "o": outcome}
+    event = {"t": t, "k": key, "d": d, "l": l, "p": p,
+             "r": reason, "o": outcome}
+    if artist:
+        event["a"] = artist
+    return event
 
 
 def validate_events(raw: object) -> list[dict]:
@@ -173,13 +204,21 @@ def parse_agg_file(name: str) -> str | None:
     return found.group("dev") if found else None
 
 
-def artist_of(key: str) -> str:
-    """Artista de una clave.
+def artist_of(key: str, a: str | None = None) -> str:
+    """Artista de una clave o de una cancion guardada.
 
-    Las claves normales son `<Artista>/<Artista> - <Titulo>.<ext>`, asi que el
-    artista es el primer segmento. Sin carpeta se usa la parte anterior a
-    `" - "` del nombre; si tampoco esta, el nombre sin extension.
+    Un id guardado (`yt:`, `ia:`) no es una ruta: su artista viene en `a` del
+    evento, o se dice que no se sabe. Las claves normales son
+    `<Artista>/<Artista> - <Titulo>.<ext>`, asi que el artista es el primer
+    segmento. Sin carpeta se usa la parte anterior a `" - "` del nombre; si
+    tampoco esta, el nombre sin extension.
     """
+    try:
+        saved.validate_song_id(key)
+    except ValueError:
+        pass
+    else:
+        return a or UNKNOWN_ARTIST
     if "/" in key:
         first = key.split("/", 1)[0]
         if first:
@@ -352,7 +391,8 @@ def apply_event(aggregate: ListenAggregate, event: dict) -> None:
     """Suma un evento a la pista y al artista."""
     metric = aggregate.tracks.setdefault(event["k"], Metric())
     _apply_metric(metric, event)
-    artist = aggregate.artists.setdefault(artist_of(event["k"]), Metric())
+    artist = aggregate.artists.setdefault(
+        artist_of(event["k"], event.get("a")), Metric())
     _apply_metric(artist, event)
 
 

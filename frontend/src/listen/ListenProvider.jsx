@@ -4,12 +4,14 @@ import { keyUrl } from "../shared/api.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
-import { normalizeLibrary, toQueue, toTrack } from "./library.js";
+import { normalizeLibrary } from "./library.js";
 import { buildIndex } from "./home.js";
 import { mixEntries } from "./mixes.js";
 import { LazyOverlays, loadOverlays, loadPageHost, overlaysReady, pageReady } from "./pageLoader.jsx";
 import { history, useHistory } from "./history.js";
 import { playlists, usePlaylists } from "./playlists.js";
+import { useSaved } from "./saved.js";
+import { tracksFor } from "../player/savedTrack.js";
 import { useNotice, NoticeProvider } from "./Notice.jsx";
 import { SongRow } from "./rows.jsx";
 
@@ -27,7 +29,7 @@ import { SongRow } from "./rows.jsx";
      ctx    lo que reciben las vistas (openMenu, play, open, goTo, show, song...).
             Es estable: solo se rehace con la biblioteca. Abrir o cerrar un menu
             no repinta ninguna fila (SongRow es memo y sus props no cambian).
-     model  { entries, index, byKey, plays, lists, listsReady, storage, check },
+     model  { entries, index, byKey, savedById, plays, lists, listsReady, storage, check },
             calculado una vez para las tres pantallas. `storage` es donde
             se guarda la musica ("Google Drive" o "este dispositivo") y `check`
             el resumen de «comprobadas» (vacio si ninguna lo esta).
@@ -53,6 +55,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
 
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
+  const savedById = useSaved((s) => s.byId);
   const hist = useHistory();
 
   const entries = useMemo(() => normalizeLibrary(files), [files]);
@@ -64,8 +67,8 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   );
   const check = useMemo(() => checkedSummary(entries), [entries]);
   const model = useMemo(
-    () => ({ entries, index, byKey, plays, lists, listsReady, storage, check }),
-    [entries, index, byKey, plays, lists, listsReady, storage, check]
+    () => ({ entries, index, byKey, savedById, plays, lists, listsReady, storage, check }),
+    [entries, index, byKey, savedById, plays, lists, listsReady, storage, check]
   );
 
   /* Las listas y el historial se piden una vez al arrancar; los fallos de
@@ -88,12 +91,10 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
         );
         return;
       }
-      const queue = toQueue(list, keyUrl);
-      engine.play(toTrack(entry, keyUrl), {
-        queue,
-        index: queue.findIndex((t) => t.key === entry.key),
-        source: from,
-      });
+      const queue = tracksFor(list, model.byKey, model.savedById, keyUrl);
+      const at = queue.findIndex((t) => t.key === entry.key || (entry.sid && t.sid === entry.sid));
+      const track = at >= 0 ? queue[at] : tracksFor([entry], model.byKey, model.savedById, keyUrl)[0];
+      engine.play(track, { queue, index: at, source: from });
     };
 
     /* Pulsar la que suena la pausa o la reanuda; otra, la pone. */
@@ -106,7 +107,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
        al azar, no siempre por la primera; restart: aunque ya suene esa pista,
        el grupo nuevo sustituye a la cola. */
     const playGroup = (group, shuffle = false, from) => {
-      const queue = toQueue(group, keyUrl);
+      const queue = tracksFor(group, model.byKey, model.savedById, keyUrl);
       if (!queue.length) return;
       if (shuffle) engine.setShuffle(true);
       const i = engine.getState().shuffle ? Math.floor(Math.random() * queue.length) : 0;
@@ -116,7 +117,10 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
     /* La Mezcla de Inicio: una cola barajada y sin fin con las canciones de
        esa mezcla. La cola es una foto: no se vacia a medida que se oyen. */
     const playMix = (key) => {
-      const queue = toQueue(mixEntries(key, model.entries, history.getState(), model.byKey), keyUrl);
+      const queue = tracksFor(
+        mixEntries(key, model.entries, history.getState(), model.byKey),
+        model.byKey, model.savedById, keyUrl
+      );
       if (!queue.length) return;
       engine.setShuffle(true);
       const i = Math.floor(Math.random() * queue.length);
@@ -132,9 +136,9 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
     /* Seguir escuchando: la cola son las pistas a medias y la elegida retoma
        donde se quedo. */
     const resume = (item, items, from) => {
-      const queue = toQueue(
+      const queue = tracksFor(
         items.map((i) => i.entry),
-        keyUrl
+        model.byKey, model.savedById, keyUrl
       );
       const at = queue.findIndex((t) => t.key === item.entry.key);
       engine.play(queue[at], { queue, index: at, at: item.at, source: from });

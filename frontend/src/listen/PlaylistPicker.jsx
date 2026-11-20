@@ -5,6 +5,7 @@ import Sheet from "../shared/Sheet.jsx";
 import { Mosaic } from "./cards.jsx";
 import { mosaicTones, songs } from "./home.js";
 import { playlists, usePlaylists } from "./playlists.js";
+import { saved } from "./saved.js";
 import "./menus.css";
 import "./playlists.css";
 
@@ -74,7 +75,7 @@ function Row({ p, byKey, onPick }) {
   );
 }
 
-export default function PlaylistPicker({ songKey, title, onClose, onNotice, anchor, byKey }) {
+export default function PlaylistPicker({ songKey, title, onClose, onNotice, anchor, byKey, savedRecord = null }) {
   const list = usePlaylists((s) => s.list);
   const ready = usePlaylists((s) => s.ready);
   const error = usePlaylists((s) => s.error);
@@ -105,13 +106,26 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice, anch
     onClose();
   };
 
-  const add = (p) =>
-    done(playlists.addKeys(p.id, [songKey]) ? `Añadida a «${p.name}»` : `Ya estaba en «${p.name}»`);
-
-  const create = (name) => {
-    playlists.create(name, [songKey]);
-    done(`Añadida a «${name}»`);
+  /* Todo lo que entra en una lista tiene que estar en la biblioteca. Si el
+     tema suena por streaming, se guarda primero (la foto se actualiza al
+     instante) y solo despues se anade su id a la lista. */
+  const pick = async (apply, message) => {
+    if (savedRecord && !(await saved.save(savedRecord))) {
+      onNotice("No se pudo guardar la cancion. No se anadio a la lista.");
+      return;
+    }
+    done(message(apply()));
   };
+
+  const add = (p) => pick(
+    () => playlists.addKeys(p.id, [songKey]),
+    (added) => (added ? `Añadida a «${p.name}»` : `Ya estaba en «${p.name}»`)
+  );
+
+  const create = (name) => pick(
+    () => playlists.create(name, [songKey]),
+    () => `Añadida a «${name}»`
+  );
 
   return (
     <Sheet title={label} onClose={onClose} anchor={anchor} sm>

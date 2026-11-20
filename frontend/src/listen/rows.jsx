@@ -70,8 +70,10 @@ export const SongRow = memo(function SongRow({
   from,
 }) {
   const { key, title, artist, album } = entry;
-  const isCurrent = useEngine((s) => s.track?.key === key);
-  const playing = useEngine((s) => s.track?.key === key && s.playing);
+  /* Una fila guardada tiene el id como clave; su pista, el del stream. */
+  const mine = (t) => t?.key === key || Boolean(entry.sid && t?.sid === key);
+  const isCurrent = useEngine((s) => mine(s.track));
+  const playing = useEngine((s) => mine(s.track) && s.playing);
   const video = entry.kind === "video";
 
   const lib = table === "lib";

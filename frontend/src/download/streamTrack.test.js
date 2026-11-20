@@ -33,6 +33,8 @@ describe("streamTrack", () => {
     expect(t.duration).toBe(200);
     expect(t.artwork).toBe(full.artwork_url);
     expect(t.kind).toBe("stream");
+    expect(t.sid).toBe("yt:abcdefghijk");
+    expect(t.artist).toBe("Artista");
     expect(t.result).toBe(full);
     expect(t.source).toBe("search:blues");
   });
@@ -103,7 +105,7 @@ describe("archive audition", () => {
     expect(await listenArchive(item, "creep", { store, player })).toBe(true);
     expect(store.verify).toHaveBeenCalledOnce();
     const track = player.play.mock.calls[0][0];
-    expect(track).toMatchObject({ key: "archive:creep-1992", src: "https://ia.example/creep.mp3", kind: "stream", result: item });
+    expect(track).toMatchObject({ key: "archive:creep-1992", src: "https://ia.example/creep.mp3", kind: "stream", sid: null, result: item });
 
     await listenArchive(item, "creep", { store, player });
     expect(store.verify).toHaveBeenCalledOnce(); // la segunda vez reusa la URL

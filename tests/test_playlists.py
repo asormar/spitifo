@@ -188,6 +188,18 @@ def test_validate_playlist_rechaza_una_clave_invalida():
         validate_playlist("p1", "X", ["../fuera.mp3"])
 
 
+def test_validate_playlist_acepta_ids_de_canciones_guardadas():
+    ids = ["yt:dQw4w9WgXcQ", "ia:olivia-1969/01 Olivia.mp3"]
+    name, keys = validate_playlist("p1", "  guardadas  ", ids + [ids[0]])
+    assert name == "guardadas"
+    assert keys == ids
+
+
+def test_validate_playlist_rechaza_un_id_de_cancion_invalido():
+    with pytest.raises(ValueError):
+        validate_playlist("p1", "X", ["yt:no-vale"])
+
+
 def test_validate_playlist_rechaza_claves_que_no_son_texto():
     with pytest.raises(ValueError):
         validate_playlist("p1", "X", ["A/a.mp3", 7])

@@ -88,7 +88,7 @@ function Gone({ d, backRef, ctx, nav, pc }) {
   );
 }
 
-export default memo(function DetailPage({ view, index, byKey, lists, listsReady, storage, active, ctx }) {
+export default memo(function DetailPage({ view, index, byKey, savedById, lists, listsReady, storage, active, ctx }) {
   const nav = useNav();
   const pc = usePc();
   const listsError = usePlaylists((s) => s.error);
@@ -104,8 +104,8 @@ export default memo(function DetailPage({ view, index, byKey, lists, listsReady,
   const ready = forList && listsReady;
   const failed = forList && listsError;
   const d = useMemo(
-    () => detailOf(view, { index, byKey, lists: ls, listsReady: ready, listsError: failed }),
-    [view, index, byKey, ls, ready, failed]
+    () => detailOf(view, { index, byKey, savedById, lists: ls, listsReady: ready, listsError: failed }),
+    [view, index, byKey, savedById, ls, ready, failed]
   );
 
   /* Solo una ficha de album con id de iTunes pide la lista real. El pedido se

@@ -288,6 +288,21 @@ def test_remove_y_reput_lo_reviven(api):
     assert c.get("/api/saved").json()["songs"] == [revived]
 
 
+def test_remove_saca_el_id_de_las_listas(api):
+    """Quitar una cancion guardada la saca de las listas, como un archivo borrado."""
+    c, _root = api
+    c.put("/api/saved", json={"songs": [_record()]})
+    assert c.put("/api/playlists/p1", json={
+        "name": "Viaje", "keys": [YT, "A/t.mp3"]}).status_code == 200
+    assert c.put("/api/playlists/p2", json={
+        "name": "Archivo", "keys": ["A/t.mp3"]}).status_code == 200
+
+    assert c.post("/api/saved/remove", json={"ids": [YT]}).status_code == 200
+    lists = {p["id"]: p for p in c.get("/api/playlists").json()["playlists"]}
+    assert lists["p1"]["keys"] == ["A/t.mp3"]
+    assert lists["p2"]["keys"] == ["A/t.mp3"]
+
+
 def test_volver_a_guardar_algo_quitado_cuenta_como_nuevo(api, monkeypatch):
     """Vuelve arriba de "Añadido hace poco": no conserva la fecha vieja."""
     c, _root = api

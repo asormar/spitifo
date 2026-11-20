@@ -1,4 +1,5 @@
 import { API } from "../shared/api.js";
+import { songIdOf } from "../shared/songId.js";
 import { trackState } from "./constants.js";
 
 /* ---------------------------------------------------------------------------
@@ -30,6 +31,8 @@ export function streamTrack(t, source = null) {
     duration: t.duration_s ?? null,
     artwork: t.artwork_url || null,
     kind: "stream",
+    sid: songIdOf(t),
+    artist: t.artist || null,
     result: t,
     source: source || null,
   };
@@ -54,6 +57,8 @@ export function auditionTrack(t, audio) {
     duration: t.duration_s ?? null,
     artwork: t.artwork_url || null,
     kind: "stream",
+    sid: songIdOf(t),
+    artist: t.artist || null,
     result: t,
   };
 }

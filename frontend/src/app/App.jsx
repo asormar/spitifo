@@ -18,6 +18,7 @@ import { requestReveal } from "../listen/revealRequest.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import { requestSearch } from "../download/searchRequest.js";
 import ListenProvider from "../listen/ListenProvider.jsx";
+import { saved } from "../listen/saved.js";
 import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
@@ -339,6 +340,10 @@ export default function App() {
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
   const loadLib = useCallback(async (opts) => {
+    /* El registro de guardadas se pide junto con la biblioteca, pero NO se
+       espera: una lista con Drive tarda y las filas de archivos tienen que
+       pintarse igual. `saved.load()` se hace una sola vez. */
+    saved.load();
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
