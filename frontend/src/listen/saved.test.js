@@ -70,4 +70,14 @@ describe("saved store", () => {
     expect(await failing.remove([record().id])).toBe(false);
     expect(failing.getState().byId.size).toBe(1);
   });
+
+  it("saveAll puts every song of an album in one request", async () => {
+    const songs = [record("yt:aaaaaaaaaaa"), record("yt:bbbbbbbbbbb")];
+    const fetchFn = vi.fn(async () => reply(songs));
+    const store = createSaved({ fetchFn });
+    expect(await store.saveAll(songs)).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body).songs).toEqual(songs);
+    expect(store.getState().byId.size).toBe(2);
+  });
 });

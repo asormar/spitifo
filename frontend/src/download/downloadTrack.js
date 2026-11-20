@@ -1,5 +1,6 @@
 import { API, errMsg } from "../shared/api.js";
 import { queueStore } from "./queueStore.js";
+import { resolveResult } from "./resolveResult.js";
 import { verdictStore } from "./verdict.js";
 
 /* ---------------------------------------------------------------------------
@@ -32,21 +33,9 @@ export async function downloadTrack(
   let track = { ...t };
   delete track.downloadable;
   /* En modo "matched" el video de YouTube ya viene en webpage_url: no hay
-     nada que resolver, la descarga va directo a yt-dlp. */
-  const isMatched = t.source === "itunes" && t.extra?.webpage_url;
-  if (!track.audio_url && !isMatched && t.source !== "ytdlp" && t.extra?.needs_resolve) {
-    const rr = await fetch(`${API}/resolve?query=${encodeURIComponent(query)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(track),
-    });
-    if (!rr.ok) {
-      const d = await rr.json();
-      throw new Error(errMsg(d, "no se pudo resolver"));
-    }
-    track = await rr.json();
-    delete track.downloadable;
-  }
+     nada que resolver, la descarga va directo a yt-dlp. El pedido es el mismo
+     que usa el corazon de Buscar para guardar una cancion sin resolver. */
+  track = await resolveResult(track, query);
   /* /api/setlist devuelve el veredicto en la raiz, /api/resolve en extra. */
   const vmatch = t.match || track.extra?.match || track.match;
   const vtitle = t.real_title || track.extra?.real_title || track.real_title;
