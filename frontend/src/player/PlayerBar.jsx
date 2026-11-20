@@ -62,12 +62,12 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
                   {info?.title}
                 </span>
                 <span className="lcd__s" title={meta}>
-                  {info?.kind === "stream" && (
+                  {info?.kind === "stream" && !d.failed && (
                     <>
                       <Suspense fallback={null}><StreamBadge track={info} /></Suspense>{" "}
                     </>
                   )}
-                  {meta}
+                  {d.status}
                 </span>
               </span>
               <span className="lcd__time lcd__time--r">

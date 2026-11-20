@@ -51,12 +51,12 @@ function MiniPlayer({ onOpen, npOpen }) {
               {info?.title}
             </span>
             <span className="mini__meta" title={meta}>
-              {info?.kind === "stream" && (
+              {info?.kind === "stream" && !d.failed && (
                 <>
                   <Suspense fallback={null}><StreamBadge track={info} /></Suspense>{" "}
                 </>
               )}
-              {meta}
+              {d.status}
             </span>
           </span>
         </button>
