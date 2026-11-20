@@ -1,6 +1,5 @@
 import { ownedEntries, trackSlot } from "../download/albumText.js";
 import { trackState } from "../download/constants.js";
-import { fold } from "./library.js";
 import { songIdOf } from "../shared/songId.js";
 
 /* ---------------------------------------------------------------------------
@@ -18,20 +17,19 @@ export function heartState({ kind = null, full = false, saved = false, owned = f
   return { show: true, filled: Boolean(saved || owned) };
 }
 
-/* La fila de la biblioteca que ya es esta cancion, si la hay. Primero el id
-   guardado (con archivo vivo, la fila es la del archivo), despues el hueco del
-   disco y, para los archivos sin etiquetas, el titulo y el artista. */
-export function ownedEntryFor(t, entries = [], savedById = null) {
+/* La fila de la biblioteca que ya es esta cancion, si la hay: por el id
+   guardado (con archivo vivo, la fila es la del archivo) o por el hueco del
+   disco de iTunes. NO por titulo y artista: el corazon lleno quita la cancion
+   y borra su archivo, y «Creep» en directo no es «Creep». Con `byKey` (el mapa
+   de la biblioteca) el id se busca sin recorrer todas las filas. */
+export function ownedEntryFor(t, entries = [], savedById = null, byKey = null) {
   if (!t) return null;
   const id = songIdOf(t);
   if (id) {
     const record = savedById?.get?.(id);
-    if (record?.file_key) {
-      const withFile = entries.find((e) => e.key === record.file_key);
-      if (withFile) return withFile;
-    }
-    const byId = entries.find((e) => e.sid === id || e.key === id);
-    if (byId) return byId;
+    const find = (k) => (byKey ? byKey.get(k) : entries.find((e) => e.key === k || e.sid === k));
+    const hit = (record?.file_key && find(record.file_key)) || find(id);
+    if (hit) return hit;
   }
   const collection = t.extra?.collection_id ?? t.extra?.collectionId;
   if (collection != null) {
@@ -42,11 +40,6 @@ export function ownedEntryFor(t, entries = [], savedById = null) {
     );
     const at = slot && slots.get(slot);
     if (at) return at;
-  }
-  const title = fold(t.title);
-  const artist = fold(t.artist);
-  if (title && artist) {
-    return entries.find((e) => fold(e.title) === title && fold(e.artist) === artist) || null;
   }
   return null;
 }

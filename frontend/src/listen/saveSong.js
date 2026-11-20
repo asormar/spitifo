@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { resultOf } from "../player/savedTrack.js";
 import { songFromResult, songIdOf } from "../shared/songId.js";
 import { resolveResult } from "../download/resolveResult.js";
@@ -51,9 +51,15 @@ export function useSaveTarget({ t = null, track = null, query = "" } = {}) {
   const [busy, setBusy] = useState(false);
   const result = track?.result || t || null;
   const kind = track?.kind || (result ? "stream" : null);
-  const entry = track && !result
-    ? listen?.model?.byKey?.get(track.sid || track.key) || null
-    : ownedEntryFor(result, listen?.model?.entries, savedById);
+  const model = listen?.model;
+  /* Una fila de Buscar por resultado: la busqueda en la biblioteca se hace una
+     vez por cambio de biblioteca o de registro, no en cada repintado. */
+  const entry = useMemo(
+    () => (track && !result
+      ? model?.byKey?.get(track.sid || track.key) || null
+      : ownedEntryFor(result, model?.entries, savedById, model?.byKey)),
+    [track, result, model, savedById]
+  );
   const id = songIdOf(result) || (!result && track?.sid ? track.sid : null);
   const stored = Boolean(
     (id && savedById.has(id)) ||

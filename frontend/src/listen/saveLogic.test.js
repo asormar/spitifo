@@ -64,6 +64,11 @@ describe("ownedEntryFor", () => {
     const entry = { key: "file", album_id: "42", disc_no: 1, track_no: 2, title: "Otro", artist: "Otro" };
     expect(ownedEntryFor(albumTrack(2), [entry], new Map())).toBe(entry);
   });
+
+  it("does not treat a song with the same title and artist as owned", () => {
+    const entry = { key: "Artista/Artista - Tema.mp3", title: "Tema", artist: "Artista" };
+    expect(ownedEntryFor(ytResult(), [entry], new Map())).toBeNull();
+  });
 });
 
 describe("albumSaveSelection", () => {
