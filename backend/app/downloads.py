@@ -357,6 +357,16 @@ async def _worker(item_id: str) -> None:
                 query=item.get("query"), media=item.get("media") or "audio",
                 height=item.get("height"), cancel=cancel, on_progress=cb)
             _update(item_id, result=resultado, save=False)
+            # La descarga ya esta en la biblioteca: si corresponde a una cancion
+            # guardada, se enlaza con UNA escritura del registro.
+            key = (resultado or {}).get("key") if isinstance(resultado, dict) else None
+            if key:
+                try:
+                    from .main import link_saved_download
+                    await asyncio.to_thread(
+                        link_saved_download, item.get("track") or {}, key)
+                except Exception as exc:
+                    log.warning("no se pudo enlazar la descarga con guardadas: %s", exc)
         except BaseException as e:
             if _es_cancel_local(e, cancel):
                 _update(item_id, status="cancelled", phase=None, save=False)

@@ -71,6 +71,9 @@ export function normalizeEntry(file) {
     /* Cuando llego a la biblioteca (mtime en segundos); 0 = no se sabe. */
     added: Number(f.modified) || 0,
     hasAudio: Boolean(f.has_audio),
+    /* Un archivo de /api/library esta descargado por definicion. Las canciones
+       guardadas sin archivo lo marcan a false al entrar en la mezcla. */
+    downloaded: true,
     /* Precalcular el texto evita normalizar cada fila en cada tecla. */
     search: fold(`${title} ${artist} ${album}`),
   };
@@ -85,6 +88,25 @@ export function filterEntries(entries, query) {
   if (!terms.length) return entries;
   return entries.filter((entry) => terms.every((term) => entry.search.includes(term)));
 }
+
+/* El filtro de descargas de las listas de canciones. "Todo" no filtra nada. */
+export const DOWNLOAD_FILTERS = [
+  ["all", "Todo"],
+  ["downloaded", "Descargadas"],
+  ["stream", "Solo streaming"],
+];
+
+export function filterByDownload(entries, filter) {
+  if (filter === "downloaded") return entries.filter((e) => e.downloaded);
+  if (filter === "stream") return entries.filter((e) => !e.downloaded);
+  return entries;
+}
+
+/* Una lista vacia por el filtro no es la biblioteca vacia: se dice por que. */
+export const emptyFilterNote = (filter) =>
+  filter === "downloaded" ? "Nada descargado todavía."
+    : filter === "stream" ? "Todo lo que guardaste está descargado."
+      : "";
 
 /* Los ids de las paginas de artista y album: los de groupArtists y
    groupAlbums, para ir de una cancion a su album o su artista sin agrupar. */

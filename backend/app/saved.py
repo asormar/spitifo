@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass, field, replace
+from urllib.parse import parse_qs, urlparse
 
 from .storage import validate_key
 
@@ -109,6 +110,46 @@ def validate_song_id(song_id_value: str) -> str:
     """Valida un id de cancion y lo devuelve tal cual si lo es."""
     _split_song_id(song_id_value)
     return song_id_value
+
+
+#: El identifier de Internet Archive NO lleva barra: el archivo va aparte.
+_IA_IDENT_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+
+
+def song_id_for_track(track: object) -> str | None:
+    """El id guardado de una pista, o None si no tiene identidad estable.
+
+    Espejo de `songIdOf` (frontend/src/shared/songId.js): el videoId de
+    `source_id` o del `v=` de `webpage_url` para YouTube; identifier mas
+    `extra.filename` para Internet Archive. Sin archivo no hay id de archive:
+    un item puede traer un disco entero. Puro: no toca disco ni red.
+    """
+    if not isinstance(track, dict):
+        return None
+    extra = track.get("extra")
+    if not isinstance(extra, dict):
+        extra = {}
+    url = extra.get("webpage_url") or track.get("webpage_url")
+    if isinstance(url, str):
+        try:
+            v = parse_qs(urlparse(url).query).get("v", [None])[0]
+        except ValueError:
+            v = None
+        if isinstance(v, str) and _YT_RE.match(v):
+            return _PREFIXES[SOURCE_YOUTUBE] + v
+    source = track.get("source")
+    source_id = track.get("source_id")
+    if source in ("ytdlp", "youtube") and isinstance(source_id, str) and _YT_RE.match(source_id):
+        return _PREFIXES[SOURCE_YOUTUBE] + source_id
+    if source == SOURCE_ARCHIVE and isinstance(source_id, str) and _IA_IDENT_RE.match(source_id):
+        filename = extra.get("filename") or track.get("filename")
+        if isinstance(filename, str) and filename:
+            raw = f"{source_id}/{filename.lstrip('/')}"
+            try:
+                return validate_song_id(_PREFIXES[SOURCE_ARCHIVE] + raw)
+            except ValueError:
+                return None
+    return None
 
 
 def _is_number(value: object) -> bool:

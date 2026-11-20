@@ -206,10 +206,14 @@ const FINISHED_S = 10;
    progreso. El historial guarda ms; aqui todo va en segundos. */
 export function continueItems(state, byKey, n) {
   const out = [];
+  /* Una guardada con archivo puede tener escuchas bajo la clave del archivo y
+     bajo su id: las dos resuelven a la MISMA entrada. Gana la mas reciente. */
+  const seen = new Set();
   if (!(n > 0)) return out;
   for (const rec of continueListening(state, Number.MAX_SAFE_INTEGER)) {
     const entry = byKey.get(rec.key);
-    if (!playable(entry)) continue;
+    if (!playable(entry) || seen.has(entry)) continue;
+    seen.add(entry);
     const dur = (Number(rec.dur) || 0) / SECONDS || entry.duration || 0;
     const pos = Math.min(Math.max(0, (Number(rec.pos) || 0) / SECONDS), dur || Infinity);
     const left = Math.max(0, dur - pos);
@@ -233,16 +237,21 @@ export function continueItems(state, byKey, n) {
    oido hasta contar como reproduccion. */
 export function topItems(state, byKey, n) {
   const tracks = state?.tracks || {};
-  const out = [];
-  if (!(n > 0)) return out;
+  const summed = new Map();
+  if (!(n > 0)) return [];
   for (const key of mostPlayed(state, Number.MAX_SAFE_INTEGER)) {
     const plays = Number(tracks[key]?.plays) || 0;
     const entry = byKey.get(key);
     if (!plays || !playable(entry)) continue;
-    out.push({ entry, plays });
-    if (out.length >= n) break;
+    /* Dos claves, una cancion: se juntan sus reproducciones antes de ordenar. */
+    const row = summed.get(entry) || { entry, plays: 0, last: 0 };
+    row.plays += plays;
+    row.last = Math.max(row.last, Number(tracks[key]?.last) || 0);
+    summed.set(entry, row);
   }
-  return out;
+  return [...summed.values()]
+    .sort((a, b) => b.plays - a.plays || b.last - a.last)
+    .slice(0, Math.max(0, n));
 }
 
 /* "Seguir escuchando": lo que dice la tarjeta bajo el titulo. La que suena

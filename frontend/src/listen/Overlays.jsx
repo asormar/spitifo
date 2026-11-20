@@ -11,8 +11,11 @@ import { Cover } from "./cards.jsx";
 import { checkOf } from "./fileCheck.js";
 import FileSheet from "./FileSheet.jsx";
 import { albumId, artistId, rowArt } from "./library.js";
-import { useSaved } from "./saved.js";
-import { savedEntry, tracksFor } from "../player/savedTrack.js";
+import { saved, useSaved } from "./saved.js";
+import { menuKinds } from "./songMenu.js";
+import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
+import { trackSpec } from "../download/albumText.js";
+import { queueStore } from "../download/queueStore.js";
 import { deleteKeys, failedNotice } from "./deletion.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import "./menus.css";
@@ -30,18 +33,27 @@ import "./menus.css";
    y borrar); aqui solo se dibuja.
    ------------------------------------------------------------------------- */
 
-/* [clave, icono, texto, tono, pastilla]; la clave es lo que recibe `onPick`. */
-const SONG_ITEMS = [
-  ["next", "next", "Reproducir a continuación"],
-  ["end", "queue", "Añadir a la cola"],
-  ["list", "addlist", "Añadir a una lista…"],
-  ["album", "disc", "Ir al álbum"],
-  ["artist", "user", "Ir al artista"],
-  ["delete", "trash", "Borrar canción", "bad"],
-];
+/* [clave, icono, texto, tono, pastilla]; la clave es lo que recibe `onPick`.
+   La ficha lleva la pastilla del archivo, asi que se arma en songItems. */
+const SONG_MENU = {
+  next: ["next", "next", "Reproducir a continuación"],
+  end: ["end", "queue", "Añadir a la cola"],
+  list: ["list", "addlist", "Añadir a una lista…"],
+  album: ["album", "disc", "Ir al álbum"],
+  artist: ["artist", "user", "Ir al artista"],
+  download: ["download", "dl", "Descargar"],
+  undownload: ["undownload", "nodl", "Quitar descarga"],
+  remove: ["remove", "trash", "Quitar de tu biblioteca", "bad"],
+};
+
+function songItems(entry, pc) {
+  return menuKinds(entry).map((kind) => kind === "file"
+    ? ["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]
+    : SONG_MENU[kind]);
+}
 
 const ALBUM_ITEMS = [
-  ["delete", "trash", "Borrar álbum", "bad"],
+  ["remove", "trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
 const LIST_ITEMS = [
@@ -87,28 +99,41 @@ function MenuItems({ items, label, onPick, stack }) {
   );
 }
 
-/* La misma secuencia para una cancion y para un album: ocultar las filas ya,
-   ensenar el aviso con Deshacer y mandar la peticion SOLO si vence la ventana.
-   Si falla alguna, vuelven solo esas filas (las demas si se borraron). */
-export function deferredDelete({ keys, name, notice, show, hideKeys, restoreFiles, refreshLibrary }) {
-  const removed = hideKeys(keys);
+/* La misma secuencia para una cancion y para un album: ocultar las filas ya
+   (archivos e ids guardados), ensenar el aviso con Deshacer y mandar las
+   peticiones SOLO si vence la ventana. Si falla algo, vuelve solo lo que no
+   se pudo quitar. */
+export function deferredDelete({ files = [], sids = [], name, notice, show, hideKeys, restoreFiles, refreshLibrary }) {
+  const allKeys = [...files, ...sids];
+  const removed = hideKeys(allKeys);
   show(notice, {
     label: "Deshacer",
     run: () => restoreFiles(removed),
     commit: async () => {
       try {
-        const { failed } = await deleteKeys(keys);
-        const malas = new Set(failed.map((f) => f.key));
+        const bad = new Set();
+        if (files.length) {
+          const { failed } = await deleteKeys(files);
+          failed.forEach((f) => bad.add(f.key));
+        }
         /* Android puede aceptar el borrado de un archivo de otra app sin
            hacerlo. Manda lo que liste la biblioteca al recargar: lo que siga
-           ahi no se borro, diga lo que diga la respuesta. */
-        const files = malas.size < keys.length ? await refreshLibrary({ release: keys }) : null;
-        if (files) files.forEach((f) => keys.includes(f.key) && malas.add(f.key));
-        /* La lista recargada ya trae las que fallaron; sin recarga se reponen. */
-        if (malas.size && !files) restoreFiles(removed.filter((f) => malas.has(f.key)));
-        const ok = keys.filter((k) => !malas.has(k));
+           ahi no se borro, diga lo que diga la respuesta. Ademas suelta las
+           claves pendientes, guardadas incluidas. */
+        const fresh = await refreshLibrary({ release: allKeys });
+        if (fresh) fresh.forEach((f) => files.includes(f.key) && bad.add(f.key));
+        const savedOk = !sids.length || (!bad.size && (await saved.remove(sids)));
+        const back = [
+          ...removed.filter((r) => !r.song && bad.has(r.key)),
+          ...(savedOk ? [] : removed.filter((r) => r.song)),
+        ];
+        if (back.length) {
+          restoreFiles(back);
+          show(failedNotice(name));
+          return;
+        }
+        const ok = files.filter((k) => !bad.has(k));
         if (ok.length) engine.purge(ok);
-        if (malas.size) show(failedNotice(name));
       } catch {
         restoreFiles(removed);
         show(failedNotice(name));
@@ -164,18 +189,10 @@ export function TrackMenu({ entry, anchor, onClose, onPick }) {
   const pc = usePc();
   const { title, artist, album } = entry;
   const label = `Opciones de ${title}`;
-  /* Una cancion guardada de una lista no es un archivo: ni ficha ni borrar. */
-  const file = !entry.sid;
-  const items = SONG_ITEMS.filter(([kind]) =>
-    kind === "album" ? album : kind === "artist" ? artist : kind === "delete" ? file : true
-  );
-  /* La ficha del archivo: la pastilla solo si hay registro (el archivo anterior
-     la dice dentro de la ficha). */
-  /* Borrar va siempre al final, debajo de la ficha: lo destructivo, aparte. */
-  const del = items.findIndex(([kind]) => kind === "delete");
-  const [delItem] = del >= 0 ? items.splice(del, 1) : [];
-  if (file) items.push(["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]);
-  if (delItem) items.push(delItem);
+  /* Guardada sin archivo: se puede descargar y quitar de la biblioteca. Con
+     archivo: quitar descarga, ficha y quitar de la biblioteca. Lo destructivo
+     va siempre al final (menuKinds ya lo pone ahi). */
+  const items = songItems(entry, pc);
   const head = (
     <div className="mhead">
       <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} size={pc ? 40 : 56} />
@@ -242,18 +259,31 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
   }
 
   const pick = (kind) => {
-    if (kind === "delete") {
-      /* La fila desaparece al instante; el efecto de arriba cierra el menu al
-         dejar de estar la clave en byKey. Durante la ventana sigue sonando. */
+    if (kind === "download") {
+      /* Mi entrada en la cola del servidor: la misma que usa Buscar, con el
+         resultado de Buscar que guardamos al anadir la cancion. */
+      queueStore.enqueue({ items: [trackSpec(resultOf(entry.song), "")] });
+      back();
+      show(`Descargando «${entry.title}»`);
+      return;
+    }
+    if (kind === "undownload" || kind === "remove") {
+      /* Ocultar la fila al instante y cerrar: con el archivo quitado la guardada
+         vuelve como fila de streaming, o desaparece del todo. */
+      const hadFile = Boolean(entry.downloaded);
       deferredDelete({
-        keys: [entry.key],
+        files: hadFile ? [entry.key] : [],
+        sids: kind === "remove" && entry.sid ? [entry.sid] : [],
         name: entry.title,
-        notice: `Se borró «${entry.title}»`,
+        notice: kind === "undownload"
+          ? `Se quitó la descarga de «${entry.title}»`
+          : `Se quitó «${entry.title}»${hadFile ? " y se borró su archivo" : ""}`,
         show,
         hideKeys,
         restoreFiles,
         refreshLibrary: refresh,
       });
+      back();
       return;
     }
     if (kind === "file") {

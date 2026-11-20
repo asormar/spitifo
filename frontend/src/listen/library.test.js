@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  DOWNLOAD_FILTERS,
+  emptyFilterNote,
+  filterByDownload,
   filterEntries,
   fold,
   groupAlbums,
@@ -76,6 +79,7 @@ describe("normalizeEntry", () => {
       artist_id: null,
       added: 0,
       hasAudio: true,
+      downloaded: true,
       search: "song artist album",
     });
   });
@@ -160,6 +164,33 @@ describe("normalizeEntry", () => {
       file({ key: "second" }),
     ]);
     expect(entries.map((entry) => entry.key)).toEqual(["first", "second"]);
+  });
+});
+
+describe("download filters", () => {
+  const entries = [
+    { key: "file", downloaded: true },
+    { key: "stream", downloaded: false },
+  ];
+
+  it("has the three chips in order", () => {
+    expect(DOWNLOAD_FILTERS).toEqual([
+      ["all", "Todo"],
+      ["downloaded", "Descargadas"],
+      ["stream", "Solo streaming"],
+    ]);
+  });
+
+  it("keeps every row in Todo and splits the other two", () => {
+    expect(filterByDownload(entries, "all")).toBe(entries);
+    expect(filterByDownload(entries, "downloaded").map((e) => e.key)).toEqual(["file"]);
+    expect(filterByDownload(entries, "stream").map((e) => e.key)).toEqual(["stream"]);
+  });
+
+  it("explains an empty filter without calling the library empty", () => {
+    expect(emptyFilterNote("all")).toBe("");
+    expect(emptyFilterNote("downloaded")).toBe("Nada descargado todavía.");
+    expect(emptyFilterNote("stream")).toBe("Todo lo que guardaste está descargado.");
   });
 });
 

@@ -353,22 +353,25 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* Las filas del album son las que agrupa esta pagina. El tamano solo se dice
      si todas las filas lo traen: nunca inventamos un MB. */
-  const albumKeys = album ? d.rows.map((r) => r.key) : [];
+  const albumKeys = album ? d.rows.filter((r) => r.downloaded).map((r) => r.key) : [];
+  const albumSids = album ? d.rows.filter((r) => r.sid).map((r) => r.sid) : [];
+  const albumCount = album ? d.rows.length : 0;
   const albumSize = album && albumKeys.length && d.rows.every((r) => Number.isFinite(r.sizeMb))
     ? d.rows.reduce((sum, r) => sum + r.sizeMb, 0)
     : null;
   const alDel = album && stackTop?.type === "aldel" && stackTop.key === view.id;
   const deleteSheet = alDel && (
     <DeleteAlbumSheet
-      copy={albumDeleteCopy({ name, storage, count: albumKeys.length, sizeMb: albumSize })}
+      copy={albumDeleteCopy({ name, storage, count: albumCount, sizeMb: albumSize })}
       anchor={stackTop.anchor}
       onClose={nav.back}
       onConfirm={() => {
         nav.pop(2);  // cierra la hoja y vuelve de la pagina del album
         deferredDelete({
-          keys: albumKeys,
+          files: albumKeys,
+          sids: albumSids,
           name,
-          notice: `Se borró «${name}» · ${albumKeys.length} canciones`,
+          notice: `Se quitó «${name}» · ${albumCount} canciones`,
           show: ctx.show,
           hideKeys: ctx.hideKeys,
           restoreFiles: ctx.restoreFiles,

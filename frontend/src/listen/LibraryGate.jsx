@@ -55,10 +55,12 @@ export default function LibraryGate({ ready, error, errorCode, onRetry, folder, 
     );
   }
 
-  if (!model.entries.length) {
+  /* Las guardadas viven en entries (van sin archivo), pero por si el registro
+     llega antes que la biblioteca tambien se mira directamente. */
+  if (!model.entries.length && !model.savedById?.size && !model.lists.length) {
     return (
       <p className="lnote">
-        Todavía no has descargado nada.
+        Todavía no has guardado nada.
         <br />
         Tus descargas se guardan en {folder}.
         <br />

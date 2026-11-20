@@ -4,7 +4,7 @@ import { keyUrl } from "../shared/api.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
-import { normalizeLibrary } from "./library.js";
+import { mergeLibrary } from "./mergedLibrary.js";
 import { buildIndex } from "./home.js";
 import { mixEntries } from "./mixes.js";
 import { LazyOverlays, loadOverlays, loadPageHost, overlaysReady, pageReady } from "./pageLoader.jsx";
@@ -58,9 +58,11 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   const savedById = useSaved((s) => s.byId);
   const hist = useHistory();
 
-  const entries = useMemo(() => normalizeLibrary(files), [files]);
+  /* Archivos y guardadas se juntan en UN useMemo: ni una segunda pasada por
+     fila, ni dos mapas que se puedan desincronizar. */
+  const merged = useMemo(() => mergeLibrary(files, savedById), [files, savedById]);
+  const { entries, byKey } = merged;
   const index = useMemo(() => buildIndex(entries), [entries]);
-  const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
   const plays = useMemo(
     () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
     [hist.tracks]

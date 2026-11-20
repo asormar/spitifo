@@ -8,7 +8,8 @@ import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { Thead } from "./rows.jsx";
-import { AllSongs, Cards } from "./cards.jsx";
+import { AllSongs, Cards, DownloadChips } from "./cards.jsx";
+import { emptyFilterNote, filterByDownload } from "./library.js";
 import {
   SORTS,
   TOP_ALL,
@@ -65,6 +66,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   const backRef = useRef(null);
   const newRef = useRef(null);
   const [naming, setNaming] = useState(Boolean(view.naming));
+  const [download, setDownload] = useState("all");
   useFocusBack(backRef);
 
   /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
@@ -92,14 +94,16 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
         return r.lists;
     }
   }, [what, index, byKey, lists, r, what === "top" ? hist : null]);
-  const topEntries = useMemo(() => (what === "top" ? items.map((t) => t.entry) : null), [what, items]);
-
   /* Artistas, albumes o listas: una tarjeta cada uno. */
   const kind = what.replace("r-", "").slice(0, -1);
   const cards = useMemo(() => items.map((item) => ({ kind, item })), [items, kind]);
 
   const isTop = what === "top";
   const isSongs = isTop || what === "recent" || what === "r-songs";
+  const shown = useMemo(
+    () => (isSongs ? filterByDownload(items, download) : items),
+    [isSongs, items, download]
+  );
   /* Origen de la cola: la etiqueta de la lista o lo que se busco. */
   const from = isTop
     ? "library:Lo que más escuchas"
@@ -108,14 +112,14 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
       : `search:${view.q ?? ""}`;
   const row = (i, enter) =>
     isTop
-      ? ctx.song(items[i].entry, topEntries, {
+      ? ctx.song(shown[i].entry, shown.map((t) => t.entry), {
           enter,
           rank: i + 1,
           from,
           table: pc,
-          sub: `${items[i].entry.artist} · ${plural(items[i].plays, "reproducción", "reproducciones")}`,
+          sub: `${shown[i].entry.artist} · ${plural(shown[i].plays, "reproducción", "reproducciones")}`,
         })
-      : ctx.song(items[i], items, { enter, from, table: pc && "lib" });
+      : ctx.song(shown[i], shown, { enter, from, table: pc && "lib" });
 
   const isLists = what === "lists";
   const endNaming = () => {
@@ -128,7 +132,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
       <div className="phead">
         <Back bref={backRef} onClick={ctx.back} />
         <h1 className="phead__h">{TITLES[what]}</h1>
-        <span className="count">{items.length}</span>
+        <span className="count">{isSongs ? shown.length : items.length}</span>
       </div>
 
       {isLists && (
@@ -153,17 +157,20 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
         </div>
       )}
 
+      {isSongs && <DownloadChips filter={download} onChange={setDownload} />}
       {isLists && !listsReady ? (
         <p className="lnote">Cargando listas…</p>
       ) : !items.length ? (
         <p className="lnote">{isLists ? "Todavía no tienes listas." : "No hay nada que mostrar."}</p>
+      ) : !shown.length ? (
+        <p className="lnote">{emptyFilterNote(download)}</p>
       ) : isSongs ? (
         <>
           {pc && <Thead lib={!isTop} sticky />}
           <VirtualList
             active={active}
-            count={items.length}
-            getKey={(i) => (isTop ? items[i].entry.key : items[i].key)}
+            count={shown.length}
+            getKey={(i) => (isTop ? shown[i].entry.key : shown[i].key)}
             renderRow={row}
           />
         </>
@@ -208,12 +215,14 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
   const backRef = useRef(null);
   const listRef = useRef(null);
   const [sort, setSort] = useState(view.sort ?? "recent");
+  const [download, setDownload] = useState("all");
   useFocusBack(backRef);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
-  useReveal(rows, active, listRef);
+  const shown = useMemo(() => filterByDownload(rows, download), [rows, download]);
+  useReveal(shown, active, listRef);
 
-  const play = () => ctx.playGroup(rows, false, "library:");
-  const shuffle = () => ctx.playGroup(rows, true, "library:");
+  const play = () => ctx.playGroup(shown, false, "library:");
+  const shuffle = () => ctx.playGroup(shown, true, "library:");
 
   return (
     <div className="lpage">
@@ -222,7 +231,7 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
           <div>
             <h1 className="phead__h">Todas tus canciones</h1>
             <p className="dmeta">
-              {plural(rows.length, "tema", "temas")} · En {storage}
+              {plural(shown.length, "tema", "temas")} · En {storage}
               {check && ` · ${check}`}
             </p>
           </div>
@@ -247,7 +256,7 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
             <Back bref={backRef} onClick={ctx.back} />
             <h1 className="sr-only">Todas tus canciones</h1>
           </div>
-          <AllSongs n={rows.length} storage={storage} check={check} onPlay={play} onShuffle={shuffle} />
+          <AllSongs n={shown.length} storage={storage} check={check} onPlay={play} onShuffle={shuffle} />
         </>
       )}
       <div className="chips chips--sort" role="group" aria-label="Ordenar por">
@@ -266,15 +275,22 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
           </button>
         ))}
       </div>
-      {pc && <Thead lib sticky />}
-      <VirtualList
-        key={sort}
-        ref={listRef}
-        active={active}
-        count={rows.length}
-        getKey={(i) => rows[i].key}
-        renderRow={(i, enter) => ctx.song(rows[i], rows, { enter, from: "library:", table: pc && "lib" })}
-      />
+      <DownloadChips filter={download} onChange={setDownload} />
+      {shown.length ? (
+        <>
+          {pc && <Thead lib sticky />}
+          <VirtualList
+            key={`${sort}:${download}`}
+            ref={listRef}
+            active={active}
+            count={shown.length}
+            getKey={(i) => shown[i].key}
+            renderRow={(i, enter) => ctx.song(shown[i], shown, { enter, from: "library:", table: pc && "lib" })}
+          />
+        </>
+      ) : (
+        <p className="lnote">{emptyFilterNote(download)}</p>
+      )}
     </div>
   );
 }
