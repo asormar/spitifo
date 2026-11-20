@@ -144,6 +144,11 @@
   background: color-mix(in srgb, var(--acc) 6%, transparent);
 }
 
+/* Guardada sin archivo sin red: solo se atenua, sigue siendo pulsable. */
+.srow.is-locked {
+  opacity: .55;
+}
+
 /* Solo las filas de la primera pintura de una lista: las que monta el scroll
    no llevan la clase. */
 .srow.is-in {

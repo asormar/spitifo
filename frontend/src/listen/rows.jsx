@@ -7,9 +7,12 @@ import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
+import { useOnline } from "../shared/online.js";
 import { Icon } from "./icons.jsx";
 import { checkOf, rowPill } from "./fileCheck.js";
 import { rowArt } from "./library.js";
+import { rowState } from "./offline.js";
+import { useShow } from "./Notice.jsx";
 
 /* ---------------------------------------------------------------------------
    FILAS DE ESCUCHAR
@@ -70,6 +73,9 @@ export const SongRow = memo(function SongRow({
   from,
 }) {
   const { key, title, artist, album } = entry;
+  const online = useOnline();
+  const show = useShow();
+  const state = rowState(entry, online);
   /* Guardada sin archivo: la clave es el id. Guardada con archivo: la fila
      sigue teniendo la clave del archivo, pero suena con el id. Las dos
      coinciden en `sid`. */
@@ -113,6 +119,7 @@ export const SongRow = memo(function SongRow({
         drag && "qrow",
         isCurrent && "is-current",
         drag?.dragging && "is-drag",
+        state.blocked && "is-locked",
         enter != null && "is-in"
       )}
       style={enter != null || drag?.transform ? { "--i": enter, transform: drag?.transform } : undefined}
@@ -134,11 +141,19 @@ export const SongRow = memo(function SongRow({
         type="button"
         className="srow__main"
         aria-label={
-          video
-            ? `Abrir el vídeo ${title}`
-            : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}${entry.downloaded ? ", descargada" : ""}`
+          state.blocked ? state.label
+            : video
+              ? `Abrir el vídeo ${title}`
+              : `${playing ? "Pausar" : "Reproducir"} ${title}, ${artist}${entry.downloaded ? ", descargada" : ""}`
         }
-        onClick={(e) => (isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list, from))}
+        aria-disabled={state.blocked ? "true" : undefined}
+        onClick={(e) => {
+          if (state.blocked) {
+            show?.(state.notice);
+            return;
+          }
+          isCurrent ? engine.toggle() : onPlay(entry, e.currentTarget, list, from);
+        }}
       >
         {!table && (rankCell || numCell)}
         {num == null && (
