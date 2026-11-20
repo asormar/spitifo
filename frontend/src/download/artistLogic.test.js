@@ -78,6 +78,23 @@ describe("Mejor resultado", () => {
     expect(bestArtwork({ id: 42 }, albums)).toBe(null);
   });
 
+  it("sin disco, la portada sale de una cancion del artista (iTunes o YouTube)", () => {
+    const songs = [
+      { artist: "Otro", artwork_url: "otro.jpg" },
+      { artist: "Soda Stereo", artwork_url: "yt.jpg" },
+      { artist: "x", artwork_url: "itunes.jpg", extra: { artist_id: 7 } },
+    ];
+    expect(bestArtwork({ id: 7, name: "Nadie" }, [], songs)).toBe("itunes.jpg");
+    expect(bestArtwork({ id: 8, name: "soda stereo" }, [], songs)).toBe("yt.jpg");
+    expect(bestArtwork({ id: 9, name: "Nadie" }, [], songs)).toBe(null);
+  });
+
+  it("un disco del artista gana a la imagen de una cancion", () => {
+    const albums = [{ artist_id: 7, year: "2001", artwork_url: "disco.jpg" }];
+    const songs = [{ artist: "A", artwork_url: "cancion.jpg", extra: { artist_id: 7 } }];
+    expect(bestArtwork({ id: 7, name: "A" }, albums, songs)).toBe("disco.jpg");
+  });
+
   it("el enlace de Escuchar exige nombre exacto, sin articulo", () => {
     const results = [{ id: 1, name: "The Doors" }, { id: 2, name: "Doors" }];
     expect(exactArtist("the doors", results)).toBe(results[0]);

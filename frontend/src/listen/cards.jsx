@@ -120,7 +120,7 @@ export const ArtistCard = ({ g, ctx, sub }) => (
     round
     label={`Abrir artista ${g.name}`}
     onClick={() => ctx.open({ type: "artist", id: g.id })}
-    cover={<Cover tone={toneOf(g.name)} label={g.name} round />}
+    cover={<Cover tone={toneOf(g.name)} label={g.name} src={coverOf(g.entries)} round />}
     title={g.name}
     sub={sub}
   />

@@ -62,16 +62,21 @@ export function artistIdFromEntries(entries, name) {
 }
 
 /* La portada redonda del artista sale del disco mas nuevo que encontremos
-   entre los resultados de albumes del mismo artista. Sin coincidencia, el
-   componente cae a la inicial. */
-export function bestArtwork(artist, albums = []) {
+   entre los resultados de albumes del mismo artista. Sin disco, de la primera
+   cancion suya con imagen (la de iTunes o la miniatura de YouTube). Sin nada,
+   el componente cae a la inicial. */
+export function bestArtwork(artist, albums = [], songs = []) {
   if (!artist?.id) return null;
-  const mine = (Array.isArray(albums) ? albums : []).filter(
-    (a) => a?.artwork_url && a.artist_id != null && String(a.artist_id) === String(artist.id)
+  const same = (x) => x?.artist_id != null && String(x.artist_id) === String(artist.id);
+  const mine = (Array.isArray(albums) ? albums : []).filter((a) => a?.artwork_url && same(a));
+  if (mine.length) {
+    mine.sort((a, b) => Number(b.year) - Number(a.year));
+    return mine[0].artwork_url;
+  }
+  const song = (Array.isArray(songs) ? songs : []).find(
+    (t) => t?.artwork_url && (same(t.extra) || isArtistNameMatch(artist.name, t.artist))
   );
-  if (!mine.length) return null;
-  mine.sort((a, b) => Number(b.year) - Number(a.year));
-  return mine[0].artwork_url;
+  return song ? song.artwork_url : null;
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
