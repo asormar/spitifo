@@ -144,7 +144,7 @@ export default function SearchScreen({
      La portada redonda sale del disco mas nuevo que haya entre los resultados
      de albumes; sin el, la tarjeta cae a la inicial. */
   const best = bestMatch(artistQuery, artists);
-  const bestArtist = best ? { ...best, artwork_url: bestArtwork(best, albums) } : null;
+  const bestArtist = best ? { ...best, artwork_url: bestArtwork(best, albums, results) } : null;
   const onOpenArtist = useCallback(
     (artist, anchor) => {
       loadArtistChunk();

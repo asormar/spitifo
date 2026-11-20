@@ -59,7 +59,7 @@ function Best({ best, all, q, ctx }) {
         <Cover
           tone={tone}
           label={song ? item.artist : name}
-          src={artist ? null : coverOf(entries)}
+          src={coverOf(entries)}
           round={artist}
           size={70}
           className="best__cv"
