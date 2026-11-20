@@ -7,7 +7,7 @@ import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
 import PageHost from "./pageLoader.jsx";
 import {
-  FALLBACK_FOLDER,
+  folderLabel,
   shouldShowFirstRun,
   useFirstRunFlag,
 } from "../onboarding/firstRun.js";
@@ -34,7 +34,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
   /* Con la biblioteca aun cargando no se muestra: evitaria un parpadeo si
      resulta que no esta vacia. */
   const showFirstRun = ready && shouldShowFirstRun(model.entries.length, flag);
-  const folder = storagePath || FALLBACK_FOLDER;
+  const folder = folderLabel(storagePath);
 
   if (page && ready) return <PageHost view={page} tab="home" active={active} />;
 

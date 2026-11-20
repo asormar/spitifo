@@ -47,7 +47,9 @@ export default function PreviewButton({ t, text = false }) {
       title={text ? undefined : "Escuchar 30 s"}
       onClick={toggle}
     >
-      <Ico n={playing ? "pause" : "hp"} size={20} />
+      {/* En la fila no hay sitio para la etiqueta: «30 s» dice lo que dura, que
+          es lo que lo separa de escuchar la cancion entera. */}
+      {playing ? <Ico n="pause" size={20} /> : text ? <Ico n="hp" size={20} /> : <span className="pre__30">30 s</span>}
       {text && "Escuchar 30 s"}
     </button>
   );
