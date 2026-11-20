@@ -100,7 +100,7 @@ export function deferredDelete({ keys, name, notice, show, hideKeys, restoreFile
         /* Android puede aceptar el borrado de un archivo de otra app sin
            hacerlo. Manda lo que liste la biblioteca al recargar: lo que siga
            ahi no se borro, diga lo que diga la respuesta. */
-        const files = malas.size < keys.length ? await refreshLibrary() : null;
+        const files = malas.size < keys.length ? await refreshLibrary({ release: keys }) : null;
         if (files) files.forEach((f) => keys.includes(f.key) && malas.add(f.key));
         /* La lista recargada ya trae las que fallaron; sin recarga se reponen. */
         if (malas.size && !files) restoreFiles(removed.filter((f) => malas.has(f.key)));

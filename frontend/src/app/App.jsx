@@ -35,6 +35,7 @@ import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
 import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
 import { swapNowPlaying } from "./screenSwap.js";
+import { createPendingDeletes } from "../listen/pending.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -255,6 +256,8 @@ export default function App() {
   /* Espejo sincronico de `lib`: el borrado diferido necesita devolver EXACTAMENTE
      las filas que saco, aunque el deshacer llegue antes del siguiente render. */
   const libRef = useRef(lib);
+  const pendingDeletes = useRef(null);
+  if (pendingDeletes.current === null) pendingDeletes.current = createPendingDeletes();
   libRef.current = lib;
 
   const pc = usePc();
@@ -333,7 +336,10 @@ export default function App() {
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
-  const loadLib = useCallback(async () => {
+  const loadLib = useCallback(async (opts) => {
+    /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
+       pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
+    if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
     try {
       const r = await fetch(`${API}/library`);
       if (!r.ok) {
@@ -345,11 +351,11 @@ export default function App() {
         return;
       }
       const d = await r.json();
-      setLib(d.files || []);
+      setLib(pendingDeletes.current.filter(d.files || []));
       writeLibCache(d.files || []);
       setLibErr(false);
       setLibErrCode(null);
-      /* El borrado mira esta lista para saber que se fue de verdad. */
+      /* El borrado mira esta lista, sin filtrar, para saber que se fue de verdad. */
       return d.files || [];
     } catch (e) {
       setLibErr(true);
@@ -368,12 +374,15 @@ export default function App() {
     const current = libRef.current || [];
     const removed = current.filter((f) => gone.has(f.key));
     const next = current.filter((f) => !gone.has(f.key));
+    /* Solo lo que estaba a la vista: es lo que restoreFiles va a soltar. */
+    pendingDeletes.current.hide(removed.map((f) => f.key));
     libRef.current = next;
     setLib(next);
     return removed;
   }, []);
   const restoreFiles = useCallback((files) => {
     if (!files?.length) return;
+    pendingDeletes.current.release(files.map((f) => f.key));
     const current = libRef.current || [];
     const have = new Set(current.map((f) => f.key));
     const next = [...current, ...files.filter((f) => !have.has(f.key))];
