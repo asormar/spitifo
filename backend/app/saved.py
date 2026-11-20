@@ -7,7 +7,8 @@ merge por id donde gana el `updated_at` mas nuevo y un borrado deja un tombstone
 para que otro dispositivo no resucite la cancion con una copia vieja.
 
 La identidad es estable y NO es una URL: las URLs de streaming vencen. `id` es
-`yt:<videoId>` (YouTube) o `ia:<identifier>` (Internet Archive).
+`yt:<videoId>` (YouTube) o `ia:<identifier>/<archivo>` (Internet Archive: un
+item puede traer un disco entero, asi que el archivo es parte de la identidad).
 
 Modulo NEUTRAL y sin I/O: no importa starlette ni uvicorn, y no toca el disco ni
 la nube. Los adapters de `storage` son quienes persisten el `SavedBook`.
@@ -36,11 +37,20 @@ MAX_ALBUM_LEN = 300
 MAX_URL_LEN = 2000
 MAX_SONGS = 500
 
-#: Un videoId de YouTube son 11 caracteres ASCII seguro; un identifier de
-#: Internet Archive admite puntos, guiones y guiones bajos. Ninguno admite `:`,
-#: `/` ni `?`: una URL de streaming nunca puede ser un id.
+#: Un videoId de YouTube son 11 caracteres ASCII seguro. En Internet Archive va
+#: `<identifier>/<archivo>`: el identifier admite puntos, guiones y guiones
+#: bajos; el archivo (que puede estar en una subcarpeta del item) no admite `:`,
+#: `?`, `#`, `\` ni caracteres de control. Asi una URL de streaming nunca puede
+#: ser un id.
 _YT_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
-_IA_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+_IA_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}/[^:?#\\\x00-\x1f]{1,500}$")
+
+
+def _ia_ok(raw: str) -> bool:
+    """`<identifier>/<archivo>` sin segmentos vacios, `.` ni `..`."""
+    if not _IA_RE.match(raw):
+        return False
+    return all(part not in ("", ".", "..") for part in raw.split("/")[1:])
 
 #: Claves permitidas en `itunes`, todas enteras.
 _ITUNES_KEYS = frozenset(
@@ -78,8 +88,8 @@ def _split_song_id(song_id_value: str) -> tuple[str, str]:
     for source, prefix in _PREFIXES.items():
         if song_id_value.startswith(prefix):
             raw = song_id_value[len(prefix):]
-            pattern = _YT_RE if source == SOURCE_YOUTUBE else _IA_RE
-            if not pattern.match(raw):
+            ok = _YT_RE.match(raw) if source == SOURCE_YOUTUBE else _ia_ok(raw)
+            if not ok:
                 raise ValueError("id de cancion invalido")
             return source, raw
     raise ValueError("id de cancion invalido")

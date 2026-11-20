@@ -1687,8 +1687,11 @@ async def saved_save(request: Request):
         built: list[SavedSong] = []
         for rec in records:
             old = book.songs.get(rec["id"])
+            # Volver a guardar algo quitado cuenta como nuevo: vuelve arriba de
+            # "Añadido hace poco".
+            kept = old is not None and not old.deleted
             built.append(SavedSong(
-                **rec, added_at=old.added_at if old is not None else now,
+                **rec, added_at=old.added_at if kept else now,
                 updated_at=_next_saved_updated_at(old, now)))
 
         def change(b: SavedBook) -> None:

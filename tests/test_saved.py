@@ -25,7 +25,7 @@ from backend.app.storage import set_storage
 from backend.app.storage.local import LocalStorage
 
 YT = "yt:dQw4w9WgXcQ"
-IA = "ia:olivia-1969"
+IA = "ia:olivia-1969/01 Olivia.mp3"
 
 
 def _song(sid=YT, title="Tema", artist="Artista", *, album=None,
@@ -41,7 +41,7 @@ def _song(sid=YT, title="Tema", artist="Artista", *, album=None,
 
 
 def _ia_song(title="Archivo", **kw) -> SavedSong:
-    return _song(IA, title, source="archive", source_id="olivia-1969", **kw)
+    return _song(IA, title, source="archive", source_id="olivia-1969/01 Olivia.mp3", **kw)
 
 
 def _record(**kw):
@@ -55,13 +55,18 @@ def _record(**kw):
 # --------------------------------------------------------------------- ids
 def test_song_id_y_validate():
     assert song_id("youtube", "dQw4w9WgXcQ") == YT
-    assert song_id("archive", "olivia-1969") == IA
+    assert song_id("archive", "olivia-1969/01 Olivia.mp3") == IA
+    assert validate_song_id("ia:concierto_77/disco 2/03 Tema.flac")
     assert validate_song_id(YT) == YT
     assert validate_song_id(IA) == IA
 
 
 @pytest.mark.parametrize("sid", ["", "yt:short", "yt:1234567890!",
-                                 "ia:", "ia:" + "a" * 101,
+                                 "ia:", "ia:" + "a" * 101 + "/x.mp3",
+                                 "ia:olivia-1969", "ia:olivia-1969/",
+                                 "ia:olivia-1969/../x.mp3",
+                                 "ia:olivia-1969/a?b.mp3",
+                                 "ia:https://archive.org/x.mp3",
                                  "x:dQw4w9WgXcQ", "dQw4w9WgXcQ",
                                  "yt:https://stream.example/x"])
 def test_validate_song_id_rechaza_ids_invalidos(sid):
@@ -89,7 +94,7 @@ def test_el_id_nunca_trae_una_url_que_vence():
 def test_payload_valido_devuelve_registros_limpios():
     recs = validate_saved_payload({"songs": [
         _record(duration=210, itunes={"track_id": 7}, file_key="A/t.mp3"),
-        _record(id=IA, source="archive", source_id="olivia-1969"),
+        _record(id=IA, source="archive", source_id="olivia-1969/01 Olivia.mp3"),
     ]})
     assert recs[0]["duration"] == 210.0
     assert recs[0]["itunes"] == {"track_id": 7}
@@ -197,7 +202,7 @@ def test_remove_de_un_id_desconocido_igual_deja_tombstone_valido():
     book.remove(IA, now=5.0)
     tomb = book.songs[IA]
     assert (tomb.deleted, tomb.source, tomb.source_id) == (
-        True, "archive", "olivia-1969")
+        True, "archive", "olivia-1969/01 Olivia.mp3")
     assert SavedBook.from_bytes(book.to_bytes()).songs[IA] == tomb
 
 
@@ -281,6 +286,17 @@ def test_remove_y_reput_lo_reviven(api):
     revived = c.put("/api/saved", json={"songs": [_record(title="Otra")]}).json()["songs"][0]
     assert revived["title"] == "Otra"
     assert c.get("/api/saved").json()["songs"] == [revived]
+
+
+def test_volver_a_guardar_algo_quitado_cuenta_como_nuevo(api, monkeypatch):
+    """Vuelve arriba de "Añadido hace poco": no conserva la fecha vieja."""
+    c, _root = api
+    first = c.put("/api/saved", json={"songs": [_record()]}).json()["songs"][0]
+    c.post("/api/saved/remove", json={"ids": [YT]})
+    import backend.app.main as main_mod
+    monkeypatch.setattr(main_mod.time, "time", lambda: first["added_at"] + 100)
+    again = c.put("/api/saved", json={"songs": [_record()]}).json()["songs"][0]
+    assert again["added_at"] == first["added_at"] + 100
 
 
 @pytest.mark.parametrize("cuerpo", [

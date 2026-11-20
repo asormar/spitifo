@@ -20,11 +20,14 @@ no `file_key` is still in the library and plays by streaming.
 expire:
 
 - YouTube: `yt:<videoId>`, where the video id matches `[A-Za-z0-9_-]{11}`.
-- Internet Archive: `ia:<identifier>`, where the identifier matches
-  `[A-Za-z0-9._-]{1,100}`.
+- Internet Archive: `ia:<identifier>/<file>`. The identifier matches
+  `[A-Za-z0-9._-]{1,100}`. The file is part of the identity because one item
+  can hold a whole album. It may sit in a subfolder of the item, and it may not
+  contain `:`, `?`, `#`, `\`, control characters, or empty, `.` or `..`
+  segments.
 
 `id`, `source` and `source_id` must agree — the id is composed from the other
-two — and the charset above rules out URLs (`://`, `/`, `?`) by construction.
+two — and the rules above rule out URLs (`:`, `?`) by construction.
 `validate_song_id` is strict and shared by the model and the API.
 
 **Storage files**, following ADR 0002's per-device model exactly:
