@@ -166,19 +166,25 @@ def score_pair(it_title: str, it_artist: str, it_dur: float,
 
 
 async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
-                             ytdlp_source, limit: int = 40) -> list[dict]:
+                             ytdlp_source, limit: int = 40,
+                             videos=None) -> list[dict]:
     """Busca los videos de YouTube UNA vez y devuelve idx de {itunes_id: video}.
 
     Devuelve un indice, no Tracks: el llamador los arma, asi puede mantener
     el resto del pipeline (normalizacion, orden) igual para todas las fuentes.
     `limit` baja el numero de candidatos en busquedas puntuales (un album
-    completo necesita 40; una pista suelta, menos).
+    completo necesita 40; una pista suelta, menos). `videos` es la busqueda en
+    YouTube ya lanzada (una tarea): el modo Musica la arranca a la vez que la
+    de iTunes, porque solo depende de la consulta.
     """
     if not ytdlp_source or not ytdlp_source.available() or not itunes_tracks:
         return {}
     loop = asyncio.get_running_loop()
     try:
-        videos = await ytdlp_source.search_candidates(query, limit=limit)
+        if videos is None:
+            videos = await ytdlp_source.search_candidates(query, limit=limit)
+        else:
+            videos = await videos
     except Exception as e:
         log.warning("matcher: ytdlp search fallo: %s", e)
         return {}
