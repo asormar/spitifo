@@ -23,10 +23,16 @@ export const NoticeProvider = NoticeContext.Provider;
 export const useShow = () => useContext(NoticeContext);
 
 /* El aviso se retira solo; la salida dura --t-quick (180 ms). Con boton se
-   deja mas tiempo: hay que poder leerlo y llegar a el. */
+   deja mas tiempo: hay que poder leerlo y llegar a el. Un borrado (`commit`)
+   tiene mas aun: en el telefono no hay papelera, y TalkBack tarda unos 3 s en
+   leer "X borrada. Deshacer, boton" antes de que se pueda reaccionar. */
 const NOTICE_MS = 1600;
 const ACTION_MS = 5000;
+const COMMIT_MS = 8000;
 const NOTICE_LEAVE_MS = 180;
+
+export const noticeWait = (action) =>
+  action?.commit ? COMMIT_MS : action ? ACTION_MS : NOTICE_MS;
 
 /* Devuelve [nodo, show]. `show(text, { label, run, commit })`; la accion es
    opcional. `commit` (si la hay) corre al terminar la ventana SIN deshacer: es
@@ -42,7 +48,7 @@ export function useNotice() {
     timers.current.forEach(clearTimeout);
     deferred.current?.flush();
     deferred.current = null;
-    const wait = action ? ACTION_MS : NOTICE_MS;
+    const wait = noticeWait(action);
     setNotice({ text, action, out: false, id: Date.now() });
     timers.current = [
       setTimeout(() => setNotice((n) => n && { ...n, out: true }), wait),
