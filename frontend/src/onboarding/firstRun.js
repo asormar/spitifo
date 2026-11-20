@@ -14,6 +14,26 @@ import { useSyncExternalStore } from "react";
 export const FLAG_KEY = "spitifo-first-run";
 export const FALLBACK_FOLDER = "la carpeta que ves en Ajustes";
 
+/* Las carpetas del sistema con su nombre de pantalla: es lo que se ve en el
+   gestor de archivos del telefono o en el Explorador de Windows. */
+const SYSTEM_NAMES = { Music: "Música", Download: "Descargas", Downloads: "Descargas", Documents: "Documentos" };
+
+/* La ruta de la biblioteca como la reconoce cualquiera: «la carpeta Música ›
+   Spitifo» en vez de /storage/emulated/0/Music/Spitifo. Se quita la parte que
+   es del sistema (el almacenamiento del telefono o la carpeta del usuario) y
+   quedan como mucho las tres ultimas carpetas. La ruta entera vive en Ajustes. */
+export function folderLabel(path) {
+  if (typeof path !== "string" || !path.trim()) return FALLBACK_FOLDER;
+  const full = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  const rest = full
+    .replace(/^\/storage\/emulated\/\d+\//, "")
+    .replace(/^[A-Za-z]:\/Users\/[^/]+\//i, "")
+    .replace(/^\/(?:home|Users)\/[^/]+\//, "");
+  const parts = rest.split("/").filter(Boolean).slice(rest === full ? -2 : -3);
+  if (!parts.length) return FALLBACK_FOLDER;
+  return `la carpeta ${parts.map((p) => SYSTEM_NAMES[p] || p).join(" › ")}`;
+}
+
 let flag = null;
 try {
   flag = localStorage.getItem(FLAG_KEY);

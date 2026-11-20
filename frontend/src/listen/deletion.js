@@ -29,12 +29,14 @@ export function albumDeleteCopy({ name, storage, count, sizeMb }) {
   const size = Number.isFinite(sizeMb) ? fmtSize(sizeMb) : null;
   return {
     title: `¿Borrar «${name}» ${where}?`,
-    body: "Las canciones también salen de las listas donde estén. Puedes descargarlas otra vez desde Buscar.",
+    body: count === 1
+      ? "La canción también sale de las listas donde esté. Puedes descargarla otra vez desde Buscar."
+      : "Las canciones también salen de las listas donde estén. Puedes descargarlas otra vez desde Buscar.",
     facts: [
       { label: "Canciones", value: String(count) },
       ...(size === null ? [] : [{ label: "Espacio que se libera", value: size }]),
     ],
-    confirm: `Borrar ${count} canciones`,
+    confirm: count === 1 ? "Borrar 1 canción" : `Borrar ${count} canciones`,
   };
 }
 

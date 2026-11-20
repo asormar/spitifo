@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldShowFirstRun } from "./firstRun.js";
+import { FALLBACK_FOLDER, folderLabel, shouldShowFirstRun } from "./firstRun.js";
 
 /* La decision de si se pinta la tarjeta es pura: no depende de React, del
    almacenamiento ni del reloj. El valor guardado es null (sin decidir),
@@ -20,5 +20,25 @@ describe("shouldShowFirstRun", () => {
   it("pedida desde Ajustes se muestra siempre, aunque la biblioteca tenga canciones", () => {
     expect(shouldShowFirstRun(0, "show")).toBe(true);
     expect(shouldShowFirstRun(12, "show")).toBe(true);
+  });
+});
+
+describe("folderLabel", () => {
+  it("names the phone folder the way the file manager shows it", () => {
+    expect(folderLabel("/storage/emulated/0/Music/Spitifo")).toBe("la carpeta Música › Spitifo");
+  });
+
+  it("drops the Windows user folder", () => {
+    expect(folderLabel(String.raw`C:\Users\Ana\Music\Spitifo`)).toBe("la carpeta Música › Spitifo");
+    expect(folderLabel(String.raw`C:\Users\Ana\Music\Spitifo\ `.trim())).toBe("la carpeta Música › Spitifo");
+  });
+
+  it("keeps the last two folders of a path outside the user folder", () => {
+    expect(folderLabel(String.raw`D:\Musica\Spitifo`)).toBe("la carpeta Musica › Spitifo");
+  });
+
+  it("falls back when there is no path", () => {
+    expect(folderLabel("")).toBe(FALLBACK_FOLDER);
+    expect(folderLabel(null)).toBe(FALLBACK_FOLDER);
   });
 });

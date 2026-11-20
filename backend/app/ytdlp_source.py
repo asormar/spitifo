@@ -19,6 +19,7 @@ import glob
 import hashlib
 import logging
 import os
+import queue
 import re
 import shutil
 import threading
@@ -914,6 +915,55 @@ async def warmed_info(url: str, wait: float = WARM_WAIT_S) -> dict | None:
     return _warm_take(url)
 
 
+# ------------------------------------------------- instancias para buscar
+#: YoutubeDL listos para la busqueda del matcher (modo Musica). Construir uno
+#: por busqueda costaba ~0,5 s: la instancia, los certificados y una conexion
+#: nueva con youtube.com. YoutubeDL no es thread-safe, asi que cada busqueda
+#: se lleva uno del pool y lo devuelve al terminar; uno que fallo se descarta.
+_SEARCH_POOL: queue.Queue = queue.Queue(maxsize=3)
+
+
+def _close_quietly(ydl) -> None:
+    try:
+        ydl.close()
+    except Exception:
+        pass
+
+
+def _take_search_ydl():
+    try:
+        return _SEARCH_POOL.get_nowait()
+    except queue.Empty:
+        import yt_dlp
+        return yt_dlp.YoutubeDL(youtube_opts({
+            "quiet": True, "no_warnings": True, "skip_download": True,
+            "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
+        }))
+
+
+def _give_back_search_ydl(ydl) -> None:
+    try:
+        _SEARCH_POOL.put_nowait(ydl)
+    except queue.Full:
+        _close_quietly(ydl)
+
+
+def prewarm_search() -> None:
+    """Deja una instancia lista con la conexion a youtube.com abierta.
+
+    La primera busqueda en modo Musica pagaba ademas importar yt-dlp (~1 s en
+    el PC, mas en el telefono). Se llama en un hilo unos segundos despues de
+    arrancar; un fallo solo se registra y la busqueda construye la suya.
+    """
+    from yt_dlp.networking import Request
+    ydl = _take_search_ydl()
+    try:
+        ydl.urlopen(Request("https://www.youtube.com/generate_204")).read()
+    except Exception as e:
+        log.info("ytdlp: no se pudo preparar la busqueda: %s", e)
+    _give_back_search_ydl(ydl)
+
+
 class YtDlpSource(Source):
     name = "ytdlp"
 
@@ -923,16 +973,17 @@ class YtDlpSource(Source):
     # ---------------------------------------------------------------- search
     async def search_candidates(self, q: str, limit: int = 20) -> list[dict]:
         """Busca cruda en YouTube, sin filtrar por 'musical'. La usa el matcher."""
-        import yt_dlp
-        opts = youtube_opts({
-            "quiet": True, "no_warnings": True, "skip_download": True,
-            "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
-        })
         loop = asyncio.get_running_loop()
 
         def _run():
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+            ydl = _take_search_ydl()
+            try:
+                data = ydl.extract_info(f"ytsearch{limit}:{q}", download=False)
+            except Exception:
+                _close_quietly(ydl)
+                raise
+            _give_back_search_ydl(ydl)
+            return data
 
         data = await loop.run_in_executor(None, _run)
         return [e for e in (data or {}).get("entries", []) or [] if e]

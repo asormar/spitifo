@@ -102,8 +102,8 @@ body.has-mini .progstack {
   height: 19px;
 }
 
-.prog.is-done .prog__ico svg,
-.prog.is-failed .prog__ico svg {
+/* El rebote celebra: solo para lo que salio bien. Un fallo aparece sin el. */
+.prog.is-done .prog__ico svg {
   --pop: 0.5;
   animation: pop var(--t-move) var(--ease-spring) both;
 }

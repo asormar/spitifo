@@ -60,7 +60,7 @@ export default function LibraryGate({ ready, error, errorCode, onRetry, folder, 
       <p className="lnote">
         Todavía no has descargado nada.
         <br />
-        <span style={{ overflowWrap: "anywhere" }}>Tus descargas se guardan en {folder}.</span>
+        Tus descargas se guardan en {folder}.
         <br />
         <button type="button" className="vf" onClick={() => nav.goTab("search")}>
           Ir a Buscar
