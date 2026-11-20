@@ -529,6 +529,9 @@ class InternetArchiveSource(Source):
                 sim = similarity(track.title, real_title)
             scored.append((sim, best_file, url, info, base))
 
+        # Un archivo que no se dejo leer (403: item restringido) no se elige si
+        # hay otro del item que si.
+        scored = [c for c in scored if not c[3].get("_error")] or scored
         scored.sort(key=lambda t: -t[0])
         sim, best_file, url, info, base = scored[0]
 
@@ -569,6 +572,8 @@ class InternetArchiveSource(Source):
             # sin tags no hay veredicto, pero la UI igual tiene que mostrar uno
             track.extra["match"] = "unknown"
             track.extra["match_label"] = "no se pudo verificar (archive.org no dejó leer el archivo)"
+            # La UI no intenta escucharlo: el reproductor fallaria sin motivo.
+            track.extra["unreadable"] = True
         track.album = track.album or info.get("album") or track.title
         return track
 

@@ -77,6 +77,21 @@ export const trackSlot = (disc, track) => (track == null ? null : `${disc ?? 1}-
 
 /* Los huecos de un album que ya estan en la biblioteca, por su id de iTunes.
    Con ellos la ficha no vuelve a bajar lo que ya tienes. */
+/* Lo mismo, pero con la entrada de la biblioteca de cada hueco: «Escuchar»
+   toca esas desde el archivo propio (al instante, sin datos) y el resto en
+   streaming. */
+export function ownedEntries(entries, albumId) {
+  const id = albumId == null ? "" : String(albumId);
+  const out = new Map();
+  if (!id) return out;
+  for (const e of entries || []) {
+    if (e?.album_id == null || String(e.album_id) !== id) continue;
+    const slot = trackSlot(e.disc_no, e.track_no);
+    if (slot && !out.has(slot)) out.set(slot, e);
+  }
+  return out;
+}
+
 export function ownedSlots(entries, albumId) {
   const id = albumId == null ? "" : String(albumId);
   const out = new Set();

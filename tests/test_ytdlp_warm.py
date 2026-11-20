@@ -171,3 +171,43 @@ def test_warm_acepta_un_video_y_lo_pasa_canonico(cliente, monkeypatch):
     if r.status_code == 202:
         assert r.json() == {"warming": True}
         assert vistos == [URL]
+
+
+def test_sin_adelantar_un_audio_usa_la_extraccion_rapida(yt, tmp_path, storage_temporal, monkeypatch):
+    from backend.app import stream
+    from backend.app.ytdlp_source import YtDlpSource
+    pedidas = []
+
+    async def rapida(url):
+        pedidas.append(url)
+        return {"id": "abcdefghijk", "title": "Yesterday", "formats": [{"format_id": "251"}]}
+
+    monkeypatch.setattr(stream, "fast_raw", rapida)
+    storage_temporal(tmp_path / "lib")
+    res, job = _descargar(YtDlpSource(), adelantar=False)
+    assert pedidas == [URL]
+    assert yt.bajadas_cache == 1
+    assert yt.bajadas_directas == 0
+    assert job["status"] == "done"
+
+
+def test_si_la_extraccion_rapida_no_sirve_baja_como_siempre(yt, tmp_path, storage_temporal, monkeypatch):
+    from backend.app import stream
+    from backend.app.ytdlp_source import YtDlpSource
+
+    async def rapida(url):
+        return {"id": "abcdefghijk", "formats": [{"format_id": "251"}]}
+
+    monkeypatch.setattr(stream, "fast_raw", rapida)
+    yt.falla_cache = True
+    storage_temporal(tmp_path / "lib")
+    res, job = _descargar(YtDlpSource(), adelantar=False)
+    assert yt.bajadas_cache == 1
+    assert yt.bajadas_directas == 1
+    assert job["status"] == "done"
+
+
+def test_sin_visitor_en_memoria_no_hay_extraccion_rapida():
+    from backend.app import stream
+    stream.clear()
+    assert asyncio.run(stream.fast_raw(URL)) is None

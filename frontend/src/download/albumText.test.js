@@ -124,3 +124,15 @@ describe("albumButton with owned tracks", () => {
     expect(albumButton({ matching: false, full: 3, owned: 7 }).text).toBe("Descargar las 3 que faltan");
   });
 });
+
+describe("ownedEntries", () => {
+  it("maps each owned slot of the album to its library entry", async () => {
+    const { ownedEntries } = await import("./albumText.js");
+    const a = { key: "A/1.m4a", album_id: 999, disc_no: 1, track_no: 1 };
+    const b = { key: "A/2.m4a", album_id: "999", disc_no: 1, track_no: 2 };
+    const other = { key: "B/1.m4a", album_id: 5, disc_no: 1, track_no: 1 };
+    const m = ownedEntries([a, b, other], 999);
+    expect([...m.values()].map((e) => e.key)).toEqual(["A/1.m4a", "A/2.m4a"]);
+    expect(ownedEntries([a], null).size).toBe(0);
+  });
+});

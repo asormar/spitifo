@@ -243,17 +243,19 @@ describe("tracker", () => {
     tracker.stop();
   });
 
-  it("ignores previews and videos", () => {
-    const { engine, tracker, recorded } = setup();
-    engine.set({
-      track: track("preview", "preview", 30),
-      duration: 30,
-      playing: true,
-      time: 0,
-    });
-    engine.set({ time: 1 });
-    engine.trackEvent({ type: "end" });
-    expect(recorded).toHaveLength(0);
-    tracker.stop();
+  it("ignores previews, streams and videos", () => {
+    for (const kind of ["preview", "stream"]) {
+      const { engine, tracker, recorded } = setup();
+      engine.set({
+        track: track(kind, kind, 200),
+        duration: 200,
+        playing: true,
+        time: 0,
+      });
+      engine.set({ time: 1 });
+      engine.trackEvent({ type: "end" });
+      expect(recorded).toHaveLength(0);
+      tracker.stop();
+    }
   });
 });

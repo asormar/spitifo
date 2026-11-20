@@ -1,4 +1,5 @@
 import { API, errMsg } from "../shared/api.js";
+import { canStream } from "./streamTrack.js";
 
 /* Resoluciones ya pedidas, por URL de video. Vive lo que vive la pestana: el
    menu se puede cerrar y reabrir sin volver a preguntar. Los fallos NO se
@@ -53,6 +54,21 @@ export const warmTopResults = (results) =>
     .filter(Boolean)
     .slice(0, 2)
     .forEach(warmDownload);
+
+/* Lo mismo para escuchar: los 2 primeros resultados con version completa
+   dejan resuelta su URL de audio (una peticion liviana a YouTube por video),
+   asi el primer toque en el boton de reproducir suena sin esperar. */
+const prepared = new Set();
+export const prepareTopStreams = (results) =>
+  results
+    .filter(canStream)
+    .slice(0, 2)
+    .map((t) => t.extra.webpage_url)
+    .filter((url) => !prepared.has(url))
+    .forEach((url) => {
+      prepared.add(url);
+      fetch(`${API}/stream/prepare`, { method: "POST", body: JSON.stringify({ url }) }).catch(() => {});
+    });
 
 export function buildSearchParams(q, mode) {
   const p = new URLSearchParams();

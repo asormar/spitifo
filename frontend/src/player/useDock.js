@@ -23,6 +23,7 @@ export default function useDock(npOpen) {
   const playing = useEngine((s) => s.playing);
   const buffering = useEngine((s) => s.buffering);
   const duration = useEngine((s) => s.duration);
+  const failed = useEngine((s) => s.failed);
   const hasNext = useEngine((s) => s.index >= 0 && s.index + 1 < s.queue.length);
   const vhost = useVideoHost();
   const [dismissed, setDismissed] = useState(false);
@@ -65,6 +66,10 @@ export default function useDock(npOpen) {
     artist: at < 0 ? meta : meta.slice(0, at),
     album: at < 0 ? "" : meta.slice(at + 3),
     playing,
+    /* Una pista que no se pudo cargar no se ve "en pausa": el aviso se va,
+       la linea de la pastilla lo sigue diciendo hasta la siguiente pista. */
+    failed,
+    status: failed ? "No se pudo reproducir" : meta,
     icon: buffering ? "load" : playing ? "pause" : "play",
     label: info?.label || "la canción",
     hasNext,

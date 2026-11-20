@@ -23,7 +23,8 @@ const DEFAULT_VOLUME = 0.8;
 
 /* `track`: { key, src, title, meta, duration, artwork, kind, label }
    - key identifica la pista en la cola (es lo que mueve prev/next).
-   - kind es "library" o "preview"; solo las de biblioteca se prefetchean.
+   - kind es "library", "preview" o "stream"; solo las de biblioteca se
+     prefetchean aqui (el stream tiene su propio aviso al final de la pista).
    - label es el nombre accesible que usan los botones ("Reproducir X").
    `play(track, { queue, index, restart, at, source, endless })`: `at` son los
    segundos desde los que se retoma ("Seguir escuchando"); `source` etiqueta

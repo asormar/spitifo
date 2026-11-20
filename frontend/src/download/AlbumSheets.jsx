@@ -11,7 +11,12 @@ import DlRing from "./DlRing.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
-import { albumButton, missingSentence, OFFLINE_BANNER, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
+import { Icon } from "../shared/icons.jsx";
+import { engine } from "../player/engine.js";
+import { streamTrack } from "./streamTrack.js";
+import { toTrack } from "../listen/library.js";
+import { keyUrl } from "../shared/api.js";
+import { albumButton, missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
 
@@ -78,6 +83,19 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
   const ask = query || `${album.artist} ${album.title}`;
+  /* El disco en orden: lo que ya esta en la biblioteca suena desde el archivo
+     propio y lo emparejado con video, en streaming, sin bajarlo. */
+  const mine = useMemo(() => ownedEntries(entries, album.id), [entries, album.id]);
+  const source = `album:${album.title}`;
+  const lista = tracks.flatMap((t) => {
+    const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
+    if (e) return [toTrack(e, keyUrl)];
+    return t.extra?.webpage_url && t.extra?.has_full !== false ? [streamTrack(t, source)] : [];
+  });
+  const escuchar = () => {
+    if (!lista.length) return;
+    engine.play(lista[0], { queue: lista, index: 0, source });
+  };
 
   useEffect(() => {
     const ac = new AbortController();
@@ -179,16 +197,23 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           {ytOff ? (
             <p className="als__note">Las descargas necesitan YouTube activado en este servidor.</p>
           ) : (
-            <button
-              type="button"
-              className="btn btn--acc btn--wide als__btn"
-              data-busy={running || undefined}
-              aria-disabled={btn.disabled || undefined}
-              onClick={() => !btn.disabled && enqueue(fullTracks)}
-            >
-              {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
-              {btn.text}
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn btn--acc btn--wide als__btn"
+                data-busy={running || undefined}
+                aria-disabled={btn.disabled || undefined}
+                onClick={() => !btn.disabled && enqueue(fullTracks)}
+              >
+                {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
+                {btn.text}
+              </button>
+              {lista.length > 0 && (
+                <button type="button" className="btn btn--ghost btn--wide als__btn" onClick={escuchar}>
+                  <Icon name="Play" size={16} weight="fill" /> Escuchar
+                </button>
+              )}
+            </>
           )}
 
           {err && (

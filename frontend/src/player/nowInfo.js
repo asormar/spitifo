@@ -31,6 +31,7 @@ const HEAD = "Sonando desde";
 export function sourceCaption(source, track) {
   const { artist, album } = splitMeta(track?.meta);
   if (track?.kind === "preview") return { head: "Avance de 30 s", name: artist };
+  if (track?.kind === "stream") return { head: "En streaming", name: album || artist };
 
   const at = typeof source === "string" ? source.indexOf(":") : -1;
   const kind = at < 0 ? "" : source.slice(0, at);
