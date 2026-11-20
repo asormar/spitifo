@@ -13,6 +13,8 @@ import { checkOf, rowPill } from "./fileCheck.js";
 import { rowArt } from "./library.js";
 import { rowState } from "./offline.js";
 import { useShow } from "./Notice.jsx";
+import { useArtRecord } from "./art.js";
+import { songTarget } from "./artLogic.js";
 
 /* ---------------------------------------------------------------------------
    FILAS DE ESCUCHAR
@@ -94,7 +96,8 @@ export const SongRow = memo(function SongRow({
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
-  const src = rowArt(entry, keyUrl, true);
+  const artRec = useArtRecord(songTarget(entry));
+  const src = rowArt(entry, keyUrl, true, artRec);
   const img = src && !BAD_ART.has(src);
   const rankCell = rank != null && (
     <span className={cx("srow__rank", rank <= 3 && "is-top")} aria-hidden="true">

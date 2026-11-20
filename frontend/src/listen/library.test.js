@@ -362,6 +362,14 @@ describe("rowArt", () => {
     expect(rowArt(entry, keyUrl)).toBe("/api/media/A%2Fa.jpg?v=1760000000");
   });
 
+  it("a custom picture wins over the sidecar at both sizes", () => {
+    const entry = normalizeEntry(file({ key: "a", thumb_key: "A/a.jpg", thumb_s: true }));
+    const record = { key: ".art/x.jpg", small_key: ".art/x.s.jpg", source: "upload" };
+    expect(rowArt(entry, api, true, record)).toBe(api(".art/x.s.jpg"));
+    expect(rowArt(entry, api, false, record)).toBe(api(".art/x.jpg"));
+    expect(rowArt(entry, api, true)).toBe(api("A/a.s.jpg"));
+  });
+
   it("keeps the 200 px cover on the queue track and the thumbnail of a video", () => {
     const audio = normalizeEntry(file({ thumb_key: "A/a.jpg", thumb_s: true, modified: 5 }));
     expect(toQueue([audio], api)[0].artwork).toBe("/api/audio?key=A%2Fa.jpg&v=5");

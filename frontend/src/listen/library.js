@@ -1,3 +1,5 @@
+import { artSrc } from "./artLogic.js";
+
 /* ---------------------------------------------------------------------------
    BIBLIOTECA DE ESCUCHAR
 
@@ -158,7 +160,11 @@ export function groupAlbums(entries) {
    de ~100 px, solo si existe: la fila de 48 px; todo lo demas usa la de 200.
    Se vuelve a descargar bajo la misma clave, asi que la URL lleva la fecha del
    audio (`v`): una portada nueva se pide de nuevo y una igual sale de la cache. */
-export function rowArt(entry, keyUrl, small = false) {
+export function rowArt(entry, keyUrl, small = false, record = null) {
+  /* La foto propia gana siempre: la resuelve quien la encontro (fila, portada o
+     reproductor), sin recalcular la biblioteca cuando cambia. */
+  const custom = artSrc(record, keyUrl, small);
+  if (custom) return custom;
   /* Una cancion guardada sin archivo trae la portada de la fuente, no un
      sidecar de la biblioteca. */
   if (entry?.artworkUrl) return entry.artworkUrl;
