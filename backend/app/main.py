@@ -2249,11 +2249,6 @@ def _cached_tracks(storage, stale_ok: bool = True) -> dict:
     return _cached_summary(storage, stale_ok).get("tracks", {})
 
 
-def _cached_artists(storage, stale_ok: bool = True) -> dict:
-    # El agregado por artista ya trae el `a` de los ids guardados.
-    return _cached_summary(storage, stale_ok).get("artists", {})
-
-
 def _discover_saved(storage) -> SavedBook:
     """Una sola lectura del registro de guardadas: el adapter lo cachea."""
     try:
@@ -2299,7 +2294,6 @@ def _get_enricher() -> Enricher:
             _enricher = Enricher(
                 load_records=lambda storage: _cached_records(storage, False),
                 load_tracks=lambda storage: _cached_tracks(storage, False),
-                load_artists=lambda storage: _cached_artists(storage, False),
                 load_saved=_discover_saved,
                 load_dismissed=_cached_dismissed)
         return _enricher
@@ -2323,8 +2317,9 @@ def _discover_payload(enricher=None) -> dict:
     entries, records = entries.result(), records.result()
     dismissed, summary = dismissed.result(), summary.result()
     library = library_artists(entries)
-    weights = artist_weights(library, entries, summary.get("tracks", {}),
-                             artist_scores=summary.get("artists") or None)
+    # Las guardadas van en `entries` con su artista: un id `yt:`/`ia:` del
+    # historial se resuelve igual que la ruta de un archivo.
+    weights = artist_weights(library, entries, summary.get("tracks", {}))
     return {"genres": user_genres(library, records, weights),
             "artists": candidates(library, records, weights, dismissed)}
 

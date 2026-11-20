@@ -165,8 +165,8 @@ def test_get_discover_pesa_los_streams_de_una_guardada_en_su_artista(api):
         "t": 1_772_000_000, "k": sid, "d": 200_000, "l": 200_000,
         "p": 200_000, "r": "end", "o": "play", "a": "Beta",
     }], now=1_772_000_000)
-    # El id no esta en la biblioteca de archivos: sin el agregado por artista
-    # el peso del stream se perderia y no habria generos.
+    # El id no es un archivo: se resuelve con la guardada, que entra en la
+    # biblioteca del perfil con su artista.
     assert client.get("/api/discover").json()["genres"] == [
         {"name": "jazz", "share": 1.0}]
 

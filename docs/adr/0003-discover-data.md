@@ -34,9 +34,10 @@
    files **plus every artist of a live saved song** (ADR 0004): a saved song
    counts as one library track (`log1p(tracks)`) and is grouped by folded artist
    name, but a record whose `file_key` points at a library file is the same
-   song and is not counted twice. Listen weights come from the per-artist
-   aggregate, so a streamed id (`yt:`/`ia:`) is credited to the artist carried
-   in the event's `a` even if the song is no longer saved. Candidates exclude
+   song and is not counted twice. Listen weights are resolved per key as for
+   files: a saved song enters the profile with its id as key and the artist of
+   its record, so a streamed id (`yt:`/`ia:`) is credited to that artist. A
+   stream of a song that is no longer saved adds no weight. Candidates exclude
    every seed artist, saved-only ones included.
 
 ## Why not the obvious sources
@@ -105,9 +106,7 @@ missing; file-key events keep deriving the artist from the key and never carry
 −0.5 per skip); the half-life is a starting value to tune in session 23.
 Events older than 12 months are folded into the aggregate and their monthly
 files deleted. The artist aggregate matters because a track's key changes if
-it is re-imported, and because it keeps the `a` of a saved-song stream after
-the song is unsaved. `GET /api/listens/summary` exposes it as `artists` so
-Discover can weight those ids without rereading the events.
+it is re-imported.
 
 **Size** for a heavy listener (30 plays a day): about 770 KB of events a year
 (65 KB a month), an aggregate of about 350 KB for 5,000 tracks plus 60 KB for

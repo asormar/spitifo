@@ -295,17 +295,6 @@ def test_library_con_guardadas_cuenta_el_seed_sin_duplicar_lo_descargado():
     }
 
 
-def test_artist_weights_pesa_un_id_guardado_con_el_agregado_de_artista():
-    library = library_artists([{"key": "Alfa/Alfa - Uno.mp3", "artist": "Alfa"},
-                               {"key": _YT, "artist": "Beta"}])
-    # El id no esta en la biblioteca de archivos: sin agregado se descartaria.
-    weights = artist_weights(library, [], {_YT: {"score": 7.0}},
-                             artist_scores={"beta": {"score": 7.0}})
-    assert weights["alfa"] == pytest.approx(math.log1p(1))
-    assert weights["beta"] == pytest.approx(math.log1p(1) + 7.0)
-    assert "artista desconocido" not in weights
-
-
 def test_artist_weights_resuelve_el_id_con_la_entrada_guardada():
     library = {"beta": {"name": "Beta", "tracks": 1}}
     entries = saved_entries(_saved((_YT, "Beta", None)), [])

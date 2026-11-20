@@ -676,10 +676,6 @@ def _default_tracks(storage) -> dict:
     return (storage.load_listens_summary() or {}).get("tracks", {})
 
 
-def _default_artists(storage) -> dict:
-    return (storage.load_listens_summary() or {}).get("artists", {})
-
-
 def _default_saved(storage):
     try:
         return storage.load_saved()
@@ -701,9 +697,8 @@ class Enricher:
     Tres errores de red seguidos lo dejan `offline` 60 s; la proxima llamada a
     `ensure_started()` lo vuelve a arrancar pasado ese tiempo.
 
-    `load_records`, `load_tracks`, `load_artists`, `load_saved` y
-    `load_dismissed` reciben el storage y leen sus entradas; el default va
-    directo al storage. Discover pasa las suyas, cacheadas: asi el hilo no vuelve
+    `load_records`, `load_tracks`, `load_saved` y `load_dismissed` reciben el
+    storage y leen sus entradas; el default va directo al storage. Discover pasa las suyas, cacheadas: asi el hilo no vuelve
     a listar la nube que la request acaba de leer.
     """
 
@@ -712,14 +707,13 @@ class Enricher:
                  batch_size: int = ENRICH_BATCH,
                  cooldown: float = OFFLINE_COOLDOWN,
                  rerun_after: float = RERUN_AFTER,
-                 load_records=None, load_tracks=None, load_artists=None,
-                 load_saved=None, load_dismissed=None) -> None:
+                 load_records=None, load_tracks=None, load_saved=None,
+                 load_dismissed=None) -> None:
         self._source = source
         self._scan = scan or _default_scan
         self._storage = storage or _default_storage
         self._load_records = load_records or _default_records
         self._load_tracks = load_tracks or _default_tracks
-        self._load_artists = load_artists or _default_artists
         self._load_saved = load_saved or _default_saved
         self._load_dismissed = load_dismissed or _default_dismissed
         self._clock = clock
@@ -873,10 +867,8 @@ class Enricher:
         try:
             from . import recommend
             tracks = self._load_tracks(storage)
-            artists = self._load_artists(storage)
             dismissed = self._load_dismissed(storage)
-            weights = recommend.artist_weights(library, entries, tracks,
-                                               artist_scores=artists or None)
+            weights = recommend.artist_weights(library, entries, tracks)
             candidates = recommend.candidates(
                 library, records, weights, dismissed)[:ENRICH_TOP_CANDIDATES]
         except Exception as exc:
