@@ -29,7 +29,12 @@ export async function listenArchive(t, query, { store = verdictStore, player = e
   /* Un item restringido (archive.org responde 403) no se intenta: el
      reproductor fallaria sin decir por que. */
   if (!audio || rec?.extra?.unreadable) return false;
-  player.play(auditionTrack(t, audio));
+  /* La verificacion eligio un archivo concreto del item: con el se puede
+     construir la identidad estable de la cancion guardada. */
+  const resolved = rec?.extra?.filename
+    ? { ...t, extra: { ...t.extra, ...rec.extra } }
+    : t;
+  player.play(auditionTrack(resolved, audio));
   return true;
 }
 

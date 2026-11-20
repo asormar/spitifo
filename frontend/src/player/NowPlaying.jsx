@@ -10,6 +10,7 @@ import { useListen } from "../listen/ListenProvider.jsx";
 import QueueList from "../listen/QueueList.jsx";
 import { useNotice } from "../listen/Notice.jsx";
 import PlaylistPicker from "../listen/PlaylistPicker.jsx";
+import { songFromResult } from "../shared/songId.js";
 import { playlists } from "../listen/playlists.js";
 import { initial } from "../listen/rows.jsx";
 import { useEngine } from "./useEngine.js";
@@ -253,6 +254,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
   const duration = engineDuration || track.duration || 0;
   const library = track.kind === "library";
+  /* Un stream de una cancion guardada tambien entra en listas: se guarda la
+     cancion antes de anadir su id. Un preview o un resultado suelto, no. */
+  const addable = library || (track.kind === "stream" && Boolean(track.sid));
   /* El artista y el album llevan a sus paginas (npLinks.js). */
   const links = npLinks(track, library ? listen.model.byKey.get(track.key) : null);
   const named = (text, link) =>
@@ -307,7 +311,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     </div>
   );
 
-  const addButton = library && (
+  const addButton = addable && (
     <button
       ref={addRef}
       type="button"
@@ -518,9 +522,10 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
       {adding && (
         <PlaylistPicker
-          songKey={track.key}
+          songKey={track.sid || track.key}
           title={track.title}
           byKey={listen.model.byKey}
+          savedRecord={track.sid ? songFromResult(track.result) : null}
           onNotice={show}
           onClose={() => {
             setAdding(false);

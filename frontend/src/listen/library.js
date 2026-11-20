@@ -137,7 +137,10 @@ export function groupAlbums(entries) {
    Se vuelve a descargar bajo la misma clave, asi que la URL lleva la fecha del
    audio (`v`): una portada nueva se pide de nuevo y una igual sale de la cache. */
 export function rowArt(entry, keyUrl, small = false) {
-  if (!entry.thumbKey) return null;
+  /* Una cancion guardada sin archivo trae la portada de la fuente, no un
+     sidecar de la biblioteca. */
+  if (entry?.artworkUrl) return entry.artworkUrl;
+  if (!entry?.thumbKey) return null;
   const key =
     small && entry.thumbS ? entry.thumbKey.replace(/\.jpg$/i, ".s.jpg") : entry.thumbKey;
   const url = keyUrl(key);

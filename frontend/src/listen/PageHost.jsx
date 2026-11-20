@@ -28,6 +28,7 @@ export default function PageHost({ view, tab, active, results }) {
   const common = {
     index: model.index,
     byKey: model.byKey,
+    savedById: model.savedById,
     lists: model.lists,
     listsReady: model.listsReady,
     active,

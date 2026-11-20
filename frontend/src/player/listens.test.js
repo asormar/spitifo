@@ -137,7 +137,35 @@ describe("tracker", () => {
       r: "next",
       o: "skip",
     });
+    expect(recorded[0]).not.toHaveProperty("a");
     expect(batches).toEqual([recorded]);
+    tracker.stop();
+  });
+
+  it("counts a saved stream with its id and artist, but not a plain stream", () => {
+    const { engine, tracker, recorded } = setup();
+    const saved = {
+      ...track("stream:yt", "stream", 200),
+      sid: "yt:dQw4w9WgXcQ",
+      artist: "  Radiohead  ",
+    };
+    engine.set({ track: saved, duration: 200, playing: true, time: 0 });
+    engine.set({ time: 10 });
+    engine.trackEvent({ type: "end" });
+    expect(recorded[0]).toMatchObject({ k: "yt:dQw4w9WgXcQ", a: "Radiohead" });
+
+    const other = { ...track("stream:otro", "stream", 200), artist: "X" };
+    engine.set({ track: other, duration: 200, playing: true, time: 0 });
+    engine.trackEvent({ type: "end" });
+    expect(recorded).toHaveLength(1);
+    tracker.stop();
+  });
+
+  it("does not count previews", () => {
+    const { engine, tracker, recorded } = setup();
+    engine.set({ track: track("preview:1", "preview", 30), playing: true, time: 0 });
+    engine.trackEvent({ type: "end" });
+    expect(recorded).toHaveLength(0);
     tracker.stop();
   });
 

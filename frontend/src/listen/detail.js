@@ -1,3 +1,4 @@
+import { savedEntry } from "../player/savedTrack.js";
 import { albumVerdict } from "./fileText.js";
 import { artistId, groupAlbums } from "./library.js";
 import { albumOrder, albumTone, entryTone, minutes, plural, songs, sortEntries, toneOf } from "./home.js";
@@ -16,12 +17,16 @@ import { albumOrder, albumTone, entryTone, minutes, plural, songs, sortEntries, 
    pagina: las de un album por pista, las de un artista de la A a la Z, las de una
    lista en el orden de la lista (las claves que ya no estan se conservan en los
    datos pero no se ven). `gone`: la lista tiene claves y ninguna sigue. */
-export function detailOf(view, { index, byKey, lists, listsReady, listsError }) {
+export function detailOf(view, { index, byKey, savedById, lists, listsReady, listsError }) {
   const kind = view.type;
   if (kind === "list") {
     const pl = lists.find((p) => p.id === view.id);
     if (!pl) return { kind, state: listsReady ? "missing" : listsError ? "error" : "loading" };
-    const rows = pl.keys.map((k) => byKey.get(k)).filter(Boolean);
+    /* Un id guardado se resuelve con el registro: las filas que ya no estan
+       (archivo borrado o cancion quitada) se conservan en keys pero no se ven. */
+    const rows = pl.keys
+      .map((k) => byKey.get(k) || savedEntry(savedById?.get?.(k)))
+      .filter(Boolean);
     return {
       kind,
       state: "ok",
