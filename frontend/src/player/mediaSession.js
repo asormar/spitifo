@@ -15,6 +15,7 @@ export function bindMediaSession(engine) {
 
   const ms = navigator.mediaSession;
   let lastKey;
+  let lastArt;
   let lastNext = null;
   let lastPositionAt = 0;
 
@@ -45,8 +46,9 @@ export function bindMediaSession(engine) {
   setHandler("previoustrack", () => engine.prev());
 
   const apply = (s) => {
-    if (s.track?.key !== lastKey) {
+    if (s.track?.key !== lastKey || s.track?.artwork !== lastArt) {
       lastKey = s.track?.key;
+      lastArt = s.track?.artwork;
       /* La barra de la pantalla de bloqueo tiene que aparecer ya con la pista
          nueva, sin esperar al primer segundo de reproduccion. */
       lastPositionAt = 0;

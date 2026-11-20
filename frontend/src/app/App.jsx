@@ -1,6 +1,6 @@
 import React, { Suspense, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { API } from "../shared/api.js";
+import { API, keyUrl } from "../shared/api.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
@@ -19,6 +19,8 @@ import { loadArtistChunk } from "../download/artistChunk.js";
 import { requestSearch } from "../download/searchRequest.js";
 import ListenProvider from "../listen/ListenProvider.jsx";
 import { saved } from "../listen/saved.js";
+import { art } from "../listen/art.js";
+import { artSrc, songTarget } from "../listen/artLogic.js";
 import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
@@ -345,6 +347,8 @@ export default function App() {
        pintarse igual. Se pide en cada recarga: una descarga terminada enlaza
        su archivo con la guardada en el servidor (el backend lo tiene en cache). */
     saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
+    /* Las fotos propias se piden con la biblioteca y las guardadas. */
+    art.load(true);
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
@@ -372,6 +376,26 @@ export default function App() {
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
+  }, []);
+
+  /* La notificacion (y Media Session) leen track.artwork del motor. Cuando
+     cambia la foto de la pista que suena, o cambia de pista, se vuelve a
+     resolver: asi el aviso sigue a la portada que se ve en pantalla. */
+  useEffect(() => {
+    const sync = () => {
+      const t = engine.getState().track;
+      if (!t) return;
+      const target = songTarget({ sid: t.sid, key: t.key });
+      const record = target ? art.getState().byTarget.get(target) : null;
+      engine.setArtwork(record ? artSrc(record, keyUrl) : null);
+    };
+    const offArt = art.subscribe(sync);
+    const offTrack = engine.onTrackEvent(sync);
+    sync();
+    return () => {
+      offArt();
+      offTrack();
+    };
   }, []);
 
   /* Borrado diferido: la fila desaparece en el acto y vuelve si se deshace. El
