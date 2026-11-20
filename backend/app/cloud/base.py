@@ -30,6 +30,7 @@ from typing import Callable, ContextManager, Iterator, NamedTuple
 import httpx
 
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
+from ..art import ArtBook, ArtFormatError
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
 from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
@@ -54,13 +55,14 @@ FOLDER_NAME = "Spitifo"
 INDEX_PREFIX = "index-"
 PLAYLIST_PREFIX = "playlists-"
 LIBRARY_PREFIX = "library-"
+ART_PREFIX = "art-"
 
 #: Prefijos de los archivos chicos por dispositivo que se guardan en la copia
 #: local (`snapshot.py`). Un archivo con otro nombre nunca se cachea. `library-`
 #: no es substring de ningun otro prefijo (ni al reves), asi que `name contains`
 #: no mezcla canciones guardadas con indice, listas ni escuchas.
-SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, LIBRARY_PREFIX, MONTH_PREFIX,
-                  AGG_PREFIX, ARTISTINFO_PREFIX, DISCOVER_PREFIX,
+SMALL_PREFIXES = (INDEX_PREFIX, PLAYLIST_PREFIX, LIBRARY_PREFIX, ART_PREFIX,
+                  MONTH_PREFIX, AGG_PREFIX, ARTISTINFO_PREFIX, DISCOVER_PREFIX,
                   FILEINFO_PREFIX)
 #: Cuantos archivos chicos se bajan a la vez al cargar el indice y compania.
 SMALL_FILE_WORKERS = 4
@@ -326,6 +328,12 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         self._own_saved = SavedBook()
         self._own_saved_id: str | None = None
         self._own_saved_unreadable = False
+        # Mismo esquema para las imagenes personalizadas (ADR 0005).
+        self._art: ArtBook | None = None
+        self._art_at = float("-inf")
+        self._own_art = ArtBook()
+        self._own_art_id: str | None = None
+        self._own_art_unreadable = False
         self._quota_cache: dict | None = None
         self._quota_cache_at = float("-inf")
         # Prefetch del proximo tema: el par (remote_id, revision) que YA se esta
@@ -841,6 +849,76 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             self._saved = own.merge(self._saved or SavedBook())
             self._saved_at = self._clock()
             return self._saved
+
+    # ----------------------------------------------------------------- imagenes
+    def _own_art_name(self) -> str:
+        return f"{ART_PREFIX}{self.device_id}.json"
+
+    def load_art(self, force: bool = False) -> ArtBook:
+        """Merge de todos los `art-*.json`, con el mismo TTL del indice.
+
+        Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
+        PROPIO: escribir encima perderia las imagenes del usuario.
+        """
+        with self._lock:
+            if (not force and self._art is not None
+                    and (self._clock() - self._art_at) < INDEX_TTL):
+                return self._art
+            merged = ArtBook()
+            own = ArtBook()
+            own_id: str | None = None
+            own_unreadable = False
+            files = [rf for rf in self._list_small(ART_PREFIX)
+                     if rf.name.startswith(ART_PREFIX)]
+            blobs = self._read_many(files)
+            for rf in files:
+                remote_id, name = rf.remote_id, rf.name
+                try:
+                    parsed = self._parse_small(rf, blobs[remote_id],
+                                               ArtBook.from_bytes)
+                except (httpx.HTTPError, ArtFormatError) as exc:
+                    log.warning("imagenes ilegibles %s: %s", name, exc)
+                    if name == self._own_art_name():
+                        own_id = remote_id
+                        own_unreadable = True
+                    continue
+                merged = merged.merge(parsed)
+                if name == self._own_art_name():
+                    own_id = remote_id
+                    own = parsed
+            self._art = merged
+            self._art_at = self._clock()
+            self._own_art_id = own_id
+            self._own_art = own
+            self._own_art_unreadable = own_unreadable
+            return merged
+
+    def save_art(self, change: Callable[[ArtBook], None]) -> ArtBook:
+        """Aplica `change` al archivo PROPIO y lo sube (crear o reemplazar).
+
+        Un solo escritor por archivo, como saved: no hace falta escritura
+        condicional. Despues mergea el resultado en la vista en memoria.
+        """
+        with self._lock:
+            self.load_art()
+            if self._own_art_unreadable:
+                # Un corte de red pasajero: se reintenta una vez antes de rendirse.
+                self.load_art(force=True)
+            if self._own_art_unreadable:
+                raise RuntimeError(
+                    f"no se pudieron leer {self._own_art_name()}: "
+                    "no se sobrescribe")
+            own = ArtBook(records=dict(self._own_art.records))
+            change(own)
+            body = own.to_bytes()
+            self._own_art_id = self._store_small(
+                self._own_art_name(), body, self._own_art_id)
+            self._own_art = own
+            # Lo recien escrito gana los empates de `updated_at` contra la copia
+            # que ya estaba en memoria (el reloj de Windows tiene poca precision).
+            self._art = own.merge(self._art or ArtBook())
+            self._art_at = self._clock()
+            return self._art
 
     # ------------------------------------------------------------------ listens
     def _listens_device(self) -> str:

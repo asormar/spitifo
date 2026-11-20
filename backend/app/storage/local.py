@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator
 
 from ..artistinfo import ARTISTINFO_PREFIX, ArtistInfoStorageMixin
+from ..art import ArtBook, ArtFormatError
 from ..config import AUDIO_EXTS, IMAGE_EXTS, VIDEO_EXTS
 from ..discover import DISCOVER_PREFIX, DiscoverStorageMixin
 from ..fileinfo import FILEINFO_PREFIX, FileInfoStorageMixin
@@ -35,6 +36,7 @@ CHUNK = 64 * 1024
 STATE_DIR = ".spitifo"
 PLAYLISTS_FILE = "playlists.json"
 SAVED_FILE = "library.json"
+ART_FILE = "art.json"
 #: Id estable de este dispositivo. Se usa en los nombres de los archivos de
 #: escucha, igual que el `device_id` del conector de nube.
 DEVICE_ID_FILE = "device-id"
@@ -124,6 +126,9 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # Lectura-modificacion-escritura de canciones guardadas, igual que de
         # playlists: dos requests a la vez no pueden perder el cambio de la otra.
         self._saved_lock = threading.Lock()
+        # Lectura-modificacion-escritura del registro de imagenes, igual que
+        # saved: dos requests a la vez no pueden perder el cambio de la otra.
+        self._art_lock = threading.Lock()
         # Cache de metadatos: se carga del disco la primera vez que se lista.
         self._media_lock = threading.Lock()
         self._media_cache: dict[str, dict] | None = None
@@ -536,6 +541,67 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         path = self._saved_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".saved-",
+                                   suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(book.to_bytes())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+
+    # ------------------------------------------------------------------- imagenes
+    def _art_path(self) -> Path:
+        return self.root / STATE_DIR / ART_FILE
+
+    def _read_own_art(self) -> tuple[ArtBook, bool]:
+        """`(libro, ilegible)` desde `.spitifo/art.json`.
+
+        Igual que playlists y saved: ausente es un libro vacio (normal); un
+        archivo que no se puede leer se devuelve vacio pero marcado ilegible
+        para NO sobreescribirlo con una copia casi vacia.
+        """
+        path = self._art_path()
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            return ArtBook(), False
+        except OSError as exc:
+            log.warning("imagenes ilegibles %s: %s", path, exc)
+            return ArtBook(), True
+        try:
+            return ArtBook.from_bytes(data), False
+        except ArtFormatError as exc:
+            log.warning("imagenes ilegibles %s: %s", path, exc)
+            return ArtBook(), True
+
+    def load_art(self) -> ArtBook:
+        with self._art_lock:
+            return self._read_own_art()[0]
+
+    def save_art(self, change: Callable[[ArtBook], None]) -> ArtBook:
+        """Aplica `change` al libro propio y lo persiste de forma atomica.
+
+        Si el archivo existe pero no se pudo leer, NO se pisa: se levanta
+        `RuntimeError`, la misma regla que playlists, saved y el indice propio.
+        """
+        with self._art_lock:
+            book, unreadable = self._read_own_art()
+            if unreadable:
+                raise RuntimeError(
+                    f"no se pudieron leer {ART_FILE}: no se sobrescribe")
+            change(book)
+            self._write_art(book)
+            return book
+
+    def _write_art(self, book: ArtBook) -> None:
+        """Temporal en la misma carpeta + `os.replace`: nunca queda a medias."""
+        path = self._art_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".art-",
                                    suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as f:
