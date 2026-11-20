@@ -101,7 +101,7 @@ export default memo(function ShowGroup({ t, i, query, onDl, busyIds, downloadedI
         {open ? "ocultar las canciones" : "ver qué canciones hay"}
       </button>
       {everOpened && (
-        <div className="fold" data-open={open ? "" : undefined} inert={open ? undefined : ""}>
+        <div className="fold" data-open={open ? "" : undefined} inert={!open}>
           <div className="fold__in">
             <p className="sr-only" role="status">
               {loading

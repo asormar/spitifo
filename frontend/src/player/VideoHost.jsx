@@ -256,7 +256,7 @@ function VideoHost() {
         aria-labelledby={mode === "modal" ? VHOST_TITLE_ID : undefined}
         aria-label={mode === "modal" ? undefined : `Minireproductor: ${label}`}
         aria-hidden={mode === "closed" ? true : undefined}
-        inert={mode === "closed" ? "" : undefined}
+        inert={mode === "closed"}
         tabIndex={-1}
       >
         <div ref={frameRef} className="vhost__frame">
