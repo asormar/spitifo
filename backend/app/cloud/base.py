@@ -1030,21 +1030,51 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         if key in failed:
             raise failed[key]
 
-    def delete_files(self, keys: list[str]) -> dict[str, Exception]:
+    def delete_files(self, keys: list[str],
+                     followers: dict[str, list[str]] | None = None,
+                     ) -> dict[str, Exception]:
         """Manda varios archivos a la papelera con UNA sola escritura del indice.
 
         El indice propio se reescribe entero en cada cambio: borrar un tema y sus
-        dos portadas de a uno lo subia tres veces (en Drive, 1,6 s cada vez). Las
-        papeleras van en paralelo. Devuelve el error de cada clave que no se
-        borro; una que no estaba vuelve como FileNotFoundError. Si falla la
-        escritura del indice, se levanta: lo ya enviado a la papelera queda ahi.
+        dos portadas de a uno lo subia tres veces (en Drive, 1,6 s cada vez).
+        `followers` son los archivos que van detras de cada clave (sus portadas):
+        solo se borran si la clave se borro o ya no estaba, asi un tema que falla
+        conserva su portada. Las papeleras de cada tanda van en paralelo.
+        Devuelve el error de cada clave, o seguidor, que no se borro; uno que no
+        estaba vuelve como FileNotFoundError, y el seguidor de una clave que
+        fallo no aparece (no se intento). Si falla la escritura del indice, se
+        levanta: lo ya enviado a la papelera queda ahi.
         """
-        for key in keys:
+        followers = followers or {}
+        every = [*keys, *(f for key in keys for f in followers.get(key, ()))]
+        for key in every:
             validate_key(key)
         index = self._load_index()
-        if any(key not in index.entries for key in keys):
+        if any(key not in index.entries for key in every):
             index = self._load_index(force=True)
         failed: dict[str, Exception] = {}
+        gone = self._trash_keys(index, keys, failed)
+        after = [f for key in keys
+                 if key not in failed or isinstance(failed[key], FileNotFoundError)
+                 for f in followers.get(key, ())]
+        gone += self._trash_keys(index, after, failed)
+
+        if gone:
+            now = self._clock()
+
+            def change(own: LibraryIndex) -> None:
+                for entry in gone:
+                    own.remove(entry.key, now)
+
+            self._write_own(change)
+            if self.cache is not None:
+                for entry in gone:
+                    self.cache.unpin(entry.remote_id, entry.revision)
+        return failed
+
+    def _trash_keys(self, index: LibraryIndex, keys: list[str],
+                    failed: dict[str, Exception]) -> list[IndexEntry]:
+        """Papelera en paralelo de las claves vivas; anota los fallos en `failed`."""
         entries: list[IndexEntry] = []
         for key in keys:
             entry = index.entries.get(key)
@@ -1073,19 +1103,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 gone.append(entry)
             else:
                 failed[entry.key] = exc
-
-        if gone:
-            now = self._clock()
-
-            def change(own: LibraryIndex) -> None:
-                for entry in gone:
-                    own.remove(entry.key, now)
-
-            self._write_own(change)
-            if self.cache is not None:
-                for entry in gone:
-                    self.cache.unpin(entry.remote_id, entry.revision)
-        return failed
+        return gone
 
     def quota(self) -> dict:
         """Espacio de la cuenta: `{limit, usage, app}` en bytes.

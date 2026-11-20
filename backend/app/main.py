@@ -1467,21 +1467,6 @@ def _validate_delete_keys(body: dict) -> list[str]:
     return out
 
 
-def _delete_batch(storage, keys: list[str]) -> dict[str, Exception | None]:
-    """`storage.delete_files` con el resultado de CADA clave, en orden.
-
-    None es borrada. Si el lote entero falla (la escritura del indice), todas
-    sus claves se informan con ese error.
-    """
-    if not keys:
-        return {}
-    try:
-        failed = storage.delete_files(keys)
-    except Exception as exc:
-        return {key: exc for key in keys}
-    return {key: failed.get(key) for key in keys}
-
-
 def _playlists_hold(storage, keys: set[str]) -> bool:
     """True si alguna lista viva tiene alguna de las claves (o no se sabe)."""
     try:
@@ -1509,28 +1494,33 @@ def _delete_library_files(storage, keys: list[str],
              if f.key not in gone
              and os.path.splitext(f.key)[1].lower() in _DELETE_EXTS}
 
-    # Dos tandas, cada una con UNA escritura del indice en la nube: primero los
-    # temas y despues las portadas de los que si se borraron (si un tema falla,
-    # su portada se queda con el).
+    # Todo en UNA llamada, con UNA escritura del indice en la nube. Las portadas
+    # van como seguidoras de su tema: si el tema falla, se quedan con el.
+    sides_of = {key: [_thumb_sidecar(key), thumb_small_sidecar(key)]
+                for key in keys if _media_stem(key) not in stems}
+    try:
+        errors = storage.delete_files(keys, sides_of)
+    except Exception as exc:
+        # La escritura del indice fallo: nada se da por borrado.
+        errors = {key: exc for key in keys}
     deleted: list[str] = []
     failed: list[dict] = []
-    for key, exc in _delete_batch(storage, keys).items():
-        if isinstance(exc, FileNotFoundError) or exc is None:
-            deleted.append(key)  # ya no estaba: el resultado es el mismo
-        else:
+    for key in keys:
+        exc = errors.get(key)
+        if exc is not None and not isinstance(exc, FileNotFoundError):
             log.warning("no se pudo borrar '%s': %s", key, exc)
             failed.append({"key": key, "error": str(exc)})
-    if removed is not None:
-        removed.extend(deleted)
-
-    sides = [side for key in deleted if _media_stem(key) not in stems
-             for side in (_thumb_sidecar(key), thumb_small_sidecar(key))]
-    for side, exc in _delete_batch(storage, sides).items():
-        if exc is None:
-            if removed is not None:
-                removed.append(side)
-        elif not isinstance(exc, FileNotFoundError):
-            log.warning("no se pudo borrar la portada '%s': %s", side, exc)
+            continue
+        deleted.append(key)  # FileNotFoundError: ya no estaba, da lo mismo
+        if removed is not None:
+            removed.append(key)
+        for side in sides_of.get(key, ()):
+            side_exc = errors.get(side)
+            if side_exc is None:
+                if removed is not None:
+                    removed.append(side)
+            elif not isinstance(side_exc, FileNotFoundError):
+                log.warning("no se pudo borrar la portada '%s': %s", side, side_exc)
 
     borradas = set(deleted)
     # Reescribir las listas cuesta una subida en la nube: solo si alguna las

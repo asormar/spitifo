@@ -118,11 +118,15 @@ class Storage(Protocol):
 
     def delete(self, key: str) -> None: ...
 
-    def delete_files(self, keys: list[str]) -> dict[str, Exception]:
+    def delete_files(self, keys: list[str],
+                     followers: dict[str, list[str]] | None = None,
+                     ) -> dict[str, Exception]:
         """Como `delete` para varios: en la nube, UNA sola escritura del indice.
 
-        Devuelve el error de cada clave que no se borro (FileNotFoundError si no
-        estaba); las que no aparecen se borraron.
+        `followers[key]` se borran solo si `key` se borro o ya no estaba (las
+        portadas de un tema). Devuelve el error de cada clave o seguidor que no
+        se borro (FileNotFoundError si no estaba); los que no aparecen se
+        borraron, salvo los seguidores de una clave que fallo: no se intentan.
         """
         ...
 
