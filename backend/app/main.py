@@ -49,6 +49,8 @@ from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
 from .playlists import Playlist, validate_playlist
+from .saved import (MAX_SONGS, SavedBook, SavedSong, validate_saved_payload,
+                    validate_song_id)
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
@@ -1642,6 +1644,90 @@ async def playlist_delete(request: Request):
     return Response(status_code=204)
 
 
+# ------------------------------------------------------------ canciones guardadas
+def _saved_payload(song: SavedSong) -> dict:
+    """Forma JSON de una cancion guardada (la que consume el frontend)."""
+    return {"id": song.id, "title": song.title, "artist": song.artist,
+            "album": song.album, "duration": song.duration,
+            "artwork_url": song.artwork_url, "source": song.source,
+            "source_id": song.source_id, "itunes": dict(song.itunes),
+            "file_key": song.file_key, "added_at": song.added_at,
+            "updated_at": song.updated_at}
+
+
+def _next_saved_updated_at(old: SavedSong | None, now: float) -> float:
+    """`updated_at` nuevo, SIEMPRE mayor que el guardado (como en playlists)."""
+    if old is None:
+        return now
+    return max(now, old.updated_at + 0.001)
+
+
+def _saved_list_payload(book: SavedBook) -> dict:
+    return {"songs": [_saved_payload(s) for s in book.live()]}
+
+
+async def saved_list(request: Request):
+    """GET /api/saved: las vigentes, de la mas reciente a la mas vieja."""
+    book = await asyncio.to_thread(get_storage().load_saved)
+    return JSONResponse(_saved_list_payload(book))
+
+
+async def saved_save(request: Request):
+    """PUT /api/saved: upsert de un lote (fechas puestas por el servidor)."""
+    storage = get_storage()
+    body = await _json_body(request)
+    try:
+        records = validate_saved_payload(body)
+    except ValueError as exc:
+        raise _invalid(["body"], str(exc))
+
+    def _save() -> dict:
+        book = storage.load_saved()
+        now = time.time()
+        built: list[SavedSong] = []
+        for rec in records:
+            old = book.songs.get(rec["id"])
+            built.append(SavedSong(
+                **rec, added_at=old.added_at if old is not None else now,
+                updated_at=_next_saved_updated_at(old, now)))
+
+        def change(b: SavedBook) -> None:
+            for song in built:
+                b.upsert(song)
+
+        return _saved_list_payload(storage.save_saved(change))
+
+    return JSONResponse(await asyncio.to_thread(_save))
+
+
+async def saved_remove(request: Request):
+    """POST /api/saved/remove: tombstone de las ids dadas."""
+    storage = get_storage()
+    body = await _json_body(request)
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        raise _invalid(["body", "ids"], "ids tiene que ser una lista de textos")
+    if len(ids) > MAX_SONGS:
+        raise _invalid(["body", "ids"], "demasiadas canciones por request")
+    try:
+        for sid in ids:
+            validate_song_id(sid)
+    except ValueError as exc:
+        raise _invalid(["body", "ids"], str(exc))
+
+    def _remove() -> dict:
+        now = time.time()
+
+        def change(b: SavedBook) -> None:
+            for sid in ids:
+                old = b.songs.get(sid)
+                b.remove(sid, _next_saved_updated_at(old, now))
+
+        return _saved_list_payload(storage.save_saved(change))
+
+    return JSONResponse(await asyncio.to_thread(_remove))
+
+
 # ------------------------------------------------------------------ listens
 async def listens_append(request: Request):
     """POST /api/listens: agrega eventos de ESTE dispositivo.
@@ -2402,6 +2488,9 @@ routes = [
     Route("/api/playlists", playlists),
     Route("/api/playlists/{id}", playlist_save, methods=["PUT"]),
     Route("/api/playlists/{id}", playlist_delete, methods=["DELETE"]),
+    Route("/api/saved", saved_list),
+    Route("/api/saved", saved_save, methods=["PUT"]),
+    Route("/api/saved/remove", saved_remove, methods=["POST"]),
     Route("/api/listens", listens_append, methods=["POST"]),
     Route("/api/listens/summary", listens_summary),
     Route("/api/discover", discover),
