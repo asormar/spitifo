@@ -63,5 +63,6 @@ function store(key, read, valid) {
 export const downloadFormat = store(DOWNLOAD_FMT_KEY, readDownloadFormat, FMT_IDS);
 export const downloadMedia = store(DOWNLOAD_MEDIA_KEY, readDownloadMedia, MEDIA_IDS);
 
-export const useDownloadFormat = () => useSyncExternalStore(downloadFormat.subscribe, downloadFormat.get);
-export const useDownloadMedia = () => useSyncExternalStore(downloadMedia.subscribe, downloadMedia.get);
+/* Pares valor/cambiar, como useTheme y useAutoDownload. */
+export const useDownloadFormat = () => [useSyncExternalStore(downloadFormat.subscribe, downloadFormat.get), downloadFormat.set];
+export const useDownloadMedia = () => [useSyncExternalStore(downloadMedia.subscribe, downloadMedia.get), downloadMedia.set];
