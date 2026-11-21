@@ -16,12 +16,8 @@ export function albumPlayable(t) {
   return t?.extra?.has_full === false && Boolean(t?.preview_url);
 }
 
-/* Las que pueden sonar, en orden del disco (no se ordenan de nuevo). */
-export function albumQueue(tracks = []) {
-  return (Array.isArray(tracks) ? tracks : []).filter(albumPlayable);
-}
-
-/* La linea discreta bajo la cabecera: «7 de 12 listas». */
-export function matchProgress(tracks = [], ready = albumQueue(tracks).length) {
+/* La linea discreta bajo la cabecera: «7 de 12 listas». La cuenta de listas
+   la da la hoja con la misma cola que suena, no un filtro aparte. */
+export function matchProgress(tracks = [], ready) {
   return `${ready} de ${tracks.length} listas`;
 }

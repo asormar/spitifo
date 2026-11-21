@@ -475,7 +475,6 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
 export const queueStore = createQueueStore();
 
 export const useQueueState = () => useSyncExternalStore(queueStore.subscribe, queueStore.getState);
-export const useQueue = () => useSyncExternalStore(queueStore.subscribe, () => queueStore.getState().groups);
 
 /* Avisa al arranque de que el espejo ya esta listo: App registra sus hooks y
    pinta la pildora aunque este modulo llego mas tarde que ella. */

@@ -12,7 +12,7 @@ import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumA
 import { Icon } from "../shared/icons.jsx";
 import { loadArtistChunk } from "./artistChunk.js";
 import { resolveArtistLink } from "./artistLink.js";
-import { ResultRow } from "./ResultRow.jsx";
+import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
 import { resultMenuGroups } from "./resultMenu.js";
 import { pickResultAction } from "./resultMenuActions.js";
@@ -188,6 +188,13 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   }, [runMatch]);
 
   const spec = useCallback((t) => trackSpec(t, ask), [ask]);
+  /* Callbacks estables: las filas son memoizadas y no deben volver a pintarse
+     por cada actualizacion de la hoja (lotes del match, cola, avisos...). */
+  const onDl = useCallback((one) => queueStore.enqueue({ items: [spec(one)] }), [spec]);
+  const onMenu = useCallback(
+    (one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el }),
+    [nav.open]
+  );
 
   /* Un solo POST con todas las pistas y el grupo: el servidor deduce lo que
      falta encolar y dedupe por archivo de salida. */
@@ -363,7 +370,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           )}
           {detailErr && <p className="als__note" role="alert">No se pudo abrir el álbum.</p>}
 
-          {tracks.length > 0 && (
+          {tracks.length > 0 ? (
             <ul className="rlist rlist--compact als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
               {tracks.map((t, i) => {
                 const key = rowKey(t);
@@ -390,15 +397,23 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
                     query={ask}
                     queue={playable}
                     source={source}
+                    variant="track"
+                    albumArtist={header.artist}
                     busy={Boolean(item && BUSY_STATES.has(item.status))}
                     downloaded={isOwned(t) || item?.status === "done"}
-                    onDl={(one) => queueStore.enqueue({ items: [spec(one)] })}
-                    onMenu={(one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el })}
+                    onDl={onDl}
+                    onMenu={onMenu}
                   />
                 );
               })}
             </ul>
-          )}
+          ) : matching ? (
+            <Skeleton
+              className="rlist--compact als__list"
+              track
+              count={album.track_count || detail?.tracks?.length || 3}
+            />
+          ) : null}
 
           {!matching && !err && missing.length > 0 && (
             <p className="als__note">{missingSentence(missing.map((t) => t.title))}</p>

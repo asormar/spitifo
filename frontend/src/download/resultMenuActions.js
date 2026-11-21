@@ -3,8 +3,6 @@ import { engine } from "../player/engine.js";
 import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
 import { resolveArtistLink } from "./artistLink.js";
 import { resultTrackFor } from "./resultPlayback.js";
-import { queueStore } from "./queueStore.js";
-import { trackSpec } from "./albumText.js";
 
 /* ---------------------------------------------------------------------------
    QUE HACE CADA OPCION DEL MENU ⋯ DE UNA CANCION
@@ -15,15 +13,13 @@ import { trackSpec } from "./albumText.js";
    ------------------------------------------------------------------------- */
 
 export async function pickResultAction(kind, {
-  t, query = "", name = "", source = null,
+  t, query = "", source = null,
   onDownload, onAlbum, onArtist, show, nav, anchor,
 } = {}) {
   if (!t) return;
   nav.back();
   if (kind === "download") {
-    if (onDownload) return onDownload(t, anchor);
-    if (t.extra?.webpage_url) queueStore.enqueue({ items: [trackSpec(t, name)] });
-    else show?.("Solo hay 30 s de esta canción");
+    return onDownload?.(t, anchor);
   } else if (kind === "ficha") {
     nav.open({ type: "ficha", key: rowKey(t), t, anchor });
   } else if (kind === "next" || kind === "end") {

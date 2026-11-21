@@ -6,7 +6,7 @@ import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
 import { rowKey } from "../shared/api.js";
-import { Icon } from "../listen/icons.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
@@ -212,7 +212,18 @@ export function ArtistPage({ view, active }) {
   const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
   /* Buscar manda sus resultados en la entrada de navegacion: con ellos se arma
      Populares. Sin ellos (pagina abierta desde Escuchar) no hay seccion ni play. */
-  const populares = popularSongs(data, view.songs, data?.name);
+  const populares = useMemo(() => popularSongs(data, view.songs, data?.name), [data, view.songs, data?.name]);
+  const songSource = useMemo(() => `artist:${data?.name}`, [data?.name]);
+  /* Las filas de Populares son memoizadas: callbacks y fuente estables para
+     que abrir la hoja de discografia no pinte toda la lista de nuevo. */
+  const onSongDl = useCallback(
+    (one) => queueStore.enqueue({ items: [trackSpec(one, data?.name || "")] }),
+    [data?.name]
+  );
+  const onSongMenu = useCallback(
+    (one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el }),
+    [nav.open]
+  );
 
   /* El foco de entrada va al play; si no hay Populares, al titulo. Nunca al
      boton de descargar, que ademas ya no existe en la cabecera. */
@@ -240,7 +251,7 @@ export function ArtistPage({ view, active }) {
     pickResultAction(kind, {
       t: menuAt?.t,
       query: view.name || data?.name || "",
-      name: data?.name || "",
+      onDownload: onSongDl,
       show,
       nav,
       anchor: menuAt?.anchor,
@@ -341,9 +352,10 @@ export function ArtistPage({ view, active }) {
                 i={i}
                 query={view.name || data.name}
                 queue={populares}
-                source={`artist:${data.name}`}
-                onDl={(one) => queueStore.enqueue({ items: [trackSpec(one, data.name)] })}
-                onMenu={(one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el })}
+                source={songSource}
+                variant="popular"
+                onDl={onSongDl}
+                onMenu={onSongMenu}
               />
             ))}
           </ul>

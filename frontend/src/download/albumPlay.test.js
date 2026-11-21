@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { albumPlayable, albumQueue, matchProgress } from "./albumPlay.js";
+import { albumPlayable, matchProgress } from "./albumPlay.js";
 
 const track = (over = {}) => ({
   title: "pista",
@@ -27,23 +27,6 @@ describe("albumPlayable", () => {
   });
 });
 
-describe("albumQueue", () => {
-  it("conserva el orden del disco y salta lo que aun se busca", () => {
-    const list = [
-      track({ title: "1", extra: { has_full: true, webpage_url: "u1" } }),
-      track({ title: "2" }),
-      track({ title: "3", extra: { has_full: false }, preview_url: "p3" }),
-      track({ title: "4", extra: { has_full: true, webpage_url: "u4" } }),
-    ];
-    expect(albumQueue(list).map((t) => t.title)).toEqual(["1", "3", "4"]);
-  });
-
-  it("devuelve una lista vacia con entrada rara", () => {
-    expect(albumQueue()).toEqual([]);
-    expect(albumQueue(null)).toEqual([]);
-  });
-});
-
 describe("matchProgress", () => {
   it("cuenta las pistas listas sobre las del disco", () => {
     const list = [
@@ -51,7 +34,7 @@ describe("matchProgress", () => {
       track(),
       track({ extra: { has_full: false }, preview_url: "p3" }),
     ];
-    expect(matchProgress(list)).toBe("2 de 3 listas");
+    expect(matchProgress(list, 2)).toBe("2 de 3 listas");
     expect(matchProgress(list, 1)).toBe("1 de 3 listas");
   });
 });
