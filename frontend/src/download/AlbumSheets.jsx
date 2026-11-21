@@ -255,8 +255,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     pickResultAction(kind, {
       t: menuAt?.t,
       query: ask,
-      name: header.artist,
-      enqueue: (one) => queueStore.enqueue({ items: [spec(one)] }),
+      onDownload: (one) => queueStore.enqueue({ items: [spec(one)] }),
       show: listen?.show,
       nav,
       anchor: menuAt?.anchor,

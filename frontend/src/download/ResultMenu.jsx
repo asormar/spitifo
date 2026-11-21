@@ -3,7 +3,6 @@ import Sheet, { Popover, SheetBar } from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { usePc } from "../shared/viewport.js";
 import { menuKeys } from "./menuKeys.js";
-import { resultMenuGroups } from "./resultMenu.js";
 
 /* ---------------------------------------------------------------------------
    MENUS DEL MODO DESCARGAR
@@ -66,19 +65,5 @@ export function MenuSurface({ groups, title, anchor, onPick, onClose }) {
       <SheetBar title={`Opciones de ${title}`} onClose={onClose} />
       {body}
     </Sheet>
-  );
-}
-
-export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose }) {
-  const title = t.title || "sin título";
-  const groups = resultMenuGroups(t, { downloaded, fmt });
-  return (
-    <MenuSurface
-      groups={groups}
-      title={title}
-      anchor={anchor}
-      onPick={onPick}
-      onClose={onClose}
-    />
   );
 }
