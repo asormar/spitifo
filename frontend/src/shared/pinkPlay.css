@@ -26,3 +26,9 @@
   width: 48px;
   height: 48px;
 }
+
+/* El tamano de la ficha y de la hoja del album: compartido, no duplicado. */
+.pk--l {
+  width: 60px;
+  height: 60px;
+}

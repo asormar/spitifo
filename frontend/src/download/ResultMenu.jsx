@@ -6,7 +6,7 @@ import { menuKeys } from "./menuKeys.js";
 import { resultMenuGroups } from "./resultMenu.js";
 
 /* ---------------------------------------------------------------------------
-   MENU DE UN RESULTADO DE BUSCAR
+   MENUS DEL MODO DESCARGAR
 
    La misma infraestructura que el menu de resoluciones y el de la biblioteca:
    hoja en telefono, popover en escritorio, en la pila de navegacion (así Escape
@@ -15,7 +15,7 @@ import { resultMenuGroups } from "./resultMenu.js";
    etiqueta para el lector de pantalla; los que no tienen items no se pintan.
    ------------------------------------------------------------------------- */
 
-function Body({ groups, title, onPick }) {
+export function MenuBody({ groups, title, onPick }) {
   const ref = useRef(null);
   const first = groups.flatMap((g) => g.items).find((it) => !it.disabled)?.kind;
 
@@ -54,11 +54,11 @@ function Body({ groups, title, onPick }) {
   );
 }
 
-export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose }) {
+/* La misma hoja/popover para cualquier menu en modo Descargar: el de una fila,
+   el del album y el del artista. Asi comparten foco, teclado y aspecto. */
+export function MenuSurface({ groups, title, anchor, onPick, onClose }) {
   const pc = usePc();
-  const title = t.title || "sin título";
-  const groups = resultMenuGroups(t, { downloaded, fmt });
-  const body = <Body groups={groups} title={title} onPick={onPick} />;
+  const body = <MenuBody groups={groups} title={title} onPick={onPick} />;
 
   if (pc) return <Popover anchor={anchor} onClose={onClose}>{body}</Popover>;
   return (
@@ -66,5 +66,19 @@ export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose
       <SheetBar title={`Opciones de ${title}`} onClose={onClose} />
       {body}
     </Sheet>
+  );
+}
+
+export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose }) {
+  const title = t.title || "sin título";
+  const groups = resultMenuGroups(t, { downloaded, fmt });
+  return (
+    <MenuSurface
+      groups={groups}
+      title={title}
+      anchor={anchor}
+      onPick={onPick}
+      onClose={onClose}
+    />
   );
 }

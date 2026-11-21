@@ -90,6 +90,7 @@ export function modeDirection(from, to) {
    "lmenu" y "file" son el menu de una
    cancion, la hoja "Añadir a una lista", el menu de una lista y la ficha del
    archivo de una cancion (no es la "ficha" de un resultado de Buscar).
+   "downmenu" es el menu ⋯ de la ficha del album, de sus canciones y del artista.
    "almenu" y "aldel" son el menu del album y su hoja de confirmacion de borrado.
    "art" es la hoja "Foto de..." de una cancion, un album o un artista.
    Todas viven en la pila para que atras, Escape y el atras de Android las
@@ -100,7 +101,7 @@ const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", 
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
    la biblioteca): no esconden la pantalla de debajo ni cuentan para el scroll
    recordado. */
-const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "resmore", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
+const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "resmore", "downmenu", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */
 export const isOverlay = (type) => OVERLAYS.has(type);
