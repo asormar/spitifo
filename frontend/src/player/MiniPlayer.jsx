@@ -1,23 +1,23 @@
 import { lazy, Suspense } from "react";
-import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
-import { engine } from "./engine.js";
+import SaveHeart from "../listen/SaveHeart.jsx";
 import { DockArt, PlayButton } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
 
-/* Los bits de streaming (anillo, cola de descarga) no se cargan hasta que suena
-   una pista de ese tipo: no pesan en el primer pintado de la app. */
+/* El texto de streaming no se carga hasta que suena una pista de ese tipo: no
+   pesa en el primer pintado de la app. */
 const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
-const StreamDownload = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamDownload })));
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR (telefono)
 
    Pastilla de cristal flotante sobre la barra inferior. Es una vista del
-   motor, como las filas: no tiene <audio> propio. Se ve siempre que hay una
-   pista (ver useDock.js y dock.js), en cualquier pestana; la X la pausa y la
-   esconde hasta la siguiente pista. En escritorio la barra es PlayerBar.
+   motor, como las filas: no tiene <audio> propio. Como en Spotify, solo lleva
+   portada/titulo, el corazon de la pista y reproducir/pausar; la descarga,
+   Siguiente y "Cerrar reproductor" viven en el menu de "Ahora suena". No hay
+   gesto de deslizar: la pastilla es data-no-swipe y el gesto horizontal del
+   cuerpo no nace aqui.
 
    Tocar la portada o el titulo abre "Ahora suena" (onOpen); mientras esta
    abierta la pastilla se oculta, porque esa vista ya es el reproductor.
@@ -26,6 +26,8 @@ const StreamDownload = lazy(() => import("./StreamBits.jsx").then((m) => ({ defa
 function MiniPlayer({ onOpen, npOpen }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
+  /* El corazon se oculta solo cuando la pista no se puede guardar (un avance). */
+  const saveHeart = info ? <SaveHeart track={info} className="mini__heart" /> : null;
 
   return (
     <section
@@ -60,29 +62,8 @@ function MiniPlayer({ onOpen, npOpen }) {
             </span>
           </span>
         </button>
-        {info?.kind === "stream" && (
-          <Suspense fallback={null}><StreamDownload track={info} /></Suspense>
-        )}
+        {saveHeart}
         <PlayButton icon={d.icon} playing={d.playing} label={d.label} size={18} />
-        <button
-          type="button"
-          className="cbtn cbtn--l"
-          onClick={() => engine.next()}
-          disabled={!d.hasNext}
-          aria-label="Siguiente"
-          title="Siguiente"
-        >
-          <Icon name="SkipForward" size={20} weight="fill" />
-        </button>
-        <button
-          type="button"
-          className="cbtn cbtn--l"
-          onClick={d.close}
-          aria-label="Cerrar reproductor"
-          title="Cerrar reproductor"
-        >
-          <Icon name="X" size={18} />
-        </button>
       </div>
       {/* Hilo de progreso en el borde de abajo; tambien se puede arrastrar. */}
       <div className="mini__bar">

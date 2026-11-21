@@ -364,6 +364,13 @@
   white-space: nowrap;
 }
 
+/* El corazon comparte altura con el boton de reproducir: 44 px de area de
+   toque, tambien en pantallas finas, sin cambiar el tamano del glifo. */
+.mini .shrt {
+  width: 44px;
+  height: 44px;
+}
+
 .mini .pbtn:active,
 .dock .pbtn:active {
   transform: scale(0.93);

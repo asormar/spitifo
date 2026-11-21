@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
 import { useVideoHost } from "./videoStore.js";
 import { dockVisible } from "./dock.js";
+
+/* "Cerrar reproductor" tambien lo pide el menu de "Ahora suena". La pastilla
+   (o la barra) sigue montada debajo, asi que registra aqui su propia accion:
+   pausar y esconder el reproductor hasta la siguiente pista. */
+let closer = null;
+export const closeDock = () => closer?.();
 
 /* ---------------------------------------------------------------------------
    REPRODUCTOR FLOTANTE (lo comun)
@@ -49,6 +55,17 @@ export default function useDock(npOpen) {
 
   const show = dockVisible({ track, npOpen, vhostMode: vhost.mode, dismissed });
 
+  const close = useCallback(() => {
+    engine.pause();
+    setDismissed(true);
+  }, []);
+  useEffect(() => {
+    closer = close;
+    return () => {
+      if (closer === close) closer = null;
+    };
+  }, [close]);
+
   /* "Artista · Album", como lo arma la biblioteca. */
   const meta = info?.meta ?? "";
   const at = meta.indexOf(" · ");
@@ -76,9 +93,6 @@ export default function useDock(npOpen) {
     dur: duration || info?.duration || 0,
     art: info?.artwork && badArt !== info.artwork ? info.artwork : null,
     onArtError: () => setBadArt(info?.artwork ?? null),
-    close: () => {
-      engine.pause();
-      setDismissed(true);
-    },
+    close,
   };
 }
