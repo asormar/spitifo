@@ -196,7 +196,7 @@ describe("pageOf", () => {
 
 describe("isOverlay", () => {
   it("is true for the song menu, the list menu, the picker and the file sheet only", () => {
-    expect(["menu", "picker", "lmenu", "file"].every(isOverlay)).toBe(true);
+    expect(["menu", "picker", "lmenu", "file", "art"].every(isOverlay)).toBe(true);
     expect(["album", "artist", "all", "library", "settings", "search", "ficha", "resmenu"].some(isOverlay)).toBe(false);
   });
 });
