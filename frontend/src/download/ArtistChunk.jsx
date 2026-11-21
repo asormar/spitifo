@@ -370,7 +370,7 @@ export function ArtistPage({ view, active }) {
         <section className="aps appop" aria-labelledby="aph-pop">
           <h2 className="sh2" id="aph-pop">Populares</h2>
           {topState.status === "loading" ? (
-            <Skeleton count={5} track className="rlist--compact" />
+            <Skeleton count={5} className="rlist--compact" />
           ) : (
             <ul className="rlist rlist--compact">
               {populares.map((t, i) => (

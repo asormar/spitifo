@@ -85,7 +85,7 @@ export default function ArtistPopulares({ name, artistId }) {
         <section className="aps appop" aria-labelledby="h-lpop">
           <h2 className="sh2" id="h-lpop">Populares</h2>
           {state.status === "loading" ? (
-            <Skeleton count={5} track className="rlist--compact" />
+            <Skeleton count={5} className="rlist--compact" />
           ) : (
             <ul className="rlist rlist--compact">
               {songs.map((t, i) => (
