@@ -95,10 +95,12 @@ export function summarize(results, filter) {
   };
 }
 
-/* «12 resultados para «q», 5 descargables». */
-export function resultsHead(total, full, query) {
+/* «12 resultados · 5 completas». `full` cuenta los resultados con cancion
+   completa disponible (lo que antes se llamaba "descargable"); el marco es de
+   escucha, no de descarga. */
+export function resultsHead(total, full) {
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  return `${n(total, "resultado", "resultados")} para «${query}», ${n(full, "descargable", "descargables")}`;
+  return `${n(total, "resultado", "resultados")} · ${n(full, "completa", "completas")}`;
 }
 
 /* El estado de una fila de descarga vivo aparte (lo usa el shell en el chunk

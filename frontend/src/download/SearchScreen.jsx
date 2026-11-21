@@ -312,7 +312,7 @@ export default function SearchScreen({
     ? "Buscando…"
     : searched && !err
     ? results.length
-      ? resultsHead(results.length, fullCount, query)
+      ? resultsHead(results.length, fullCount)
       : "Sin resultados"
     : "";
 
@@ -415,15 +415,15 @@ export default function SearchScreen({
           <div className="rhead">
             <div>
               <h2 className="sh2" id="rs-h" ref={resultsRef} tabIndex={-1}>
-                Para descargar
+                Canciones
               </h2>
-              <p className="rhead__s">{resultsHead(results.length, fullCount, query)}</p>
+              <p className="rhead__s">{resultsHead(results.length, fullCount)}</p>
             </div>
             <Choice
               kind="toggle"
               options={[
                 { id: "all", label: "Todos", n: results.length },
-                { id: "full", label: "Descarga completa", n: fullCount },
+                { id: "full", label: "Completas", n: fullCount },
               ]}
               value={filter}
               onChange={setFilter}

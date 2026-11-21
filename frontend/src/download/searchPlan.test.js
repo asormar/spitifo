@@ -230,15 +230,15 @@ describe("avisos de la descarga", () => {
 });
 
 describe("resultsHead", () => {
-  it("cuenta resultados y descargables, con singular", () => {
-    expect(resultsHead(12, 5, "creep")).toBe("12 resultados para «creep», 5 descargables");
-    expect(resultsHead(1, 1, "creep")).toBe("1 resultado para «creep», 1 descargable");
-    expect(resultsHead(3, 0, "x")).toBe("3 resultados para «x», 0 descargables");
+  it("cuenta resultados y completas, con singular", () => {
+    expect(resultsHead(12, 5)).toBe("12 resultados · 5 completas");
+    expect(resultsHead(1, 1)).toBe("1 resultado · 1 completa");
+    expect(resultsHead(3, 0)).toBe("3 resultados · 0 completas");
   });
 
-  it("sirve de resumen para lectores de pantalla: incluye los descargables", () => {
-    expect(resultsHead(14, 3, "creep")).toBe("14 resultados para «creep», 3 descargables");
-    expect(resultsHead(1, 0, "x")).toBe("1 resultado para «x», 0 descargables");
+  it("sirve de resumen para lectores de pantalla: incluye las completas", () => {
+    expect(resultsHead(14, 3)).toBe("14 resultados · 3 completas");
+    expect(resultsHead(1, 0)).toBe("1 resultado · 0 completas");
   });
 });
 
