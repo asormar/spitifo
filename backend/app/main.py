@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field, replace
@@ -105,6 +106,22 @@ _ARTIST_TOP_CACHE: dict = {}
 _ARTIST_TOP_TTL_S = 30 * 60
 _ARTIST_TOP_MAX = 50
 TOP_SONGS_LIMIT = 5
+# Un lock por id (y por loop, como el guardado de portadas): dos pedidos frios
+# del mismo artista comparten un solo lookup de iTunes y una sola busqueda en
+# YouTube. Se crea perezoso y el WeakKeyDictionary no retiene loops muertos.
+_ARTIST_TOP_LOCKS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]]" = (
+    weakref.WeakKeyDictionary())
+
+
+def _top_lock(artista_id: str) -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    por_id = _ARTIST_TOP_LOCKS.get(loop)
+    if por_id is None:
+        por_id = _ARTIST_TOP_LOCKS[loop] = {}
+    lock = por_id.get(artista_id)
+    if lock is None:
+        lock = por_id[artista_id] = asyncio.Lock()
+    return lock
 # Se piden mas canciones a iTunes porque dedupe antes del tope: dos versiones
 # del mismo tema (p. ej. "Creep" y "Creep (Remastered)") no pueden quitarle
 # una plaza a una cancion distinta.
@@ -824,52 +841,65 @@ async def artist_top_songs(request: Request):
     if hit is not None:
         return JSONResponse(hit)
 
-    ident = _int_or_none(artista_id)
-    try:
-        raws = await BY_NAME["itunes"].artist_top_songs(
-            artista_id, limit=ITUNES_TOP_LOOKUP_LIMIT)
-    except Exception as e:
-        log.warning("artist top songs fallo: %s", e)
-        # Un fallo de red no se cachea: la pagina lo reintentara al volver.
-        return JSONResponse({"id": ident, "name": None, "songs": []})
+    async with _top_lock(artista_id):
+        # Mientras esperabamos el lock otro pedido pudo llenar la cache.
+        hit = _artist_top_cache_get(artista_id)
+        if hit is not None:
+            return JSONResponse(hit)
 
-    # iTunes a veces mezcla items de otros artistas en el lookup.
-    raws = [r for r in raws if str(r.get("artistId")) == artista_id]
-    # Y repite el mismo tema en varias ediciones. Se dedupe ANTES del tope,
-    # quedandose con la primera (la que iTunes puso mas arriba en el ranking).
-    vistos: set[str] = set()
-    unicos: list[dict] = []
-    for raw in raws:
-        clave = _top_song_key(raw)
-        if clave in vistos:
-            continue
-        vistos.add(clave)
-        unicos.append(raw)
-    raws = unicos[:TOP_SONGS_LIMIT]
-    name = (raws[0].get("artistName") if raws else None)
-    songs: list[dict] = []
-    if raws:
-        from .matcher import enrich_with_ytdlp
-        _register_ytdlp()
-        ysrc = BY_NAME.get("ytdlp")
-        yt_on = bool(ysrc and ysrc.available())
-        query = (name or "").strip()
-        # Una unica busqueda en YouTube, lanzada ya, reparte los videos entre
-        # las canciones: el mismo limite y concurrencia que /api/search.
-        videos = (asyncio.ensure_future(ysrc.search_candidates(query, limit=40))
-                  if yt_on else None)
+        ident = _int_or_none(artista_id)
         try:
-            matched = (await enrich_with_ytdlp(
-                raws, query, ysrc, videos=videos)) if yt_on else {}
+            raws = await BY_NAME["itunes"].artist_top_songs(
+                artista_id, limit=ITUNES_TOP_LOOKUP_LIMIT)
         except Exception as e:
-            log.warning("artist top match fallo: %s", e)
-            matched = {}
-        songs = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
-                 for r in raws]
+            log.warning("artist top songs fallo: %s", e)
+            # Un fallo de red no se cachea: la pagina lo reintentara al volver.
+            return JSONResponse({"id": ident, "name": None, "songs": []})
 
-    payload = {"id": ident, "name": name, "songs": songs}
-    _artist_top_cache_put(artista_id, payload)
-    return JSONResponse(payload)
+        # iTunes a veces mezcla items de otros artistas en el lookup.
+        raws = [r for r in raws if str(r.get("artistId")) == artista_id]
+        # Y repite el mismo tema en varias ediciones. Se dedupe ANTES del tope,
+        # quedandose con la primera (la que iTunes puso mas arriba en el ranking).
+        vistos: set[str] = set()
+        unicos: list[dict] = []
+        for raw in raws:
+            clave = _top_song_key(raw)
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            unicos.append(raw)
+        raws = unicos[:TOP_SONGS_LIMIT]
+        name = (raws[0].get("artistName") if raws else None)
+        songs: list[dict] = []
+        match_fallo = False
+        if raws:
+            from .matcher import enrich_with_ytdlp
+            _register_ytdlp()
+            ysrc = BY_NAME.get("ytdlp")
+            yt_on = bool(ysrc and ysrc.available())
+            query = (name or "").strip()
+            # Una unica busqueda en YouTube, lanzada ya, reparte los videos entre
+            # las canciones: el mismo limite y concurrencia que /api/search.
+            videos = (asyncio.ensure_future(ysrc.search_candidates(query, limit=40))
+                      if yt_on else None)
+            try:
+                matched = (await enrich_with_ytdlp(
+                    raws, query, ysrc, videos=videos)) if yt_on else {}
+            except Exception as e:
+                log.warning("artist top match fallo: %s", e)
+                matched = {}
+                match_fallo = True
+                if videos:
+                    videos.cancel()
+            songs = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
+                     for r in raws]
+
+        payload = {"id": ident, "name": name, "songs": songs}
+        # YouTube caido es transitorio: no se guarda media hora. Sin match no
+        # hay cache, asi el proximo pedido vuelve a intentarlo.
+        if not match_fallo:
+            _artist_top_cache_put(artista_id, payload)
+        return JSONResponse(payload)
 
 
 def _guardar_match_en_cache(album_id: str, ahora: float, payload: dict) -> None:

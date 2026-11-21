@@ -146,6 +146,67 @@ def test_top_cache_hit_no_repite_lector(cliente, monkeypatch):
     assert vistos == ["777"]
 
 
+def test_top_no_cachea_fallo_de_match(cliente, monkeypatch):
+    """Un YouTube caido es transitorio: no se guarda media hora sin videos."""
+    _canciones(monkeypatch, [_song(1, "Creep")])
+    _youtube(monkeypatch, [], enabled=True)
+    from backend.app import matcher
+    intentos = []
+
+    async def _match_roto(*args, **kwargs):
+        intentos.append(1)
+        raise RuntimeError("youtube caido")
+
+    monkeypatch.setattr(matcher, "enrich_with_ytdlp", _match_roto)
+    a = cliente.get("/api/artist/777/top")
+    b = cliente.get("/api/artist/777/top")
+    assert a.status_code == b.status_code == 200
+    assert len(intentos) == 2  # el segundo reintenta, no sirve la cache del fallo
+
+
+def test_top_concurrente_un_solo_llamado(cliente, monkeypatch):
+    """Dos pedidos frios a la vez comparten lookup y match, no se duplican."""
+    vistos = []
+
+    async def _top(self, artista_id, limit=5):
+        vistos.append(artista_id)
+        await asyncio.sleep(0.01)
+        return [_song(1, "Creep")]
+
+    monkeypatch.setattr(ITunesSource, "artist_top_songs", _top)
+    monkeypatch.setenv("YTDLP_ENABLED", "0")
+    from backend.app.main import artist_top_songs
+
+    class _Req:
+        path_params = {"id": "777"}
+
+    async def dos():
+        return await asyncio.gather(
+            artist_top_songs(_Req()), artist_top_songs(_Req()))
+
+    resp = asyncio.run(dos())
+    assert [r.status_code for r in resp] == [200, 200]
+    assert vistos == ["777"]
+
+
+def test_artist_top_songs_no_cachea_en_la_fuente():
+    """La unica cache del top esta en el endpoint; la fuente vuelve a iTunes."""
+    vistos = []
+
+    def handler(request):
+        vistos.append(1)
+        return httpx.Response(200, json={"results": [_song(1, "Creep")]})
+
+    fuente = ITunesSource()
+    fuente._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        asyncio.run(fuente.artist_top_songs(777, limit=10))
+        asyncio.run(fuente.artist_top_songs(777, limit=10))
+    finally:
+        asyncio.run(fuente.aclose())
+    assert len(vistos) == 2
+
+
 def test_top_no_cachea_fallo_de_red(cliente, monkeypatch):
     vistos = []
 
