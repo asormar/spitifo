@@ -76,8 +76,8 @@ export default function SearchScreen({
   /* Formato y contenido se eligen en Ajustes y se leen igual que antes: la
      descarga recibe exactamente estos valores. M4A por defecto (en YouTube es
      la pista AAC del origen, sin recodificar) y solo audio en YouTube. */
-  const fmt = useDownloadFormat();
-  const media = useDownloadMedia();
+  const [fmt] = useDownloadFormat();
+  const [media] = useDownloadMedia();
   const dl = useDownloads({ query, mode, fmt, media, runs: run.runs, onLibraryChanged });
 
   const inputRef = useRef();
