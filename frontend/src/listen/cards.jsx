@@ -12,6 +12,7 @@ import { useMore } from "./useMore.js";
 import { useSaved } from "./saved.js";
 import { useArtRecord } from "./art.js";
 import { artSrc } from "./artLogic.js";
+import "../shared/pinkPlay.css";
 
 /* ---------------------------------------------------------------------------
    PIEZAS DEL INICIO DE ESCUCHAR

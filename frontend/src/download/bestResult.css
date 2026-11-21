@@ -37,12 +37,7 @@
 }
 
 .bestc__main:active {
-  transform: scale(0.99);
-}
-
-/* El boton rosa es el .pk de la biblioteca (home.css); aqui solo se coloca. */
-.bestc__play {
-  flex: none;
+  transform: scale(0.98);
 }
 
 /* Doble clase: la .cv compartida trae su propio alto y radio. */

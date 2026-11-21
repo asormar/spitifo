@@ -5,7 +5,7 @@ import { thumbUrl } from "./artwork.js";
 import { loadArtistChunk } from "./artistChunk.js";
 import { bestResultSong } from "./bestResultSong.js";
 import { useResultPlayback } from "./resultPlayback.js";
-import "../listen/home.css";
+import "../shared/pinkPlay.css";
 import "./bestResult.css";
 
 /* ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ function BestPlay({ song, query, queue, source }) {
   return (
     <button
       type="button"
-      className="pk pk--s bestc__play"
+      className="pk pk--s"
       aria-label={`${on ? "Pausar" : "Reproducir"} ${title}, de ${artist}`}
       onClick={play}
     >
