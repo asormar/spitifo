@@ -654,6 +654,11 @@
   color: var(--acc);
 }
 
+/* La accion destructiva del menu de la biblioteca conserva el tono de siempre. */
+.rm__i--bad .rm__h > svg {
+  color: var(--bad);
+}
+
 .rm__h {
   display: inline-flex;
   white-space: nowrap;

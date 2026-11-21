@@ -12,16 +12,15 @@ import { needsResolve } from "./resolveResult.js";
 
 const canDownload = (t) => trackState(t) === "full" || needsResolve(t);
 
+/* «Escuchar» es igual en Buscar y en la biblioteca: una sola copia de las
+   acciones y del texto, que comparten los dos menus. */
+export const PLAY_ITEMS = [
+  { kind: "next", icon: "next", text: "Reproducir a continuación" },
+  { kind: "end", icon: "queue", text: "Añadir al final de la cola" },
+];
+
 export function resultMenuGroups(t, { downloaded = false, fmt = "m4a" } = {}) {
-  const groups = [
-    {
-      label: "Escuchar",
-      items: [
-        { kind: "next", icon: "next", text: "Reproducir a continuación" },
-        { kind: "end", icon: "queue", text: "Añadir al final de la cola" },
-      ],
-    },
-  ];
+  const groups = [{ label: "Escuchar", items: PLAY_ITEMS }];
 
   if (downloaded) {
     groups.push({
