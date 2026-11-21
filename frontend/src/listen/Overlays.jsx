@@ -21,7 +21,7 @@ import PlaylistPicker from "./PlaylistPicker.jsx";
 import ArtSheet from "./ArtSheet.jsx";
 import { songTarget } from "./artLogic.js";
 import { useNav } from "../app/useNav.js";
-import { closeDock } from "../player/useDock.js";
+import { closePlayer } from "../player/useDock.js";
 import { MenuSurface } from "../download/ResultMenu.jsx";
 import { resultMenuGroups } from "../download/resultMenu.js";
 import { pickResultAction } from "../download/resultMenuActions.js";
@@ -214,8 +214,7 @@ function NpResultMenu({ top, back, show }) {
   ];
   const pick = (kind) => {
     if (kind === "closePlayer") {
-      closeDock();
-      back();
+      closePlayer();
       return;
     }
     return pickResultAction(kind, {
@@ -286,8 +285,7 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
 
   const pick = (kind) => {
     if (kind === "closePlayer") {
-      closeDock();
-      back();
+      closePlayer();
       return;
     }
     if (kind === "photo") {

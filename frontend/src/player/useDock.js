@@ -10,6 +10,16 @@ import { dockVisible } from "./dock.js";
 let closer = null;
 export const closeDock = () => closer?.();
 
+/* "Cerrar reproductor" en el menu de "Ahora suena" es mas que la X de la
+   pastilla: ademas de pausar y esconder el transporte, tiene que cerrar la
+   vista y deshacer sus entradas del historial. App registra esa parte (nav y
+   panel) aqui para que el menu no necesite conocerlos. */
+let playerCloser = null;
+export const closePlayer = () => playerCloser?.();
+export const registerClosePlayer = (fn) => {
+  playerCloser = fn;
+};
+
 /* ---------------------------------------------------------------------------
    REPRODUCTOR FLOTANTE (lo comun)
 

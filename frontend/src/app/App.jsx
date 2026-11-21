@@ -44,6 +44,7 @@ import { isPc, usePc } from "../shared/viewport.js";
 import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
 import { swapNowPlaying } from "./screenSwap.js";
 import { createPendingDeletes } from "../listen/pending.js";
+import { closeDock, registerClosePlayer } from "../player/useDock.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -539,6 +540,29 @@ export default function App() {
     npMorph.current = morph;
     window.history.back();
   }, []);
+
+  /* «Cerrar reproductor» del menu de "Ahora suena": una sola accion deshace
+     la hoja que hubiera encima y la entrada de la vista. El popstate recorta
+     la pila en useNav y onNpPop cierra la columna; npEntry se deja en 1 para
+     que ese ultimo paso lo haga el mismo oyente de siempre. */
+  const closeFromMenu = useCallback(() => {
+    closeDock();
+    if (!npEntry.current) {
+      /* Sin entrada en el historial (escritorio): menu y columna se cierran
+         directamente. */
+      nav.back();
+      panel.close();
+      return;
+    }
+    npMorph.current = false;
+    const above = Math.max(0, nav.getStack().length - npDepth.current);
+    window.history.go(-(above + 1));
+  }, [nav.back, nav.getStack]);
+
+  useEffect(() => {
+    registerClosePlayer(closeFromMenu);
+    return () => registerClosePlayer(null);
+  }, [closeFromMenu]);
 
   /* Escape: lo mas pequeno primero. Con un menu abierto encima de "Ahora
      suena" se cierra ese; la segunda pulsacion cierra la vista. */
