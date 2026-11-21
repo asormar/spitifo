@@ -16,12 +16,12 @@ import { ResultRow } from "./ResultRow.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
 import { resultMenuGroups } from "./resultMenu.js";
 import { pickResultAction } from "./resultMenuActions.js";
-import { albumPlayable, albumQueue, matchProgress } from "./albumPlay.js";
+import { albumPlayable, matchProgress } from "./albumPlay.js";
 import "../shared/pinkPlay.css";
 import "./rows.css";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
-import { streamTrack } from "./streamTrack.js";
+import { previewTrack, streamTrack } from "./streamTrack.js";
 import { toTrack } from "../listen/library.js";
 import { songFromResult } from "../shared/songId.js";
 import { saved, useSaved } from "../listen/saved.js";
@@ -73,7 +73,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
   const ask = query || `${album.artist} ${album.title}`;
-  const source = `album:${album.title}`;
+  const source = useMemo(() => `album:${album.title}`, [album.title]);
   const nav = useNav();
   const [fmt] = useDownloadFormat();
   const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
@@ -113,19 +113,24 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     if (await saved.remove(savedHere)) listen?.show?.(`Se quitó «${album.title}» de tu biblioteca`);
     else listen?.show?.(`No se pudo quitar «${album.title}»`);
   };
-  /* El disco en orden: lo que ya esta en la biblioteca suena desde el archivo
-     propio y lo emparejado con video, en streaming, sin bajarlo. Crece con cada
-     lote del match, asi el play se activa con la PRIMERA pista lista. */
+  /* El disco en orden: lo ya tuyo suena del archivo propio, lo emparejado con
+     video en streaming y el avance confirmado de 30 s, del preview. Crece con
+     cada lote, y la linea de progreso cuenta exactamente lo que puede sonar. */
   const mine = useMemo(() => ownedEntries(entries, album.id), [entries, album.id]);
-  const playable = useMemo(() => albumQueue(tracks), [tracks]);
-  /* Lo ya tuyo tambien esta «listo»: el play puede sonar con solo archivos
-     propios, aunque ningun video se haya emparejado todavia. */
-  const readyCount = tracks.filter((t) => albumPlayable(t) || isOwned(t)).length;
-  const lista = tracks.flatMap((t) => {
-    const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
-    if (e) return [toTrack(e, keyUrl)];
-    return t.extra?.webpage_url && t.extra?.has_full !== false ? [streamTrack(t, source)] : [];
-  });
+  const playable = useMemo(
+    () => tracks.filter((t) =>
+      albumPlayable(t) || owned.has(trackSlot(t.extra?.disc_number, t.extra?.track_number))),
+    [tracks, owned]
+  );
+  const readyCount = playable.length;
+  const lista = useMemo(
+    () => playable.map((t) => {
+      const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
+      if (e) return toTrack(e, keyUrl);
+      return t.extra?.has_full === false && t.preview_url ? previewTrack(t) : streamTrack(t, source);
+    }),
+    [playable, mine, source]
+  );
   const onAir = useEngine((s) => s.source === source && s.playing);
   const escuchar = () => {
     if (!lista.length) return;
@@ -137,7 +142,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const aleatorio = () => {
     if (!lista.length) return;
     engine.setShuffle(true);
-    engine.play(lista[0], { queue: lista, index: 0, source });
+    engine.play(lista[0], { queue: lista, index: 0, restart: true, source });
   };
 
   useEffect(() => {
