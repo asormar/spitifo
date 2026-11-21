@@ -25,8 +25,11 @@ import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
+  aboveNp,
   canStartSwipe,
+  isNpEntry,
   nextGuess,
+  npState,
   readPhoneNav,
   readView,
   swipeTarget,
@@ -278,6 +281,9 @@ export default function App() {
   const panelState = usePanel();
   const hasTrack = useEngine((s) => Boolean(s.track));
   const npEntry = useRef(0);
+  /* Profundidad de la pila cuando se abrio: la entrada del historial la lleva
+     consigo, y dice que hojas habia encima (para cerrarlas primero). */
+  const npDepth = useRef(0);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -511,15 +517,16 @@ export default function App() {
     }
     if (npEntry.current) return;
     npEntry.current = 1;
+    npDepth.current = nav.getStack().length;
     loadNowPlaying()
       .then(() => {
-        window.history.pushState({ spitifo: "np" }, "", window.location.href);
+        window.history.pushState(npState(npDepth.current), "", window.location.href);
         swapNowPlaying(() => panel.show(tab, nav.getKey()), true);
       })
       .catch(() => {
         npEntry.current = 0;
       });
-  }, [nav.getKey, np]);
+  }, [nav.getStack, nav.getKey, np]);
 
   const closeNp = useCallback((morph = true) => {
     if (npEntry.current === 2) return;
@@ -533,9 +540,14 @@ export default function App() {
     window.history.back();
   }, []);
 
-  /* Escape: cierra "Ahora suena" si esta abierta. */
+  /* Escape: lo mas pequeno primero. Con un menu abierto encima de "Ahora
+     suena" se cierra ese; la segunda pulsacion cierra la vista. */
   const escapeNp = useCallback(() => {
     if (npEntry.current) {
+      if (aboveNp(nav.getStack(), npDepth.current)) {
+        nav.back();
+        return true;
+      }
       closeNp();
       return true;
     }
@@ -545,7 +557,7 @@ export default function App() {
       return true;
     }
     return false;
-  }, [closeNp]);
+  }, [closeNp, nav.back, nav.getStack]);
 
   const onWide = useCallback(
     (on) => (on ? panel.expand(nav.getKey()) : panel.collapse()),
@@ -558,8 +570,9 @@ export default function App() {
     const onNpPop = () => {
       if (!npEntry.current) return;
       /* Un menu abierto encima de "Ahora suena" solo retrocede hasta la entrada
-         de la vista: no la cierra. Aqui vuelve a estar `spitifo: "np"`. */
-      if (window.history.state?.spitifo === "np") return;
+         de la vista: no la cierra. useNav ya recorto la pila al llegar aqui;
+         esta entrada no es un cierre, sino el sitio donde seguir. */
+      if (isNpEntry(window.history.state)) return;
       npEntry.current = 0;
       const then = npThen.current;
       const morph = npMorph.current;

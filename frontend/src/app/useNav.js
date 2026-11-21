@@ -7,8 +7,8 @@ import {
   pageOf,
   readView,
   replaceTop,
+  stackAfterPop,
   stackFor,
-  truncate,
   viewKey,
   writeView,
 } from "./navigation.js";
@@ -35,7 +35,9 @@ import { swapScreens } from "./screenSwap.js";
    saldrian de la app.
 
    "Ahora suena" tiene su propia entrada ({ spitifo: "np" }) y la lleva App: el
-   oyente de popstate de aqui va ANTES que el suyo y no toca esas entradas.
+   oyente de popstate de aqui va ANTES que el suyo. Esa entrada lleva la
+   profundidad de la pila al abrirse; al volver a ella se recorta aqui, para
+   que el menu que hubiera encima no se quede colgado.
    ------------------------------------------------------------------------- */
 
 export const NavContext = createContext(null);
@@ -242,13 +244,14 @@ export default function useNavController({ leaveNp, warm } = {}) {
         queued.forEach(act);
         return;
       }
-      /* La entrada de "Ahora suena" no es de aqui. */
-      if (window.history.state?.spitifo === "np") return;
       const cur = ref.current;
       const depth = depthOf(window.history.state);
+      /* La entrada de "Ahora suena" tampoco se salta: guarda la profundidad
+         que tenia la pila al abrirse, asi que aterrizar en ella (tras cerrar
+         un menu que estaba encima) recorta la pila y deja la vista abierta. */
       if (depth < cur.stack.length) {
         remember();
-        const next = { ...cur, stack: truncate(cur.stack, depth) };
+        const next = { ...cur, stack: stackAfterPop(cur.stack, window.history.state) };
         commitScreen(next);
       } else if (depth > cur.stack.length) {
         /* Un adelante a una pagina que ya no existe: la entrada se reescribe
