@@ -68,7 +68,7 @@ export function MenuSurface({ groups, title, anchor, onPick, onClose, head, widt
   if (pc) return <Popover anchor={anchor} onClose={onClose} width={width}>{body}</Popover>;
   return (
     <Sheet title={`Opciones de ${title}`} onClose={onClose} anchor={anchor}>
-      <SheetBar title={`Opciones de ${title}`} onClose={onClose} />
+      <SheetBar title={`Opciones de ${title}`} onClose={onClose} quiet={!!head} />
       {body}
     </Sheet>
   );

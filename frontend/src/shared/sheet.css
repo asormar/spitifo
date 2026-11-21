@@ -45,6 +45,11 @@
 }
 
 /* Barra de titulo de una hoja: texto y cerrar. */
+/* Titulo solo para el lector: la X sigue a la derecha, como en los demas menus. */
+.sh__bar > .sr-only + .cbtn {
+  margin-left: auto;
+}
+
 .sh__bar {
   display: flex;
   flex: none;
