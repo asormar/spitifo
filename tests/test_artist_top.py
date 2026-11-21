@@ -175,6 +175,64 @@ def test_top_maximo_cinco_canciones(cliente, monkeypatch):
     assert [t["title"] for t in canciones] == [f"Cancion {i}" for i in range(5)]
 
 
+# --------------------------------------------------------------------- dedupe
+def test_top_dedupe_sufijos_de_edicion(cliente, monkeypatch):
+    crudos = [
+        _song(1, "Creep"),
+        _song(2, "Creep (Remastered)"),
+        _song(3, "Creep - Live"),
+        _song(4, "Creep (Acoustic)"),
+        _song(5, "High and Dry"),
+    ]
+    _canciones(monkeypatch, crudos)
+    monkeypatch.setenv("YTDLP_ENABLED", "0")
+    r = cliente.get("/api/artist/777/top")
+    assert r.status_code == 200
+    assert [t["title"] for t in r.json()["songs"]] == ["Creep", "High and Dry"]
+
+
+def test_top_dedupe_plega_acentos_y_mayusculas(cliente, monkeypatch):
+    _canciones(monkeypatch, [
+        _song(1, "Canción"),
+        _song(2, "CANCION (Live)"),
+        _song(3, "Otra"),
+    ])
+    monkeypatch.setenv("YTDLP_ENABLED", "0")
+    r = cliente.get("/api/artist/777/top")
+    assert [t["title"] for t in r.json()["songs"]] == ["Canción", "Otra"]
+
+
+def test_top_dedupe_deja_cinco_distintos(cliente, monkeypatch):
+    """Con duplicados delante, el tope de cinco se llena con temas distintos."""
+    crudos = [
+        _song(1, "Creep"),
+        _song(2, "Creep (Remastered 2015)"),
+        _song(3, "Karma Police"),
+        _song(4, "Karma Police - Live"),
+        _song(5, "High and Dry"),
+        _song(6, "Fake Plastic Trees"),
+        _song(7, "No Surprises"),
+        _song(8, "Let Down"),
+    ]
+    _canciones(monkeypatch, crudos)
+    monkeypatch.setenv("YTDLP_ENABLED", "0")
+    r = cliente.get("/api/artist/777/top")
+    assert [t["title"] for t in r.json()["songs"]] == [
+        "Creep", "Karma Police", "High and Dry", "Fake Plastic Trees",
+        "No Surprises",
+    ]
+
+
+def test_clave_top_no_confunde_temas_distintos():
+    from backend.app.main import _top_song_key
+    assert _top_song_key(_song(1, "Creep")) == _top_song_key(
+        _song(2, "Creep (Remastered)"))
+    assert _top_song_key(_song(1, "Creep")) != _top_song_key(
+        _song(2, "Creepy"))
+    assert _top_song_key(_song(1, "High and Dry")) == _top_song_key(
+        _song(2, "HIGH AND DRY [Live]"))
+
+
 # ------------------------------------------------------------ cliente iTunes
 def test_artist_top_songs_llama_lookup_con_entity_song():
     vistos = {}
@@ -189,10 +247,10 @@ def test_artist_top_songs_llama_lookup_con_entity_song():
     fuente = ITunesSource()
     fuente._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     try:
-        salida = asyncio.run(fuente.artist_top_songs(777))
+        salida = asyncio.run(fuente.artist_top_songs(777, limit=10))
     finally:
         asyncio.run(fuente.aclose())
     assert vistos["id"] == "777"
     assert vistos["entity"] == "song"
-    assert vistos["limit"] == "5"
+    assert vistos["limit"] == "10"  # se pide de mas para dedupe antes del tope
     assert [t["trackId"] for t in salida] == [1]

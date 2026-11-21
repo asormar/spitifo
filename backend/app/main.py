@@ -105,6 +105,10 @@ _ARTIST_TOP_CACHE: dict = {}
 _ARTIST_TOP_TTL_S = 30 * 60
 _ARTIST_TOP_MAX = 50
 TOP_SONGS_LIMIT = 5
+# Se piden mas canciones a iTunes porque dedupe antes del tope: dos versiones
+# del mismo tema (p. ej. "Creep" y "Creep (Remastered)") no pueden quitarle
+# una plaza a una cancion distinta.
+ITUNES_TOP_LOOKUP_LIMIT = 10
 
 
 #: Espera antes de preparar la busqueda de YouTube: importar yt-dlp es CPU
@@ -603,6 +607,36 @@ def _normalized_title(title: str) -> str:
         t = t[:m.start()]
 
 
+# Sufijos de edicion que iTunes repite al final del titulo. La clave se calcula
+# sobre el titulo PLEGADO con fold (sin acentos ni mayusculas), asi que van en
+# minusculas. Tambien se quita cualquier grupo final entre parentesis/corchetes.
+_TOP_TAIL_WORDS = (
+    "live", "en vivo", "acoustic", "acustico", "unplugged", "remaster",
+    "remastered", "version", "edit", "radio", "demo", "mono", "stereo",
+    "instrumental", "karaoke", "cover", "mix",
+)
+_TOP_SUFFIX_RE = re.compile(
+    r"\s*(?:[(\[][^)\]]*[)\]]|[-–]\s*(?:"
+    + "|".join(re.escape(w) for w in _TOP_TAIL_WORDS) + r")\b.*)\s*$",
+    re.IGNORECASE)
+
+
+def _top_song_key(raw: dict) -> str:
+    """Clave de dedupe del top: titulo plegado y sin sufijos de edicion.
+
+    Reutiliza `fold`, el plegador de nombres del matching: quita acentos, baja
+    a minusculas y colapsa espacios. Despues saca los sufijos entre parentesis
+    o corchetes y los que van detras de un guion ("- Live", "- Acoustic"), para
+    que dos versiones del mismo tema cuenten como una sola.
+    """
+    titulo = fold(raw.get("trackName", ""))
+    while True:
+        m = _TOP_SUFFIX_RE.search(titulo)
+        if not m:
+            return " ".join(titulo.split())
+        titulo = titulo[:m.start()]
+
+
 def _release_dict(raw: dict) -> dict:
     """Ficha de un lanzamiento, con el mismo formato que _album_dict."""
     return {
@@ -788,15 +822,25 @@ async def artist_top_songs(request: Request):
     ident = _int_or_none(artista_id)
     try:
         raws = await BY_NAME["itunes"].artist_top_songs(
-            artista_id, limit=TOP_SONGS_LIMIT)
+            artista_id, limit=ITUNES_TOP_LOOKUP_LIMIT)
     except Exception as e:
         log.warning("artist top songs fallo: %s", e)
         # Un fallo de red no se cachea: la pagina lo reintentara al volver.
         return JSONResponse({"id": ident, "name": None, "songs": []})
 
     # iTunes a veces mezcla items de otros artistas en el lookup.
-    raws = [r for r in raws
-            if str(r.get("artistId")) == artista_id][:TOP_SONGS_LIMIT]
+    raws = [r for r in raws if str(r.get("artistId")) == artista_id]
+    # Y repite el mismo tema en varias ediciones. Se dedupe ANTES del tope,
+    # quedandose con la primera (la que iTunes puso mas arriba en el ranking).
+    vistos: set[str] = set()
+    unicos: list[dict] = []
+    for raw in raws:
+        clave = _top_song_key(raw)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        unicos.append(raw)
+    raws = unicos[:TOP_SONGS_LIMIT]
     name = (raws[0].get("artistName") if raws else None)
     songs: list[dict] = []
     if raws:
