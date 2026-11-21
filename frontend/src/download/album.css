@@ -59,29 +59,57 @@
   justify-content: center;
 }
 
-/* --- Boton principal -------------------------------------------------------- */
+/* --- Fila de acciones ------------------------------------------------------- */
 
-.als__btn {
-  margin: 2px 0 14px;
+.als__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 
-.als__btn:active:not([aria-disabled]) {
-  transform: scale(0.97);
-}
-
-.btn.als__btn[aria-disabled] {
+.als__act {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
   background: var(--s2);
   color: var(--mut);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.als__act:active {
+  transform: scale(0.92);
+}
+
+.als__act[aria-pressed="true"] {
+  color: var(--pink);
+}
+
+.als__act:disabled {
+  opacity: 0.45;
   cursor: default;
 }
 
-.btn.als__btn[data-busy] {
-  cursor: progress;
+/* El avance del emparejamiento y el de la descarga usan la misma rueda. */
+.als__match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  color: var(--mut);
+  font-size: 12.5px;
 }
 
-.als__btn .sp {
-  border-color: color-mix(in srgb, var(--acc-ink) 30%, transparent);
-  border-top-color: var(--acc-ink);
+.als__match .sp {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
 }
 
 /* --- Pastillas de estado ---------------------------------------------------- */
@@ -127,11 +155,29 @@
 
 .als__list {
   margin: 0;
-  padding: 4px 14px;
+  padding: 4px 10px;
   border-radius: var(--r-card);
   background: var(--s1);
   box-shadow: inset 0 0 0 1.5px var(--s3);
   list-style: none;
+}
+
+/* Las filas tocables son las de Buscar: misma logicia, numero y menu. Aqui
+   solo el numero, que en Buscar se guarda para escritorio, y el alto. */
+.als__list .res {
+  min-height: 58px;
+  margin: 0;
+  padding: 4px 2px;
+  border-radius: 12px;
+}
+
+.als__list .res__n {
+  display: block;
+  flex: none;
+  width: 22px;
+  color: var(--mut);
+  font-size: 13px;
+  text-align: right;
 }
 
 .altr {
@@ -172,15 +218,26 @@
   white-space: nowrap;
 }
 
-.altr__acts {
-  display: flex;
-  flex: none;
+/* Mientras se busca la version completa: fila tenue, no tocable todavia. */
+.altr.is-searching {
+  opacity: 0.45;
+}
+
+.altr__wait {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.altr__wait .sp {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
 }
 
 /* El area tactil del boton de cancelar llega a 44 px sin mover el dibujo. */
-.altr__x,
 .ql__x {
   display: grid;
   flex: none;
@@ -195,11 +252,6 @@
   cursor: pointer;
 }
 
-.altr.is-miss .altr__no,
-.altr.is-miss .altr__tt b {
-  color: var(--dim);
-  font-weight: 500;
-}
 
 /* --- Avisos ----------------------------------------------------------------- */
 

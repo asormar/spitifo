@@ -99,7 +99,9 @@ export default function SearchScreen({
   const albumAt = stack.find((e) => e.type === "albumsheet" && !e.from);
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
   const resmoreT = resmoreAt && results.find((t) => rowKey(t) === resmoreAt.key);
-  const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
+  /* La ficha de una pista del album trae su resultado en la entrada: no esta
+     entre los resultados de Buscar. */
+  const fichaT = fichaAt?.t || (fichaAt && results.find((t) => rowKey(t) === fichaAt.key));
   const albumT = albumAt && albums.find((a) => String(a.id) === String(albumAt.id));
   /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
   const gone = (menuAt && !menuT) || (resmoreAt && !resmoreT) || (fichaAt && !fichaT) || (albumAt && !albumT);
