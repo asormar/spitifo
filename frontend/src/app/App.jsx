@@ -557,6 +557,9 @@ export default function App() {
   useEffect(() => {
     const onNpPop = () => {
       if (!npEntry.current) return;
+      /* Un menu abierto encima de "Ahora suena" solo retrocede hasta la entrada
+         de la vista: no la cierra. Aqui vuelve a estar `spitifo: "np"`. */
+      if (window.history.state?.spitifo === "np") return;
       npEntry.current = 0;
       const then = npThen.current;
       const morph = npMorph.current;
