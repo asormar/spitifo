@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import Sheet, { Popover } from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -18,6 +18,7 @@ const KEYS = { ArrowDown: 1, ArrowUp: -1 };
 
 function Body({ groups, title, onPick }) {
   const ref = useRef(null);
+  const first = groups.flatMap((g) => g.items).find((it) => !it.disabled)?.kind;
   const onKeyDown = (e) => {
     const items = [...ref.current.querySelectorAll('[role="menuitem"]:not(:disabled)')];
     if (!items.length) return;
@@ -42,7 +43,6 @@ function Body({ groups, title, onPick }) {
       role="menu"
       aria-label={`Opciones de ${title}`}
       tabIndex={-1}
-      data-autofocus=""
       onKeyDown={onKeyDown}
     >
       {groups.map((g) => (
@@ -54,6 +54,7 @@ function Body({ groups, title, onPick }) {
               type="button"
               role="menuitem"
               className="rm__i"
+              data-autofocus={it.kind === first ? "" : undefined}
               disabled={it.disabled || undefined}
               onClick={() => onPick(it.kind)}
             >
@@ -70,19 +71,11 @@ function Body({ groups, title, onPick }) {
   );
 }
 
-export default function ResultMenu({ t, query, fmt, downloaded, anchor, onPick, onClose }) {
+export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose }) {
   const pc = usePc();
   const title = t.title || "sin título";
   const groups = resultMenuGroups(t, { downloaded, fmt });
   const body = <Body groups={groups} title={title} onPick={onPick} />;
-
-  /* El toque no siempre enfoca el boton: al cerrar, el foco vuelve a el. */
-  useEffect(
-    () => () => {
-      if (anchor?.isConnected) anchor.focus({ preventScroll: true });
-    },
-    [anchor]
-  );
 
   if (pc) return <Popover anchor={anchor} onClose={onClose}>{body}</Popover>;
   return (

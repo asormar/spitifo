@@ -179,23 +179,20 @@ export default function SearchScreen({
       if (kind === "next" || kind === "end") {
         const track = await resultTrackFor(t, { query, source: query ? `search:${query}` : null });
         if (!track) return show("No se pudo añadir a la cola");
-        if (!engine.getState().track) return show("Reproduciendo");
+        const idle = !engine.getState().track;
         const done = kind === "next" ? engine.playNext(track) : engine.enqueue(track);
-        return show(!done
-          ? "Ya está en la cola"
-          : kind === "next"
-            ? "Sonará a continuación"
-            : "Añadida a la cola");
+        return show(idle
+          ? "Reproduciendo"
+          : !done
+            ? "Ya está en la cola"
+            : kind === "next"
+              ? "Sonará a continuación"
+              : "Añadida a la cola");
       }
       const links = npLinks({ result: t }, null);
-      if (kind === "album") {
-        if (links.album?.sheet) {
-          loadAlbumChunk();
-          return nav.open({ ...links.album.sheet, anchor });
-        }
-        const found = albums.find((a) => String(a.title || a.name || "").toLowerCase() === t.album.toLowerCase());
-        if (found) return onOpenAlbum(found, anchor);
-        return;
+      if (kind === "album" && links.album?.sheet) {
+        loadAlbumChunk();
+        return nav.open({ ...links.album.sheet, anchor });
       }
       if (kind === "artist") {
         loadArtistChunk();
@@ -578,7 +575,6 @@ export default function SearchScreen({
         <ResultMenu
           key={`r${resmoreAt.key}`}
           t={resmoreT}
-          query={query}
           fmt={fmt}
           downloaded={dl.downloadedIds.has(resmoreAt.key)}
           anchor={resmoreAt.anchor}
