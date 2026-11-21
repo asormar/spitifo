@@ -365,8 +365,12 @@
 }
 
 /* El corazon comparte altura con el boton de reproducir: 44 px de area de
-   toque, tambien en pantallas finas, sin cambiar el tamano del glifo. */
+   toque, tambien en pantallas finas, sin cambiar el tamano del glifo. El
+   `display` va aqui y no en saveHeart.css (que llega con el chunk perezoso):
+   el hueco del fallback tiene que medir lo mismo antes de que llegue. */
 .mini .shrt {
+  display: inline-flex;
+  flex: none;
   width: 44px;
   height: 44px;
 }
@@ -550,6 +554,8 @@
 }
 
 .lcd .shrt {
+  display: inline-flex;
+  flex: none;
   width: 26px;
   height: 26px;
 }

@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { cx } from "../shared/ui.jsx";
-import SaveHeart from "../listen/SaveHeart.jsx";
 import { DockArt, PlayButton } from "./controls.jsx";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
@@ -8,6 +7,10 @@ import Scrub from "./Scrub.jsx";
 /* El texto de streaming no se carga hasta que suena una pista de ese tipo: no
    pesa en el primer pintado de la app. */
 const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
+/* El corazon trae el registro de guardadas, la cola y sus hojas: solo se carga
+   cuando suena una pista. Mientras llega, el hueco lo reserva `.mini .shrt`
+   (CSS del shell), asi la pastilla no se mueve. */
+const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
 
 /* ---------------------------------------------------------------------------
    MINI-REPRODUCTOR (telefono)
@@ -27,7 +30,11 @@ function MiniPlayer({ onOpen, npOpen }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
   /* El corazon se oculta solo cuando la pista no se puede guardar (un avance). */
-  const saveHeart = info ? <SaveHeart track={info} className="mini__heart" /> : null;
+  const saveHeart = info ? (
+    <Suspense fallback={<span className="shrt" aria-hidden="true" />}>
+      <SaveHeart track={info} />
+    </Suspense>
+  ) : null;
 
   return (
     <section

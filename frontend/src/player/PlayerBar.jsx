@@ -3,13 +3,15 @@ import Ico from "../shared/ico.jsx";
 import { clock } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
 import { VerdictChip } from "../shared/Verdict.jsx";
-import SaveHeart from "../listen/SaveHeart.jsx";
 import { Controls, DockArt, Volume } from "./controls.jsx";
 import useDock from "./useDock.js";
 import { useTrackPill } from "./useTrackPill.js";
 import Scrub from "./Scrub.jsx";
 
 const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
+/* Como en la pastilla: el corazon y todo su registro de guardadas esperan a
+   que suene una pista. `.lcd .shrt` reserva el sitio mientras carga. */
+const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
 
 /* ---------------------------------------------------------------------------
    BARRA DEL REPRODUCTOR (escritorio)
@@ -32,7 +34,11 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
   const pill = useTrackPill(info);
-  const saveHeart = info ? <SaveHeart track={info} className="lcd__heart" /> : null;
+  const saveHeart = info ? (
+    <Suspense fallback={<span className="shrt" aria-hidden="true" />}>
+      <SaveHeart track={info} />
+    </Suspense>
+  ) : null;
 
   return (
     <section
