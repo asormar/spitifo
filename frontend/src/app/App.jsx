@@ -27,17 +27,14 @@ import {
   TABS,
   aboveNp,
   canStartSwipe,
-  depthOf,
-  isNpEntry,
   nextGuess,
-  npCloseUnwind,
-  npState,
   readPhoneNav,
   readView,
   swipeTarget,
   viewKey,
   writePhoneNav,
 } from "./navigation.js";
+import { createLocationToken, createNpHistory } from "./npHistory.js";
 import useNavController, { NavContext } from "./useNav.js";
 import { SwipeDots, TabBar } from "./Nav.jsx";
 import LeftNav from "./LeftNav.jsx";
@@ -277,21 +274,33 @@ export default function App() {
 
   /* "Ahora suena" abierta. Como Ajustes, abrirla empuja UNA entrada al
      historial para que el atras de Android y del navegador la cierren, y
-     cerrarla (con la X, Escape o un arrastre) hace history.back() y deja que
-     popstate cierre de verdad. npEntry: 0 cerrada, 1 abierta, 2 cerrandose
-     (ya se pidio el back; un segundo cierre no puede dar otro). El estado
-     abierto/cerrado y la pestana viven en el almacen del panel. */
+     cerrarla (con la X, Escape o un arrastre) pide un retroceso y deja que
+     popstate cierre de verdad. La maquina (npHistory.js) lleva npEntry
+     (0 cerrada, 1 abierta, 2 cerrandose), la profundidad de la pila al abrir,
+     si la salida anima y el `then` pendiente. El estado abierto/cerrado y la
+     pestana viven en el almacen del panel. */
   const panelState = usePanel();
   const hasTrack = useEngine((s) => Boolean(s.track));
-  const npEntry = useRef(0);
-  /* Profundidad de la pila cuando se abrio: la entrada del historial la lleva
-     consigo, y dice que hojas habia encima (para cerrarlas primero). */
-  const npDepth = useRef(0);
-  /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
-     arrastre ya la saco de pantalla). */
-  const npMorph = useRef(true);
-  /* Lo que se hace al terminar de cerrarla: cambiar de pestana, abrir Ajustes. */
-  const npThen = useRef(null);
+  const npRef = useRef(null);
+  if (npRef.current === null) {
+    npRef.current = createNpHistory({
+      history: window.history,
+      /* Unico efecto que la maquina no puede hacer por si sola: cerrar el
+         panel. Con `then` se cierra dentro de flushSync para que la pantalla
+         de destino ya este pintada cuando corra la navegacion. */
+      closePanel: ({ then, morph, direct }) => {
+        if (then) {
+          flushSync(() => panel.close());
+          then();
+        } else if (!direct && morph) {
+          swapNowPlaying(() => panel.close(), false);
+        } else {
+          panel.close();
+        }
+      },
+    });
+  }
+  const npHistory = npRef.current;
 
   const loadHealth = useCallback(() => {
     fetch(`${API}/health`)
@@ -451,29 +460,32 @@ export default function App() {
   /* --- "Ahora suena" -------------------------------------------------------- */
 
   /* Cambiar de pestana, abrir una pagina desde el menu o abrir Ajustes con
-     "Ahora suena" abierta la cierra primero. Devuelve true si se hizo cargo:
-     `then` corre cuando el historial ya volvio a la entrada de debajo. Si hay
-     hojas encima, salen TODAS con la vista en un solo go(-n); un back suelto
-     aterrizaria en la entrada muerta de la vista, sin panel que la cierre. */
-  const leaveNp = useCallback((then) => {
-    if (!npEntry.current) return false;
-    npThen.current = then ?? null;
-    if (npEntry.current === 1) {
-      /* La marca de la entrada actual dice cuantas hojas hay encima: la pila
-         ya esta sincronizada con el historial en cada open/replace. */
-      const { delta } = npCloseUnwind(depthOf(window.history.state), npDepth.current);
-      npEntry.current = 2;
-      window.history.go(-delta);
-    }
-    return true;
-  }, []);
+     "Ahora suena" abierta la cierra primero. Lo decide la maquina: devuelve
+     true si se hizo cargo y `then` corre cuando el historial ya volvio. Si hay
+     hojas encima, salen TODAS en un solo go(-n); un back suelto aterrizaria en
+     la entrada muerta de la vista, sin panel que la cierre. */
+  const leaveNp = useCallback((then) => npHistory.leave(then), [npHistory]);
 
   /* --- Navegacion: pestanas, Ajustes y la pila de paginas ------------------- */
+
+  /* Contador que sube en cada popstate y en cada navegacion. Las acciones
+     asincronas guardan el token al empezar y solo actuan si sigue igual: si el
+     usuario retrocede o cierra el reproductor mientras esperan, se descartan. */
+  const navGen = useRef(0);
+  const bumpNav = useCallback(() => {
+    navGen.current += 1;
+  }, []);
 
   const nav = useNavController({
     leaveNp,
     warm: (tab) => tab === "discover" && warmDiscover(),
+    onNavigate: bumpNav,
   });
+  const locationRef = useRef(null);
+  if (locationRef.current === null) {
+    locationRef.current = createLocationToken({ getStack: nav.getStack, np: npHistory, gen: navGen });
+  }
+  const locationToken = locationRef.current;
 
   /* Telefono: pantalla completa ("full"). Escritorio: una columna al lado de
      las paginas ("docked"; flotando sobre Descubrir, "over"; ampliada, "wide"),
@@ -523,48 +535,25 @@ export default function App() {
         .catch(() => {});
       return;
     }
-    if (npEntry.current) return;
-    npEntry.current = 1;
-    npDepth.current = nav.getStack().length;
+    if (!npHistory.open(nav.getStack().length)) return;
     loadNowPlaying()
       .then(() => {
-        window.history.pushState(npState(npDepth.current), "", window.location.href);
+        npHistory.pushNp();
         swapNowPlaying(() => panel.show(tab, nav.getKey()), true);
       })
-      .catch(() => {
-        npEntry.current = 0;
-      });
-  }, [nav.getStack, nav.getKey, np]);
+      .catch(() => npHistory.cancelOpen());
+  }, [npHistory, nav.getStack, nav.getKey, np]);
 
-  const closeNp = useCallback((morph = true) => {
-    if (npEntry.current === 2) return;
-    /* Abierto sin entrada de historial: se cierra sin back. */
-    if (npEntry.current === 0) {
-      panel.close();
-      return;
-    }
-    npEntry.current = 2;
-    npMorph.current = morph;
-    window.history.back();
-  }, []);
+  const closeNp = useCallback((morph = true) => npHistory.close(morph), [npHistory]);
 
-  /* «Cerrar reproductor» del menu de "Ahora suena": una sola accion deshace
-     la hoja que hubiera encima y la entrada de la vista. El popstate recorta
-     la pila en useNav y onNpPop cierra la columna; npEntry se deja en 1 para
-     que ese ultimo paso lo haga el mismo oyente de siempre. */
+  /* «Cerrar reproductor» del menu de "Ahora suena": la hoja que hubiera encima
+     y la entrada de la vista salen en un solo go. La maquina marca el retroceso
+     en vuelo, descarta cualquier `then` pendiente e ignora un segundo tap. En
+     escritorio (sin entrada) el menu se cierra con nav.back. */
   const closeFromMenu = useCallback(() => {
     closeDock();
-    if (!npEntry.current) {
-      /* Sin entrada en el historial (escritorio): menu y columna se cierran
-         directamente. */
-      nav.back();
-      panel.close();
-      return;
-    }
-    npMorph.current = false;
-    const { delta } = npCloseUnwind(nav.getStack().length, npDepth.current);
-    window.history.go(-delta);
-  }, [nav.back, nav.getStack]);
+    if (npHistory.closeFromMenu() === "desktop") nav.back();
+  }, [npHistory, nav.back]);
 
   useEffect(() => {
     registerClosePlayer(closeFromMenu);
@@ -574,21 +563,20 @@ export default function App() {
   /* Escape: lo mas pequeno primero. Con un menu abierto encima de "Ahora
      suena" se cierra ese; la segunda pulsacion cierra la vista. */
   const escapeNp = useCallback(() => {
-    if (npEntry.current) {
-      if (aboveNp(nav.getStack(), npDepth.current)) {
-        nav.back();
-        return true;
-      }
-      closeNp();
+    const above = npHistory.entry ? aboveNp(nav.getStack(), npHistory.depth) : false;
+    const handled = npHistory.escape(above);
+    if (handled === "overlay") {
+      nav.back();
       return true;
     }
+    if (handled) return true;
     /* Escritorio: Escape reduce la ampliada y no cierra nada mas. */
     if (panel.get().wide) {
       panel.collapse();
       return true;
     }
     return false;
-  }, [closeNp, nav.back, nav.getStack]);
+  }, [npHistory, nav.back, nav.getStack]);
 
   const onWide = useCallback(
     (on) => (on ? panel.expand(nav.getKey()) : panel.collapse()),
@@ -596,31 +584,19 @@ export default function App() {
   );
 
   /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de
-     useNav para que este ya haya sincronizado la pila cuando corre `then`. */
+     useNav para que este ya haya sincronizado la pila cuando corre `then`.
+     La decision (seguir abierta si aterrizamos en su entrada, cerrar y correr
+     `then` si bajamos) vive en la maquina; aqui solo se registra el oyente. */
   useEffect(() => {
-    const onNpPop = () => {
-      if (!npEntry.current) return;
-      /* Un menu abierto encima de "Ahora suena" solo retrocede hasta la entrada
-         de la vista: no la cierra. useNav ya recorto la pila al llegar aqui;
-         esta entrada no es un cierre, sino el sitio donde seguir. */
-      if (isNpEntry(window.history.state)) return;
-      npEntry.current = 0;
-      const then = npThen.current;
-      const morph = npMorph.current;
-      npThen.current = null;
-      npMorph.current = true;
-      if (then) {
-        flushSync(() => panel.close());
-        then();
-      } else if (morph) {
-        swapNowPlaying(() => panel.close(), false);
-      } else {
-        panel.close();
-      }
-    };
-    window.addEventListener("popstate", onNpPop);
-    return () => window.removeEventListener("popstate", onNpPop);
-  }, []);
+    window.addEventListener("popstate", npHistory.onPop);
+    return () => window.removeEventListener("popstate", npHistory.onPop);
+  }, [npHistory]);
+
+  /* Todo popstate deja sin efecto a las navegaciones asincronas en vuelo. */
+  useEffect(() => {
+    window.addEventListener("popstate", bumpNav);
+    return () => window.removeEventListener("popstate", bumpNav);
+  }, [bumpNav]);
 
   /* Al cerrarla el foco vuelve a la pastilla, de donde se abrio. */
   const wasNp = useRef(false);
@@ -804,6 +780,7 @@ export default function App() {
         files={libFiles}
         nav={nav}
         leaveNp={leaveNp}
+        locationToken={locationToken}
         storage={storage}
         refresh={loadLib}
         hideKeys={hideKeys}

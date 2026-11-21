@@ -57,7 +57,7 @@ const withVisit = (visited, id) => (visited.has(id) ? visited : new Set(visited)
 /* `leaveNp(then)`: cierra "Ahora suena" si esta abierta y corre `then` cuando
    el historial ya bajo (true = se hizo cargo). `warm(tab)`: adelanto al elegir
    una pestana (el mapa de Descubrir viaja en el mismo gesto). */
-export default function useNavController({ leaveNp, warm } = {}) {
+export default function useNavController({ leaveNp, warm, onNavigate } = {}) {
   const [nav, setNav] = useState(() => {
     const boot = readView(window.location.search);
     return {
@@ -69,8 +69,8 @@ export default function useNavController({ leaveNp, warm } = {}) {
   /* El estado logico: se actualiza al pedir el cambio, aunque la View
      Transition pinte un cuadro despues. */
   const ref = useRef(nav);
-  const hooks = useRef({ leaveNp, warm });
-  hooks.current = { leaveNp, warm };
+  const hooks = useRef({ leaveNp, warm, onNavigate });
+  hooks.current = { leaveNp, warm, onNavigate };
   const scrolls = useRef(new Map());
   const skip = useRef(0);
   const after = useRef(null);
@@ -91,6 +91,7 @@ export default function useNavController({ leaveNp, warm } = {}) {
     /* `swap` (0 o -1/1): cambio de pantalla animado; sin ella, las paginas se
        apilan sin transicion, como siempre. */
     const commit = (next, swap) => {
+      hooks.current.onNavigate?.();
       ref.current = next;
       const update = () => setNav(next);
       if (swap === undefined) update();

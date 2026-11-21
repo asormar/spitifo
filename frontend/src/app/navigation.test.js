@@ -9,7 +9,7 @@ import {
   isOverlay,
   modeDirection,
   nextGuess,
-  npCloseUnwind,
+  npCloseDelta,
   npState,
   pageOf,
   readPhoneNav,
@@ -23,6 +23,7 @@ import {
   writePhoneNav,
   writeView,
 } from "./navigation.js";
+import { createLocationToken, createNpHistory } from "./npHistory.js";
 
 const params = (search) => new URLSearchParams(search);
 
@@ -297,212 +298,375 @@ describe("history mark", () => {
   });
 });
 
-describe("Ahora suena: pila e historial", () => {
-  const sheet = { type: "albumsheet", id: "a1" };
-  const menu = { type: "npmenu", t: { title: "Tema" } };
+const sheet = { type: "albumsheet", id: "a1" };
 
-  /* Modelo de lo que hacen useNav y App con un popstate: la pila se recorta a
-     la profundidad de la entrada alcanzada, y Ahora suena solo se cierra si la
-     entrada NO es la suya. */
-  const pop = (stack, state, npOpen) => ({
-    stack: stackAfterPop(stack, state),
-    npOpen: npOpen && isNpEntry(state),
+/* Historial falso: una pila de estados con un indice, popstate y go(n). Con
+   `defer`, go() solo encola el salto: asi se pueden probar dos acciones en el
+   mismo vuelo (doble tap, leaveNp mientras ya hay un unwind en curso). */
+function fakeHistory(initial = [null], { defer = false } = {}) {
+  let entries = [...initial];
+  let at = 0;
+  const goes = [];
+  const pending = [];
+  const listeners = new Set();
+  const fire = () => [...listeners].forEach((fn) => fn());
+  return {
+    get state() {
+      return entries[at];
+    },
+    get length() {
+      return entries.length;
+    },
+    get goes() {
+      return goes.slice();
+    },
+    push(state) {
+      entries = [...entries.slice(0, at + 1), state];
+      at = entries.length - 1;
+    },
+    go(n) {
+      goes.push(n);
+      const next = at + n;
+      if (next < 0 || next >= entries.length) return;
+      at = next;
+      if (defer) pending.push(fire);
+      else fire();
+    },
+    flush() {
+      while (pending.length) pending.shift()();
+    },
+    onPop(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+  };
+}
+
+/* El mismo cableado que la app: el popstate de useNav recorta la pila con el
+   stackAfterPop real y corre ANTES que el de Ahora suena. Las decisiones las
+   toma la maquina; aqui solo se ejecuta el efecto de cerrar el panel. */
+function session({ defer = false } = {}) {
+  const hist = fakeHistory([null], { defer });
+  const events = [];
+  let stack = [];
+  const np = createNpHistory({
+    history: hist,
+    /* App corre `then` dentro del efecto de cierre (tras flushSync): el
+       historial ya bajo y useNav ya recorto la pila cuando llega aqui. */
+    closePanel: (e) => {
+      events.push({ kind: "closePanel", ...e });
+      e.then?.();
+    },
   });
-
-  it("with a menu over Ahora suena, back closes only the menu", () => {
-    const landed = pop([sheet, menu], npState(1), true);
-    expect(landed.stack).toEqual([sheet]);
-    expect(landed.npOpen).toBe(true);
+  hist.onPop(() => {
+    const d = depthOf(hist.state);
+    if (d < stack.length) stack = stackAfterPop(stack, hist.state);
   });
+  hist.onPop(np.onPop);
+  const push = (view) => {
+    stack = [...stack, view];
+    hist.push({ [HISTORY_MARK]: stack.length });
+  };
+  return {
+    np,
+    hist,
+    events,
+    push,
+    get stack() {
+      return stack.slice();
+    },
+    get state() {
+      return hist.state;
+    },
+    get length() {
+      return hist.length;
+    },
+    openNp() {
+      const ok = np.open(stack.length);
+      if (ok) np.pushNp();
+      return ok;
+    },
+    leave(fn) {
+      return np.leave(fn);
+    },
+    back() {
+      hist.go(-1);
+    },
+    closeFromMenu() {
+      return np.closeFromMenu();
+    },
+    flush() {
+      hist.flush();
+    },
+    escape() {
+      const above = np.entry ? aboveNp(stack, np.depth) : false;
+      const result = np.escape(above);
+      if (result === "overlay") hist.go(-1);
+      return result;
+    },
+  };
+}
 
-  it("back again closes Ahora suena and keeps the view underneath", () => {
-    const afterMenu = pop([sheet, menu], npState(1), true);
-    const landed = pop(afterMenu.stack, { [HISTORY_MARK]: 1 }, afterMenu.npOpen);
-    expect(landed.stack).toEqual([sheet]);
-    expect(landed.npOpen).toBe(false);
-  });
-
-  it("Escape closes the smallest thing first", () => {
-    expect(aboveNp([sheet, menu], 1)).toBe(true);
-    expect(aboveNp([sheet], 1)).toBe(false);
-    expect(aboveNp([], 0)).toBe(false);
-  });
-
-  it("opening Ahora suena from a sheet and backing out restores the sheet", () => {
-    const stack = [album, sheet];
-    const depth = stack.length;
-    const withMenu = [...stack, menu];
-    const afterMenu = pop(withMenu, npState(depth), true);
-    expect(afterMenu.stack).toEqual(stack);
-    expect(afterMenu.npOpen).toBe(true);
-    const afterNp = pop(afterMenu.stack, { [HISTORY_MARK]: depth }, afterMenu.npOpen);
-    expect(afterNp.stack).toEqual(stack);
-    expect(afterNp.npOpen).toBe(false);
-  });
-
-  it("npmenu is an overlay, so another openMenu replaces it instead of pushing", () => {
+describe("Ahora suena: maquina de historial", () => {
+  it("npmenu es un overlay, asi que otro menu lo sustituye en su entrada", () => {
+    const menu = { type: "npmenu", key: "k", t: { title: "Tema" } };
     expect(isOverlay("npmenu")).toBe(true);
     expect(pageOf([album, menu])).toBe(album);
-    expect(replaceTop([album, menu], { ...menu, t: { title: "Otra" } })).toEqual([
-      album,
-      { ...menu, t: { title: "Otra" } },
-    ]);
-  });
-});
-
-describe("npCloseUnwind: cerrar Ahora suena desde una hoja", () => {
-  it("con el menu encima deshace el menu y la vista en un solo go", () => {
-    /* «Ir al álbum» desde el ⋯: pila [npmenu], vista abierta en profundidad 0. */
-    expect(npCloseUnwind(1, 0)).toEqual({ above: 1, delta: 2, landingDepth: 0 });
+    expect(replaceTop([album, menu], { type: "ficha" })).toEqual([album, { type: "ficha" }]);
   });
 
-  it("leaveNp con 0, 1 y 2 hojas encima: una entrada mas que hojas", () => {
-    expect(npCloseUnwind(0, 0).delta).toBe(1);
-    expect(npCloseUnwind(1, 0).delta).toBe(2);
-    expect(npCloseUnwind(2, 0).delta).toBe(3);
-    /* Con la vista abierta sobre una pagina, el aterrizaje es esa pagina. */
-    expect(npCloseUnwind(3, 2)).toEqual({ above: 1, delta: 2, landingDepth: 2 });
-    expect(npCloseUnwind(1, 2).delta).toBe(1); /* nunca menos de una */
+  it("abrir empuja una entrada; un segundo tap no empuja otra y un back cierra", () => {
+    const s = session();
+    expect(s.openNp()).toBe(true);
+    expect(s.state).toEqual(npState(0));
+    expect(s.np.entry).toBe(1);
+    expect(s.openNp()).toBe(false);
+    expect(s.length).toBe(2);
+    s.back();
+    expect(s.np.entry).toBe(0);
+    expect(s.state).toBe(null);
+    expect(s.events).toHaveLength(1);
+    expect(s.events[0].morph).toBe(true);
+    expect(s.events[0].then).toBeNull();
   });
 
-  /* Modelo minimo del par App/useNav: historial de estados, pila de paginas y
-     el par de oyentes de popstate. Sirve para comprobar el ciclo completo sin
-     React ni DOM. */
-  const session = () => {
-    let hist = [null];
-    let at = 0;
-    let stack = [];
-    let np = 0;
-    let depth = 0;
-    let then = null;
-    let pushes = 0;
-
-    const state = () => hist[at];
-    const push = (s) => {
-      hist = [...hist.slice(0, at + 1), s];
-      at = hist.length - 1;
-      pushes += 1;
-    };
-    const onPop = () => {
-      const d = depthOf(state());
-      if (d < stack.length) stack = stackAfterPop(stack, state());
-      if (np && !isNpEntry(state())) {
-        np = 0;
-        const fn = then;
-        then = null;
-        fn?.();
-      }
-    };
-    const go = (n) => {
-      at -= n;
-      onPop();
-    };
-    return {
-      get length() {
-        return hist.length;
-      },
-      get state() {
-        return state();
-      },
-      get stack() {
-        return stack.slice();
-      },
-      get np() {
-        return np;
-      },
-      get pushes() {
-        return pushes;
-      },
-      get open() {
-        return np === 1;
-      },
-      openNp() {
-        if (np) return false;
-        np = 1;
-        depth = stack.length;
-        push(npState(depth));
-        return true;
-      },
-      overlay(type) {
-        stack = [...stack, { type }];
-        push({ [HISTORY_MARK]: stack.length });
-      },
-      page(type) {
-        stack = [...stack, { type }];
-        push({ [HISTORY_MARK]: stack.length });
-      },
-      leave(fn) {
-        if (!np) return false;
-        then = fn ?? null;
-        if (np === 1) {
-          np = 2;
-          go(npCloseUnwind(stack.length, depth).delta);
-        }
-        return true;
-      },
-      back() {
-        go(1);
-      },
-    };
-  };
-
-  it("«Ir al álbum» desde el menu: cierra NP, abre la pagina y el back siguiente la cierra", () => {
+  it("con un menu encima, back solo cierra el menu y el siguiente cierra la vista", () => {
     const s = session();
     s.openNp();
-    s.overlay("npmenu");
+    s.push({ type: "npmenu", key: "k" });
+    s.back();
+    expect(s.stack).toEqual([]);
+    expect(s.state).toEqual(npState(0));
+    expect(s.np.entry).toBe(1);
+    expect(s.events).toHaveLength(0);
+    s.back();
+    expect(s.np.entry).toBe(0);
+    expect(s.events).toHaveLength(1);
+  });
+
+  it("abrir sobre una hoja y retroceder devuelve la hoja sin cerrar la vista", () => {
+    const s = session();
+    s.push(sheet);
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    s.back();
+    expect(s.stack).toEqual([sheet]);
+    expect(s.state).toEqual(npState(1));
+    expect(s.np.entry).toBe(1);
+    s.back();
+    expect(s.stack).toEqual([sheet]);
+    expect(s.np.entry).toBe(0);
+  });
+
+  it("Escape con menu encima cierra solo el menu; la segunda pulsacion cierra la vista", () => {
+    const s = session();
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    expect(s.escape()).toBe("overlay");
+    expect(s.hist.goes).toEqual([-1]);
+    expect(s.np.entry).toBe(1);
+    expect(s.events).toHaveLength(0);
+    expect(s.escape()).toBe(true);
+    expect(s.hist.goes).toEqual([-1, -1]);
+    expect(s.np.entry).toBe(0);
+    expect(s.events[0].morph).toBe(true);
+  });
+
+  it("«Ir al álbum» desde el menu: un go, se aterriza debajo de NP y then corre una vez", () => {
+    const s = session();
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
     const before = s.length;
-    s.leave(() => s.page("albumsheet"));
+    let runs = 0;
+    expect(s.leave(() => {
+      runs += 1;
+      s.push({ type: "albumsheet" });
+    })).toBe(true);
+    expect(s.hist.goes).toEqual([-2]);
+    expect(runs).toBe(1);
     expect(s.stack.map((e) => e.type)).toEqual(["albumsheet"]);
     expect(s.state).toEqual({ [HISTORY_MARK]: 1 });
-    expect(s.np).toBe(0);
-    expect(s.length).toBe(before - 1); /* menu + vista fuera, pagina dentro */
+    expect(s.np.entry).toBe(0);
+    expect(s.length).toBe(before - 1);
+    expect(s.events).toHaveLength(1);
+    expect(s.events[0].then).toBeTypeOf("function");
     s.back();
     expect(s.stack).toEqual([]);
     expect(s.state).toBe(null);
-    expect(s.length).toBe(before - 1); /* el back baja, no borra la entrada */
+    expect(s.length).toBe(before - 1);
   });
 
   it("reabrir Ahora suena despues vuelve a empujar una entrada", () => {
     const s = session();
     s.openNp();
-    s.overlay("npmenu");
-    s.leave(() => s.page("albumsheet"));
-    s.back(); /* cierra la hoja y vuelve a la raiz */
-    const pushes = s.pushes;
+    s.push({ type: "npmenu", key: "k" });
+    s.leave(() => s.push({ type: "albumsheet" }));
+    s.back();
+    const before = s.length;
     expect(s.state).toBe(null);
     expect(s.openNp()).toBe(true);
-    expect(s.pushes).toBe(pushes + 1); /* entrada nueva, no se queda pegada */
+    /* La entrada nueva ocupa el indice que dejo la pagina al cerrarse. */
+    expect(s.length).toBe(before);
     expect(s.state).toEqual(npState(0));
     s.back();
-    expect(s.open).toBe(false);
-    expect(s.np).toBe(0);
+    expect(s.np.entry).toBe(0);
     expect(s.stack).toEqual([]);
   });
 
-  it("leaveNp con 0, 1 y 2 hojas encima corre then una vez y deja la pila en la base", () => {
+  it("leaveNp con 0, 1 y 2 hojas encima: una entrada mas que hojas, then una vez", () => {
     for (const n of [0, 1, 2]) {
       const s = session();
       s.openNp();
-      for (let i = 0; i < n; i += 1) s.overlay(`sheet${i}`);
+      for (let i = 0; i < n; i += 1) s.push({ type: `sheet${i}` });
       let runs = 0;
       s.leave(() => {
         runs += 1;
       });
+      expect(s.hist.goes).toEqual([-(n + 1)]);
       expect(runs).toBe(1);
-      expect(s.np).toBe(0);
-      expect(s.open).toBe(false);
+      expect(s.np.entry).toBe(0);
       expect(s.stack).toEqual([]);
       expect(s.state).toBe(null);
     }
   });
 
-  it("escritorio sin entrada de Ahora suena: nada que deshacer, el menu cierra con un back", () => {
+  it("leaveNp desde una hoja sobre una pagina conserva la pagina debajo", () => {
     const s = session();
-    s.overlay("menu");
+    s.push(sheet);
+    s.push({ type: "albumsheet" });
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    s.leave(() => {});
+    expect(s.hist.goes).toEqual([-2]);
+    expect(s.stack).toEqual([sheet, { type: "albumsheet" }]);
+    expect(s.state).toEqual({ [HISTORY_MARK]: 2 });
+  });
+
+  it("«Cerrar reproductor» deshace menu y vista en un solo go sin morph", () => {
+    const s = session();
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    s.closeFromMenu();
+    expect(s.hist.goes).toEqual([-2]);
+    expect(s.np.entry).toBe(0);
+    expect(s.events).toHaveLength(1);
+    expect(s.events[0].morph).toBe(false);
+    expect(s.events[0].then).toBeNull();
+  });
+
+  it("doble tap de «Cerrar reproductor»: un solo go y un solo cierre", () => {
+    const s = session({ defer: true });
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    s.closeFromMenu();
+    s.closeFromMenu();
+    expect(s.hist.goes).toEqual([-2]);
+    s.flush();
+    expect(s.events).toHaveLength(1);
+    expect(s.np.entry).toBe(0);
+  });
+
+  it("leaveNp durante un unwind no pide otro go y gana el ultimo then", () => {
+    const s = session({ defer: true });
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    const order = [];
+    s.leave(() => order.push("primero"));
+    s.leave(() => order.push("ultimo"));
+    expect(s.hist.goes).toEqual([-2]);
+    s.flush();
+    expect(order).toEqual(["ultimo"]);
+    expect(s.events).toHaveLength(1);
+  });
+
+  it("«Cerrar reproductor» descarta un then pendiente", () => {
+    const s = session({ defer: true });
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    let ran = 0;
+    s.leave(() => {
+      ran += 1;
+    });
+    s.closeFromMenu();
+    s.flush();
+    expect(ran).toBe(0);
+    expect(s.hist.goes).toEqual([-2]);
+  });
+
+  it("el then corre despues de que useNav haya recortado la pila", () => {
+    const s = session();
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    s.leave(() => {
+      expect(s.stack).toEqual([]);
+      expect(s.np.entry).toBe(0);
+    });
+    expect(s.events).toHaveLength(1);
+  });
+
+  it("escritorio sin entrada: leave no se hace cargo, no hay go y el menu cierra directo", () => {
+    const s = session();
+    s.push({ type: "menu", key: "k" });
     expect(s.leave(() => {})).toBe(false);
-    s.back();
-    expect(s.stack).toEqual([]);
-    expect(s.np).toBe(0);
+    expect(s.hist.goes).toEqual([]);
+    expect(s.closeFromMenu()).toBe("desktop");
+    expect(s.hist.goes).toEqual([]);
+    expect(s.events).toHaveLength(1);
+    expect(s.events[0].direct).toBe(true);
+    expect(s.escape()).toBe(false);
+    expect(s.hist.goes).toEqual([]);
+  });
+
+  it("close sin entrada cierra directo, sin animacion ni historial", () => {
+    const s = session();
+    s.np.close();
+    expect(s.hist.goes).toEqual([]);
+    expect(s.events).toEqual([{ kind: "closePanel", then: null, morph: false, direct: true }]);
+  });
+});
+
+describe("npCloseDelta: cuantas entradas se deshacen", () => {
+  it("una mas que las hojas encima, nunca menos de una", () => {
+    expect(npCloseDelta(0, 0)).toBe(1);
+    expect(npCloseDelta(1, 0)).toBe(2);
+    expect(npCloseDelta(2, 0)).toBe(3);
+    expect(npCloseDelta(3, 2)).toBe(2);
+    expect(npCloseDelta(1, 2)).toBe(1);
+  });
+});
+
+describe("createLocationToken: sigue donde empezo la accion asincrona", () => {
+  it("cambia con el atras, con el popstate y con el estado de Ahora suena", () => {
+    const s = session();
+    const gen = { current: 0 };
+    const token = createLocationToken({ getStack: () => s.stack, np: s.np, gen });
+    s.openNp();
+    s.push({ type: "npmenu", key: "k" });
+    const start = token();
+    expect(token()).toBe(start);
+
+    s.back(); /* se cierra el menu, pero Ahora suena sigue abierta */
+    expect(s.np.entry).toBe(1);
+    expect(token()).not.toBe(start);
+    const afterBack = token();
+
+    gen.current += 1; /* el popstate real tambien sube el contador */
+    expect(token()).not.toBe(afterBack);
+    const afterPop = token();
+
+    s.np.close();
+    expect(s.np.entry).toBe(0);
+    expect(token()).not.toBe(afterPop);
+  });
+
+  it("cambia cuando la navegacion sustituye la entrada de arriba", () => {
+    const s = session();
+    const gen = { current: 0 };
+    const token = createLocationToken({ getStack: () => s.stack, np: s.np, gen });
+    s.push({ type: "menu", key: "uno" });
+    const start = token();
+    s.push({ type: "menu", key: "otro" });
+    expect(token()).not.toBe(start);
   });
 });
 
