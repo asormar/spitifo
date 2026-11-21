@@ -27,8 +27,10 @@ import {
   TABS,
   aboveNp,
   canStartSwipe,
+  depthOf,
   isNpEntry,
   nextGuess,
+  npCloseUnwind,
   npState,
   readPhoneNav,
   readView,
@@ -448,15 +450,20 @@ export default function App() {
 
   /* --- "Ahora suena" -------------------------------------------------------- */
 
-  /* Cambiar de pestana o abrir Ajustes con "Ahora suena" abierta la cierra
-     primero. Devuelve true si se hizo cargo: `then` corre cuando el historial
-     ya volvio a la entrada de debajo, asi no queda una entrada muerta. */
+  /* Cambiar de pestana, abrir una pagina desde el menu o abrir Ajustes con
+     "Ahora suena" abierta la cierra primero. Devuelve true si se hizo cargo:
+     `then` corre cuando el historial ya volvio a la entrada de debajo. Si hay
+     hojas encima, salen TODAS con la vista en un solo go(-n); un back suelto
+     aterrizaria en la entrada muerta de la vista, sin panel que la cierre. */
   const leaveNp = useCallback((then) => {
     if (!npEntry.current) return false;
-    npThen.current = then;
+    npThen.current = then ?? null;
     if (npEntry.current === 1) {
+      /* La marca de la entrada actual dice cuantas hojas hay encima: la pila
+         ya esta sincronizada con el historial en cada open/replace. */
+      const { delta } = npCloseUnwind(depthOf(window.history.state), npDepth.current);
       npEntry.current = 2;
-      window.history.back();
+      window.history.go(-delta);
     }
     return true;
   }, []);
@@ -555,8 +562,8 @@ export default function App() {
       return;
     }
     npMorph.current = false;
-    const above = Math.max(0, nav.getStack().length - npDepth.current);
-    window.history.go(-(above + 1));
+    const { delta } = npCloseUnwind(nav.getStack().length, npDepth.current);
+    window.history.go(-delta);
   }, [nav.back, nav.getStack]);
 
   useEffect(() => {
@@ -796,6 +803,7 @@ export default function App() {
       <ListenProvider
         files={libFiles}
         nav={nav}
+        leaveNp={leaveNp}
         storage={storage}
         refresh={loadLib}
         hideKeys={hideKeys}

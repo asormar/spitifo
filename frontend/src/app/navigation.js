@@ -155,6 +155,15 @@ export const stackAfterPop = (stack, state) => truncate(stack, depthOf(state));
    crecio desde que se abrio, hay un menu (o una hoja) encima. */
 export const aboveNp = (stack, npDepth) => stack.length > npDepth;
 
+/* Cuantas entradas hay que deshacer para cerrar "Ahora suena" desde una hoja
+   abierta encima, y donde aterriza el historial. Menu y vista salen en un solo
+   go(-n): si el menu se cerrara antes, el aterrizaje seria la entrada muerta de
+   la vista, sin panel que la cierre. */
+export function npCloseUnwind(stackDepth, npDepth) {
+  const above = Math.max(0, stackDepth - npDepth);
+  return { above, delta: above + 1, landingDepth: Math.max(0, npDepth) };
+}
+
 /* Un swipe horizontal de verdad: suficiente recorrido, mas horizontal que
    vertical y rapido. Devuelve el indice destino o null si no aplica. */
 export function swipeTarget({ dx = 0, dy = 0, dt = Number.POSITIVE_INFINITY } = {}, index, count) {

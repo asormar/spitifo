@@ -46,7 +46,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, storage, refresh, hideKeys, restoreFiles, children }) {
+export default function ListenProvider({ files, nav, leaveNp, storage, refresh, hideKeys, restoreFiles, children }) {
   /* Solo se leen las acciones (estables): depender de `nav` entero
      reconstruiria el contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack, replace: navReplace, getStack } = nav;
@@ -213,16 +213,22 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
         whenReady(overlaysReady, loadOverlays, () =>
           navReplace({ type: "art", target, kind, name, query: query || name, anchor })
         ),
-      /* Cambia el menu de arriba por una pagina ("Ir al album"): atras vuelve
-         a donde estaba el menu. */
-      goTo: (v) => whenReady(pageReady, loadPageHost, () => navReplace(v)),
+      /* Cambia el menu de arriba por una pagina ("Ir al album"). Si el menu
+         estaba sobre "Ahora suena", primero se cierra la vista entera y la
+         pagina se abre desde la raiz: si solo se sustituyera el menu, la
+         entrada de la vista quedaria muerta debajo de la pagina. */
+      goTo: (v) =>
+        whenReady(pageReady, loadPageHost, () => {
+          if (leaveNp?.(() => navReplace(v))) return;
+          navReplace(v);
+        }),
       back: navBack,
       song: (entry, list, extra) => (
         <SongRow key={entry.key} entry={entry} list={list} onPlay={play} onMenu={openMenu} {...extra} />
       ),
     };
     return { ctx, model, show };
-  }, [model, show, online, navOpen, navBack, navReplace, getStack, refresh, hideKeys, restoreFiles]);
+  }, [model, show, online, navOpen, navBack, navReplace, getStack, leaveNp, refresh, hideKeys, restoreFiles]);
 
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */

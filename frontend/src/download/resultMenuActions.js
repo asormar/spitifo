@@ -14,13 +14,16 @@ import { resultTrackFor } from "./resultPlayback.js";
 
 export async function pickResultAction(kind, {
   t, query = "", source = null,
-  onDownload, onAlbum, onArtist, show, nav, anchor,
+  onDownload, onAlbum, onArtist, onFicha, show, nav, anchor, closeMenu = true,
 } = {}) {
   if (!t) return;
-  nav.back();
+  /* El menu de "Ahora suena" cierra la hoja y la vista en un solo unwind, asi
+     que sus acciones «Ir a» no pueden pedir aqui un back por separado. */
+  if (closeMenu) nav.back();
   if (kind === "download") {
     return onDownload?.(t, anchor);
   } else if (kind === "ficha") {
+    if (onFicha) return onFicha(t, anchor);
     nav.open({ type: "ficha", key: rowKey(t), t, anchor });
   } else if (kind === "next" || kind === "end") {
     const pista = await resultTrackFor(t, { query, source });
