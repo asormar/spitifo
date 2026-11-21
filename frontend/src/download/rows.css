@@ -93,36 +93,12 @@
   color: var(--pink);
 }
 
-.eq {
-  display: flex;
+/* La estructura y la animacion viven en listen.css (global); aqui solo el
+   tamano en la fila, mas chico que el de la biblioteca. */
+.res .eq {
   flex: none;
-  align-items: flex-end;
-  gap: 2px;
   width: 12px;
   height: 12px;
-}
-
-.eq i {
-  flex: 1;
-  height: 100%;
-  border-radius: 1.5px;
-  background: var(--pink);
-  transform: scaleY(0.3);
-  transform-origin: bottom;
-  animation: eq 900ms ease-in-out infinite;
-  animation-play-state: paused;
-}
-
-.eq i:nth-child(2) {
-  animation-delay: -600ms;
-}
-
-.eq i:nth-child(3) {
-  animation-delay: -300ms;
-}
-
-.eq[data-on] i {
-  animation-play-state: running;
 }
 
 .res__n,
@@ -196,10 +172,6 @@
   white-space: nowrap;
 }
 
-.res__no {
-  font-weight: 600;
-}
-
 /* Solo 30 s: la etiqueta sustituye al circulo tachado de antes. */
 .res__30 {
   flex: none;
@@ -268,37 +240,11 @@
   gap: 4px;
 }
 
-/* El corazon y el ⋯ son las dos unicas acciones fijas de la fila. */
-.res__more {
-  position: relative;
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--s2);
-  color: var(--mut);
-  cursor: pointer;
-  transition: var(--tr-press);
-}
-
-.res__more::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-}
-
-.res__more:active {
-  transform: scale(0.92);
-}
-
 /* --- 30 s, descarga y sin descarga -------------------------------------------- */
 
 .pre,
-.dlr {
+.dlr,
+.res__more {
   position: relative;
   display: grid;
   flex: none;
@@ -311,7 +257,8 @@
 }
 
 .pre:active,
-.dlr:active {
+.dlr:active,
+.res__more:active {
   transform: scale(0.92);
 }
 
@@ -322,8 +269,17 @@
   color: var(--acc);
 }
 
+/* El ⋯ comparte la base redonda; aqui solo su tamano y color. */
+.res__more {
+  width: 40px;
+  height: 40px;
+  background: var(--s2);
+  color: var(--mut);
+}
+
 /* Area de toque de 44 sin mover el diseno. */
-.pre::after {
+.pre::after,
+.res__more::after {
   content: "";
   position: absolute;
   inset: -2px;
@@ -432,16 +388,6 @@
 /* Procesando el archivo: el anillo lleno y el cuadro respira. */
 .dlr[data-s="proc"] .ring i::after {
   animation: breathe 1.2s ease-in-out infinite;
-}
-
-/* El circulo tachado: no hay descarga completa. */
-.nodl {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  color: var(--dim);
 }
 
 /* --- Esqueleto ---------------------------------------------------------------- */
@@ -924,7 +870,7 @@
     margin: 0;
   }
 
-  .res .res__m > :not(.vb, .res__no, .eq, .res__30, .res__wait, .res__dl) {
+  .res .res__m > :not(.vb, .eq, .res__30, .res__wait, .res__dl) {
     display: none;
   }
 
@@ -937,8 +883,7 @@
     gap: 8px;
   }
 
-  .dlr,
-  .nodl {
+  .dlr {
     width: 44px;
     height: 44px;
   }

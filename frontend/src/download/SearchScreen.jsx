@@ -207,7 +207,7 @@ export default function SearchScreen({
         run.run(name, mode);
       }
     },
-    [resmoreT, resmoreAt, albums, nav.back, nav.open, nav.goTo, onDl, onOpenAlbum, query, show, setQ, run.run, mode]
+    [resmoreT, resmoreAt, nav.back, nav.open, nav.goTo, onDl, query, show, setQ, run.run, mode]
   );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
@@ -501,7 +501,6 @@ export default function SearchScreen({
                   busy={dl.busyIds.has(rowKey(t))}
                   downloaded={dl.downloadedIds.has(rowKey(t))}
                   onDl={onDl}
-                  onOpen={nav.open}
                   onMenu={openResultMenu}
                   queue={shown}
                   source={query ? `search:${query}` : null}

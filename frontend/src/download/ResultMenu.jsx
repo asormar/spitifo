@@ -1,7 +1,8 @@
 import { useRef } from "react";
-import Sheet, { Popover } from "../shared/Sheet.jsx";
+import Sheet, { Popover, SheetBar } from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { usePc } from "../shared/viewport.js";
+import { menuKeys } from "./menuKeys.js";
 import { resultMenuGroups } from "./resultMenu.js";
 
 /* ---------------------------------------------------------------------------
@@ -14,27 +15,9 @@ import { resultMenuGroups } from "./resultMenu.js";
    etiqueta para el lector de pantalla; los que no tienen items no se pintan.
    ------------------------------------------------------------------------- */
 
-const KEYS = { ArrowDown: 1, ArrowUp: -1 };
-
 function Body({ groups, title, onPick }) {
   const ref = useRef(null);
   const first = groups.flatMap((g) => g.items).find((it) => !it.disabled)?.kind;
-  const onKeyDown = (e) => {
-    const items = [...ref.current.querySelectorAll('[role="menuitem"]:not(:disabled)')];
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement);
-    const to =
-      e.key in KEYS
-        ? (at + KEYS[e.key] + items.length) % items.length
-        : e.key === "Home"
-        ? 0
-        : e.key === "End"
-        ? items.length - 1
-        : null;
-    if (to === null) return;
-    e.preventDefault();
-    items[to].focus();
-  };
 
   return (
     <div
@@ -43,7 +26,7 @@ function Body({ groups, title, onPick }) {
       role="menu"
       aria-label={`Opciones de ${title}`}
       tabIndex={-1}
-      onKeyDown={onKeyDown}
+      onKeyDown={(e) => menuKeys(e, ref.current, '[role="menuitem"]:not(:disabled)')}
     >
       {groups.map((g) => (
         <div key={g.label} role="group" aria-label={g.label}>
@@ -80,12 +63,7 @@ export default function ResultMenu({ t, fmt, downloaded, anchor, onPick, onClose
   if (pc) return <Popover anchor={anchor} onClose={onClose}>{body}</Popover>;
   return (
     <Sheet title={`Opciones de ${title}`} onClose={onClose} anchor={anchor}>
-      <div className="sh__bar">
-        <h2 className="sh__bt">{`Opciones de ${title}`}</h2>
-        <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
-          <Ico n="x" size={18} />
-        </button>
-      </div>
+      <SheetBar title={`Opciones de ${title}`} onClose={onClose} />
       {body}
     </Sheet>
   );

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Ico from "./ico.jsx";
 import { clamp, cx } from "./ui.jsx";
 import { usePc } from "./viewport.js";
 import "./sheet.css";
@@ -20,6 +21,19 @@ import "./sheet.css";
    ------------------------------------------------------------------------- */
 
 const FOCUSABLE = 'button:not(:disabled), a[href], input, [tabindex]:not([tabindex="-1"])';
+
+/* Cabecera de las hojas de menu: titulo y cierre. La comparten el menu de
+   resultados y el de resoluciones, asi que el texto y el boton no se repiten. */
+export function SheetBar({ title, onClose }) {
+  return (
+    <div className="sh__bar">
+      <h2 className="sh__bt">{title}</h2>
+      <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
+        <Ico n="x" size={18} />
+      </button>
+    </div>
+  );
+}
 
 /* Con una hoja abierta (telefono) la pagina de debajo no se desplaza. Cuenta
    las que hay: la ficha y su hoja de resoluciones pueden estar a la vez. */

@@ -100,10 +100,3 @@ export function trackState(t) {
   if (t.preview_url) return "preview";
   return "none";
 }
-
-/* Por que no hay descarga: texto visible en la fila (el tactil no tiene
-   tooltip) y nombre accesible del circulo tachado. */
-export const NODL_TITLE = {
-  preview: "Solo hay 30 s de esta fuente",
-  none: "No hay versión completa",
-};

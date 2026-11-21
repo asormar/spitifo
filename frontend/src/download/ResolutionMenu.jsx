@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchErr } from "../shared/api.js";
 import { fmtApproxSize } from "../shared/format.js";
-import Sheet, { Popover } from "../shared/Sheet.jsx";
+import Sheet, { Popover, SheetBar } from "../shared/Sheet.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { fetchFormats, formatsCache } from "./api.js";
+import { menuKeys } from "./menuKeys.js";
 import Ico from "../shared/ico.jsx";
 
 /* ---------------------------------------------------------------------------
@@ -58,30 +59,10 @@ function useFormats(url, onBotCheck, onClose) {
   return { st, load };
 }
 
-const KEYS = { ArrowDown: 1, ArrowUp: -1 };
-
 function Body({ st, load, title, onPick }) {
   const ref = useRef(null);
   const list = st.data?.resolutions || [];
   const best = list[0];
-
-  /* Flechas, Inicio y Fin entre los items; Escape lo cierra nav.back(). */
-  const onKeyDown = (e) => {
-    const items = [...ref.current.querySelectorAll('[role="menuitem"]')];
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement);
-    const to =
-      e.key in KEYS
-        ? (at + KEYS[e.key] + items.length) % items.length
-        : e.key === "Home"
-        ? 0
-        : e.key === "End"
-        ? items.length - 1
-        : null;
-    if (to === null) return;
-    e.preventDefault();
-    items[to].focus();
-  };
 
   return (
     <div
@@ -91,7 +72,7 @@ function Body({ st, load, title, onPick }) {
       aria-label={`Resoluciones de ${title}`}
       tabIndex={-1}
       data-autofocus=""
-      onKeyDown={onKeyDown}
+      onKeyDown={(e) => menuKeys(e, ref.current)}
     >
       {st.phase === "loading" && (
         <p className="rm__msg" aria-live="polite">
@@ -163,12 +144,7 @@ export default function ResolutionMenu({ t, anchor, onPick, onClose, onBotCheck 
   }
   return (
     <Sheet title="Elige la resolución de la descarga" onClose={onClose} anchor={anchor}>
-      <div className="sh__bar">
-        <h2 className="sh__bt">Elige la resolución de la descarga</h2>
-        <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
-          <Ico n="x" size={18} />
-        </button>
-      </div>
+      <SheetBar title="Elige la resolución de la descarga" onClose={onClose} />
       {body}
     </Sheet>
   );

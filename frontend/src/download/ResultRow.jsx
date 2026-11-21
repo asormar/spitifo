@@ -60,7 +60,7 @@ export const subOf = (t) =>
     .filter(Boolean)
     .join(", ");
 
-export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen, onMenu, queue, source }) {
+export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onMenu, queue, source }) {
   const v = verdictOf(t, useVerdict(verdictKey(t, query)));
   /* «Sin verificar» y «Solo 30 s» no son veredictos: solo se pintan los que
      dicen algo despues de mirar el archivo. */

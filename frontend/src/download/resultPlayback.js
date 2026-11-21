@@ -6,7 +6,7 @@ import { useEngine } from "../player/useEngine.js";
 import { listenArchive } from "./ArchiveListenButton.jsx";
 import { resolveResult } from "./resolveResult.js";
 import { rowPlayPlan } from "./rowPlayPlan.js";
-import { auditionKey, canStream, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
+import { auditionKey, canStream, previewKey, previewTrack, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
 
 /* ---------------------------------------------------------------------------
    TOQUE DE UNA FILA DE BUSCAR
@@ -17,25 +17,6 @@ import { auditionKey, canStream, streamKey, streamQueue, streamTrack } from "./s
    un numero de intento descarta respuestas viejas y desmontar aborta la peticion,
    asi una busqueda nueva no deja la fila «buscando…» colgada.
    ------------------------------------------------------------------------- */
-
-export const previewKey = (t) => `preview:${t?.preview_url}`;
-
-/* Exactamente la pista que mandaba PreviewButton: el mini-reproductor ya dice
-   «preview de 30 s» en su linea de datos. */
-export function previewTrackOf(t) {
-  const title = t.title || "sin título";
-  return {
-    key: previewKey(t),
-    src: t.preview_url,
-    title,
-    label: `el preview de ${title}`,
-    meta: `${t.artist || "artista desconocido"} · preview de 30 s`,
-    duration: 30,
-    artwork: t.artwork_url || null,
-    kind: "preview",
-    result: t,
-  };
-}
 
 /* Clave del motor para esta fila, segun lo que vaya a sonar. */
 export function rowTrackKey(t) {
@@ -51,7 +32,7 @@ export function rowTrackKey(t) {
 export async function resultTrackFor(t, { query = "", source = null } = {}) {
   const plan = rowPlayPlan(t);
   if (plan === "stream") return streamTrack(t, source);
-  if (plan === "preview") return previewTrackOf(t);
+  if (plan === "preview") return previewTrack(t);
   if (plan === "archive") {
     let track = null;
     const ok = await listenArchive(t, query || t.title, {
@@ -63,7 +44,7 @@ export async function resultTrackFor(t, { query = "", source = null } = {}) {
     const full = await resolveResult(t, query);
     if (canStream(full)) return streamTrack(full, source);
     if (full?.preview_url || t.preview_url) {
-      return previewTrackOf({ ...t, preview_url: full?.preview_url || t.preview_url });
+      return previewTrack({ ...t, preview_url: full?.preview_url || t.preview_url });
     }
   }
   return null;
@@ -112,7 +93,7 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
       if (!ok) fail();
       return;
     }
-    if (plan === "preview") return engine.play(previewTrackOf(t));
+    if (plan === "preview") return engine.play(previewTrack(t));
 
     /* resolve: un toque a la vez, y solo cuenta el ultimo. */
     if (busy.current) return;
@@ -130,7 +111,7 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
         const { queue: lista, index } = streamQueue([full], full, source);
         engine.play(lista[index], { queue: lista, index, source });
       } else if (full?.preview_url || t.preview_url) {
-        engine.play(previewTrackOf({ ...t, preview_url: full?.preview_url || t.preview_url }));
+        engine.play(previewTrack({ ...t, preview_url: full?.preview_url || t.preview_url }));
       } else {
         fail();
       }
