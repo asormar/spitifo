@@ -72,7 +72,6 @@ export const PLACEHOLDER = {
 };
 
 export const ORIGINAL_HINT = "Original: el archivo tal cual. Lo que venga de YouTube conserva su audio, sin recomprimir (normalmente Opus o AAC).";
-export const ORIGINAL_HINT_YT = "Original: el audio tal como viene de YouTube, sin recomprimir (normalmente Opus o AAC).";
 
 /* Sugerencias que encuentran la cancion completa en modo Musica (medido el
    2026-11-20: 10 a 16 resultados completos cada una). «Radiohead Creep» y
