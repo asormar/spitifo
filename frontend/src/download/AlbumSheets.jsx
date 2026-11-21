@@ -84,11 +84,16 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     () => albumSaveSelection(tracks, { savedIds: savedById, owned }),
     [tracks, savedById, owned]
   );
-  const savedHere = useMemo(
-    () => tracks.map(songFromResult).filter((s) => s && savedById.has(s.id)).map((s) => s.id),
-    [tracks, savedById]
+  const songIds = useMemo(
+    () => tracks.map(songFromResult).filter(Boolean).map((s) => s.id),
+    [tracks]
   );
-  const isSaved = !matching && tracks.length > 0 && toSave.length === 0;
+  const savedHere = songIds.filter((id) => savedById.has(id));
+  /* «Guardado»: todas las pistas tuyas (archivo propio) o todas las que tienen
+     id en el registro. Un avance sin id no cuenta como guardado. */
+  const allOwned = tracks.length > 0 && tracks.every(isOwned);
+  const allSaved = songIds.length > 0 && savedHere.length === songIds.length;
+  const isSaved = !matching && (allOwned || allSaved);
   const saveBtn = matching
     ? { text: "Buscando versiones…", disabled: true }
     : albumSaveButton(toSave.length);
@@ -104,6 +109,10 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   };
   const toggleSave = async () => {
     if (!isSaved) return saveAlbum();
+    if (!savedHere.length) {
+      listen?.show?.(`«${album.title}» está en tu biblioteca como archivos propios`);
+      return;
+    }
     if (await saved.remove(savedHere)) listen?.show?.(`Se quitó «${album.title}» de tu biblioteca`);
     else listen?.show?.(`No se pudo quitar «${album.title}»`);
   };
@@ -112,6 +121,9 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
      lote del match, asi el play se activa con la PRIMERA pista lista. */
   const mine = useMemo(() => ownedEntries(entries, album.id), [entries, album.id]);
   const playable = useMemo(() => albumQueue(tracks), [tracks]);
+  /* Lo ya tuyo tambien esta «listo»: el play puede sonar con solo archivos
+     propios, aunque ningun video se haya emparejado todavia. */
+  const readyCount = tracks.filter((t) => albumPlayable(t) || isOwned(t)).length;
   const lista = tracks.flatMap((t) => {
     const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
     if (e) return [toTrack(e, keyUrl)];
@@ -329,7 +341,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           {matching && tracks.length > 0 && (
             <p className="als__match" role="status" aria-live="polite">
               <span className="sp" aria-hidden="true" />
-              Buscando versiones completas: {matchProgress(tracks, playable.length)}
+              Buscando versiones completas: {matchProgress(tracks, readyCount)}
             </p>
           )}
         </div>
@@ -349,7 +361,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           {detailErr && <p className="als__note" role="alert">No se pudo abrir el álbum.</p>}
 
           {tracks.length > 0 && (
-            <ul className="rlist als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
+            <ul className="rlist rlist--compact als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
               {tracks.map((t, i) => {
                 const key = rowKey(t);
                 if (!albumPlayable(t)) {

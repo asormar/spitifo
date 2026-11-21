@@ -168,7 +168,7 @@ export default function SearchScreen({
         anchor,
       });
     },
-    [nav.open]
+    [nav.open, results]
   );
 
   const pickResult = useCallback(

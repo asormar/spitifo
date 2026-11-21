@@ -333,7 +333,7 @@ export function ArtistPage({ view, active }) {
       {populares.length > 0 && (
         <section className="aps appop" aria-labelledby="aph-pop">
           <h2 className="sh2" id="aph-pop">Populares</h2>
-          <ul className="rlist">
+          <ul className="rlist rlist--compact">
             {populares.map((t, i) => (
               <ResultRow
                 key={rowKey(t)}

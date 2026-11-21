@@ -874,6 +874,46 @@
     display: none;
   }
 
+  /* Listas dentro de una hoja o de una pagina estrecha: la fila de telefono
+     tambien en escritorio, sin las columnas anchas de Buscar. */
+  .rlist--compact .res {
+    display: flex;
+    min-height: 58px;
+  }
+
+  .rlist--compact .res__n {
+    width: 22px;
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .rlist--compact .res__src,
+  .rlist--compact .res__f {
+    display: none;
+  }
+
+  .rlist--compact .res .res__txt {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    text-align: left;
+  }
+
+  .rlist--compact .res .res__t {
+    grid-column: auto;
+  }
+
+  .rlist--compact .res .res__s {
+    grid-area: auto;
+    margin-top: 1px;
+  }
+
+  .rlist--compact .res .res__m {
+    grid-area: auto;
+    margin-top: 5px;
+  }
+
   .pop .rm__i {
     min-height: 44px;
   }
