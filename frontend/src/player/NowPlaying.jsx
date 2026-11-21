@@ -334,8 +334,11 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     </div>
   );
 
-  /* Un solo boton para abrir el menu ⋯, en las dos cabeceras. */
-  const moreButton = (
+  /* Un solo boton para abrir el menu ⋯, en las dos cabeceras. Solo se pinta
+     si hay un menu detras: la cancion de la biblioteca o un resultado al que
+     le quepa el menu de Ahora suena. Nunca queda inerte. */
+  const hasMenu = listen.model.byKey.has(menuKey) || Boolean(record) || Boolean(track.result);
+  const moreButton = hasMenu ? (
     <button
       type="button"
       className="np__more"
@@ -346,7 +349,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     >
       <Ico n="dots" size={22} />
     </button>
-  );
+  ) : null;
 
   /* La portada, o la inicial sobre el color de fondo. */
   const cover = art ? (

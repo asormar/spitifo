@@ -241,10 +241,6 @@
   min-width: 0;
 }
 
-.np__v {
-  margin-top: 2px;
-}
-
 /* Chip discreto con como suena la pista. Una sola pastilla bajo el titulo: no
    compite con el veredicto, que vive en la pestana Ficha. Solo transform y
    opacity se animan en esta vista; aqui no hay movimiento. */
@@ -262,7 +258,7 @@
 }
 
 .np__state-check {
-  color: #7ff0b0;
+  color: var(--ok-glow);
 }
 
 .np--pane .np__state {
@@ -311,7 +307,7 @@
 }
 
 .np .vb--ok::before {
-  background: #7ff0b0;
+  background: var(--ok-glow);
 }
 
 .np .vb--near::before {
@@ -683,11 +679,6 @@
 .np--pane .np__row .np__meta {
   flex: 1;
   margin-top: 0;
-}
-
-/* El chip va bajo el artista: a su lado le quitaba el ancho al titulo. */
-.np--pane .np__v {
-  margin-top: 10px;
 }
 
 .np--pane .np__row .cbtn--w {

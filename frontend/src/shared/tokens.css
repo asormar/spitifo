@@ -17,6 +17,8 @@
                             texto que lleva encima
      --pink --pink2         rosa de reproduccion; --ink va SOBRE el rosa
      --ok --near --bad      veredictos; --*-t es su texto, --*-bg su tinte
+      --ok-glow              verde de glifos sobre superficies oscuras
+                             (--ok no llega al 3:1 en el tema claro)
    El contraste de los pares que importan lo comprueba tokens.test.js.
 
    FORMA: radios 12 / 14 / 16 / 18 / 22 / 24 / 30 y pildora; los bordes son
@@ -48,6 +50,7 @@
   --on-pink: #11111c;
 
   --ok: #0f7442;
+  --ok-glow: #7ff0b0;
   --near: #8d5c00;
   --bad: #c8323b;
   --ok-t: #0b6338;
@@ -154,6 +157,7 @@
   --pink2: #3a2032;
 
   --ok: #54d38f;
+  --ok-glow: #7ff0b0;
   --near: #f5bb4d;
   --bad: #ff8585;
   --ok-t: var(--ok);

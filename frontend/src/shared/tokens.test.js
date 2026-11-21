@@ -176,7 +176,7 @@ describe("verdict chip on the Ahora suena pane", () => {
 
   /* Los puntos son graficos: 3:1. */
   it.each([
-    ["ok", [0x7f, 0xf0, 0xb0, 1]],
+    ["ok", color(light, "--ok-glow")],
     ["near", [0xff, 0xd2, 0x7a, 1]],
     ["bad", [0xff, 0x9d, 0x96, 1]],
     ["mute", over([255, 255, 255, 0.7], chip)],
