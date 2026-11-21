@@ -534,8 +534,24 @@
   white-space: nowrap;
 }
 
+/* Titulo y corazon en la misma linea; el corazon es mas pequeno que en el
+   telefono porque aqui el dedo no necesita 44 px. */
+.lcd__line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .lcd__t {
+  min-width: 0;
   font: 800 14px / 1.3 var(--font-body);
+}
+
+.lcd .shrt {
+  width: 26px;
+  height: 26px;
 }
 
 .lcd__s {
