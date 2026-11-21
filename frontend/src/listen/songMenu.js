@@ -7,7 +7,7 @@
    sin React ni DOM: se prueba en Node.
    ------------------------------------------------------------------------- */
 
-import { PLAY_ITEMS } from "../download/resultMenu.js";
+import { CLOSE_PLAYER_GROUP, PLAY_ITEMS } from "../download/resultMenuActions.js";
 
 const streamable = (song) => song?.id && /^(yt:|ia:)/.test(song.id);
 
@@ -40,8 +40,6 @@ export function songMenuGroups(entry, { fmt = "m4a", closePlayer = false, pc = f
   });
 
   /* Abierto desde "Ahora suena": el cierre de la pastilla va siempre el ultimo. */
-  if (closePlayer) {
-    groups.push({ label: "Reproductor", items: [{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }] });
-  }
+  if (closePlayer) groups.push(CLOSE_PLAYER_GROUP);
   return groups;
 }

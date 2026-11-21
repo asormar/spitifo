@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { npMenuGroups, npMenuKey, npMenuKind } from "./npMenu.js";
+import { npMenuKey, npMenuKind } from "./npMenu.js";
+import { npMenuGroups } from "../download/npResultGroups.js";
 
 /* Resultado de Buscar con ficha de album: es lo que lleva un stream suelto
    cuando se abre "Ahora suena" y se toca el ⋯. */

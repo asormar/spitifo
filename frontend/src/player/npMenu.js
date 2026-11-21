@@ -1,12 +1,10 @@
-import { resultMenuGroups } from "../download/resultMenu.js";
-
 /* ---------------------------------------------------------------------------
-   MENU ⋯ DE "AHORA SUENA"
+   CLAVE Y TIPO DEL MENU ⋯ DE "AHORA SUENA"
 
-   Que menu se abre y que grupos lleva Decide el estado de la pista, no el
-   componente: aqui es puro y se prueba en Node. Una cancion con entrada en la
-   biblioteca usa el menu de Tu biblioteca; un stream suelto cae al menu de
-   resultados de Buscar. Los dos terminan con «Cerrar reproductor».
+   Decide el estado de la pista, no el componente: aqui es puro y se prueba en
+   Node. Solo lo importa NowPlaying. Los grupos del menu de resultados (que si
+   necesitan resultMenuGroups) viven en download/npResultGroups.js, del lado de
+   Overlays, para que las dos vistas perezosas no compartan este modulo.
    ------------------------------------------------------------------------- */
 
 /* La clave del menu: la de la fila de la biblioteca, o la ficha guardada, o
@@ -22,13 +20,4 @@ export function npMenuKind({ byKey, record, result, menuKey }) {
   if (byKey.has(key) || record) return "menu";
   if (result) return "npmenu";
   return null;
-}
-
-/* Grupos del menu de resultados bajo "Ahora suena": los de Buscar y, al final,
-   cerrar el reproductor (la misma accion que la X de la pastilla). */
-export function npMenuGroups(t, { fmt = "m4a", downloaded = false } = {}) {
-  return [
-    ...resultMenuGroups(t, { fmt, downloaded }),
-    { label: "Reproductor", items: [{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }] },
-  ];
 }

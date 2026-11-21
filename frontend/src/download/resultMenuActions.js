@@ -4,6 +4,10 @@ import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
 import { resolveArtistLink } from "./artistLink.js";
 import { resultTrackFor } from "./resultPlayback.js";
 
+/* Un solo importador de resultMenu.js: asi Vite mete sus grupos en este chunk
+   compartido en vez de partirlos en otro para cada vista perezosa. */
+export { CLOSE_PLAYER_GROUP, PLAY_ITEMS, resultMenuGroups } from "./resultMenu.js";
+
 /* ---------------------------------------------------------------------------
    QUE HACE CADA OPCION DEL MENU ⋯ DE UNA CANCION
 

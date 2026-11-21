@@ -24,7 +24,7 @@ import { MenuSurface } from "../download/ResultMenu.jsx";
 import { goToArtistWhenCurrent, pickResultAction } from "../download/resultMenuActions.js";
 import { readDownloadFormat } from "../settings/downloadPrefs.js";
 import { npLinks } from "../player/npLinks.js";
-import { npMenuGroups } from "../player/npMenu.js";
+import { npMenuGroups } from "../download/npResultGroups.js";
 import { loadAlbumChunk } from "../download/albumChunk.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import "./menus.css";
