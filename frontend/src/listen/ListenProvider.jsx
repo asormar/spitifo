@@ -46,7 +46,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, leaveNp, storage, refresh, hideKeys, restoreFiles, children }) {
+export default function ListenProvider({ files, nav, leaveNp, locationToken, storage, refresh, hideKeys, restoreFiles, children }) {
   /* Solo se leen las acciones (estables): depender de `nav` entero
      reconstruiria el contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack, replace: navReplace, getStack } = nav;
@@ -192,6 +192,9 @@ export default function ListenProvider({ files, nav, leaveNp, storage, refresh, 
     const ctx = {
       openMenu,
       show,
+      /* Token del sitio actual: las acciones que esperan la red lo guardan al
+         empezar y solo actuan si sigue igual al resolverse. */
+      locationToken,
       /* Borrado de la biblioteca: ocultar ahora, restaurar si se deshace y
          volver a consultar /api/library cuando se confirma. */
       hideKeys,
@@ -228,7 +231,7 @@ export default function ListenProvider({ files, nav, leaveNp, storage, refresh, 
       ),
     };
     return { ctx, model, show };
-  }, [model, show, online, navOpen, navBack, navReplace, getStack, leaveNp, refresh, hideKeys, restoreFiles]);
+  }, [model, show, online, navOpen, navBack, navReplace, getStack, leaveNp, locationToken, refresh, hideKeys, restoreFiles]);
 
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */
@@ -248,6 +251,7 @@ export default function ListenProvider({ files, nav, leaveNp, storage, refresh, 
             replace={navReplace}
             goTo={value.ctx.goTo}
             show={show}
+            locationToken={locationToken}
             storage={model.storage}
             refresh={refresh}
             hideKeys={hideKeys}

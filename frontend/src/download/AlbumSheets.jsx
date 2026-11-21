@@ -269,6 +269,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
       query: ask,
       onDownload: (one) => queueStore.enqueue({ items: [spec(one)] }),
       show: listen?.show,
+      locationToken: listen?.ctx.locationToken,
       nav,
       anchor: menuAt?.anchor,
     });

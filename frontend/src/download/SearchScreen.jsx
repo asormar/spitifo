@@ -26,6 +26,7 @@ import { pickResultAction } from "./resultMenuActions.js";
 import ResolutionMenu from "./ResolutionMenu.jsx";
 import { npLinks } from "../player/npLinks.js";
 import { useShow } from "../listen/Notice.jsx";
+import { useListen } from "../listen/ListenProvider.jsx";
 import ShowGroup from "./ShowGroup.jsx";
 import Strip from "./Strip.jsx";
 import "../shared/chips.css";
@@ -63,6 +64,9 @@ export default function SearchScreen({
 }) {
   const pc = usePc();
   const show = useShow();
+  /* Token del padre: una resolucion de artista que espera la red no debe
+     navegar si el usuario se movio mientras tanto. */
+  const { ctx: listenCtx } = useListen();
   /* Foco tras buscar: el boton de un ejemplo se desmonta al buscar y el foco
      caia al <body>; en escritorio, ademas, toda busqueda terminada lleva el
      foco a los resultados (tambien las que llegan de la barra de arriba).
@@ -187,8 +191,13 @@ export default function SearchScreen({
       const links = npLinks({ result: t }, null);
       if (links.artist?.view) return nav.goTo("search", links.artist.view);
       if (links.artist?.resolve) {
+        const locationToken = listenCtx.locationToken;
+        const token = locationToken?.();
         const { resolveArtistLink } = await import("./artistLink.js");
         const view = await resolveArtistLink(links.artist.name, []);
+        /* El menu ya se desmonto si el usuario retrocedio o cambio de pantalla
+           mientras se buscaba: ni se abre la pagina ni se lanza otra busqueda. */
+        if (locationToken && locationToken() !== token) return;
         if (view) return nav.goTo("search", view);
       }
       const name = links.artist?.name || t.artist;
@@ -208,10 +217,11 @@ export default function SearchScreen({
         onAlbum: onAlbumFromResult,
         onArtist: onArtistFromResult,
         show,
+        locationToken: listenCtx.locationToken,
         nav,
         anchor: resmoreAt?.anchor,
       }),
-    [resmoreT, resmoreAt, query, onDl, onAlbumFromResult, onArtistFromResult, show, nav]
+    [resmoreT, resmoreAt, query, onDl, onAlbumFromResult, onArtistFromResult, show, listenCtx.locationToken, nav]
   );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */

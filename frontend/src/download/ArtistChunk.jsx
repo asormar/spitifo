@@ -180,7 +180,7 @@ function DiscographySheet({ artist, data, entries, anchor, onClose }) {
 
 export function ArtistPage({ view, active }) {
   const nav = useNav();
-  const { model } = useListen();
+  const { model, ctx } = useListen();
   const [state, setState] = useState({ status: "loading", data: null });
   const [attempt, setAttempt] = useState(0);
 
@@ -253,6 +253,7 @@ export function ArtistPage({ view, active }) {
       query: view.name || data?.name || "",
       onDownload: onSongDl,
       show,
+      locationToken: ctx.locationToken,
       nav,
       anchor: menuAt?.anchor,
     });

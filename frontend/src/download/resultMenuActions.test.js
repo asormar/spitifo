@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { pickResultAction } from "./resultMenuActions.js";
+import { goToArtistWhenCurrent, pickResultAction } from "./resultMenuActions.js";
 import { trackSpec } from "./albumText.js";
 import { rowKey } from "../shared/api.js";
 import { queueStore } from "./queueStore.js";
@@ -125,5 +125,79 @@ describe("pickResultAction: acciones del ⋯ con callbacks inyectados", () => {
     expect(n.back).not.toHaveBeenCalled();
     expect(n.open).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith({ type: "ficha", key: rowKey(t), t, anchor: "ancla" });
+  });
+});
+
+/* Un resolver que se puede dejar esperando: simula la busqueda de artista sin
+   id. `token` cambia cuando el usuario retrocede y el menu se desmonta. */
+const deferred = () => {
+  let settle;
+  const promise = new Promise((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+};
+
+describe("goToArtistWhenCurrent: una respuesta tardia no navega sobre otra pantalla", () => {
+  const view = { type: "itunesartist", id: 7 };
+
+  it("con el token igual abre la pagina resuelta", async () => {
+    const onView = vi.fn();
+    const onMiss = vi.fn();
+    const done = await goToArtistWhenCurrent({
+      name: "Radiohead",
+      locationToken: () => "menu",
+      resolve: async () => view,
+      onView,
+      onMiss,
+    });
+    expect(done).toBe(true);
+    expect(onView).toHaveBeenCalledWith(view);
+    expect(onMiss).not.toHaveBeenCalled();
+  });
+
+  it("un atras durante la espera descarta TANTO el goTo como el aviso de fallo", async () => {
+    const slow = deferred();
+    let token = "menu-np";
+    const onView = vi.fn();
+    const onMiss = vi.fn();
+    const pending = goToArtistWhenCurrent({
+      name: "Radiohead",
+      locationToken: () => token,
+      resolve: () => slow.promise,
+      onView,
+      onMiss,
+    });
+    token = "atras"; /* el menu cerro y Ahora suena ya no esta */
+    slow.settle(view);
+    expect(await pending).toBe(false);
+    expect(onView).not.toHaveBeenCalled();
+    expect(onMiss).not.toHaveBeenCalled();
+  });
+
+  it("si no hay token se mantiene el comportamiento de siempre", async () => {
+    const onView = vi.fn();
+    expect(await goToArtistWhenCurrent({ name: "Radiohead", resolve: async () => view, onView })).toBe(true);
+    expect(onView).toHaveBeenCalledWith(view);
+  });
+
+  it("el menu de biblioteca usa el mismo guardia en su ruta asincrona", async () => {
+    const slow = deferred();
+    let token = "resmenu";
+    const n = nav();
+    const show = vi.fn();
+    const pending = pickResultAction("artist", {
+      t,
+      nav: n,
+      show,
+      closeMenu: false,
+      locationToken: () => token,
+      resolveArtist: () => slow.promise,
+    });
+    token = "otra-pantalla";
+    slow.settle(view);
+    expect(await pending).toBe(false);
+    expect(n.goTo).not.toHaveBeenCalled();
+    expect(show).not.toHaveBeenCalled();
   });
 });

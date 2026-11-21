@@ -12,9 +12,26 @@ import { resultTrackFor } from "./resultPlayback.js";
    album, ir al artista); aqui solo se cierra el menu y se mandan las comunes.
    ------------------------------------------------------------------------- */
 
+/* «Ir a <artista>» sin id espera una busqueda en la red. El menu se desmonta
+   con el primer atras, asi que un ref suyo no sirve para saber si sigue abierto:
+   el token lo da el padre (App), que sobrevive al desmontaje. Si el usuario se
+   movio mientras se resolvia, no se navega NI se muestra el aviso del fallo.
+   El resolver se inyecta para probar la carrera sin red. */
+export async function goToArtistWhenCurrent({
+  name, entries = [], resolve = resolveArtistLink, locationToken, onView, onMiss,
+} = {}) {
+  const token = locationToken?.();
+  const view = await resolve(name, entries);
+  if (locationToken && locationToken() !== token) return false;
+  if (view) onView?.(view);
+  else onMiss?.(name);
+  return true;
+}
+
 export async function pickResultAction(kind, {
   t, query = "", source = null,
-  onDownload, onAlbum, onArtist, onFicha, show, nav, anchor, closeMenu = true,
+  onDownload, onAlbum, onArtist, onFicha, show, nav, anchor, closeMenu = true, locationToken,
+  resolveArtist = resolveArtistLink,
 } = {}) {
   if (!t) return;
   /* El menu de "Ahora suena" cierra la hoja y la vista en un solo unwind, asi
@@ -44,10 +61,13 @@ export async function pickResultAction(kind, {
     nav.open({ ...npLinks({ result: t }, null).album.sheet, anchor });
   } else if (kind === "artist") {
     if (onArtist) return onArtist(t, anchor);
-    const view = await resolveArtistLink(t.artist, [
-      { artist: t.artist, artist_id: t.extra?.artist_id },
-    ]);
-    if (view) nav.goTo("search", view);
-    else show?.(`No se encontró la página de ${t.artist}`);
+    return goToArtistWhenCurrent({
+      name: t.artist,
+      entries: [{ artist: t.artist, artist_id: t.extra?.artist_id }],
+      locationToken,
+      resolve: resolveArtist,
+      onView: (view) => nav.goTo("search", view),
+      onMiss: (name) => show?.(`No se encontró la página de ${name}`),
+    });
   }
 }
