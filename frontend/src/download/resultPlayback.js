@@ -27,6 +27,17 @@ export function rowTrackKey(t) {
   return null;
 }
 
+/* ¿Es esta fila la pista que suena ahora? Puro: con la foto del motor y la
+   clave/rowKey ya calculadas decide si el toque debe alternar pausa en vez de
+   empezar de nuevo. En los resultados que hay que resolver `key` es null (la
+   clave definitiva no se conoce hasta que llega la respuesta), asi que ahi se
+   compara por el rowKey del resultado guardado en la pista del motor. */
+export function isMine(state, { key, rk }) {
+  if (!state?.track) return false;
+  if (key && state.track.key === key) return true;
+  return Boolean(rk) && rowKey(state.track.result) === rk;
+}
+
 /* La misma pista, pero para la cola del menu ⋯: resuelve primero si hace falta
    y deja que el motor decida si la pone a continuacion o al final. */
 export async function resultTrackFor(t, { query = "", source = null } = {}) {
@@ -66,11 +77,7 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
 
   const key = rowTrackKey(t);
   const rk = rowKey(t);
-  const mine = (s) => {
-    if (!s.track) return false;
-    if (key && s.track.key === key) return true;
-    return Boolean(rk) && rowKey(s.track.result) === rk;
-  };
+  const mine = (s) => isMine(s, { key, rk });
   const isCurrent = useEngine(mine);
   const playing = useEngine((s) => mine(s) && s.playing);
 
@@ -93,8 +100,12 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
   const play = useCallback(async () => {
     const plan = rowPlayPlan(t);
     if (!plan) return fail();
+    /* Si esta fila ya es la pista del motor, alternar pausa sin importar el
+       plan: resolver de nuevo reiniciaria la cancion mientras la fila dice
+       «Pausar». Antes del plan para que tambien valga en stream, archive,
+       resolve y preview. */
     const state = engine.getState();
-    if (plan !== "resolve" && mine(state)) return engine.toggle();
+    if (mine(state)) return engine.toggle();
 
     if (plan === "stream") {
       const { queue: lista, index } = streamQueue(queue, t, source);
