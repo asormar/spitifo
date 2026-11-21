@@ -609,15 +609,18 @@ def _normalized_title(title: str) -> str:
 
 # Sufijos de edicion que iTunes repite al final del titulo. La clave se calcula
 # sobre el titulo PLEGADO con fold (sin acentos ni mayusculas), asi que van en
-# minusculas. Tambien se quita cualquier grupo final entre parentesis/corchetes.
+# minusculas. Solo se recorta un grupo final entre parentesis/corchetes si trae
+# una de estas palabras: "Theme (Part 2)" y "Song (feat. X)" NO son ediciones
+# y se quedan en la clave, para no confundir temas distintos.
 _TOP_TAIL_WORDS = (
     "live", "en vivo", "acoustic", "acustico", "unplugged", "remaster",
     "remastered", "version", "edit", "radio", "demo", "mono", "stereo",
-    "instrumental", "karaoke", "cover", "mix",
+    "instrumental", "karaoke", "cover", "mix", "deluxe", "bonus",
 )
+_EDICION = "|".join(re.escape(w) for w in _TOP_TAIL_WORDS)
 _TOP_SUFFIX_RE = re.compile(
-    r"\s*(?:[(\[][^)\]]*[)\]]|[-–]\s*(?:"
-    + "|".join(re.escape(w) for w in _TOP_TAIL_WORDS) + r")\b.*)\s*$",
+    r"\s*(?:[(\[][^)\]]*\b(?:" + _EDICION + r")\b[^)\]]*[)\]]"
+    r"|[-–]\s*(?:" + _EDICION + r")\b.*)\s*$",
     re.IGNORECASE)
 
 
@@ -630,11 +633,13 @@ def _top_song_key(raw: dict) -> str:
     que dos versiones del mismo tema cuenten como una sola.
     """
     titulo = fold(raw.get("trackName", ""))
-    while True:
+    while titulo.strip():
         m = _TOP_SUFFIX_RE.search(titulo)
         if not m:
             return " ".join(titulo.split())
         titulo = titulo[:m.start()]
+    # Vacio (o solo un sufijo): clave unica por id, no todos juntos.
+    return f"__sin_titulo__{raw.get('trackId')}"
 
 
 def _release_dict(raw: dict) -> dict:

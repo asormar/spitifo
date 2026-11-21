@@ -233,6 +233,34 @@ def test_clave_top_no_confunde_temas_distintos():
         _song(2, "HIGH AND DRY [Live]"))
 
 
+def test_clave_top_no_confunde_partes_ni_colaboraciones():
+    """Solo se recorta un sufijo si es de edicion: Parte 2 y feat. son titulo."""
+    from backend.app.main import _top_song_key
+    assert _top_song_key(_song(1, "Theme (Part 1)")) != _top_song_key(
+        _song(2, "Theme (Part 2)"))
+    assert _top_song_key(_song(1, "Song (feat. X)")) != _top_song_key(
+        _song(2, "Song"))
+    assert _top_song_key(_song(1, "Song (feat. X)")) == _top_song_key(
+        _song(2, "SONG (FEAT. X)"))
+
+
+def test_clave_top_colapsa_remastered_y_live():
+    from backend.app.main import _top_song_key
+    claves = [_top_song_key(_song(i, t)) for i, t in enumerate([
+        "Creep", "Creep (Remastered)", "Creep (Live)", "Creep (Deluxe)",
+        "Creep (Bonus Track)", "Creep - Live",
+    ], 1)]
+    assert len(set(claves)) == 1
+
+
+def test_clave_top_titulos_vacios_no_colapsan():
+    """Dos canciones sin titulo siguen siendo dos por su trackId."""
+    from backend.app.main import _top_song_key
+    assert _top_song_key(_song(1, "")) != _top_song_key(_song(2, "   "))
+    assert _top_song_key(_song(1, "")) == _top_song_key(_song(1, ""))
+    assert _top_song_key(_song(1, "(Live)")) == _top_song_key(_song(1, ""))
+
+
 # ------------------------------------------------------------ cliente iTunes
 def test_artist_top_songs_llama_lookup_con_entity_song():
     vistos = {}
