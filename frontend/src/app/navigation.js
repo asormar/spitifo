@@ -101,7 +101,7 @@ const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", 
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
    la biblioteca): no esconden la pantalla de debajo ni cuentan para el scroll
    recordado. */
-const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "resmore", "downmenu", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
+const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "resmore", "downmenu", "npmenu", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */
 export const isOverlay = (type) => OVERLAYS.has(type);

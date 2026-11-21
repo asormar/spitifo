@@ -177,13 +177,13 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
     /* Abre el menu (o el de una lista, `type` lmenu) de `key` junto a `el`: el
        mismo boton otra vez lo cierra; otro menu o la hoja de listas, lo cambia;
        si no, se apila. */
-    const openMenu = (key, el, type = "menu") => {
+    const openMenu = (key, el, type = "menu", extra = null) => {
       const on = getStack().at(-1);
       if (on?.type === type && on.key === key) {
         navBack();
         return;
       }
-      const view = { type, key, anchor: el };
+      const view = { type, key, anchor: el, ...extra };
       whenReady(overlaysReady, loadOverlays, () =>
         isOverlay(getStack().at(-1)?.type) ? navReplace(view) : navOpen(view)
       );
@@ -227,7 +227,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */
   const top = nav.stack.at(-1);
-  const overlay = top && (top.type === "menu" || top.type === "picker" || top.type === "file" || top.type === "art") ? top : null;
+  const overlay = top && (top.type === "menu" || top.type === "picker" || top.type === "file" || top.type === "art" || top.type === "npmenu") ? top : null;
 
   return (
     <NoticeProvider value={show}>

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
-import { VerdictChip } from "../shared/Verdict.jsx";
 import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
 import Ico from "../shared/ico.jsx";
@@ -11,8 +10,8 @@ import SaveHeart from "../listen/SaveHeart.jsx";
 import { fichaText } from "../listen/saveLogic.js";
 import QueueList from "../listen/QueueList.jsx";
 import { useNotice } from "../listen/Notice.jsx";
-import PlaylistPicker from "../listen/PlaylistPicker.jsx";
-import { songFromResult, songIdOf } from "../shared/songId.js";
+import { useSaved } from "../listen/saved.js";
+import { songIdOf } from "../shared/songId.js";
 import { playlists } from "../listen/playlists.js";
 import { initial } from "../listen/rows.jsx";
 import { useEngine } from "./useEngine.js";
@@ -23,8 +22,7 @@ import NowCards, { FichaCard } from "./NowCards.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { npLinks } from "./npLinks.js";
 import { panel, usePanel } from "./panel.js";
-import { useTrackPill } from "./useTrackPill.js";
-import { StreamBadge, StreamDownload } from "./StreamBits.jsx";
+import { playStateText } from "./playState.js";
 import { artTint, toneTint } from "./tint.js";
 import "./nowplaying.css";
 
@@ -108,21 +106,16 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const [seen, setSeen] = useState({ tab, wide, moved: false });
   if (seen.tab !== tab || seen.wide !== wide) setSeen({ tab, wide, moved: true });
   const vhost = useVideoHost();
-  /* Dentro del proveedor de la biblioteca: de ahi salen los mosaicos de la hoja
-     de listas y, en escritorio, el aviso. */
+  /* Dentro del proveedor de la biblioteca: de ahi sale el menu ⋯ de la pista
+     y, en escritorio, el aviso. */
   const listen = useListen();
+  const savedById = useSaved((s) => s.byId);
   /* Portada que ya fallo al cargar: se pinta la ficha con la inicial. */
   const [badArt, setBadArt] = useState(null);
-  /* Hoja "Añadir a una lista" abierta. Es una Sheet (z 56, por encima de esta
-     capa). En telefono el aviso va dentro de la capa (el de la biblioteca esta
-     debajo y no se veria); en escritorio, el de la biblioteca. Esta vista no
-     tiene pila de navegacion: la cierra su propio estado. */
-  const [adding, setAdding] = useState(false);
+  /* El aviso propio solo existe para escribir errores de listas en escritorio. */
   const [noticeNode, showOwn] = useNotice();
-  const show = pc ? listen.show : showOwn;
 
   const rootRef = useRef(null);
-  const addRef = useRef(null);
   const bodyRef = useRef(null);
   /* Arrastre de cierre en curso: { id, x, y, mode, dx, dy, v, samples }. */
   const gesture = useRef(null);
@@ -133,10 +126,6 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
   const meta = track?.meta ?? "";
   const { artist, album } = splitMeta(meta);
-  /* El veredicto del archivo, o «Solo 30 s» en un avance: abre la Ficha. */
-  const pill = useTrackPill(track);
-  const chip = pill && <VerdictChip v={pill} className="np__v" onOpen={() => panel.show(2)} />;
-  const streamDl = track?.kind === "stream" && <StreamDownload track={track} />;
   const saveHeart = track ? <SaveHeart track={track} /> : null;
   const art = track?.artwork && badArt !== track.artwork ? track.artwork : null;
   const fallback = toneTint(coverTone(artist, album));
@@ -268,9 +257,29 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     saved: savedStream,
     sid: track.sid,
   });
-  /* Un stream de una cancion guardada tambien entra en listas: se guarda la
-     cancion antes de anadir su id. Un preview o un resultado suelto, no. */
-  const addable = library || (track.kind === "stream" && Boolean(track.sid));
+  /* Un unico chip discreto: como suena y si la cancion esta en la biblioteca.
+     El veredicto del archivo ya no vive junto al titulo, sino en la Ficha. */
+  const stateText = playStateText({ kind: track.kind, saved: savedStream });
+  const stateChip = stateText && (
+    <span className="np__state">
+      {library && <Ico n="check" size={14} className="np__state-check" />}
+      {stateText}
+    </span>
+  );
+  /* El menu ⋯ reusa el de Tu biblioteca cuando la pista tiene entrada (archivo
+     o cancion guardada). Un stream suelto cae a los grupos de Buscar. */
+  const record = track.sid ? savedById.get(track.sid) : null;
+  const menuKey = library || listen.model.byKey.has(track.key)
+    ? track.key
+    : record?.file_key || track.sid || track.key;
+  const openMore = (e) => {
+    const anchor = e.currentTarget;
+    if (listen.model.byKey.has(menuKey) || record) {
+      listen.ctx.openMenu(menuKey, anchor, "menu", { closePlayer: true });
+    } else if (track.result) {
+      listen.ctx.openMenu(menuKey, anchor, "npmenu", { t: track.result, closePlayer: true });
+    }
+  };
   /* El artista y el album llevan a sus paginas (npLinks.js). */
   const links = npLinks(track, library ? listen.model.byKey.get(track.key) : null);
   const named = (text, link) =>
@@ -325,17 +334,17 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     </div>
   );
 
-  const addButton = addable && (
+  /* Un solo boton para abrir el menu ⋯, en las dos cabeceras. */
+  const moreButton = (
     <button
-      ref={addRef}
       type="button"
-      className="cbtn cbtn--w"
-      onClick={() => setAdding(true)}
-      aria-label="Añadir a una lista"
-      aria-haspopup="dialog"
-      title="Añadir a una lista"
+      className="np__more"
+      onClick={openMore}
+      aria-label={`Más opciones de ${track.title}`}
+      aria-haspopup="menu"
+      title="Más opciones"
     >
-      <Ico n="addlist" size={24} />
+      <Ico n="dots" size={22} />
     </button>
   );
 
@@ -352,7 +361,6 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     <>
       <h2 className="np__title">{track.title}</h2>
       <p className="np__sub" title={meta}>
-        {track.kind === "stream" && <><StreamBadge track={track} /> </>}
         {named(artist, links.artist)}
         {album && <> · {named(album, links.album)}</>}
       </p>
@@ -407,16 +415,17 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
             <div className="np__row">
               <div className="np__meta">
                 {title}
-                {chip}
+                {stateChip}
               </div>
-              {streamDl}
               {saveHeart}
-              {addButton}
             </div>
           ) : (
             <div className="np__meta np__meta--v">
-              <div className="np__tx">{title}</div>
-              {chip}
+              <div className="np__tx">
+                {title}
+                {stateChip}
+              </div>
+              {saveHeart}
             </div>
           )}
         </div>
@@ -437,7 +446,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
         )}
         {library && (
           <div className="np__cards">
-            <NowCards track={track} artist={artist} onReveal={onReveal} />
+            <NowCards artist={artist} trackKey={track.key} />
           </div>
         )}
       </div>
@@ -484,26 +493,29 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
         {pc ? (
           <div className="np__head">
             {tabs}
-            {canWide && tab === 0 && (
+            <div className="np__pane-tools">
+              {canWide && tab === 0 && (
+                <button
+                  type="button"
+                  className="cbtn cbtn--w np__wide"
+                  onClick={() => onWide(!wide)}
+                  aria-label={wide ? "Reducir Ahora suena" : "Ampliar Ahora suena"}
+                  title={wide ? "Reducir" : "Ampliar"}
+                >
+                  <Ico n={wide ? "collapse" : "expand"} size={20} />
+                </button>
+              )}
+              {moreButton}
               <button
                 type="button"
-                className="cbtn cbtn--w np__wide"
-                onClick={() => onWide(!wide)}
-                aria-label={wide ? "Reducir Ahora suena" : "Ampliar Ahora suena"}
-                title={wide ? "Reducir" : "Ampliar"}
+                className="cbtn cbtn--w np__x"
+                onClick={() => onClose()}
+                aria-label="Cerrar el panel"
+                title="Cerrar el panel"
               >
-                <Ico n={wide ? "collapse" : "expand"} size={20} />
+                <Ico n="x" size={20} />
               </button>
-            )}
-            <button
-              type="button"
-              className="cbtn cbtn--w np__x"
-              onClick={() => onClose()}
-              aria-label="Cerrar el panel"
-              title="Cerrar el panel"
-            >
-              <Ico n="x" size={20} />
-            </button>
+            </div>
           </div>
         ) : (
           <div
@@ -527,7 +539,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 <small>{caption.head}</small>
                 <b>{caption.name}</b>
               </p>
-              <div className="np__tools">{streamDl}{saveHeart}{addButton}</div>
+              <div className="np__tools">{moreButton}</div>
             </header>
             {tabs}
           </div>
@@ -549,22 +561,6 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
       </div>
 
       {!pc && noticeNode}
-
-      {adding && (
-        <PlaylistPicker
-          songKey={track.sid || track.key}
-          title={track.title}
-          byKey={listen.model.byKey}
-          savedRecord={
-            track.sid && !listen.model.savedById.has(track.sid) ? songFromResult(track.result) : null
-          }
-          onNotice={show}
-          onClose={() => {
-            setAdding(false);
-            addRef.current?.focus({ preventScroll: true });
-          }}
-        />
-      )}
     </div>
   );
 }
