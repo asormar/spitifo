@@ -9,6 +9,7 @@ import {
   isOverlay,
   modeDirection,
   nextGuess,
+  npCloseUnwind,
   npState,
   pageOf,
   readPhoneNav,
@@ -346,6 +347,162 @@ describe("Ahora suena: pila e historial", () => {
       album,
       { ...menu, t: { title: "Otra" } },
     ]);
+  });
+});
+
+describe("npCloseUnwind: cerrar Ahora suena desde una hoja", () => {
+  it("con el menu encima deshace el menu y la vista en un solo go", () => {
+    /* «Ir al álbum» desde el ⋯: pila [npmenu], vista abierta en profundidad 0. */
+    expect(npCloseUnwind(1, 0)).toEqual({ above: 1, delta: 2, landingDepth: 0 });
+  });
+
+  it("leaveNp con 0, 1 y 2 hojas encima: una entrada mas que hojas", () => {
+    expect(npCloseUnwind(0, 0).delta).toBe(1);
+    expect(npCloseUnwind(1, 0).delta).toBe(2);
+    expect(npCloseUnwind(2, 0).delta).toBe(3);
+    /* Con la vista abierta sobre una pagina, el aterrizaje es esa pagina. */
+    expect(npCloseUnwind(3, 2)).toEqual({ above: 1, delta: 2, landingDepth: 2 });
+    expect(npCloseUnwind(1, 2).delta).toBe(1); /* nunca menos de una */
+  });
+
+  /* Modelo minimo del par App/useNav: historial de estados, pila de paginas y
+     el par de oyentes de popstate. Sirve para comprobar el ciclo completo sin
+     React ni DOM. */
+  const session = () => {
+    let hist = [null];
+    let at = 0;
+    let stack = [];
+    let np = 0;
+    let depth = 0;
+    let then = null;
+    let pushes = 0;
+
+    const state = () => hist[at];
+    const push = (s) => {
+      hist = [...hist.slice(0, at + 1), s];
+      at = hist.length - 1;
+      pushes += 1;
+    };
+    const onPop = () => {
+      const d = depthOf(state());
+      if (d < stack.length) stack = stackAfterPop(stack, state());
+      if (np && !isNpEntry(state())) {
+        np = 0;
+        const fn = then;
+        then = null;
+        fn?.();
+      }
+    };
+    const go = (n) => {
+      at -= n;
+      onPop();
+    };
+    return {
+      get length() {
+        return hist.length;
+      },
+      get state() {
+        return state();
+      },
+      get stack() {
+        return stack.slice();
+      },
+      get np() {
+        return np;
+      },
+      get pushes() {
+        return pushes;
+      },
+      get open() {
+        return np === 1;
+      },
+      openNp() {
+        if (np) return false;
+        np = 1;
+        depth = stack.length;
+        push(npState(depth));
+        return true;
+      },
+      overlay(type) {
+        stack = [...stack, { type }];
+        push({ [HISTORY_MARK]: stack.length });
+      },
+      page(type) {
+        stack = [...stack, { type }];
+        push({ [HISTORY_MARK]: stack.length });
+      },
+      leave(fn) {
+        if (!np) return false;
+        then = fn ?? null;
+        if (np === 1) {
+          np = 2;
+          go(npCloseUnwind(stack.length, depth).delta);
+        }
+        return true;
+      },
+      back() {
+        go(1);
+      },
+    };
+  };
+
+  it("«Ir al álbum» desde el menu: cierra NP, abre la pagina y el back siguiente la cierra", () => {
+    const s = session();
+    s.openNp();
+    s.overlay("npmenu");
+    const before = s.length;
+    s.leave(() => s.page("albumsheet"));
+    expect(s.stack.map((e) => e.type)).toEqual(["albumsheet"]);
+    expect(s.state).toEqual({ [HISTORY_MARK]: 1 });
+    expect(s.np).toBe(0);
+    expect(s.length).toBe(before - 1); /* menu + vista fuera, pagina dentro */
+    s.back();
+    expect(s.stack).toEqual([]);
+    expect(s.state).toBe(null);
+    expect(s.length).toBe(before - 1); /* el back baja, no borra la entrada */
+  });
+
+  it("reabrir Ahora suena despues vuelve a empujar una entrada", () => {
+    const s = session();
+    s.openNp();
+    s.overlay("npmenu");
+    s.leave(() => s.page("albumsheet"));
+    s.back(); /* cierra la hoja y vuelve a la raiz */
+    const pushes = s.pushes;
+    expect(s.state).toBe(null);
+    expect(s.openNp()).toBe(true);
+    expect(s.pushes).toBe(pushes + 1); /* entrada nueva, no se queda pegada */
+    expect(s.state).toEqual(npState(0));
+    s.back();
+    expect(s.open).toBe(false);
+    expect(s.np).toBe(0);
+    expect(s.stack).toEqual([]);
+  });
+
+  it("leaveNp con 0, 1 y 2 hojas encima corre then una vez y deja la pila en la base", () => {
+    for (const n of [0, 1, 2]) {
+      const s = session();
+      s.openNp();
+      for (let i = 0; i < n; i += 1) s.overlay(`sheet${i}`);
+      let runs = 0;
+      s.leave(() => {
+        runs += 1;
+      });
+      expect(runs).toBe(1);
+      expect(s.np).toBe(0);
+      expect(s.open).toBe(false);
+      expect(s.stack).toEqual([]);
+      expect(s.state).toBe(null);
+    }
+  });
+
+  it("escritorio sin entrada de Ahora suena: nada que deshacer, el menu cierra con un back", () => {
+    const s = session();
+    s.overlay("menu");
+    expect(s.leave(() => {})).toBe(false);
+    s.back();
+    expect(s.stack).toEqual([]);
+    expect(s.np).toBe(0);
   });
 });
 
