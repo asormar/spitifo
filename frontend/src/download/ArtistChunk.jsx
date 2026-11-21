@@ -6,6 +6,7 @@ import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
 import { rowKey } from "../shared/api.js";
+import { songIdOf } from "../shared/songId.js";
 import { Icon } from "../shared/icons.jsx";
 import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import Sheet from "../shared/Sheet.jsx";
@@ -231,6 +232,12 @@ export function ArtistPage({ view, active }) {
     [topState.songs, data, view.songs, data?.name]
   );
   const songSource = useMemo(() => `artist:${data?.name}`, [data?.name]);
+  /* El punto verde de Populares sale del mismo id que usa el corazon: una
+     cancion del top que ya este bajada se ve como descargada. */
+  const downloadedIds = useMemo(
+    () => new Set((model?.entries || []).filter((e) => e.downloaded && e.sid).map((e) => e.sid)),
+    [model?.entries]
+  );
   /* Las filas de Populares son memoizadas: callbacks y fuente estables para
      que abrir la hoja de discografia no pinte toda la lista de nuevo. */
   const onSongDl = useCallback(
@@ -375,6 +382,7 @@ export function ArtistPage({ view, active }) {
                   queue={populares}
                   source={songSource}
                   variant="popular"
+                  downloaded={downloadedIds.has(songIdOf(t))}
                   onDl={onSongDl}
                   onMenu={onSongMenu}
                 />
