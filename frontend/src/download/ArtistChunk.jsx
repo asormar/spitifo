@@ -228,7 +228,7 @@ export function ArtistPage({ view, active }) {
   /* Populares: gana el top del backend (vale para CUALQUIER entrada del
      artista); si no trae nada se caen a los resultados de la Buscar. */
   const populares = useMemo(
-    () => artistPopulares(topState.songs, data, view.songs, data?.name),
+    () => artistPopulares(topState.songs, view.songs, data?.name),
     [topState.songs, data, view.songs, data?.name]
   );
   const songSource = useMemo(() => `artist:${data?.name}`, [data?.name]);

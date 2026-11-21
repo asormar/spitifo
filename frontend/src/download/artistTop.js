@@ -21,15 +21,11 @@ export async function fetchArtistTop(id, signal) {
 }
 
 /* Puro: elige la fuente de Populares. Gana la del backend; si no trae nada,
-   se usan los resultados de la Buscar (que ya filtra por artista y reproduce).
-   Los dos caminos respetan el tope de cinco y el plan de reproduccion. */
-export function artistPopulares(backend = [], data = null, results = [],
-                                name = null, plan, limit = 5) {
+   se usan los resultados de la Buscar (que ya filtra por artista). ResultRow
+   decide como suena cada fila, previews de 30 s incluidos, asi que el plan no
+   se filtra aqui: la app llama siempre con tres argumentos. */
+export function artistPopulares(backend = [], results = [], name = null, limit = 5) {
   const delBackend = Array.isArray(backend) ? backend : [];
-  if (delBackend.length) {
-    return delBackend
-      .filter((t) => t && (!plan || plan(t)))
-      .slice(0, limit);
-  }
-  return popularSongs(data, results, name, plan, limit);
+  if (delBackend.length) return delBackend.slice(0, limit);
+  return popularSongs(results, name, limit);
 }
