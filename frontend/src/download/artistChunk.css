@@ -78,14 +78,38 @@
   width: min(210px, 60vw);
 }
 
-/* --- Boton principal ------------------------------------------------------- */
+/* --- Fila de acciones ------------------------------------------------------- */
 
-.apdl {
-  gap: 9px;
+.apacts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
-.btn.apdl:active {
-  transform: scale(0.98);
+.apact {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--s2);
+  color: var(--mut);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.apact:active {
+  transform: scale(0.92);
+}
+
+.appop .rlist .res {
+  margin: 0;
+  padding: 4px 2px;
+  border-radius: 12px;
 }
 
 /* --- Rejilla de discos ----------------------------------------------------- */

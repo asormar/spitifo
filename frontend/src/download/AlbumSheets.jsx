@@ -12,17 +12,16 @@ import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumA
 import { Icon } from "../shared/icons.jsx";
 import { loadArtistChunk } from "./artistChunk.js";
 import { resolveArtistLink } from "./artistLink.js";
-import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
-import { resultTrackFor } from "./resultPlayback.js";
 import { ResultRow } from "./ResultRow.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
 import { resultMenuGroups } from "./resultMenu.js";
+import { pickResultAction } from "./resultMenuActions.js";
 import { albumPlayable, albumQueue, matchProgress } from "./albumPlay.js";
 import "../shared/pinkPlay.css";
 import "./rows.css";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
-import { canStream, streamTrack } from "./streamTrack.js";
+import { streamTrack } from "./streamTrack.js";
 import { toTrack } from "../listen/library.js";
 import { keyUrl } from "../shared/api.js";
 import { songFromResult } from "../shared/songId.js";
@@ -241,41 +240,16 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     }
   };
 
-  const pickSong = async (kind) => {
-    const t = menuAt?.t;
-    if (!t) return;
-    const anchorSong = menuAt.anchor;
-    nav.back();
-    if (kind === "download") {
-      if (canStream(t)) queueStore.enqueue({ items: [spec(t)] });
-      else listen?.show?.("Solo hay 30 s de esta canción");
-    } else if (kind === "ficha") {
-      nav.open({ type: "ficha", key: rowKey(t), t, anchor: anchorSong });
-    } else if (kind === "next" || kind === "end") {
-      const pista = await resultTrackFor(t, { query: ask });
-      if (!pista) return listen?.show?.("No se pudo añadir a la cola");
-      const idle = !engine.getState().track;
-      const done = kind === "next" ? engine.playNext(pista) : engine.enqueue(pista);
-      listen?.show?.(
-        idle
-          ? "Reproduciendo"
-          : !done
-          ? "Ya está en la cola"
-          : kind === "next"
-          ? "Sonará a continuación"
-          : "Añadida a la cola"
-      );
-    } else if (kind === "album" && canOpenAlbumSheet(t)) {
-      nav.open({ ...npLinks({ result: t }, null).album.sheet, anchor: anchorSong });
-    } else if (kind === "artist") {
-      loadArtistChunk();
-      const view = await resolveArtistLink(t.artist, [
-        { artist: t.artist, artist_id: t.extra?.artist_id },
-      ]);
-      if (view) nav.goTo("search", view);
-      else listen?.show?.(`No se encontró la página de ${t.artist}`);
-    }
-  };
+  const pickSong = (kind) =>
+    pickResultAction(kind, {
+      t: menuAt?.t,
+      query: ask,
+      name: header.artist,
+      enqueue: (one) => queueStore.enqueue({ items: [spec(one)] }),
+      show: listen?.show,
+      nav,
+      anchor: menuAt?.anchor,
+    });
 
   return (
     <>

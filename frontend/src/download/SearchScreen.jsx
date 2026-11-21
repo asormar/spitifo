@@ -157,7 +157,16 @@ export default function SearchScreen({
   const onOpenArtist = useCallback(
     (artist, anchor) => {
       loadArtistChunk();
-      nav.open({ type: "itunesartist", id: artist.id, name: artist.name, genre: artist.genre, anchor });
+      /* Los resultados viajan en la entrada: el artista abre Populares sin un
+         estado global nuevo ni otra peticion. */
+      nav.open({
+        type: "itunesartist",
+        id: artist.id,
+        name: artist.name,
+        genre: artist.genre,
+        songs: results,
+        anchor,
+      });
     },
     [nav.open]
   );

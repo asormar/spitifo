@@ -17,3 +17,21 @@ export function bestResultSong(results = [], artist = null, plan = rowPlayPlan) 
     results.find((t) => isArtistNameMatch(artist.name, t?.artist) && plan(t)) || null
   );
 }
+
+/* ---------------------------------------------------------------------------
+   POPULARES DE UN ARTISTA
+
+   Hoy /api/artist/{id} no trae canciones destacadas, asi que la fuente son los
+   resultados de la Buscar que abrio la pagina (el id, el nombre y los resultados
+   viajan en la entrada de navegacion; ningun estado global nuevo). Si un dia el
+   payload trae `top_songs`, esos tienen prioridad. Solo se toman los que suenan.
+   ------------------------------------------------------------------------- */
+
+export function popularSongs(data = null, results = [], name = null, plan = rowPlayPlan, limit = 5) {
+  if (!name) return [];
+  const top = Array.isArray(data?.top_songs) ? data.top_songs : [];
+  const source = top.length ? top : Array.isArray(results) ? results : [];
+  return source
+    .filter((t) => t && plan(t) && (top.length || isArtistNameMatch(name, t.artist)))
+    .slice(0, limit);
+}
