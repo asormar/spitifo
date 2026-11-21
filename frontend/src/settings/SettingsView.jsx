@@ -205,7 +205,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             <p className="settings__note">
               Cómo se guarda el audio al bajar una canción. También puedes cambiarlo al descargar desde el menú ⋯.
             </p>
-            {fmt === "original" && <p className="settings__note">{ORIGINAL_HINT}</p>}
+            {fmt === "original" && media === "audio" && <p className="settings__note">{ORIGINAL_HINT}</p>}
           </div>
           <div className="settings__row">
             <p className="settings__label">Contenido de YouTube</p>
