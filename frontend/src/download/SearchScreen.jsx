@@ -389,7 +389,7 @@ export default function SearchScreen({
       {bestArtist && (
         <section className="bestsec" aria-labelledby="best-h">
           <h2 className="sh2" id="best-h">Mejor resultado</h2>
-          <BestResult artist={bestArtist} onOpen={onOpenArtist} />
+          <BestResult artist={bestArtist} results={results} query={query} onOpen={onOpenArtist} />
         </section>
       )}
 
