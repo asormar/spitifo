@@ -85,8 +85,9 @@ export function modeDirection(from, to) {
    settings, la marca "search" (la busqueda de Tu biblioteca, debajo de las
    paginas) y las hojas de Buscar. La pila pertenece a la pestana activa. */
 
-/* "ficha" y "resmenu" son las hojas de Buscar (la ficha de un resultado y el
-   menu de resoluciones); "menu", "picker", "lmenu" y "file" son el menu de una
+/* "ficha", "resmenu" y "resmore" son las hojas de Buscar (la ficha de un
+   resultado, el menu de resoluciones y el menu ⋯ de la fila); "menu", "picker",
+   "lmenu" y "file" son el menu de una
    cancion, la hoja "Añadir a una lista", el menu de una lista y la ficha del
    archivo de una cancion (no es la "ficha" de un resultado de Buscar).
    "almenu" y "aldel" son el menu del album y su hoja de confirmacion de borrado.
@@ -99,7 +100,7 @@ const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", 
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
    la biblioteca): no esconden la pantalla de debajo ni cuentan para el scroll
    recordado. */
-const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
+const PAGE_HIDDEN = new Set([SETTINGS, "search", "ficha", "resmenu", "resmore", "albumsheet", "descargas", "discsheet", ...OVERLAYS]);
 
 /* Un menu u hoja de la biblioteca (no una pagina). */
 export const isOverlay = (type) => OVERLAYS.has(type);
