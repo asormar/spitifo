@@ -5,14 +5,8 @@ import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
 import { listKey } from "../shared/keyNav.js";
 import { usePc } from "../shared/viewport.js";
-import {
-  FORMATS,
-  MEDIA_OPTIONS,
-  MODES,
-  ORIGINAL_HINT,
-  ORIGINAL_HINT_YT,
-  PLACEHOLDER,
-} from "./constants.js";
+import { MODES, PLACEHOLDER } from "./constants.js";
+import { useDownloadFormat, useDownloadMedia } from "../settings/downloadPrefs.js";
 import { catalogFallback, noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
@@ -47,7 +41,6 @@ import "./notices.css";
    pintan y se cuida el foco y el scroll de los avisos.
    ------------------------------------------------------------------------- */
 
-const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
 const LINK_HINT = "Pega un enlace de YouTube";
 /* [modo, titulo, linea] para las salidas del catalogo. "link" no cambia de modo. */
 const EXITS = [
@@ -80,12 +73,11 @@ export default function SearchScreen({
   const run = useSearchRun({ onRequest: () => (focusPending.current = fine()) });
   const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
 
-  /* M4A por defecto: en YouTube es la pista AAC del origen, sin recodificar
-     (la descarga mas rapida, ver M4A_AUDIO_SELECTOR en ytdlp_source.py). */
-  const [fmt, setFmt] = useState("m4a");
-  /* Qué partes se bajan en modo YouTube. Vive acá y no en el selector para que
-     cambiar de modo y volver no lo reinicie (como fmt). */
-  const [media, setMedia] = useState("audio");
+  /* Formato y contenido se eligen en Ajustes y se leen igual que antes: la
+     descarga recibe exactamente estos valores. M4A por defecto (en YouTube es
+     la pista AAC del origen, sin recodificar) y solo audio en YouTube. */
+  const fmt = useDownloadFormat();
+  const media = useDownloadMedia();
   const dl = useDownloads({ query, mode, fmt, media, runs: run.runs, onLibraryChanged });
 
   const inputRef = useRef();
@@ -314,11 +306,6 @@ export default function SearchScreen({
   const fallback = matchedDead ? null : catalogFallback({ mode, catalog, count: results.length, full: fullCount });
   const small = fallback === "weak" || fallback === "nofull";
 
-  /* Con "solo vídeo" o "audio y vídeo" el archivo que baja YouTube es un
-     mp4/webm: ni el formato de audio (mp3/m4a/original) ni su aviso tienen
-     sentido, y el selector se esconde. */
-  const audioOnly = !(mode === "ytdlp" && media !== "audio");
-
   /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco.
      resultsHead ya cuenta los descargables, asi que se reutiliza. */
   const srMsg = loading
@@ -363,30 +350,7 @@ export default function SearchScreen({
 
       <div className="tbar" role="group" aria-label="Cómo buscar">
         <Choice options={modeOptions} value={mode} onChange={setMode} ariaLabel="Modo de búsqueda" />
-        {mode === "ytdlp" && (
-          <Choice
-            label="Contenido"
-            options={MEDIA_OPTIONS}
-            value={media}
-            onChange={setMedia}
-            ariaLabel="Qué se descarga de YouTube"
-          />
-        )}
-        {audioOnly && (
-          <Choice
-            label="Formato"
-            options={FMT_OPTIONS}
-            value={fmt}
-            onChange={setFmt}
-            ariaLabel="Formato de descarga"
-          />
-        )}
       </div>
-      {audioOnly && fmt === "original" && (
-        <p className="shint" key={mode === "ytdlp" ? "yt" : "any"}>
-          {mode === "ytdlp" ? ORIGINAL_HINT_YT : ORIGINAL_HINT}
-        </p>
-      )}
 
       {notice?.tone === "err" && (
         <Strip tone="err" innerRef={msgRef} onClose={dl.notice ? dl.clearNotice : undefined}>
