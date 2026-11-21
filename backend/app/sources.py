@@ -295,6 +295,21 @@ class ITunesSource(Source):
         return r.json().get("results", [])
 
     @_cached
+    async def artist_top_songs(self, artist_id: str | int,
+                               limit: int = 5) -> list[dict]:
+        """Canciones destacadas de un artista (lookup id + entity=song), crudas.
+
+        El mismo cliente compartido que el resto de iTunes: timeout, User-Agent
+        y cache en memoria por id. El orden que devuelve iTunes es el ranking.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/lookup",
+            params={"id": artist_id, "entity": "song", "limit": limit})
+        r.raise_for_status()
+        return [t for t in r.json().get("results", [])
+                if t.get("kind") == "song"]
+
+    @_cached
     async def lookup(self, album_id: str | int
                      ) -> tuple[dict | None, list[dict]]:
         """(coleccion, canciones) de un album, en dicts crudos.

@@ -98,6 +98,14 @@ _ALBUM_MATCH_MAX = 50
 _ALBUM_MATCH_SEMAPHORE = 3   # busquedas puntuales simultaneas por pista
 _ALBUM_TRACK_LIMIT = 8       # candidatos por busqueda puntual de una pista
 
+# Cache del top de artistas: {artist_id: (timestamp, respuesta)}. El match en
+# YouTube tarda, asi que la pagina lo pide aparte y aqui se reutiliza. Media
+# hora y ~50 artistas, igual que el match de albumes.
+_ARTIST_TOP_CACHE: dict = {}
+_ARTIST_TOP_TTL_S = 30 * 60
+_ARTIST_TOP_MAX = 50
+TOP_SONGS_LIMIT = 5
+
 
 #: Espera antes de preparar la busqueda de YouTube: importar yt-dlp es CPU
 #: pura y no debe competir con la primera pantalla.
@@ -737,6 +745,82 @@ async def artist_detail(request: Request):
         "compilations": releases["compilation"],
         "singles": releases["single"],
     })
+
+
+def _artist_top_cache_get(artista_id: str) -> dict | None:
+    """Top cacheado por id de artista, o None si vencio/no existe."""
+    hit = _ARTIST_TOP_CACHE.get(artista_id)
+    if not hit:
+        return None
+    guardado, payload = hit
+    if time.time() - guardado >= _ARTIST_TOP_TTL_S:
+        _ARTIST_TOP_CACHE.pop(artista_id, None)
+        return None
+    return payload
+
+
+def _artist_top_cache_put(artista_id: str, payload: dict) -> None:
+    """Guarda con expulsion por antiguedad, igual que el match de albumes."""
+    ahora = time.time()
+    _ARTIST_TOP_CACHE[artista_id] = (ahora, payload)
+    if len(_ARTIST_TOP_CACHE) > _ARTIST_TOP_MAX:
+        vieja = min(_ARTIST_TOP_CACHE,
+                    key=lambda k: _ARTIST_TOP_CACHE[k][0])
+        _ARTIST_TOP_CACHE.pop(vieja, None)
+
+
+async def artist_top_songs(request: Request):
+    """GET /api/artist/{id}/top -> { id, name, songs: [Track, ...] }.
+
+    Canciones destacadas de iTunes con el MISMO match de YouTube que /api/search
+    (modo Musica), para que se toquen igual. Va en ruta aparte: emparejar en
+    YouTube tarda y no puede retrasar el primer pintado de la pagina del artista.
+    iTunes caido, id desconocido o YouTube apagado nunca rompen la pagina: se
+    devuelve la lista (vacia o con previews) con 200.
+    """
+    artista_id = str(request.path_params["id"])
+    if not artista_id.isdigit():
+        raise _invalid(["path", "id"], "Input should be a valid integer")
+    hit = _artist_top_cache_get(artista_id)
+    if hit is not None:
+        return JSONResponse(hit)
+
+    ident = _int_or_none(artista_id)
+    try:
+        raws = await BY_NAME["itunes"].artist_top_songs(
+            artista_id, limit=TOP_SONGS_LIMIT)
+    except Exception as e:
+        log.warning("artist top songs fallo: %s", e)
+        # Un fallo de red no se cachea: la pagina lo reintentara al volver.
+        return JSONResponse({"id": ident, "name": None, "songs": []})
+
+    # iTunes a veces mezcla items de otros artistas en el lookup.
+    raws = [r for r in raws
+            if str(r.get("artistId")) == artista_id][:TOP_SONGS_LIMIT]
+    name = (raws[0].get("artistName") if raws else None)
+    songs: list[dict] = []
+    if raws:
+        from .matcher import enrich_with_ytdlp
+        _register_ytdlp()
+        ysrc = BY_NAME.get("ytdlp")
+        yt_on = bool(ysrc and ysrc.available())
+        query = (name or "").strip()
+        # Una unica busqueda en YouTube, lanzada ya, reparte los videos entre
+        # las canciones: el mismo limite y concurrencia que /api/search.
+        videos = (asyncio.ensure_future(ysrc.search_candidates(query, limit=40))
+                  if yt_on else None)
+        try:
+            matched = (await enrich_with_ytdlp(
+                raws, query, ysrc, videos=videos)) if yt_on else {}
+        except Exception as e:
+            log.warning("artist top match fallo: %s", e)
+            matched = {}
+        songs = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
+                 for r in raws]
+
+    payload = {"id": ident, "name": name, "songs": songs}
+    _artist_top_cache_put(artista_id, payload)
+    return JSONResponse(payload)
 
 
 def _guardar_match_en_cache(album_id: str, ahora: float, payload: dict) -> None:
@@ -2854,6 +2938,8 @@ routes = [
     Route("/api/discover", discover),
     Route("/api/discover/dismiss", discover_dismiss, methods=["POST"]),
     Route("/api/artist/genres", artist_genres_route),
+    # /top va antes que la dinamica: asi "777/top" no se toma como id.
+    Route("/api/artist/{id}/top", artist_top_songs),
     # La ruta dinamica va DESPUES de /api/artist/genres: si no, "genres" se
     # toma como id y la busqueda de generos da 422.
     Route("/api/artist/{id}", artist_detail),
