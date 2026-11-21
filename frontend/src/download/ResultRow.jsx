@@ -1,27 +1,27 @@
 import { memo, useState } from "react";
-import { initial } from "../listen/rows.jsx";
+import { Bars, initial } from "../listen/rows.jsx";
 import { rowKey } from "../shared/api.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { fmtSize, fmtTime } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
-import { NODL_TITLE, SOURCE_CODE, provenance, trackState } from "./constants.js";
+import { SOURCE_CODE, provenance } from "./constants.js";
 import { thumbUrl } from "./artwork.js";
-import DlRing from "./DlRing.jsx";
+import DlRing, { useDl } from "./DlRing.jsx";
 import Ico from "../shared/ico.jsx";
-import PreviewButton from "./PreviewButton.jsx";
-import StreamButton from "./StreamButton.jsx";
-import ArchiveListenButton from "./ArchiveListenButton.jsx";
 import SaveHeart from "../listen/SaveHeart.jsx";
-import { canAudition, canStream } from "./streamTrack.js";
-import { VerdictPill } from "../shared/Verdict.jsx";
+import { V_LABEL, VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
+import { dlWaiting } from "./searchPlan.js";
+import { rowPlayPlan } from "./rowPlayPlan.js";
+import { useResultPlayback } from "./resultPlayback.js";
 
 /* ---------------------------------------------------------------------------
    UN RESULTADO
 
    Una sola marca para el telefono (fila) y el escritorio (tabla, desde 960 px:
    lo decide el CSS). Las dos formas de la fuente (codigo corto / nombre entero)
-   y de los datos estan en el DOM; el CSS enseña una.
+   y de los datos estan en el DOM; el CSS enseña una. Tocar el cuerpo reproduce,
+   el corazon guarda y el ⋯ abre el menu: la descarga ya no manda en la fila.
    ------------------------------------------------------------------------- */
 
 /* La portada de iTunes/YouTube; sin ella (o si no carga) la generada. */
@@ -60,38 +60,63 @@ export const subOf = (t) =>
     .filter(Boolean)
     .join(", ");
 
-export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen, queue, source }) {
-  const st = trackState(t);
+export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onOpen, onMenu, queue, source }) {
   const v = verdictOf(t, useVerdict(verdictKey(t, query)));
+  /* «Sin verificar» y «Solo 30 s» no son veredictos: solo se pintan los que
+     dicen algo despues de mirar el archivo. */
+  const realV = v === "match" || v === "partial" || v === "mismatch" ? v : null;
   const title = t.title || "sin título";
   const prov = provenance(t);
   const facts = factsOf(t);
+  const plan = rowPlayPlan(t);
+  const { play, isCurrent, playing, resolving } = useResultPlayback({ t, query, queue, source });
+  const dls = useDl(t, busy, downloaded);
+  const progress = dlWaiting(dls);
+
+  /* El nombre accesible empieza por lo que hace el toque. Las comas separan las
+     partes (lector encadena "Let Down Radiohead" sin ellas) y el nombre entero
+     de la fuente sustituye a la sigla, que se oye como letras sueltas. */
+  const people = [t.artist || "artista desconocido", t.album && t.album !== t.title ? t.album : null, t.year]
+    .filter(Boolean)
+    .join(", ");
+  const aria = [
+    `${isCurrent && playing ? "Pausar" : "Reproducir"} ${title}, ${people}`,
+    realV && V_LABEL[realV],
+    resolving ? "buscando la canción completa" : null,
+    plan === "preview" && !resolving ? "vista previa de 30 s" : null,
+    downloaded ? "descargada" : null,
+    prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo,
+    facts || null,
+  ].filter(Boolean).join(", ");
 
   return (
-    <li className="res" style={{ "--i": i }}>
+    <li className={cx("res", isCurrent && "is-current", resolving && "is-resolving")} style={{ "--i": i }}>
       <span className="res__n num" aria-hidden="true">
         {i + 1}
       </span>
-      {/* Sin aria-label: el nombre accesible sale del contenido visible (titulo,
-          artista/album, veredicto, fuente y duracion). El numero de orden ya es
-          aria-hidden y la portada lleva alt="". */}
       <button
         type="button"
         className="res__main"
-        onClick={(e) => onOpen({ type: "ficha", key: rowKey(t), anchor: e.currentTarget })}
+        aria-label={aria}
+        aria-current={isCurrent ? "true" : undefined}
+        aria-busy={resolving || undefined}
+        onClick={play}
       >
         <Thumb t={t} />
         <span className="res__txt">
-          {/* Las comas ocultas separan las partes al leerlas: sin ellas el
-              lector encadena «Persiana Americana Soda Stereo» sin pausa. La
-              sigla de la fuente («iT») se oye como letras sueltas, asi que el
-              lector recibe el nombre entero en su lugar. */}
           <span className="res__t">{title}</span>
-          <span className="sr-only">, </span>
           <span className="res__s">{subOf(t)}</span>
-          <span className="sr-only">. </span>
           <span className="res__m">
-            {v ? <VerdictPill v={v} /> : <span className="res__no">{NODL_TITLE.none}</span>}
+            {isCurrent && <Bars on={playing} />}
+            {plan === "preview" && !resolving && <span className="res__30">30 s</span>}
+            {realV && <VerdictPill v={realV} />}
+            {resolving && (
+              <span className="res__wait" role="status" aria-live="polite">
+                <span className="sp" aria-hidden="true" />
+                buscando la canción completa…
+              </span>
+            )}
+            {downloaded && <span className="res__dl" aria-hidden="true" />}
             <span className="sr-only">
               , {prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo},{" "}
             </span>
@@ -112,21 +137,18 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
       </span>
       <span className="res__f num">{facts}</span>
       <span className="res__acts">
-        {canStream(t) ? (
-          <StreamButton t={t} queue={queue} source={source || (query ? `search:${query}` : null)} />
-        ) : canAudition(t) ? (
-          <ArchiveListenButton t={t} query={query} />
-        ) : (
-          t.preview_url && <PreviewButton t={t} />
-        )}
         <SaveHeart t={t} query={query} />
-        {st === "full" ? (
-          <DlRing t={t} busy={busy} downloaded={downloaded} onDl={onDl} />
-        ) : (
-          <span className="nodl" role="img" aria-label={NODL_TITLE[st]} title={NODL_TITLE[st]}>
-            <Ico n="nodl" size={22} />
-          </span>
-        )}
+        {progress && <DlRing t={t} busy={busy} downloaded={downloaded} onDl={onDl} small />}
+        <button
+          type="button"
+          className="res__more"
+          aria-label={`Más opciones de ${title}`}
+          title="Más opciones"
+          aria-haspopup="menu"
+          onClick={(e) => onMenu(t, e.currentTarget)}
+        >
+          <Ico n="dots" size={20} />
+        </button>
       </span>
     </li>
   );

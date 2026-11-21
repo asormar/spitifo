@@ -87,6 +87,44 @@
   transform: scale(0.985);
 }
 
+/* La fila que suena lleva el peso, no un boton: titulo en acento y ecualizador
+   en la linea de datos (el mismo de las filas de la biblioteca). */
+.res.is-current .res__t {
+  color: var(--pink);
+}
+
+.eq {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 2px;
+  width: 12px;
+  height: 12px;
+}
+
+.eq i {
+  flex: 1;
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--pink);
+  transform: scaleY(0.3);
+  transform-origin: bottom;
+  animation: eq 900ms ease-in-out infinite;
+  animation-play-state: paused;
+}
+
+.eq i:nth-child(2) {
+  animation-delay: -600ms;
+}
+
+.eq i:nth-child(3) {
+  animation-delay: -300ms;
+}
+
+.eq[data-on] i {
+  animation-play-state: running;
+}
+
 .res__n,
 .res__src,
 .res__f {
@@ -162,6 +200,38 @@
   font-weight: 600;
 }
 
+/* Solo 30 s: la etiqueta sustituye al circulo tachado de antes. */
+.res__30 {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--s2);
+  color: var(--mut);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Resolviendo la version completa: el aviso vive en la fila y se anuncia una
+   sola vez (role=status en el JSX), sin spinner global. */
+.res__wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mut);
+}
+
+/* Punto verde de «descargada», el mismo que usa la biblioteca. */
+.res__dl {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
 /* Etiqueta corta de la fuente (telefono). */
 .src {
   flex: none;
@@ -196,6 +266,33 @@
   flex: none;
   align-items: center;
   gap: 4px;
+}
+
+/* El corazon y el ⋯ son las dos unicas acciones fijas de la fila. */
+.res__more {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--s2);
+  color: var(--mut);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.res__more::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+}
+
+.res__more:active {
+  transform: scale(0.92);
 }
 
 /* --- 30 s, descarga y sin descarga -------------------------------------------- */
@@ -569,6 +666,17 @@
   outline: none;
 }
 
+/* Rotulo de grupo del menu de resultados: el group de arriba lo anuncia al
+   lector de pantalla, esto es solo lo que se ve. */
+.rm__g {
+  margin: 10px 14px 4px;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .rm__i {
   display: flex;
   flex: none;
@@ -661,6 +769,11 @@
 
   .pre:not(:disabled):not([aria-pressed="true"]):hover {
     background: color-mix(in oklab, var(--acc) 18%, transparent);
+  }
+
+  .res__more:hover {
+    background: var(--s3);
+    color: var(--ink);
   }
 
   .rm__i:hover {
@@ -811,7 +924,7 @@
     margin: 0;
   }
 
-  .res .res__m > :not(.vb, .res__no) {
+  .res .res__m > :not(.vb, .res__no, .eq, .res__30, .res__wait, .res__dl) {
     display: none;
   }
 
