@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from "react";
 import { FORMATS, MEDIA_OPTIONS } from "../download/constants.js";
+import { localSetting } from "../shared/localSetting.js";
 
 /* ---------------------------------------------------------------------------
    PREFERENCIAS DE DESCARGA
@@ -39,30 +39,18 @@ export function readDownloadMedia(storage = typeof localStorage === "undefined" 
   }
 }
 
-function store(key, read, valid) {
-  let value = read();
-  const listeners = new Set();
-  const subscribe = (fn) => {
-    listeners.add(fn);
-    return () => listeners.delete(fn);
-  };
-  const get = () => value;
-  const set = (next) => {
-    if (!valid.includes(next) || next === value) return;
-    value = next;
-    try {
-      localStorage.setItem(key, next);
-    } catch {
-      /* Sin almacenamiento: se aplica igual mientras dure la sesion. */
-    }
-    listeners.forEach((fn) => fn());
-  };
-  return { get, set, subscribe };
-}
+export const downloadFormat = localSetting(DOWNLOAD_FMT_KEY, DEFAULT_FMT, {
+  read: readDownloadFormat,
+  write: (fmt) => fmt,
+  valid: (fmt) => FMT_IDS.includes(fmt),
+});
 
-export const downloadFormat = store(DOWNLOAD_FMT_KEY, readDownloadFormat, FMT_IDS);
-export const downloadMedia = store(DOWNLOAD_MEDIA_KEY, readDownloadMedia, MEDIA_IDS);
+export const downloadMedia = localSetting(DOWNLOAD_MEDIA_KEY, DEFAULT_MEDIA, {
+  read: readDownloadMedia,
+  write: (media) => media,
+  valid: (media) => MEDIA_IDS.includes(media),
+});
 
 /* Pares valor/cambiar, como useTheme y useAutoDownload. */
-export const useDownloadFormat = () => [useSyncExternalStore(downloadFormat.subscribe, downloadFormat.get), downloadFormat.set];
-export const useDownloadMedia = () => [useSyncExternalStore(downloadMedia.subscribe, downloadMedia.get), downloadMedia.set];
+export const useDownloadFormat = downloadFormat.use;
+export const useDownloadMedia = downloadMedia.use;
