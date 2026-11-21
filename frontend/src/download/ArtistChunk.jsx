@@ -5,24 +5,18 @@ import { useShow } from "../listen/Notice.jsx";
 import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
-import { rowKey } from "../shared/api.js";
-import { songIdOf } from "../shared/songId.js";
 import { Icon } from "../shared/icons.jsx";
-import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadAlbumChunk } from "./albumChunk.js";
 import { fetchAlbumMatch } from "./albumApi.js";
 import { loadQueue } from "./queueBoot.js";
-import { ownedSlots, trackSpec } from "./albumText.js";
+import { ownedSlots } from "./albumText.js";
 import { fetchArtist } from "./artistApi.js";
-import { popularSongs } from "./bestResultSong.js";
-import { artistPopulares, fetchArtistTop } from "./artistTop.js";
+import ArtistPopulares from "./ArtistPopulares.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
-import { pickResultAction, resultMenuGroups } from "./resultMenuActions.js";
 import { useResultPlayback } from "./resultPlayback.js";
-import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import { queueStore } from "./queueStore.js";
 import {
   albumOwnership,
@@ -184,9 +178,9 @@ export function ArtistPage({ view, active }) {
   const { model, ctx } = useListen();
   const [state, setState] = useState({ status: "loading", data: null });
   const [attempt, setAttempt] = useState(0);
-  /* El top se pide aparte: emparejar en YouTube tarda y la pagina no puede
-     esperarlo para pintar. Mientras llega, la seccion muestra su esqueleto. */
-  const [topState, setTopState] = useState({ status: "loading", songs: [] });
+  /* La lista de Populares vive en ArtistPopulares; aqui solo guardamos las
+     filas para que el play grande de la cabecera suene lo mismo. */
+  const [populares, setPopulares] = useState([]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -199,17 +193,6 @@ export function ArtistPage({ view, active }) {
     return () => ac.abort();
   }, [view.id, attempt]);
 
-  useEffect(() => {
-    const ac = new AbortController();
-    setTopState({ status: "loading", songs: [] });
-    fetchArtistTop(view.id, ac.signal)
-      .then((songs) => setTopState({ status: "ok", songs }))
-      .catch((e) => {
-        if (e.name !== "AbortError") setTopState({ status: "ok", songs: [] });
-      });
-    return () => ac.abort();
-  }, [view.id]);
-
   /* Lo que tienes de cada disco recorre toda la biblioteca: se calcula una vez
      por respuesta y biblioteca, no en cada render (abrir la hoja re-renderiza). */
   const data = state.data;
@@ -220,35 +203,9 @@ export function ArtistPage({ view, active }) {
     return out;
   }, [data, model.entries]);
   const hero = useMemo(() => (data ? artistHero(data, data.name, model.entries) : ""), [data, model.entries]);
-  const show = useShow();
-  const [fmt] = useDownloadFormat();
   const playRef = useRef(null);
   const titleRef = useRef(null);
   const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
-  /* Populares: gana el top del backend (vale para CUALQUIER entrada del
-     artista); si no trae nada se caen a los resultados de la Buscar. */
-  const populares = useMemo(
-    () => artistPopulares(topState.songs, view.songs, data?.name),
-    [topState.songs, data, view.songs, data?.name]
-  );
-  const songSource = useMemo(() => `artist:${data?.name}`, [data?.name]);
-  /* El punto verde de Populares sale del mismo id que usa el corazon: una
-     cancion del top que ya este bajada se ve como descargada. */
-  const downloadedIds = useMemo(
-    () => new Set((model?.entries || []).filter((e) => e.downloaded && e.sid).map((e) => e.sid)),
-    [model?.entries]
-  );
-  /* Las filas de Populares son memoizadas: callbacks y fuente estables para
-     que abrir la hoja de discografia no pinte toda la lista de nuevo. */
-  const onSongDl = useCallback(
-    (one) => queueStore.enqueue({ items: [trackSpec(one, data?.name || "")] }),
-    [data?.name]
-  );
-  const onSongMenu = useCallback(
-    (one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el }),
-    [nav.open]
-  );
-
   /* El foco de entrada va al play; si no hay Populares, al titulo. Nunca al
      boton de descargar, que ademas ya no existe en la cabecera. */
   useEffect(() => {
@@ -270,17 +227,6 @@ export function ArtistPage({ view, active }) {
     nav.back();
     if (kind === "discography") nav.open({ type: "discsheet", anchor });
   };
-
-  const pickSongMenu = (kind) =>
-    pickResultAction(kind, {
-      t: menuAt?.t,
-      query: view.name || data?.name || "",
-      onDownload: onSongDl,
-      show,
-      locationToken: ctx.locationToken,
-      nav,
-      anchor: menuAt?.anchor,
-    });
 
   const openAlbum = useCallback(
     (release, anchor) => {
@@ -366,31 +312,13 @@ export function ArtistPage({ view, active }) {
         )}
       </div>
 
-      {(topState.status === "loading" || populares.length > 0) && (
-        <section className="aps appop" aria-labelledby="aph-pop">
-          <h2 className="sh2" id="aph-pop">Populares</h2>
-          {topState.status === "loading" ? (
-            <Skeleton count={5} className="rlist--compact" />
-          ) : (
-            <ul className="rlist rlist--compact">
-              {populares.map((t, i) => (
-                <ResultRow
-                  key={rowKey(t)}
-                  t={t}
-                  i={i}
-                  query={view.name || data.name}
-                  queue={populares}
-                  source={songSource}
-                  variant="popular"
-                  downloaded={downloadedIds.has(songIdOf(t))}
-                  onDl={onSongDl}
-                  onMenu={onSongMenu}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+      <ArtistPopulares
+        name={data.name}
+        artistId={view.id}
+        results={view.songs}
+        query={view.name || data.name}
+        onSongs={setPopulares}
+      />
 
       {groups.filter((g) => g.items.length).map((g) => (
         <section className="aps" key={g.key} aria-labelledby={`aph-${g.key}`}>
@@ -443,15 +371,6 @@ export function ArtistPage({ view, active }) {
         title={data.name}
         anchor={menuAt.anchor}
         onPick={pickArtistMenu}
-        onClose={nav.back}
-      />
-    )}
-    {menuAt?.kind === "song" && menuAt.t && (
-      <MenuSurface
-        groups={resultMenuGroups(menuAt.t, { fmt })}
-        title={menuAt.t.title || "sin título"}
-        anchor={menuAt.anchor}
-        onPick={pickSongMenu}
         onClose={nav.back}
       />
     )}

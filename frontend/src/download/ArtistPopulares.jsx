@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNav } from "../app/useNav.js";
 import { useDownloadFormat } from "../settings/downloadPrefs.js";
-import { fetchArtistTop } from "./artistTop.js";
+import { artistPopulares, fetchArtistTop } from "./artistTop.js";
 import { resultMenuGroups } from "./resultMenu.js";
 import { MenuSurface } from "./ResultMenu.jsx";
 import { pickResultAction } from "./resultMenuActions.js";
@@ -16,19 +16,20 @@ import "./rows.css";
 import "./artistChunk.css";
 
 /* ---------------------------------------------------------------------------
-   POPULARES EN LA FICHA DEL ARTISTA DE LA BIBLIOTECA
+   POPULARES EN LA FICHA DEL ARTISTA (Buscar y biblioteca)
 
-   La ficha de Escuchar conoce al artista por sus canciones guardadas. El id de
-   iTunes lo resuelve la ficha igual que «Mas de <artista>» y aqui se pide el
-   top aparte, despues del primer pintado: sin id o con iTunes caido no hay
-   seccion. Las filas son las MISMAS de la pagina del artista de Buscar, asi que
-   comparten menu, cola y corazon. El boton rosa de esta ficha sigue sonando las
-   canciones de la biblioteca, no el top.
+   Una sola implementacion de la lista, el menu y el esqueleto para las dos
+   paginas. El id de iTunes lo resuelve quien llama: la ficha de la biblioteca
+   con "Mas de <artista>" y la pagina de Buscar con el id de la entrada. El top
+   se pide aparte, despues del primer pintado: sin id o con iTunes caido no hay
+   seccion. `results` es el descarte de la Buscar cuando el top viene vacio.
+   El boton rosa de la ficha sigue sonando las canciones guardadas: la pagina
+   de Buscar recibe las mismas filas con `onSongs` para su play grande.
    ------------------------------------------------------------------------- */
 
-export default function ArtistPopulares({ name, artistId }) {
+export default function ArtistPopulares({ name, artistId, results, query = name, onSongs }) {
   const nav = useNav();
-  const { model } = useListen();
+  const { model, ctx } = useListen();
   const show = useShow();
   const [fmt] = useDownloadFormat();
   const [state, setState] = useState({ status: "loading", songs: [] });
@@ -54,15 +55,23 @@ export default function ArtistPopulares({ name, artistId }) {
     };
   }, [artistId]);
 
-  /* El punto verde dice «descargada» cuando el id de la cancion ya esta en la
+  const songs = useMemo(
+    () => artistPopulares(state.songs, results, name),
+    [state.songs, results, name]
+  );
+  /* La pagina de Buscar necesita las MISMAS canciones para su play grande. */
+  useEffect(() => {
+    onSongs?.(songs);
+  }, [onSongs, songs]);
+
+  /* El punto verde dice "descargada" cuando el id de la cancion ya esta en la
      biblioteca con archivo. El corazon lo calcula SaveHeart con el mismo id. */
   const downloadedIds = useMemo(
     () => new Set((model?.entries || []).filter((e) => e.downloaded && e.sid).map((e) => e.sid)),
     [model?.entries]
   );
-  const songs = state.songs.slice(0, 5);
   const onDl = useCallback(
-    (one) => queueStore.enqueue({ items: [trackSpec(one, name)] }),
+    (one) => queueStore.enqueue({ items: [trackSpec(one, name || "")] }),
     [name]
   );
   const onMenu = useCallback(
@@ -72,9 +81,10 @@ export default function ArtistPopulares({ name, artistId }) {
   const pickSongMenu = (kind) =>
     pickResultAction(kind, {
       t: menuAt?.t,
-      query: name,
+      query,
       onDownload: onDl,
       show,
+      locationToken: ctx.locationToken,
       nav,
       anchor: menuAt?.anchor,
     });
@@ -93,7 +103,7 @@ export default function ArtistPopulares({ name, artistId }) {
                   key={rowKey(t)}
                   t={t}
                   i={i}
-                  query={name}
+                  query={query}
                   queue={songs}
                   source={`artist:${name}`}
                   variant="popular"
@@ -118,4 +128,3 @@ export default function ArtistPopulares({ name, artistId }) {
     </>
   );
 }
-
