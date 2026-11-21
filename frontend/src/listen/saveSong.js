@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { resultOf } from "../player/savedTrack.js";
 import { songFromResult, songIdOf } from "../shared/songId.js";
 import { resolveResult } from "../download/resolveResult.js";
-import { trackState } from "../download/constants.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
 import { autoDownload } from "../settings/autoDownload.js";
 import { removeEntry } from "./deleteSong.js";
 import { saved, useSaved } from "./saved.js";
 import { useListen } from "./ListenProvider.jsx";
-import { heartState, ownedEntryFor, saveNotice, shouldEnqueue } from "./saveLogic.js";
+import { canSaveResult, heartState, ownedEntryFor, saveNotice, shouldEnqueue } from "./saveLogic.js";
 
 /* ---------------------------------------------------------------------------
    GUARDAR DESDE BUSCAR Y DESDE AHORA SUENA
@@ -66,7 +65,7 @@ export function useSaveTarget({ t = null, track = null, query = "" } = {}) {
       (track?.sid && savedById.has(track.sid)) ||
       entry
   );
-  const full = kind === "library" || (!track && !!result && trackState(result) === "full") ||
+  const full = kind === "library" || (!track && canSaveResult(result)) ||
     (track?.kind === "stream" && Boolean(track.sid));
   const state = heartState({ kind, full, saved: stored, owned: Boolean(entry) });
   const title = track?.title || result?.title || entry?.title || "sin título";

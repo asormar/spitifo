@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   albumSaveButton,
   albumSaveSelection,
+  canSaveResult,
   fichaText,
   heartState,
   ownedEntryFor,
@@ -32,6 +33,19 @@ const albumTrack = (n, over = {}) => ({
     collection_id: 42,
   },
   ...over,
+});
+
+describe("canSaveResult", () => {
+  it("guarda la cancion completa y la pendiente de resolver", () => {
+    expect(canSaveResult(ytResult())).toBe(true);
+    expect(canSaveResult({ source: "itunes", source_id: "1", extra: { needs_resolve: true } })).toBe(true);
+  });
+
+  it("guarda un avance con identidad estable pero no un preview suelto", () => {
+    expect(canSaveResult({ source: "ytdlp", source_id: "dQw4w9WgXcQ", preview_url: "https://x/p.m4a", extra: {} })).toBe(true);
+    expect(canSaveResult({ source: "itunes", source_id: "1", preview_url: "https://x/p.m4a", extra: {} })).toBe(false);
+    expect(canSaveResult(null)).toBe(false);
+  });
 });
 
 describe("heartState", () => {
