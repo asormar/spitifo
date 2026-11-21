@@ -53,3 +53,8 @@ export function npLinks(track, entry) {
     : null;
   return { artist, album };
 }
+
+/* Un resultado solo lleva a una ficha de album si npLinks pudo construirla:
+   hace falta `extra.collection_id`. La usa «Ahora suena» y el menu ⋯ de Buscar
+   para que «Ir al álbum» no aparezca cuando no abriria nada. */
+export const canOpenAlbumSheet = (t) => Boolean(npLinks({ result: t }, null).album?.sheet);

@@ -30,7 +30,7 @@ import ResultMenu from "./ResultMenu.jsx";
 import ResolutionMenu from "./ResolutionMenu.jsx";
 import { engine } from "../player/engine.js";
 import { resultTrackFor } from "./resultPlayback.js";
-import { npLinks } from "../player/npLinks.js";
+import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
 import { useShow } from "../listen/Notice.jsx";
 import ShowGroup from "./ShowGroup.jsx";
 import Strip from "./Strip.jsx";
@@ -190,7 +190,7 @@ export default function SearchScreen({
               : "Añadida a la cola");
       }
       const links = npLinks({ result: t }, null);
-      if (kind === "album" && links.album?.sheet) {
+      if (kind === "album" && canOpenAlbumSheet(t)) {
         loadAlbumChunk();
         return nav.open({ ...links.album.sheet, anchor });
       }

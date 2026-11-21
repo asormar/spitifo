@@ -65,14 +65,26 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
   }, []);
 
   const key = rowTrackKey(t);
+  const rk = rowKey(t);
   const mine = (s) => {
     if (!s.track) return false;
     if (key && s.track.key === key) return true;
-    const rk = rowKey(t);
     return Boolean(rk) && rowKey(s.track.result) === rk;
   };
   const isCurrent = useEngine(mine);
   const playing = useEngine((s) => mine(s) && s.playing);
+
+  /* La fila conserva su key de React entre busquedas: si cambian el resultado
+     o la consulta mientras resuelve, sube el intento, corta la peticion y deja
+     la fila lista para el nuevo toque. Asi no suena la respuesta que llega
+     tarde de la busqueda anterior. */
+  useEffect(() => {
+    seq.current += 1;
+    abort.current?.abort();
+    abort.current = null;
+    busy.current = false;
+    setResolving(false);
+  }, [key, rk, query]);
 
   const fail = useCallback(() => {
     show?.(`No se puede reproducir «${t?.title || "este resultado"}»`);
@@ -89,7 +101,9 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
       return engine.play(lista[index], { queue: lista, index, source });
     }
     if (plan === "archive") {
+      const intento = ++seq.current;
       const ok = await listenArchive(t, query || t.title);
+      if (!alive.current || intento !== seq.current) return;
       if (!ok) fail();
       return;
     }

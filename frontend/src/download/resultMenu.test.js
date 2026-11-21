@@ -10,7 +10,7 @@ describe("resultMenuGroups", () => {
     title: "Creep",
     artist: "Radiohead",
     album: "Pablo Honey",
-    extra: { webpage_url: "https://youtu.be/abcdefghijk" },
+    extra: { webpage_url: "https://youtu.be/abcdefghijk", collection_id: 123 },
   };
 
   it("pinta los cuatro grupos en orden con la descarga y el formato", () => {
@@ -36,6 +36,12 @@ describe("resultMenuGroups", () => {
   it("la descarga ya hecha sale deshabilitada", () => {
     const groups = resultMenuGroups(full, { downloaded: true });
     expect(groups[1].items[0]).toEqual({ kind: "downloaded", icon: "check", text: "Descargada", disabled: true });
+  });
+
+  it("no ofrece «Ir al álbum» cuando no hay ficha que abrir", () => {
+    const noSheet = { ...full, extra: { webpage_url: "https://youtu.be/abcdefghijk" } };
+    const groups = resultMenuGroups(noSheet);
+    expect(groups[2].items.map((i) => i.text)).toEqual(["Ir a Radiohead"]);
   });
 
   it("omite «Ir a» sin album ni artista", () => {

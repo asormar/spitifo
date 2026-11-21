@@ -1,3 +1,4 @@
+import { canOpenAlbumSheet } from "../player/npLinks.js";
 import { trackState } from "./constants.js";
 import { needsResolve } from "./resolveResult.js";
 
@@ -35,7 +36,7 @@ export function resultMenuGroups(t, { downloaded = false, fmt = "m4a" } = {}) {
   }
 
   const go = [];
-  if (t?.album) go.push({ kind: "album", icon: "disc", text: `Ir al álbum «${t.album}»` });
+  if (canOpenAlbumSheet(t)) go.push({ kind: "album", icon: "disc", text: `Ir al álbum «${t.album}»` });
   if (t?.artist) go.push({ kind: "artist", icon: "user", text: `Ir a ${t.artist}` });
   if (go.length) groups.push({ label: "Ir a", items: go });
 
