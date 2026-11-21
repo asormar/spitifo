@@ -317,7 +317,7 @@ export function ArtistPage({ view, active }) {
       <div className="apacts">
         <button
           type="button"
-          className="apact"
+          className="cbtn cbtn--l cbtn--soft"
           aria-label={`Más opciones de ${data.name}`}
           title="Más opciones"
           aria-haspopup="menu"

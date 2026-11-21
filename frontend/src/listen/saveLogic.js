@@ -68,12 +68,6 @@ export function albumSaveSelection(tracks = [], { savedIds = null, owned = null 
   });
 }
 
-export function albumSaveButton(n) {
-  return n > 0
-    ? { text: "Guardar álbum", disabled: false }
-    : { text: "Guardado", disabled: true };
-}
-
 /* La pestana Ficha: el avance mantiene su nota, un stream dice de donde suena
    y si esta guardado, y una cancion de la biblioteca sigue con su tarjeta. */
 export function fichaText({ kind = null, source = null, saved = false, sid = null } = {}) {

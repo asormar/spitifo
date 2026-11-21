@@ -4,24 +4,6 @@
    Las frases de la ficha y de la cola, sin React ni DOM, para probarlas en Node.
    ------------------------------------------------------------------------- */
 
-/* El boton principal de la ficha. `done` cuenta solo las pistas completas ya
-   bajadas; `running` vale mientras queda algo en cola o descargandose. */
-export function albumButton({ matching, full, done = 0, running = false, owned = 0 }) {
-  if (matching) return { text: "Buscando versiones…", disabled: true };
-  if (full === 0) {
-    return { text: owned > 0 ? "Ya está en tu biblioteca" : "Sin versiones completas", disabled: true };
-  }
-  if (done >= full) return { text: "Álbum descargado", disabled: true };
-  if (running) return { text: `Descargando · ${done} de ${full}`, disabled: true };
-  /* Con parte del album ya en la biblioteca o ya bajada, el boton habla de lo
-     que falta, no del album entero. */
-  if (done > 0 || owned > 0) {
-    const left = full - done;
-    return { text: left === 1 ? "Descargar la que falta" : `Descargar las ${left} que faltan`, disabled: false };
-  }
-  return { text: `Descargar álbum · ${full} ${full === 1 ? "canción" : "canciones"}`, disabled: false };
-}
-
 /* ««Hombre al agua» no tiene versión completa: solo se puede escuchar 30 s.»
    Hasta tres titulos y, si hay mas, «y N más». */
 export function missingSentence(titles = []) {

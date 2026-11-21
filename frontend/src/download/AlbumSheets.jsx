@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
 import { coverTone } from "../shared/cover.js";
-import { rowKey } from "../shared/api.js";
+import { keyUrl, rowKey } from "../shared/api.js";
 import { Cover } from "../listen/cards.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
@@ -23,12 +23,11 @@ import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { streamTrack } from "./streamTrack.js";
 import { toTrack } from "../listen/library.js";
-import { keyUrl } from "../shared/api.js";
 import { songFromResult } from "../shared/songId.js";
 import { saved, useSaved } from "../listen/saved.js";
 import { maybeAutoDownloadMany } from "../listen/saveSong.js";
-import { albumSaveButton, albumSaveSelection, saveNotice } from "../listen/saveLogic.js";
-import { albumButton, missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
+import { albumSaveSelection, saveNotice } from "../listen/saveLogic.js";
+import { missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
 
@@ -94,11 +93,9 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const allOwned = tracks.length > 0 && tracks.every(isOwned);
   const allSaved = songIds.length > 0 && savedHere.length === songIds.length;
   const isSaved = !matching && (allOwned || allSaved);
-  const saveBtn = matching
-    ? { text: "Buscando versiones…", disabled: true }
-    : albumSaveButton(toSave.length);
+  const saveDisabled = matching || toSave.length === 0;
   const saveAlbum = async () => {
-    if (saveBtn.disabled) return;
+    if (saveDisabled) return;
     const pairs = toSave.map((t) => [songFromResult(t), t]).filter(([song]) => song);
     if (!pairs.length || !(await saved.saveAll(pairs.map(([song]) => song)))) {
       listen?.show?.(`No se pudo guardar «${album.title}»`);
@@ -198,12 +195,6 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     [album.artwork_url, album.title, gid, spec]
   );
 
-  /* Mientras baja, el boton cuenta el grupo entero («3 de 12»): lo ya bajado
-     pasa enseguida a la biblioteca y saldria de `full`. Parado, lo bajado ya es
-     de la biblioteca (`owned`) y no se resta dos veces. */
-  const btn = running
-    ? albumButton({ matching, full: items.length, done, running, owned: ownedCount })
-    : albumButton({ matching, full, done: 0, running, owned: ownedCount + done });
   const ytOff = match && match.ytdlp === false;
   const header = match?.album || detail?.album || album;
   const meta = [header.artist, header.year, `${album.track_count ?? tracks.length} ${album.track_count === 1 ? "canción" : "canciones"}`]
@@ -212,7 +203,15 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
 
   /* El menu del album: la descarga (con el formato de Ajustes o el avance) y
      la pagina del artista, cuando hay nombre con el que abrirla. */
-  const downloadSub = ytOff ? "YouTube desactivado" : running ? btn.text : full ? fmt : btn.text;
+  const downloadSub = ytOff
+    ? "YouTube desactivado"
+    : matching
+    ? "Buscando versiones…"
+    : running
+    ? `Descargando · ${done} de ${items.length}`
+    : full
+    ? fmt
+    : "Sin versiones completas";
   const albumGroups = [
     {
       label: "Álbum",
@@ -295,18 +294,18 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           <div className="als__acts">
             <button
               type="button"
-              className="als__act"
+              className="cbtn cbtn--l cbtn--soft als__heart"
               aria-label={isSaved ? "Quitar el álbum de tu biblioteca" : "Guardar el álbum"}
               aria-pressed={isSaved || undefined}
               title={isSaved ? "Quitar de tu biblioteca" : "Guardar en tu biblioteca"}
-              disabled={saveBtn.disabled && !isSaved ? true : undefined}
+              disabled={saveDisabled && !isSaved ? true : undefined}
               onClick={toggleSave}
             >
               <Ico n={isSaved ? "heart-fill" : "heart"} size={22} />
             </button>
             <button
               type="button"
-              className="als__act"
+              className="cbtn cbtn--l cbtn--soft"
               aria-label={`Más opciones de ${header.title || album.title}`}
               title="Más opciones"
               aria-haspopup="menu"
@@ -318,7 +317,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
             {lista.length > 0 && (
               <button
                 type="button"
-                className="als__act"
+                className="cbtn cbtn--l cbtn--soft"
                 aria-label="Reproducir en aleatorio"
                 title="Aleatorio"
                 onClick={aleatorio}

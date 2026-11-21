@@ -68,32 +68,9 @@
   margin-top: 6px;
 }
 
-.als__act {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--s2);
-  color: var(--mut);
-  cursor: pointer;
-  transition: var(--tr-press);
-}
-
-.als__act:active {
-  transform: scale(0.92);
-}
-
-.als__act[aria-pressed="true"] {
-  color: var(--pink);
-}
-
-.als__act:disabled {
-  opacity: 0.45;
-  cursor: default;
+/* El corazon de la cabecera usa el acento de los demas corazones guardados. */
+.cbtn.als__heart[aria-pressed="true"] {
+  color: var(--acc);
 }
 
 /* El avance del emparejamiento y el de la descarga usan la misma rueda. */
@@ -141,18 +118,9 @@
   color: var(--ok-t);
 }
 
-.alp--bad {
-  background: var(--bad-bg);
-  color: var(--bad-t);
-}
-
-.alp--btn {
-  min-height: 44px;
-  cursor: pointer;
-}
-
 /* --- Lista de pistas -------------------------------------------------------- */
 
+/* El borde es del contenedor; la forma de la fila la da .rlist--compact. */
 .als__list {
   margin: 0;
   padding: 4px 10px;
@@ -160,24 +128,6 @@
   background: var(--s1);
   box-shadow: inset 0 0 0 1.5px var(--s3);
   list-style: none;
-}
-
-/* Las filas tocables son las de Buscar: misma logicia, numero y menu. Aqui
-   solo el numero, que en Buscar se guarda para escritorio, y el alto. */
-.als__list .res {
-  min-height: 58px;
-  margin: 0;
-  padding: 4px 2px;
-  border-radius: 12px;
-}
-
-.als__list .res__n {
-  display: block;
-  flex: none;
-  width: 22px;
-  color: var(--mut);
-  font-size: 13px;
-  text-align: right;
 }
 
 .altr {
