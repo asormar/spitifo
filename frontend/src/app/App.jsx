@@ -283,8 +283,17 @@ export default function App() {
   const hasTrack = useEngine((s) => Boolean(s.track));
   const npRef = useRef(null);
   if (npRef.current === null) {
+    /* La maquina recibe la interfaz minima (push, go, state), no el History del
+       navegador: pushState necesita ademas la URL. */
+    const browserHistory = {
+      push: (state) => window.history.pushState(state, "", window.location.href),
+      go: (n) => window.history.go(n),
+      get state() {
+        return window.history.state;
+      },
+    };
     npRef.current = createNpHistory({
-      history: window.history,
+      history: browserHistory,
       /* Unico efecto que la maquina no puede hacer por si sola: cerrar el
          panel. Con `then` se cierra dentro de flushSync para que la pantalla
          de destino ya este pintada cuando corra la navegacion. */
