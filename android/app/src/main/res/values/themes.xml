@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's own ground under the splash screen and the system bars, so
+         Material You's wallpaper colour never shows before the page paints.
+         THEME_COLOR.light in frontend/src/shared/theme.js; the night variant is
+         in values-night. The page then follows the theme the user picked,
+         through SpitifoAndroid.setBars. -->
+    <color name="spitifo_ground">#F5F5FA</color>
+
+    <style name="Theme.Spitifo" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/spitifo_ground</item>
+        <item name="android:statusBarColor">@color/spitifo_ground</item>
+        <item name="android:navigationBarColor">@color/spitifo_ground</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

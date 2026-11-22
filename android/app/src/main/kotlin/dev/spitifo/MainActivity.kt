@@ -313,6 +313,9 @@ class MainActivity : ComponentActivity() {
         if (web != null) return
         Log.i(TAG, "showing the UI on port $port")
         val view = WebView(this).apply {
+            // Transparent until the page paints: the theme's ground shows
+            // through instead of the WebView's default white flash.
+            setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             // The library auto-advances to the next track on `ended`, which
