@@ -19,16 +19,20 @@ export const skeleton = (n) =>
     </div>
   ));
 
-export default function LibraryGate({ ready, error, errorCode, onRetry, folder, children }) {
+/* `loading`: el esqueleto con la forma de la pantalla que espera (Inicio pasa
+   el suyo); sin el, filas de lista como en Tu biblioteca. */
+export default function LibraryGate({ ready, error, errorCode, onRetry, folder, loading, children }) {
   const nav = useNav();
   const { model } = useListen();
 
   if (!ready) {
     if (!error) {
       return (
-        <div className="lpanel" aria-busy="true">
-          {skeleton(8)}
-        </div>
+        loading || (
+          <div className="lpanel" aria-busy="true">
+            {skeleton(8)}
+          </div>
+        )
       );
     }
     /* Reconectar si caduco la sesion de Drive, reintentar si no. */
