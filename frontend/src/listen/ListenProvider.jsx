@@ -217,12 +217,13 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
           navReplace({ type: "art", target, kind, name, query: query || name, anchor })
         ),
       /* Cambia el menu de arriba por una pagina ("Ir al album"). Si el menu
-         estaba sobre "Ahora suena", primero se cierra la vista entera y la
-         pagina se abre desde la raiz: si solo se sustituyera el menu, la
-         entrada de la vista quedaria muerta debajo de la pagina. */
+         estaba sobre "Ahora suena", primero se cierran el menu y la vista de
+         una vez (si solo se sustituyera el menu, la entrada de la vista
+         quedaria muerta) y la pagina se apila sobre la que habia debajo: atras
+         vuelve ahi, al artista por ejemplo, y no a la raiz. */
       goTo: (v) =>
         whenReady(pageReady, loadPageHost, () => {
-          if (leaveNp?.(() => navReplace(v))) return;
+          if (leaveNp?.(() => navOpen(v))) return;
           navReplace(v);
         }),
       back: navBack,
