@@ -24,10 +24,12 @@ const FOCUSABLE = 'button:not(:disabled), a[href], input, [tabindex]:not([tabind
 
 /* Cabecera de las hojas de menu: titulo y cierre. La comparten el menu de
    resultados y el de resoluciones, asi que el texto y el boton no se repiten. */
-export function SheetBar({ title, onClose }) {
+/* `quiet`: el titulo solo para el lector, cuando debajo ya hay una cabecera
+   que dice lo mismo (la portada y el nombre de la cancion). */
+export function SheetBar({ title, onClose, quiet }) {
   return (
     <div className="sh__bar">
-      <h2 className="sh__bt">{title}</h2>
+      <h2 className={quiet ? "sr-only" : "sh__bt"}>{title}</h2>
       <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
         <Ico n="x" size={18} />
       </button>

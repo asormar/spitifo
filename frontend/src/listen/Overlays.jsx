@@ -6,14 +6,12 @@ import { coverTone } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { engine } from "../player/engine.js";
-import { VerdictPill } from "../shared/Verdict.jsx";
 import { Cover } from "./cards.jsx";
-import { checkOf } from "./fileCheck.js";
 import FileSheet from "./FileSheet.jsx";
 import { albumId, artistId, rowArt } from "./library.js";
 import { useSaved } from "./saved.js";
 import { deferredDelete } from "./deleteSong.js";
-import { menuKinds } from "./songMenu.js";
+import { songMenuGroups } from "./songMenu.js";
 import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
@@ -41,29 +39,8 @@ import "./menus.css";
    y borrar); aqui solo se dibuja.
    ------------------------------------------------------------------------- */
 
-/* [clave, icono, texto, tono, pastilla]; la clave es lo que recibe `onPick`.
-   La ficha lleva la pastilla del archivo, asi que se arma en songItems. */
-const SONG_MENU = {
-  next: ["next", "next", "Reproducir a continuación"],
-  end: ["end", "queue", "Añadir a la cola"],
-  list: ["list", "addlist", "Añadir a una lista…"],
-  photo: ["photo", "upload", "Cambiar foto"],
-  album: ["album", "disc", "Ir al álbum"],
-  artist: ["artist", "user", "Ir al artista"],
-  download: ["download", "dl", "Descargar"],
-  undownload: ["undownload", "nodl", "Quitar descarga"],
-  remove: ["remove", "trash", "Quitar de tu biblioteca", "bad"],
-};
-
-function songItems(entry, pc, closePlayer = false) {
-  const items = menuKinds(entry).map((kind) => kind === "file"
-    ? ["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]
-    : SONG_MENU[kind]);
-  /* Abierto desde "Ahora suena": el cierre de la pastilla va siempre el ultimo. */
-  if (closePlayer) items.push(["closePlayer", "x", "Cerrar reproductor"]);
-  return items;
-}
-
+/* [clave, icono, texto, tono]; la clave es lo que recibe `onPick`. El menu de
+   una cancion ya no esta aqui: songMenu.js da los grupos y MenuBody los pinta. */
 const ALBUM_ITEMS = [
   ["photo", "upload", "Cambiar foto"],
   ["remove", "trash", "Quitar álbum de tu biblioteca", "bad"],
@@ -74,8 +51,9 @@ const LIST_ITEMS = [
   ["delete", "trash", "Borrar lista", "bad"],
 ];
 
-/* El primer item toma el foco al abrir; las flechas recorren el menu en circulo. */
-function MenuItems({ items, label, onPick, stack }) {
+/* El primer item toma el foco al abrir; las flechas recorren el menu en circulo.
+   Solo lo usan ya los menus de album y de lista, que siguen siendo planos. */
+function MenuItems({ items, label, onPick }) {
   const ref = useRef(null);
 
   const onKeyDown = (e) => {
@@ -88,7 +66,7 @@ function MenuItems({ items, label, onPick, stack }) {
 
   return (
     <div ref={ref} className="mlist" role="menu" aria-label={label} onKeyDown={onKeyDown}>
-      {items.map(([kind, icon, text, tone, pill], i) => (
+      {items.map(([kind, icon, text, tone], i) => (
         <button
           key={kind}
           type="button"
@@ -98,14 +76,7 @@ function MenuItems({ items, label, onPick, stack }) {
           onClick={() => onPick(kind)}
         >
           <Ico n={icon} size={22} />
-          {pill ? (
-            <span className={cx("mi__t", stack && "mi__t--stack")}>
-              {text}
-              <VerdictPill v={pill} />
-            </span>
-          ) : (
-            text
-          )}
+          {text}
         </button>
       ))}
     </div>
@@ -162,12 +133,9 @@ export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
 export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false }) {
   const pc = usePc();
   const { title, artist, album } = entry;
-  const label = `Opciones de ${title}`;
-  /* Guardada sin archivo: se puede descargar y quitar de la biblioteca. Con
-     archivo: quitar descarga, ficha y quitar de la biblioteca. Lo destructivo
-     va siempre al final (menuKinds ya lo pone ahi), salvo "Cerrar reproductor",
-     que se anade despues cuando el menu abre desde "Ahora suena". */
-  const items = songItems(entry, pc, closePlayer);
+  /* El estado de la entrada decide que grupos salen y el formato de descarga
+     viaja como dato, igual que en el menu de resultados. */
+  const groups = songMenuGroups(entry, { fmt: readDownloadFormat(), closePlayer, pc });
   const head = (
     <div className="mhead">
       <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} target={songTarget(entry)} size={pc ? 40 : 56} />
@@ -177,21 +145,16 @@ export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false 
       </span>
     </div>
   );
-  const menu = <MenuItems items={items} label={label} onPick={onPick} stack={pc} />;
-
-  if (pc) {
-    return (
-      <Popover anchor={anchor} onClose={onClose} width={272}>
-        {head}
-        {menu}
-      </Popover>
-    );
-  }
   return (
-    <Sheet title={label} onClose={onClose} anchor={anchor}>
-      {head}
-      {menu}
-    </Sheet>
+    <MenuSurface
+      groups={groups}
+      title={title}
+      anchor={anchor}
+      onPick={onPick}
+      onClose={onClose}
+      head={head}
+      width={272}
+    />
   );
 }
 

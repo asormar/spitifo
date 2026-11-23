@@ -117,25 +117,6 @@
   min-height: 48px;
 }
 
-/* La ficha del archivo en el menu: la pastilla a la derecha en el telefono y
-   debajo del texto en el escritorio. */
-.mi__t {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.mi__t--stack {
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 0;
-}
-
 /* La hoja de la ficha del archivo (listen/FileSheet.jsx). */
 .fsheet__h {
   padding-right: 12px;

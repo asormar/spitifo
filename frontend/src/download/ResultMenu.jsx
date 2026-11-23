@@ -35,7 +35,7 @@ export function MenuBody({ groups, title, onPick }) {
               key={it.kind}
               type="button"
               role="menuitem"
-              className="rm__i"
+              className={it.danger ? "rm__i rm__i--bad" : "rm__i"}
               data-autofocus={it.kind === first ? "" : undefined}
               disabled={it.disabled || undefined}
               onClick={() => onPick(it.kind)}
@@ -54,15 +54,21 @@ export function MenuBody({ groups, title, onPick }) {
 }
 
 /* La misma hoja/popover para cualquier menu en modo Descargar: el de una fila,
-   el del album y el del artista. Asi comparten foco, teclado y aspecto. */
-export function MenuSurface({ groups, title, anchor, onPick, onClose }) {
+   el del album y el del artista, y el de una cancion de la biblioteca (que le
+   anade una cabecera con la portada). Asi comparten foco, teclado y aspecto. */
+export function MenuSurface({ groups, title, anchor, onPick, onClose, head, width }) {
   const pc = usePc();
-  const body = <MenuBody groups={groups} title={title} onPick={onPick} />;
+  const body = (
+    <>
+      {head}
+      <MenuBody groups={groups} title={title} onPick={onPick} />
+    </>
+  );
 
-  if (pc) return <Popover anchor={anchor} onClose={onClose}>{body}</Popover>;
+  if (pc) return <Popover anchor={anchor} onClose={onClose} width={width}>{body}</Popover>;
   return (
     <Sheet title={`Opciones de ${title}`} onClose={onClose} anchor={anchor}>
-      <SheetBar title={`Opciones de ${title}`} onClose={onClose} />
+      <SheetBar title={`Opciones de ${title}`} onClose={onClose} quiet={!!head} />
       {body}
     </Sheet>
   );
