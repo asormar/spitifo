@@ -14,11 +14,12 @@ import pytest
 from backend.app.sources import BY_NAME, ITunesSource
 
 
-def _song(track_id, titulo, *, artista_id=777, dur=200_000):
+def _song(track_id, titulo, *, artista_id=777, dur=200_000,
+          artista="Radiohead"):
     return {
         "wrapperType": "track", "kind": "song",
         "trackId": track_id, "collectionId": 999,
-        "artistId": artista_id, "artistName": "Radiohead",
+        "artistId": artista_id, "artistName": artista,
         "trackName": titulo, "collectionName": "OK Computer",
         "trackTimeMillis": dur,
         "artworkUrl100": "http://x/100x100bb.jpg",
@@ -28,9 +29,9 @@ def _song(track_id, titulo, *, artista_id=777, dur=200_000):
     }
 
 
-def _video(track_id, titulo):
+def _video(track_id, titulo, *, canal="Radiohead"):
     return {
-        "id": f"v{track_id}", "title": titulo, "uploader": "Radiohead",
+        "id": f"v{track_id}", "title": titulo, "uploader": canal,
         "duration": 200, "webpage_url": f"https://www.youtube.com/watch?v=v{track_id}",
     }
 
@@ -60,6 +61,24 @@ def _youtube(monkeypatch, videos, enabled=True):
     monkeypatch.setattr(BY_NAME["ytdlp"], "search_candidates", _videos)
 
 
+def _youtube_por_consulta(monkeypatch, grupales, *, sueltas=None, falla_suelta=False):
+    """Doble que distingue la busqueda del artista de la de cada pista."""
+    consultas = []
+    sueltas = sueltas or {}
+
+    async def _videos(q, limit=40):
+        consultas.append((q, limit))
+        if q.startswith("Radiohead"):
+            return list(grupales)
+        if falla_suelta:
+            raise RuntimeError("yt-dlp caido en la busqueda suelta")
+        return next((list(v) for k, v in sueltas.items() if k in q), [])
+
+    monkeypatch.setenv("YTDLP_ENABLED", "1")
+    monkeypatch.setattr(BY_NAME["ytdlp"], "search_candidates", _videos)
+    return consultas
+
+
 # ------------------------------------------------------------------ happy path
 def test_top_matchea_como_buscar(cliente, monkeypatch):
     crudos = [_song(1, "Creep"), _song(2, "Karma Police"), _song(3, "No Surprises")]
@@ -80,6 +99,74 @@ def test_top_matchea_como_buscar(cliente, monkeypatch):
         assert t["extra"]["webpage_url"].startswith("https://www.youtube.com/")
         assert t["extra"]["match_score"] >= 0.75
         assert "YouTube" in t["license"]
+
+
+# ------------------------------------------- segundo paso: busquedas sueltas
+def test_top_busca_suelta_la_cancion_que_falto_en_el_grupo(cliente, monkeypatch):
+    """Un video fuera de los 40 del artista se halla por artista + titulo."""
+    crudos = [
+        _song(1, "Creep"),
+        _song(2, "Mesmerizer",
+              artista="Satsuki, Hatsune Miku & Kasane Teto"),
+    ]
+    _canciones(monkeypatch, crudos)
+    consultas = _youtube_por_consulta(
+        monkeypatch, [_video(1, "Creep")],
+        sueltas={"Mesmerizer": [_video(2, "Satsuki - Mesmerizer")]})
+
+    r = cliente.get("/api/artist/777/top")
+    assert r.status_code == 200
+    creep, mesmerizer = r.json()["songs"]
+    assert creep["extra"]["has_full"] is True
+    assert mesmerizer["extra"]["has_full"] is True
+    assert mesmerizer["extra"]["webpage_url"].endswith("v2")
+    assert mesmerizer["extra"]["match_score"] >= 0.75
+    assert any("Mesmerizer" in q and limit == 8 for q, limit in consultas)
+
+
+def test_top_busqueda_suelta_rota_deja_preview_y_responde_200(cliente, monkeypatch):
+    """Si la busqueda puntual revienta, esa pista sigue sin version completa."""
+    crudos = [
+        _song(1, "Creep"),
+        _song(2, "Mesmerizer",
+              artista="Satsuki, Hatsune Miku & Kasane Teto"),
+    ]
+    _canciones(monkeypatch, crudos)
+    _youtube_por_consulta(monkeypatch, [_video(1, "Creep")], falla_suelta=True)
+
+    r = cliente.get("/api/artist/777/top")
+    assert r.status_code == 200
+    creep, mesmerizer = r.json()["songs"]
+    assert creep["extra"]["has_full"] is True
+    assert mesmerizer["extra"]["has_full"] is False
+    assert mesmerizer["extra"].get("webpage_url") is None
+    assert mesmerizer["license"] == "preview de iTunes (30s)"
+
+
+def test_top_busquedas_sueltas_como_maximo_tres(cliente, monkeypatch):
+    """El segundo paso no dispara una busqueda por pista sin tope."""
+    _canciones(monkeypatch, [_song(i, f"Cancion {i}") for i in range(5)])
+    activas = 0
+    pico = 0
+
+    async def _videos(q, limit=40):
+        nonlocal activas, pico
+        if q == "Radiohead":
+            return []
+        activas += 1
+        pico = max(pico, activas)
+        await asyncio.sleep(0.01)
+        activas -= 1
+        i = int(q.split()[-1])
+        return [_video(i, f"Radiohead - Cancion {i}")]
+
+    monkeypatch.setenv("YTDLP_ENABLED", "1")
+    monkeypatch.setattr(BY_NAME["ytdlp"], "search_candidates", _videos)
+
+    r = cliente.get("/api/artist/777/top")
+    assert r.status_code == 200
+    assert all(t["extra"]["has_full"] for t in r.json()["songs"])
+    assert 2 <= pico <= 3
 
 
 # ---------------------------------------------------------------- YTDLP = 0
@@ -322,6 +409,28 @@ def test_clave_top_titulos_vacios_no_colapsan():
     assert _top_song_key(_song(1, "(Live)")) == _top_song_key(_song(1, ""))
 
 
+def test_top_incluye_canciones_acreditadas_a_otro_que_nombran_al_artista(
+        cliente, monkeypatch):
+    """En Kasane Teto casi todo va a nombre del productor: el credito o el
+    "feat." del titulo la nombran y la cancion se queda. Lo ajeno se va."""
+    crudos = [
+        {"wrapperType": "artist", "artistId": 777, "artistName": "Kasane Teto"},
+        _song(1, "Mesmerizer", artista_id=11,
+              artista="Satsuki, Hatsune Miku & Kasane Teto"),
+        _song(2, "Refrain (feat. Kasane Teto)", artista_id=12,
+              artista="HAL@修羅場P"),
+        _song(3, "Otra cosa", artista_id=13, artista="Alguien Mas"),
+        _song(4, "Teto Territory", artista="Kasane Teto"),
+    ]
+    _canciones(monkeypatch, crudos)
+    _youtube(monkeypatch, [], enabled=False)
+
+    body = cliente.get("/api/artist/777/top").json()
+    assert body["name"] == "Kasane Teto"
+    assert [t["title"] for t in body["songs"]] == [
+        "Mesmerizer", "Refrain (feat. Kasane Teto)", "Teto Territory"]
+
+
 # ------------------------------------------------------------ cliente iTunes
 def test_artist_top_songs_llama_lookup_con_entity_song():
     vistos = {}
@@ -342,4 +451,6 @@ def test_artist_top_songs_llama_lookup_con_entity_song():
     assert vistos["id"] == "777"
     assert vistos["entity"] == "song"
     assert vistos["limit"] == "10"  # se pide de mas para dedupe antes del tope
-    assert [t["trackId"] for t in salida] == [1]
+    assert [t.get("trackId") for t in salida] == [1, None]
+    # el wrapper del artista se conserva: el endpoint saca de ahi el nombre
+    assert salida[1]["wrapperType"] == "artist"

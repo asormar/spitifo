@@ -301,14 +301,16 @@ class ITunesSource(Source):
         El mismo cliente compartido que el resto de iTunes: timeout y
         User-Agent. La cache vive en el endpoint (con el match de YouTube ya
         resuelto), asi que aqui no se guarda nada. El orden que devuelve iTunes
-        es el ranking.
+        es el ranking. Se conserva el wrapper del artista (wrapperType
+        "artist"): trae su nombre, que hace falta cuando las canciones estan
+        acreditadas a otro ("Refrain (feat. Kasane Teto)" de HAL@修羅場P).
         """
         r = await self.client.get(
             "https://itunes.apple.com/lookup",
             params={"id": artist_id, "entity": "song", "limit": limit})
         r.raise_for_status()
         return [t for t in r.json().get("results", [])
-                if t.get("kind") == "song"]
+                if t.get("kind") == "song" or t.get("wrapperType") == "artist"]
 
     @_cached
     async def lookup(self, album_id: str | int

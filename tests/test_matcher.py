@@ -117,6 +117,50 @@ def test_score_pair_rechazos(ficha, artista, video, canal, motivo):
     assert score_pair(ficha, artista, 200, video, canal, 200) == (0.0, motivo)
 
 
+# ------------------------------------------- creditos "feat." en el titulo
+def test_feat_en_el_titulo_nombre_al_artista_en_el_video():
+    """La ficha pone al cantante en 'feat.'; el video lo nombra a el."""
+    s, por_que = score_pair("Refrain (feat. Kasane Teto)", "HAL@修羅場P", 200,
+                            "HAL - Refrain feat. Kasane Teto", "Canal Random", 201)
+    assert s >= MIN_SCORE
+    assert por_que == "titulo+dur"
+
+
+def test_feat_en_el_titulo_cuenta_como_match_de_canal():
+    """El canal del invitado vale como canal del artista (no como titulo)."""
+    s, por_que = score_pair("Refrain (feat. Kasane Teto)", "HAL@修羅場P", 200,
+                            "Refrain", "Kasane Teto Official", 200)
+    assert s == 1.0
+    assert por_que == "canal+dur"
+
+
+@pytest.mark.parametrize("titulo,canal", [
+    ("Refrain [feat. Kasane Teto]", "Kasane Teto Official"),
+    ("Refrain (Featuring Kasane Teto)", "Kasane Teto Official"),
+    ("Refrain (with Kasane Teto)", "Kasane Teto Official"),
+    ("Refrain (ft. Kasane Teto)", "Kasane Teto Official"),
+    ("Refrain (feat. A & Kasane Teto)", "Kasane Teto Official"),
+])
+def test_feat_en_el_titulo_acepta_distintas_escrituras(titulo, canal):
+    """Parentesis, corchetes y separadores de credito, todos por la misma puerta."""
+    s, por_que = score_pair(titulo, "HAL@修羅場P", 200,
+                            "Refrain", canal, 200)
+    assert s >= MIN_SCORE
+    assert por_que == "canal+dur"
+
+
+def test_feat_en_el_titulo_no_abre_la_puerta_a_cualquiera():
+    """Sin nadie del credito ni del feat. en el video: sin-artista."""
+    assert score_pair("Refrain (feat. Kasane Teto)", "HAL@修羅場P", 200,
+                      "Refrain (Official Audio)", "Canal Random", 200) == (0.0, "sin-artista")
+
+
+def test_feat_en_el_titulo_no_acepta_otra_version():
+    """El cover se rechaza aunque nombre al invitado acreditado."""
+    assert score_pair("Refrain (feat. Kasane Teto)", "HAL@修羅場P", 200,
+                      "Refrain (Cover) Kasane Teto", "Kasane Teto Official", 200) == (0.0, "otra-version")
+
+
 def test_si_la_ficha_pide_la_version_el_video_vale():
     s, _ = score_pair("Numb (Live)", "Linkin Park", 200,
                       "Linkin Park - Numb (Live)", "Linkin Park", 200)
