@@ -23,3 +23,11 @@ export function rowPlayPlan(t) {
   if (t?.preview_url) return "preview";
   return null;
 }
+
+/* La pastilla de datos de la fila: «Buscando» solo mientras el servidor la
+   busca de verdad (pending); una "lazy" espera a verse callada y pasa directo
+   a entera o a «30 s». */
+export function rowChip(t, plan = rowPlayPlan(t)) {
+  if (plan === "eager") return matchState(t) === "pending" ? "seek" : null;
+  return plan === "preview" ? "30" : null;
+}

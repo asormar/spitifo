@@ -62,6 +62,11 @@ export async function resultTrackFor(t, { query = "", source = null } = {}) {
   return null;
 }
 
+/* La cola llega como lista o como funcion que la devuelve: Buscar pasa una
+   funcion estable para que un lote nuevo no repinte todas las filas (memo);
+   la lista se lee recien al tocar. */
+export const queueOf = (queue) => (typeof queue === "function" ? queue() : queue);
+
 export function useResultPlayback({ t, query = "", queue = [], source = null }) {
   const show = useShow();
   const [resolving, setResolving] = useState(false);
@@ -109,7 +114,7 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
     if (mine(state)) return engine.toggle();
 
     if (plan === "stream") {
-      const { queue: lista, index } = streamQueue(queue, t, source);
+      const { queue: lista, index } = streamQueue(queueOf(queue), t, source);
       return engine.play(lista[index], { queue: lista, index, source });
     }
     if (plan === "archive") {

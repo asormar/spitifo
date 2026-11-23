@@ -95,6 +95,36 @@
   line-height: 1.3;
 }
 
+/* Hueco de los estantes (y del «Mejor resultado») mientras llega el catalogo:
+   las mismas cajas que el real, con barras quietas en lugar de texto. Sin
+   animacion: el hueco solo guarda el sitio. */
+.shk {
+  pointer-events: none;
+}
+
+.shk .sh2 {
+  align-self: flex-start;
+  border-radius: 6px;
+  background: var(--s2);
+  color: transparent;
+}
+
+.shk .cv,
+.shk .alcard__cv {
+  background: var(--s2);
+}
+
+.shk .bestc__txt {
+  flex: 1;
+}
+
+.shk .alcard__t,
+.shk .alcard__m,
+.shk .bestc__t,
+.shk .bestc__m {
+  background: linear-gradient(var(--s2) 0 0) 0 0.2em / 75% 0.8em no-repeat;
+}
+
 /* Escritorio: una sola fila de tarjetas, todas del mismo ancho. */
 @media (min-width: 960px) {
   .alshelf {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rowKey } from "../shared/api.js";
-import { isMine, rowTrackKey } from "./resultPlayback.js";
+import { isMine, queueOf, rowTrackKey } from "./resultPlayback.js";
 
 /* La decision de «¿es esta la pista que suena?» es pura y vive en isMine. El
    toque de una fila con cambios de biblioteca, pero aca probamos la decision:
@@ -40,5 +40,19 @@ describe("isMine", () => {
     const a = { source: "itunes", source_id: "42", extra: { needs_resolve: true } };
     const b = { source: "itunes", source_id: "43", extra: { needs_resolve: true } };
     expect(mineOf({ track: { result: b } }, a)).toBe(false);
+  });
+});
+
+describe("queueOf", () => {
+  it("acepta la lista de siempre (Populares, albumes)", () => {
+    const lista = [{ source_id: "1" }];
+    expect(queueOf(lista)).toBe(lista);
+  });
+
+  it("acepta una funcion estable y la lee al tocar, con la lista de ese momento", () => {
+    let actual = [{ source_id: "1" }];
+    const getQueue = () => actual;
+    actual = [{ source_id: "1" }, { source_id: "2" }];
+    expect(queueOf(getQueue)).toBe(actual);
   });
 });

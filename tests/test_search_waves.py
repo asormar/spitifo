@@ -58,14 +58,24 @@ class _Youtube:
         return []
 
 
-def _instalar(monkeypatch, canciones, enriquecer, *, yt=None):
-    """Instala iTunes, yt-dlp y, si se da, el matcher falso para una corrida."""
+async def _sin_estantes(self, q, limit=8):
+    return []
+
+
+def _instalar(monkeypatch, canciones, enriquecer, *, yt=None,
+              artistas=_sin_estantes, albumes=_sin_estantes):
+    """Instala iTunes, yt-dlp y, si se da, el matcher falso para una corrida.
+
+    Los estantes (artistas y albumes) van vacios salvo que el test los pida:
+    el stream los busca siempre y no debe salir a la red."""
     yt = yt or _Youtube()
 
     async def _raw(self, q, limit=20):
         return list(canciones)
 
     monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", _raw)
+    monkeypatch.setattr("backend.app.sources.ITunesSource.search_artists", artistas)
+    monkeypatch.setattr("backend.app.sources.ITunesSource.search_albums", albumes)
     monkeypatch.setitem(main.BY_NAME, "ytdlp", yt)
     monkeypatch.setattr(main, "_register_ytdlp", lambda: None)
     if enriquecer is not None:
@@ -229,9 +239,112 @@ def test_stream_fallo_de_itunes_devuelve_502_antes_de_abrir(cliente, monkeypatch
         raise httpx.ConnectError("sin red")
 
     monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", _roto)
+    monkeypatch.setattr("backend.app.sources.ITunesSource.search_artists", _sin_estantes)
+    monkeypatch.setattr("backend.app.sources.ITunesSource.search_albums", _sin_estantes)
     r = cliente.get("/api/search?q=x&mode=matched&stream=1")
     assert r.status_code == 502
     assert "application/json" in r.headers["content-type"]
+
+
+# ---------------------------------------------------------------- estantes
+_ARTISTA = {"artistId": 777, "artistName": "Linkin Park",
+            "primaryGenreName": "Rock"}
+_ALBUM = {"collectionId": 999, "artistId": 777, "collectionName": "Meteora",
+          "artistName": "Linkin Park", "releaseDate": "2003-03-25T07:00:00Z",
+          "trackCount": 12, "artworkUrl100": "http://x/100x100bb.jpg",
+          "collectionExplicitness": "notExplicit"}
+
+
+def _sin_match(tracks, query, ysrc, limit=40, videos=None):
+    async def _nada():
+        return {}
+    return _nada()
+
+
+def test_stream_estantes_a_tiempo_van_en_el_catalogo(cliente, monkeypatch):
+    """Artistas y albumes listos a tiempo pintan con las canciones."""
+    pedidos = {}
+
+    async def _artistas(self, q, limit=5):
+        pedidos["artists"] = (q, limit)
+        return [_ARTISTA]
+
+    async def _albumes(self, q, limit=8):
+        pedidos["albums"] = (q, limit)
+        return [_ALBUM]
+
+    _instalar(monkeypatch, [_song(1, "C1")], _sin_match,
+              artistas=_artistas, albumes=_albumes)
+    eventos = _stream(cliente, "/api/search?q=linkin&mode=matched&stream=1")
+
+    assert "shelves" not in [e["type"] for e in eventos]
+    catalogo = eventos[0]
+    assert catalogo["type"] == "catalog"
+    # La misma forma que /api/artists/search y /api/albums/search.
+    assert catalogo["artists"] == [{"id": 777, "name": "Linkin Park", "genre": "Rock"}]
+    assert catalogo["albums"] == [main._album_dict(_ALBUM)]
+    assert pedidos == {"artists": ("linkin", 3), "albums": ("linkin", 8)}
+    assert eventos[-1]["type"] == "done"
+
+
+def test_stream_estantes_lentos_salen_en_su_evento_entre_lotes(cliente, monkeypatch):
+    monkeypatch.setattr(main, "_SHELVES_WAIT_S", 0.01)
+
+    async def _artistas(self, q, limit=5):
+        await asyncio.sleep(0.1)
+        return [_ARTISTA]
+
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
+        if len(tracks) > 1:
+            return {}
+        await asyncio.sleep(0.4)
+        return {str(tracks[0]["trackId"]): _miss()}
+
+    _instalar(monkeypatch, [_song(1, "C1"), _song(2, "C2")], _enrich,
+              artistas=_artistas)
+    eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
+
+    # Los estantes no esperan a las puntuales: salen en cuanto terminan.
+    assert [e["type"] for e in eventos] == [
+        "catalog", "shelves", "tracks", "tracks", "done"]
+    assert "artists" not in eventos[0] and "albums" not in eventos[0]
+    assert eventos[1] == {"type": "shelves", "albums": [], "artists": [
+        {"id": 777, "name": "Linkin Park", "genre": "Rock"}]}
+
+
+def test_stream_estantes_que_fallan_dan_listas_vacias(cliente, monkeypatch):
+    import httpx
+
+    async def _roto(self, q, limit=8):
+        raise httpx.ConnectError("sin red")
+
+    async def _peor(self, q, limit=8):
+        raise RuntimeError("iTunes devolvio basura")
+
+    _instalar(monkeypatch, [_song(1, "C1")], _sin_match,
+              artistas=_roto, albumes=_peor)
+    eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
+
+    assert eventos[0]["artists"] == [] and eventos[0]["albums"] == []
+    assert [t["title"] for t in eventos[0]["results"]] == ["C1"]
+    assert eventos[-1]["type"] == "done"
+
+
+def test_stream_estantes_colgados_no_retienen_el_done(cliente, monkeypatch):
+    monkeypatch.setattr(main, "_SHELVES_WAIT_S", 0.01)
+    monkeypatch.setattr(main, "_SHELVES_MAX_S", 0.05)
+
+    async def _colgado(self, q, limit=5):
+        await asyncio.sleep(10)
+        return [_ARTISTA]
+
+    _instalar(monkeypatch, [_song(1, "C1")], _sin_match, artistas=_colgado,
+              yt=_Youtube(disponible=False))
+    eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
+
+    # El frontend siempre recibe sus estantes (vacios) antes del final.
+    assert [e["type"] for e in eventos] == ["catalog", "shelves", "done"]
+    assert eventos[1] == {"type": "shelves", "artists": [], "albums": []}
 
 
 # ------------------------------------------------------------------- JSON
@@ -244,7 +357,11 @@ def test_json_sigue_igual_y_agrega_match_state(cliente, monkeypatch):
             _video("1", "C1") if t["trackId"] == 1 else _miss())
             for t in tracks}
 
-    yt = _instalar(monkeypatch, canciones, _enrich)
+    async def _prohibido(self, q, limit=8):
+        raise AssertionError("el JSON no busca estantes")
+
+    yt = _instalar(monkeypatch, canciones, _enrich,
+                   artistas=_prohibido, albumes=_prohibido)
     r = cliente.get("/api/search?q=x&mode=matched")
     assert r.status_code == 200
     body = r.json()

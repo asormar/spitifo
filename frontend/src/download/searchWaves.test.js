@@ -77,6 +77,28 @@ describe("consumeWaves", () => {
     expect(r.body.getReader).not.toHaveBeenCalled();
   });
 
+  it("pasa los estantes del catalogo y los del evento shelves", async () => {
+    const artista = { id: 7, name: "Linkin Park", genre: "Rock" };
+    const album = { id: 9, title: "Meteora" };
+    const cat = { type: "catalog", results: [fila("1")], artists: [artista], albums: [album] };
+    const tarde = { type: "shelves", artists: [], albums: [album] };
+    const lineas = [cat, tarde, { type: "done" }].map((e) => JSON.stringify(e)).join("\n");
+    const onCatalog = vi.fn(), onShelves = vi.fn();
+
+    await consumeWaves(ndjson([lineas]), { onCatalog, onShelves });
+
+    expect(onCatalog.mock.calls[0][2]).toEqual({ artists: [artista], albums: [album] });
+    /* El evento aparte llega solo a onShelves, no como un segundo catalogo. */
+    expect(onShelves).toHaveBeenCalledTimes(1);
+    expect(onShelves).toHaveBeenCalledWith({ artists: [], albums: [album] });
+  });
+
+  it("un catalogo sin estantes los deja en null: llegan despues", async () => {
+    const onCatalog = vi.fn();
+    await consumeWaves(ndjson(['{"type":"catalog","results":[]}\n']), { onCatalog });
+    expect(onCatalog.mock.calls[0][2]).toBeNull();
+  });
+
   it("cierra el reader aunque la ultima linea no tenga salto", async () => {
     const r = ndjson(['{"type":"catalog","results":[]}\n{"type":"done","full":0,"count":0}']);
     const reader = r.body.getReader();

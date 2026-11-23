@@ -42,6 +42,25 @@ function BestPlay({ song, query, queue, source }) {
   );
 }
 
+/* El hueco de la tarjeta mientras llega el catalogo: las mismas cajas (y alto),
+   quietas y sin texto. Los estilos .shk viven con el estante de albumes. */
+export function BestResultSkeleton() {
+  return (
+    <div className="bestsec shk" aria-hidden="true">
+      <span className="sh2">Mejor resultado</span>
+      <div className="bestc">
+        <span className="bestc__main">
+          <span className="cv bestc__cv" />
+          <span className="bestc__txt">
+            <span className="bestc__t">&nbsp;</span>
+            <span className="bestc__m">&nbsp;</span>
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function BestResult({ artist, results = [], query = "", onOpen }) {
   const song = bestResultSong(results, artist);
   const source = query ? `search:${query}` : null;
