@@ -78,14 +78,13 @@
   width: min(210px, 60vw);
 }
 
-/* --- Boton principal ------------------------------------------------------- */
+/* --- Fila de acciones ------------------------------------------------------- */
 
-.apdl {
-  gap: 9px;
-}
-
-.btn.apdl:active {
-  transform: scale(0.98);
+.apacts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* --- Rejilla de discos ----------------------------------------------------- */

@@ -20,11 +20,11 @@ import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
 import LibraryHits from "./LibraryHits.jsx";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
-import ResultMenu from "./ResultMenu.jsx";
+import { MenuSurface } from "./ResultMenu.jsx";
+import { resultMenuGroups } from "./resultMenu.js";
+import { pickResultAction } from "./resultMenuActions.js";
 import ResolutionMenu from "./ResolutionMenu.jsx";
-import { engine } from "../player/engine.js";
-import { resultTrackFor } from "./resultPlayback.js";
-import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
+import { npLinks } from "../player/npLinks.js";
 import { useShow } from "../listen/Notice.jsx";
 import ShowGroup from "./ShowGroup.jsx";
 import Strip from "./Strip.jsx";
@@ -99,7 +99,9 @@ export default function SearchScreen({
   const albumAt = stack.find((e) => e.type === "albumsheet" && !e.from);
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
   const resmoreT = resmoreAt && results.find((t) => rowKey(t) === resmoreAt.key);
-  const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
+  /* La ficha de una pista del album trae su resultado en la entrada: no esta
+     entre los resultados de Buscar. */
+  const fichaT = fichaAt?.t || (fichaAt && results.find((t) => rowKey(t) === fichaAt.key));
   const albumT = albumAt && albums.find((a) => String(a.id) === String(albumAt.id));
   /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
   const gone = (menuAt && !menuT) || (resmoreAt && !resmoreT) || (fichaAt && !fichaT) || (albumAt && !albumT);
@@ -155,51 +157,61 @@ export default function SearchScreen({
   const onOpenArtist = useCallback(
     (artist, anchor) => {
       loadArtistChunk();
-      nav.open({ type: "itunesartist", id: artist.id, name: artist.name, genre: artist.genre, anchor });
+      /* Los resultados viajan en la entrada: el artista abre Populares sin un
+         estado global nuevo ni otra peticion. */
+      nav.open({
+        type: "itunesartist",
+        id: artist.id,
+        name: artist.name,
+        genre: artist.genre,
+        songs: results,
+        anchor,
+      });
+    },
+    [nav.open, results]
+  );
+
+  /* Lo que Buscar hace distinto con el ⋯: adelanta el chunk del album, cae a
+     una busqueda si el artista no tiene pagina y baja por onDl (que decide
+     entre el menu de resoluciones y la descarga directa). */
+  const onAlbumFromResult = useCallback(
+    (t, anchor) => {
+      loadAlbumChunk();
+      nav.open({ ...npLinks({ result: t }, null).album.sheet, anchor });
     },
     [nav.open]
   );
+  const onArtistFromResult = useCallback(
+    async (t, anchor) => {
+      loadArtistChunk();
+      const links = npLinks({ result: t }, null);
+      if (links.artist?.view) return nav.goTo("search", links.artist.view);
+      if (links.artist?.resolve) {
+        const { resolveArtistLink } = await import("./artistLink.js");
+        const view = await resolveArtistLink(links.artist.name, []);
+        if (view) return nav.goTo("search", view);
+      }
+      const name = links.artist?.name || t.artist;
+      setQ(name);
+      run.run(name, mode);
+    },
+    [nav.goTo, setQ, run.run, mode]
+  );
 
   const pickResult = useCallback(
-    async (kind) => {
-      const t = resmoreT;
-      if (!t) return;
-      const anchor = resmoreAt?.anchor;
-      nav.back();
-      if (kind === "download") return onDl(t, anchor);
-      if (kind === "ficha") return nav.open({ type: "ficha", key: rowKey(t), anchor });
-      if (kind === "next" || kind === "end") {
-        const track = await resultTrackFor(t, { query, source: query ? `search:${query}` : null });
-        if (!track) return show("No se pudo añadir a la cola");
-        const idle = !engine.getState().track;
-        const done = kind === "next" ? engine.playNext(track) : engine.enqueue(track);
-        return show(idle
-          ? "Reproduciendo"
-          : !done
-            ? "Ya está en la cola"
-            : kind === "next"
-              ? "Sonará a continuación"
-              : "Añadida a la cola");
-      }
-      const links = npLinks({ result: t }, null);
-      if (kind === "album" && canOpenAlbumSheet(t)) {
-        loadAlbumChunk();
-        return nav.open({ ...links.album.sheet, anchor });
-      }
-      if (kind === "artist") {
-        loadArtistChunk();
-        if (links.artist?.view) return nav.goTo("search", links.artist.view);
-        if (links.artist?.resolve) {
-          const { resolveArtistLink } = await import("./artistLink.js");
-          const view = await resolveArtistLink(links.artist.name, []);
-          if (view) return nav.goTo("search", view);
-        }
-        const name = links.artist?.name || t.artist;
-        setQ(name);
-        run.run(name, mode);
-      }
-    },
-    [resmoreT, resmoreAt, nav.back, nav.open, nav.goTo, onDl, query, show, setQ, run.run, mode]
+    (kind) =>
+      pickResultAction(kind, {
+        t: resmoreT,
+        query,
+        source: query ? `search:${query}` : null,
+        onDownload: onDl,
+        onAlbum: onAlbumFromResult,
+        onArtist: onArtistFromResult,
+        show,
+        nav,
+        anchor: resmoreAt?.anchor,
+      }),
+    [resmoreT, resmoreAt, query, onDl, onAlbumFromResult, onArtistFromResult, show, nav]
   );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
@@ -535,11 +547,13 @@ export default function SearchScreen({
       )}
 
       {resmoreT && (
-        <ResultMenu
+        <MenuSurface
           key={`r${resmoreAt.key}`}
-          t={resmoreT}
-          fmt={fmt}
-          downloaded={dl.downloadedIds.has(resmoreAt.key)}
+          groups={resultMenuGroups(resmoreT, {
+            fmt,
+            downloaded: dl.downloadedIds.has(resmoreAt.key),
+          })}
+          title={resmoreT.title || "sin título"}
           anchor={resmoreAt.anchor}
           onPick={pickResult}
           onClose={nav.back}

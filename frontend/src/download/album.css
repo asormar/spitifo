@@ -59,29 +59,34 @@
   justify-content: center;
 }
 
-/* --- Boton principal -------------------------------------------------------- */
+/* --- Fila de acciones ------------------------------------------------------- */
 
-.als__btn {
-  margin: 2px 0 14px;
+.als__acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 
-.als__btn:active:not([aria-disabled]) {
-  transform: scale(0.97);
+/* El corazon de la cabecera usa el acento de los demas corazones guardados. */
+.cbtn.als__heart[aria-pressed="true"] {
+  color: var(--acc);
 }
 
-.btn.als__btn[aria-disabled] {
-  background: var(--s2);
+/* El avance del emparejamiento y el de la descarga usan la misma rueda. */
+.als__match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
   color: var(--mut);
-  cursor: default;
+  font-size: 12.5px;
 }
 
-.btn.als__btn[data-busy] {
-  cursor: progress;
-}
-
-.als__btn .sp {
-  border-color: color-mix(in srgb, var(--acc-ink) 30%, transparent);
-  border-top-color: var(--acc-ink);
+.als__match .sp {
+  width: 13px;
+  height: 13px;
+  border-width: 2px;
 }
 
 /* --- Pastillas de estado ---------------------------------------------------- */
@@ -113,21 +118,12 @@
   color: var(--ok-t);
 }
 
-.alp--bad {
-  background: var(--bad-bg);
-  color: var(--bad-t);
-}
-
-.alp--btn {
-  min-height: 44px;
-  cursor: pointer;
-}
-
 /* --- Lista de pistas -------------------------------------------------------- */
 
+/* El borde es del contenedor; la forma de la fila la da .rlist--compact. */
 .als__list {
   margin: 0;
-  padding: 4px 14px;
+  padding: 4px 10px;
   border-radius: var(--r-card);
   background: var(--s1);
   box-shadow: inset 0 0 0 1.5px var(--s3);
@@ -172,15 +168,26 @@
   white-space: nowrap;
 }
 
-.altr__acts {
-  display: flex;
-  flex: none;
+/* Mientras se busca la version completa: fila tenue, no tocable todavia. */
+.altr.is-searching {
+  opacity: 0.45;
+}
+
+.altr__wait {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.altr__wait .sp {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
 }
 
 /* El area tactil del boton de cancelar llega a 44 px sin mover el dibujo. */
-.altr__x,
 .ql__x {
   display: grid;
   flex: none;
@@ -195,11 +202,6 @@
   cursor: pointer;
 }
 
-.altr.is-miss .altr__no,
-.altr.is-miss .altr__tt b {
-  color: var(--dim);
-  font-weight: 500;
-}
 
 /* --- Avisos ----------------------------------------------------------------- */
 

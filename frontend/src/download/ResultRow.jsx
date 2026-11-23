@@ -55,12 +55,7 @@ export const factsOf = (t) =>
     .filter(Boolean)
     .join(" · ");
 
-export const subOf = (t) =>
-  [t.artist || "artista desconocido", t.album && t.album !== t.title ? t.album : null, t.year]
-    .filter(Boolean)
-    .join(", ");
-
-export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onMenu, queue, source }) {
+export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded, onDl, onMenu, queue, source, variant, albumArtist }) {
   const v = verdictOf(t, useVerdict(verdictKey(t, query)));
   /* «Sin verificar» y «Solo 30 s» no son veredictos: solo se pintan los que
      dicen algo despues de mirar el archivo. */
@@ -68,6 +63,16 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   const title = t.title || "sin título";
   const prov = provenance(t);
   const facts = factsOf(t);
+  const artist = t.artist || "artista desconocido";
+  const alb = t.album && t.album !== t.title ? t.album : null;
+  const year = t.year;
+  /* En una pista de album no se repite la portada ni «Artista, Album, año»:
+     solo el artista cuando no es el del disco (colaboraciones, recopilatorios).
+     El nombre accesible de abajo sigue siendo el completo. */
+  const track = variant === "track";
+  const sub = track
+    ? albumArtist && t.artist && t.artist !== albumArtist ? t.artist : ""
+    : [variant === "popular" ? null : artist, alb, year].filter(Boolean).join(", ");
   const plan = rowPlayPlan(t);
   const { play, isCurrent, playing, resolving } = useResultPlayback({ t, query, queue, source });
   const dls = useDl(t, busy, downloaded);
@@ -76,9 +81,7 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   /* El nombre accesible empieza por lo que hace el toque. Las comas separan las
      partes (lector encadena "Let Down Radiohead" sin ellas) y el nombre entero
      de la fuente sustituye a la sigla, que se oye como letras sueltas. */
-  const people = [t.artist || "artista desconocido", t.album && t.album !== t.title ? t.album : null, t.year]
-    .filter(Boolean)
-    .join(", ");
+  const people = [artist, alb, year].filter(Boolean).join(", ");
   const aria = [
     `${isCurrent && playing ? "Pausar" : "Reproducir"} ${title}, ${people}`,
     realV && V_LABEL[realV],
@@ -102,10 +105,10 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
         aria-busy={resolving || undefined}
         onClick={play}
       >
-        <Thumb t={t} />
+        {!track && <Thumb t={t} />}
         <span className="res__txt">
           <span className="res__t">{title}</span>
-          <span className="res__s">{subOf(t)}</span>
+          {sub && <span className="res__s">{sub}</span>}
           <span className="res__m">
             {isCurrent && <Bars on={playing} />}
             {plan === "preview" && !resolving && <span className="res__30">30 s</span>}
@@ -117,16 +120,20 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
               </span>
             )}
             {downloaded && <span className="res__dl" aria-hidden="true" />}
-            <span className="sr-only">
-              , {prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo},{" "}
-            </span>
-            <span
-              className="src"
-              aria-hidden="true"
-              title={prov.split ? `ficha: ${prov.ficha} · archivo: ${prov.archivo}` : prov.archivo}
-            >
-              {SOURCE_CODE[t.source] || prov.ficha}
-            </span>
+            {!track && (
+              <>
+                <span className="sr-only">
+                  , {prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo},{" "}
+                </span>
+                <span
+                  className="src"
+                  aria-hidden="true"
+                  title={prov.split ? `ficha: ${prov.ficha} · archivo: ${prov.archivo}` : prov.archivo}
+                >
+                  {SOURCE_CODE[t.source] || prov.ficha}
+                </span>
+              </>
+            )}
             {facts && <span className="num">{facts}</span>}
           </span>
         </span>
@@ -154,13 +161,14 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   );
 });
 
-/* Esqueleto con la forma de una fila, nunca un spinner generico. */
-export function Skeleton() {
+/* Esqueleto con la forma de una fila, nunca un spinner generico. En una lista
+   de pistas se cuenta el numero real y no se dibuja la portada. */
+export function Skeleton({ count = 4, className, track }) {
   return (
-    <ul className="rlist" aria-label="Buscando" aria-busy="true">
-      {[0, 1, 2, 3].map((i) => (
+    <ul className={cx("rlist", className)} aria-label="Buscando" aria-busy="true">
+      {Array.from({ length: count }, (_, i) => (
         <li key={i} className="res skel" style={{ "--i": i }} aria-hidden="true">
-          <span className="skel__a" />
+          {!track && <span className="skel__a" />}
           <span className="skel__b">
             <i />
             <i />

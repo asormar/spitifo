@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  albumSaveButton,
   albumSaveSelection,
   canSaveResult,
   fichaText,
@@ -109,13 +108,6 @@ describe("albumSaveSelection", () => {
       extra: { has_full: true, needs_resolve: true },
     };
     expect(albumSaveSelection([unresolved])).toEqual([]);
-  });
-});
-
-describe("albumSaveButton", () => {
-  it("offers to save when there is something left and reads Guardado when not", () => {
-    expect(albumSaveButton(3)).toEqual({ text: "Guardar álbum", disabled: false });
-    expect(albumSaveButton(0)).toEqual({ text: "Guardado", disabled: true });
   });
 });
 

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   OFFLINE_BANNER,
   OFFLINE_PILL,
-  albumButton,
   groupToast,
   missingSentence,
   ownedSlots,
@@ -11,38 +10,6 @@ import {
   resumingText,
   trackSlot,
 } from "./albumText.js";
-
-describe("albumButton", () => {
-  it("muestra busqueda mientras empareja", () => {
-    expect(albumButton({ matching: true, full: 9 })).toEqual({
-      text: "Buscando versiones…",
-      disabled: true,
-    });
-  });
-
-  it("anuncia el total antes de bajar nada", () => {
-    expect(albumButton({ matching: false, full: 9 })).toEqual({
-      text: "Descargar álbum · 9 canciones",
-      disabled: false,
-    });
-    expect(albumButton({ matching: false, full: 1 }).text).toBe("Descargar álbum · 1 canción");
-  });
-
-  it("cuenta lo que queda tras una descarga parcial", () => {
-    expect(albumButton({ matching: false, full: 9, done: 7 }).text).toBe("Descargar las 2 que faltan");
-  });
-
-  it("muestra progreso y cierre segun el estado de la cola", () => {
-    expect(albumButton({ matching: false, full: 9, done: 3, running: true })).toEqual({
-      text: "Descargando · 3 de 9",
-      disabled: true,
-    });
-    expect(albumButton({ matching: false, full: 9, done: 9 })).toEqual({
-      text: "Álbum descargado",
-      disabled: true,
-    });
-  });
-});
 
 describe("missingSentence", () => {
   it("no dice nada si todas tienen version completa", () => {
@@ -113,15 +80,6 @@ describe("descargas que no se pierden", () => {
     expect(OFFLINE_PILL).toBe("Sin conexión · en pausa");
     expect(pausedText(62.4)).toBe("En pausa · sin red · 62 %");
     expect(resumingText(62)).toBe("Retomando desde 62 %");
-  });
-});
-
-describe("albumButton with owned tracks", () => {
-  it("says the album is already there when nothing is left to download", () => {
-    expect(albumButton({ matching: false, full: 0, owned: 9 })).toEqual({ text: "Ya está en tu biblioteca", disabled: true });
-    expect(albumButton({ matching: false, full: 0 })).toEqual({ text: "Sin versiones completas", disabled: true });
-    expect(albumButton({ matching: false, full: 1, owned: 9 }).text).toBe("Descargar la que falta");
-    expect(albumButton({ matching: false, full: 3, owned: 7 }).text).toBe("Descargar las 3 que faltan");
   });
 });
 

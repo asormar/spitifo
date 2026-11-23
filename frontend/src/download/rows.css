@@ -739,6 +739,58 @@
   }
 }
 
+/* Listas dentro de una hoja o de una pagina estrecha (pistas de un album,
+   Populares): la misma fila compacta en todos los anchos, sin columnas anchas. */
+.rlist--compact .res {
+  display: flex;
+  min-height: 58px;
+  margin: 0;
+  padding: 4px 2px;
+  border-radius: 12px;
+}
+
+.rlist--compact .res__n {
+  display: block;
+  flex: none;
+  width: 22px;
+  color: var(--mut);
+  font-size: 13px;
+  text-align: right;
+}
+
+.rlist--compact .res__src,
+.rlist--compact .res__f {
+  display: none;
+}
+
+.rlist--compact .res .res__txt {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  text-align: left;
+}
+
+.rlist--compact .res .res__t {
+  grid-column: auto;
+}
+
+.rlist--compact .res .res__s {
+  grid-area: auto;
+  margin-top: 1px;
+}
+
+.rlist--compact .res .res__m {
+  grid-area: auto;
+  margin-top: 5px;
+}
+
+/* En la tabla de Buscar los datos van aparte; aqui el anillo y el ancho van
+   en la misma linea y la duracion no se pierde. */
+.rlist--compact .res .res__m > .num {
+  display: inline;
+}
+
 /* --- Escritorio: la tabla --------------------------------------------------------- */
 
 @media (min-width: 960px) {

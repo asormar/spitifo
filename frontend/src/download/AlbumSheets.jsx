@@ -1,26 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cx } from "../shared/ui.jsx";
+import { useNav } from "../app/useNav.js";
 import { coverTone } from "../shared/cover.js";
-import { rowKey } from "../shared/api.js";
+import { keyUrl, rowKey } from "../shared/api.js";
 import { Cover } from "../listen/cards.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
-import { VerdictPill } from "../shared/Verdict.jsx";
-import DlRing from "./DlRing.jsx";
-import PreviewButton from "./PreviewButton.jsx";
+import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
 import { Icon } from "../shared/icons.jsx";
+import { loadArtistChunk } from "./artistChunk.js";
+import { resolveArtistLink } from "./artistLink.js";
+import { ResultRow, Skeleton } from "./ResultRow.jsx";
+import { MenuSurface } from "./ResultMenu.jsx";
+import { resultMenuGroups } from "./resultMenu.js";
+import { pickResultAction } from "./resultMenuActions.js";
+import { albumPlayable, matchProgress } from "./albumPlay.js";
+import "../shared/pinkPlay.css";
+import "./rows.css";
 import { engine } from "../player/engine.js";
-import { streamTrack } from "./streamTrack.js";
+import { useEngine } from "../player/useEngine.js";
+import { previewTrack, streamTrack } from "./streamTrack.js";
 import { toTrack } from "../listen/library.js";
-import { keyUrl } from "../shared/api.js";
 import { songFromResult } from "../shared/songId.js";
 import { saved, useSaved } from "../listen/saved.js";
 import { maybeAutoDownloadMany } from "../listen/saveSong.js";
-import { albumSaveButton, albumSaveSelection, saveNotice } from "../listen/saveLogic.js";
-import { albumButton, missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
+import { albumSaveSelection, saveNotice } from "../listen/saveLogic.js";
+import { missingSentence, OFFLINE_BANNER, ownedEntries, ownedSlots, pausedText, resumingText, trackSlot, trackSpec } from "./albumText.js";
 import { BUSY_STATES, groupSummary as serverSummary, queueStore, useQueueState } from "./queueStore.js";
 import "./album.css";
 
@@ -33,29 +40,6 @@ import "./album.css";
    cerrar y volver a abrir no pierde nada, y la pildora sigue contando en
    cualquier modo.
    ------------------------------------------------------------------------- */
-
-const verdict = (match) =>
-  match === "match" ? "match" : match === "partial" ? "partial" : match === "mismatch" ? "mismatch" : "unv";
-
-/* La pastilla del estado de una pista, antes y despues de emparejar. */
-function TrackPill({ track, item, failed, onRetry, owned }) {
-  if (owned) return <span className="alp alp--ok">En tu biblioteca</span>;
-  if (track.extra?.has_full === false) return <span className="alp alp--mut">Solo 30 s</span>;
-  if (track.extra?.has_full == null) {
-    return <span className="alp alp--mut">{failed ? "Sin verificar" : "Buscando…"}</span>;
-  }
-  if (item?.status === "done") return <VerdictPill v={verdict(item.match)} />;
-  if (item?.status === "error" || item?.status === "cancelled") {
-    return (
-      <button type="button" className="alp alp--bad alp--btn" onClick={onRetry}>
-        Reintentar
-      </button>
-    );
-  }
-  if (item?.status === "queued") return <span className="alp alp--mut">En cola</span>;
-  if (item && BUSY_STATES.has(item.status)) return <span className="alp alp--acc">Descargando</span>;
-  return <span className="alp alp--acc">Completa</span>;
-}
 
 export function AlbumSheet({ album, query, anchor, onClose }) {
   const [detail, setDetail] = useState(null);
@@ -89,17 +73,29 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   const missing = tracks.filter((t) => t.extra?.has_full === false && !isOwned(t));
   const full = fullTracks.length;
   const ask = query || `${album.artist} ${album.title}`;
+  const source = useMemo(() => `album:${album.title}`, [album.title]);
+  const nav = useNav();
+  const [fmt] = useDownloadFormat();
+  const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
   /* Un solo PUT con las pistas completas que todavia no estan guardadas: el
      match del disco ya les dio id a las que se pueden guardar. */
   const toSave = useMemo(
     () => albumSaveSelection(tracks, { savedIds: savedById, owned }),
     [tracks, savedById, owned]
   );
-  const saveBtn = matching
-    ? { text: "Buscando versiones…", disabled: true }
-    : albumSaveButton(toSave.length);
+  const songIds = useMemo(
+    () => tracks.map(songFromResult).filter(Boolean).map((s) => s.id),
+    [tracks]
+  );
+  const savedHere = songIds.filter((id) => savedById.has(id));
+  /* «Guardado»: todas las pistas tuyas (archivo propio) o todas las que tienen
+     id en el registro. Un avance sin id no cuenta como guardado. */
+  const allOwned = tracks.length > 0 && tracks.every(isOwned);
+  const allSaved = songIds.length > 0 && savedHere.length === songIds.length;
+  const isSaved = !matching && (allOwned || allSaved);
+  const saveDisabled = matching || toSave.length === 0;
   const saveAlbum = async () => {
-    if (saveBtn.disabled) return;
+    if (saveDisabled) return;
     const pairs = toSave.map((t) => [songFromResult(t), t]).filter(([song]) => song);
     if (!pairs.length || !(await saved.saveAll(pairs.map(([song]) => song)))) {
       listen?.show?.(`No se pudo guardar «${album.title}»`);
@@ -108,18 +104,45 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     maybeAutoDownloadMany(pairs.map(([song, t]) => [song, t, { downloaded: false }]));
     listen?.show?.(saveNotice.album(pairs.length, album.title));
   };
-  /* El disco en orden: lo que ya esta en la biblioteca suena desde el archivo
-     propio y lo emparejado con video, en streaming, sin bajarlo. */
+  const toggleSave = async () => {
+    if (!isSaved) return saveAlbum();
+    if (!savedHere.length) {
+      listen?.show?.(`«${album.title}» está en tu biblioteca como archivos propios`);
+      return;
+    }
+    if (await saved.remove(savedHere)) listen?.show?.(`Se quitó «${album.title}» de tu biblioteca`);
+    else listen?.show?.(`No se pudo quitar «${album.title}»`);
+  };
+  /* El disco en orden: lo ya tuyo suena del archivo propio, lo emparejado con
+     video en streaming y el avance confirmado de 30 s, del preview. Crece con
+     cada lote, y la linea de progreso cuenta exactamente lo que puede sonar. */
   const mine = useMemo(() => ownedEntries(entries, album.id), [entries, album.id]);
-  const source = `album:${album.title}`;
-  const lista = tracks.flatMap((t) => {
-    const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
-    if (e) return [toTrack(e, keyUrl)];
-    return t.extra?.webpage_url && t.extra?.has_full !== false ? [streamTrack(t, source)] : [];
-  });
+  const playable = useMemo(
+    () => tracks.filter((t) =>
+      albumPlayable(t) || owned.has(trackSlot(t.extra?.disc_number, t.extra?.track_number))),
+    [tracks, owned]
+  );
+  const readyCount = playable.length;
+  const lista = useMemo(
+    () => playable.map((t) => {
+      const e = mine.get(trackSlot(t.extra?.disc_number, t.extra?.track_number));
+      if (e) return toTrack(e, keyUrl);
+      return t.extra?.has_full === false && t.preview_url ? previewTrack(t) : streamTrack(t, source);
+    }),
+    [playable, mine, source]
+  );
+  const onAir = useEngine((s) => s.source === source && s.playing);
   const escuchar = () => {
     if (!lista.length) return;
     engine.play(lista[0], { queue: lista, index: 0, source });
+  };
+  const playPause = () => (onAir ? engine.toggle() : escuchar());
+  /* El mismo shuffle de la ficha de la biblioteca: se enciende antes de play y
+     el motor deja la elegida primero y baraja el resto de la cola. */
+  const aleatorio = () => {
+    if (!lista.length) return;
+    engine.setShuffle(true);
+    engine.play(lista[0], { queue: lista, index: 0, restart: true, source });
   };
 
   useEffect(() => {
@@ -165,6 +188,13 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   }, [runMatch]);
 
   const spec = useCallback((t) => trackSpec(t, ask), [ask]);
+  /* Callbacks estables: las filas son memoizadas y no deben volver a pintarse
+     por cada actualizacion de la hoja (lotes del match, cola, avisos...). */
+  const onDl = useCallback((one) => queueStore.enqueue({ items: [spec(one)] }), [spec]);
+  const onMenu = useCallback(
+    (one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el }),
+    [nav.open]
+  );
 
   /* Un solo POST con todas las pistas y el grupo: el servidor deduce lo que
      falta encolar y dedupe por archivo de salida. */
@@ -177,19 +207,74 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
     [album.artwork_url, album.title, gid, spec]
   );
 
-  /* Mientras baja, el boton cuenta el grupo entero («3 de 12»): lo ya bajado
-     pasa enseguida a la biblioteca y saldria de `full`. Parado, lo bajado ya es
-     de la biblioteca (`owned`) y no se resta dos veces. */
-  const btn = running
-    ? albumButton({ matching, full: items.length, done, running, owned: ownedCount })
-    : albumButton({ matching, full, done: 0, running, owned: ownedCount + done });
   const ytOff = match && match.ytdlp === false;
   const header = match?.album || detail?.album || album;
   const meta = [header.artist, header.year, `${album.track_count ?? tracks.length} ${album.track_count === 1 ? "canción" : "canciones"}`]
     .filter(Boolean)
     .join(" · ");
 
+  /* El menu del album: la descarga (con el formato de Ajustes o el avance) y
+     la pagina del artista, cuando hay nombre con el que abrirla. */
+  const downloadSub = ytOff
+    ? "YouTube desactivado"
+    : matching
+    ? "Buscando versiones…"
+    : running
+    ? `Descargando · ${done} de ${items.length}`
+    : full
+    ? fmt
+    : "Sin versiones completas";
+  const albumGroups = [
+    {
+      label: "Álbum",
+      items: [
+        {
+          kind: "download",
+          icon: "dl",
+          text: "Descargar álbum",
+          sub: downloadSub,
+          disabled: ytOff || full === 0,
+        },
+      ],
+    },
+  ];
+  if (header.artist) {
+    albumGroups.push({
+      label: "Ir a",
+      items: [{ kind: "artist", icon: "user", text: `Ir a ${header.artist}` }],
+    });
+  }
+  const songGroups = (t) => {
+    const item = queueStore.itemFor(rowKey(t), gid);
+    return resultMenuGroups(t, { fmt, downloaded: isOwned(t) || item?.status === "done" });
+  };
+
+  const pickAlbum = async (kind) => {
+    nav.back();
+    if (kind === "download") return enqueue(fullTracks);
+    if (kind === "artist") {
+      loadArtistChunk();
+      const view = await resolveArtistLink(
+        header.artist,
+        tracks.map((t) => ({ artist: t.artist, artist_id: t.extra?.artist_id }))
+      );
+      if (view) nav.goTo("search", view);
+      else listen?.show?.(`No se encontró la página de ${header.artist}`);
+    }
+  };
+
+  const pickSong = (kind) =>
+    pickResultAction(kind, {
+      t: menuAt?.t,
+      query: ask,
+      onDownload: (one) => queueStore.enqueue({ items: [spec(one)] }),
+      show: listen?.show,
+      nav,
+      anchor: menuAt?.anchor,
+    });
+
   return (
+    <>
     <Sheet title={`Álbum ${album.title}`} onClose={onClose} anchor={anchor}>
       <div className="als">
         <div className="als__top">
@@ -215,40 +300,65 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
               )}
             </div>
           )}
+          {/* La fila de acciones manda: guardar, ⋯, aleatorio y play. La descarga
+              ya no tiene boton ancho, vive en ⋯. */}
+          <div className="als__acts">
+            <button
+              type="button"
+              className="cbtn cbtn--l cbtn--soft als__heart"
+              aria-label={isSaved ? "Quitar el álbum de tu biblioteca" : "Guardar el álbum"}
+              aria-pressed={isSaved || undefined}
+              title={isSaved ? "Quitar de tu biblioteca" : "Guardar en tu biblioteca"}
+              disabled={saveDisabled && !isSaved ? true : undefined}
+              onClick={toggleSave}
+            >
+              <Ico n={isSaved ? "heart-fill" : "heart"} size={22} />
+            </button>
+            <button
+              type="button"
+              className="cbtn cbtn--l cbtn--soft"
+              aria-label={`Más opciones de ${header.title || album.title}`}
+              title="Más opciones"
+              aria-haspopup="menu"
+              onClick={(e) => nav.open({ type: "downmenu", kind: "album", anchor: e.currentTarget })}
+            >
+              <Ico n="dots" size={22} />
+            </button>
+            {running && <span className="sp" aria-hidden="true" />}
+            {lista.length > 0 && (
+              <button
+                type="button"
+                className="cbtn cbtn--l cbtn--soft"
+                aria-label="Reproducir en aleatorio"
+                title="Aleatorio"
+                onClick={aleatorio}
+              >
+                <Icon name="Shuffle" size={20} />
+              </button>
+            )}
+            {lista.length > 0 && (
+              <button
+                type="button"
+                className="pk pk--l"
+                data-autofocus=""
+                aria-label={`${onAir ? "Pausar" : "Reproducir"} ${header.title || album.title}`}
+                onClick={playPause}
+              >
+                <Icon name={onAir ? "Pause" : "Play"} size={28} weight="fill" />
+              </button>
+            )}
+          </div>
+          {matching && tracks.length > 0 && (
+            <p className="als__match" role="status" aria-live="polite">
+              <span className="sp" aria-hidden="true" />
+              Buscando versiones completas: {matchProgress(tracks, readyCount)}
+            </p>
+          )}
         </div>
 
         <div className="als__body">
           {queue.offline && <p className="qsh__net" role="status">{OFFLINE_BANNER}</p>}
-          {ytOff ? (
-            <p className="als__note">Las descargas necesitan YouTube activado en este servidor.</p>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn btn--acc btn--wide als__btn"
-                data-busy={running || undefined}
-                aria-disabled={btn.disabled || undefined}
-                onClick={() => !btn.disabled && enqueue(fullTracks)}
-              >
-                {running ? <span className="sp" aria-hidden="true" /> : <Ico n="dl" size={18} />}
-                {btn.text}
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost btn--wide als__btn"
-                disabled={saveBtn.disabled || undefined}
-                onClick={saveAlbum}
-              >
-                <Ico n="heart" size={18} />
-                {saveBtn.text}
-              </button>
-              {lista.length > 0 && (
-                <button type="button" className="btn btn--ghost btn--wide als__btn" onClick={escuchar}>
-                  <Icon name="Play" size={16} weight="fill" /> Escuchar
-                </button>
-              )}
-            </>
-          )}
+          {ytOff && <p className="als__note">Las descargas necesitan YouTube activado en este servidor.</p>}
 
           {err && (
             <div className="als__err" role="alert">
@@ -260,54 +370,50 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
           )}
           {detailErr && <p className="als__note" role="alert">No se pudo abrir el álbum.</p>}
 
-          {tracks.length > 0 && (
-            <ol className="als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
+          {tracks.length > 0 ? (
+            <ul className="rlist rlist--compact als__list" aria-label="Canciones del álbum" aria-busy={matching || undefined}>
               {tracks.map((t, i) => {
                 const key = rowKey(t);
+                if (!albumPlayable(t)) {
+                  return (
+                    <li className="altr is-searching" key={key}>
+                      <span className="altr__no num" aria-hidden="true">{i + 1}</span>
+                      <span className="altr__tt">
+                        <b>{t.title || "sin título"}</b>
+                        <span className="altr__wait">
+                          <span className="sp" aria-hidden="true" />
+                          buscando…
+                        </span>
+                      </span>
+                    </li>
+                  );
+                }
                 const item = queueStore.itemFor(key, gid);
-                const mine = isOwned(t);
-                const busy = item && BUSY_STATES.has(item.status);
                 return (
-                  <li className={cx("altr", t.extra?.has_full === false && !mine && "is-miss")} key={key}>
-                    <span className="altr__no num" aria-hidden="true">{i + 1}</span>
-                    <span className="altr__tt">
-                      <b>{t.title || "sin título"}</b>
-                      <TrackPill
-                        track={t}
-                        item={item}
-                        failed={Boolean(err)}
-                        owned={mine}
-                        onRetry={() => item && queueStore.retry(item.id)}
-                      />
-                    </span>
-                    <span className="altr__acts">
-                      {busy && (
-                        <button
-                          type="button"
-                          className="altr__x"
-                          aria-label={`Cancelar ${t.title}`}
-                          onClick={() => queueStore.cancel(item.id)}
-                        >
-                          <Ico n="x" size={16} />
-                        </button>
-                      )}
-                      {t.preview_url && <PreviewButton t={t} />}
-                      {t.extra?.has_full === true && !mine && (
-                        <DlRing
-                          t={t}
-                          name={t.title}
-                          small
-                          busy={BUSY_STATES.has(item?.status)}
-                          downloaded={item?.status === "done"}
-                          onDl={(one) => queueStore.enqueue({ items: [spec(one)] })}
-                        />
-                      )}
-                    </span>
-                  </li>
+                  <ResultRow
+                    key={key}
+                    t={t}
+                    i={i}
+                    query={ask}
+                    queue={playable}
+                    source={source}
+                    variant="track"
+                    albumArtist={header.artist}
+                    busy={Boolean(item && BUSY_STATES.has(item.status))}
+                    downloaded={isOwned(t) || item?.status === "done"}
+                    onDl={onDl}
+                    onMenu={onMenu}
+                  />
                 );
               })}
-            </ol>
-          )}
+            </ul>
+          ) : matching ? (
+            <Skeleton
+              className="rlist--compact als__list"
+              track
+              count={album.track_count || detail?.tracks?.length || 3}
+            />
+          ) : null}
 
           {!matching && !err && missing.length > 0 && (
             <p className="als__note">{missingSentence(missing.map((t) => t.title))}</p>
@@ -315,6 +421,25 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
         </div>
       </div>
     </Sheet>
+    {menuAt?.kind === "album" && (
+      <MenuSurface
+        groups={albumGroups}
+        title={header.title || album.title}
+        anchor={menuAt.anchor}
+        onPick={pickAlbum}
+        onClose={nav.back}
+      />
+    )}
+    {menuAt?.kind === "song" && menuAt.t && (
+      <MenuSurface
+        groups={songGroups(menuAt.t)}
+        title={menuAt.t.title || "sin título"}
+        anchor={menuAt.anchor}
+        onPick={pickSong}
+        onClose={nav.back}
+      />
+    )}
+    </>
   );
 }
 
