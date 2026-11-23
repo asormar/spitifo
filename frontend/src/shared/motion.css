@@ -178,6 +178,7 @@
 
   .spin,
   .skel,
+  .res__seek::before,
   .eq i,
   .logo__o,
   .pbtn::after,
