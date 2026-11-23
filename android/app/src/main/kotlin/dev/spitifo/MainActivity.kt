@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -89,6 +91,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
+        // Until the page reports its theme (setBars), match the system mode so
+        // the bars never flash the wallpaper colour while the backend starts.
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        applyBars(if (night) BAR_DARK else BAR_LIGHT, !night)
         // Best effort, and never blocking: notifications only change whether the
         // download notification is visible, and the media permissions only
         // change whether files left in Music/Spitifo by an earlier install can
@@ -192,6 +199,29 @@ class MainActivity : ComponentActivity() {
         fun mediaClear() {
             runOnUiThread { PlaybackService.clear(this@MainActivity) }
         }
+
+        /**
+         * The page's theme colour for the status and navigation bars, and
+         * whether that colour is light (dark icons). The WebView ignores
+         * `theme-color`, so without this the bars take the wallpaper colour.
+         */
+        @JavascriptInterface
+        fun setBars(color: String, light: Boolean) {
+            val parsed = runCatching { Color.parseColor(color) }.getOrNull() ?: return
+            runOnUiThread { applyBars(parsed, light) }
+        }
+    }
+
+    /** Paints both system bars one colour and picks icons that read on it. */
+    private fun applyBars(color: Int, light: Boolean) {
+        window.statusBarColor = color
+        window.navigationBarColor = color
+        val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        // Through decorView, not window.insetsController: in onCreate, before
+        // any content view, PhoneWindow.getInsetsController throws a
+        // NullPointerException, while decorView creates the decor first.
+        window.decorView.windowInsetsController?.setSystemBarsAppearance(if (light) mask else 0, mask)
     }
 
     /**
@@ -283,6 +313,9 @@ class MainActivity : ComponentActivity() {
         if (web != null) return
         Log.i(TAG, "showing the UI on port $port")
         val view = WebView(this).apply {
+            // Transparent until the page paints: the theme's ground shows
+            // through instead of the WebView's default white flash.
+            setBackgroundColor(Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             // The library auto-advances to the next track on `ended`, which
@@ -382,6 +415,10 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
+
+        /** THEME_COLOR in frontend/src/shared/theme.js: the page grounds. */
+        const val BAR_DARK = 0xFF0E0E18.toInt()
+        const val BAR_LIGHT = 0xFFF5F5FA.toInt()
 
         /** The Python module the native Drive bridge talks to (and its flag). */
         const val DRIVE_AUTH_MODULE = "backend.app.cloud.android"

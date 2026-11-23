@@ -15,6 +15,9 @@ export function applyTheme(t) {
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", THEME_COLOR[t]);
+  /* En Android la WebView no lee theme-color: sin esto las barras del sistema
+     toman el color del fondo de pantalla (Material You). */
+  window.SpitifoAndroid?.setBars?.(THEME_COLOR[t], t === "light");
 }
 
 let theme =
