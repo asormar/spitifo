@@ -45,25 +45,20 @@ describe("popularSongs", () => {
     song("Lift", "Radiohead"),
   ];
 
-  it("toma hasta cinco del artista, en orden y solo las que suenan", () => {
-    expect(popularSongs(null, results, "Radiohead").map((t) => t.title)).toEqual([
-      "Creep", "Karma Police", "No Surprises", "Lift",
+  it("toma hasta cinco del artista, en orden", () => {
+    expect(popularSongs(results, "Radiohead").map((t) => t.title)).toEqual([
+      "Creep", "Karma Police", "Let Down", "No Surprises", "Lift",
     ]);
   });
 
-  it("prefiere las destacadas del payload cuando las trae", () => {
-    const data = { top_songs: [song("Creep", "Radiohead")] };
-    expect(popularSongs(data, results, "Radiohead").map((t) => t.title)).toEqual(["Creep"]);
-  });
-
   it("no inventa populares sin nombre, sin resultados o sin coincidencias", () => {
-    expect(popularSongs(null, results, null)).toEqual([]);
-    expect(popularSongs(null, undefined, "Radiohead")).toEqual([]);
-    expect(popularSongs(null, [song("Everlong", "Foo Fighters")], "Radiohead")).toEqual([]);
+    expect(popularSongs(results, null)).toEqual([]);
+    expect(popularSongs(undefined, "Radiohead")).toEqual([]);
+    expect(popularSongs([song("Everlong", "Foo Fighters")], "Radiohead")).toEqual([]);
   });
 
   it("respeta el limite", () => {
-    expect(popularSongs(null, results, "Radiohead", undefined, 2).map((t) => t.title)).toEqual([
+    expect(popularSongs(results, "Radiohead", 2).map((t) => t.title)).toEqual([
       "Creep", "Karma Police",
     ]);
   });

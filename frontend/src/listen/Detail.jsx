@@ -26,6 +26,9 @@ import { Thead } from "./rows.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
 import "../shared/sheet.css";
+/* La ficha de Escuchar ya es un chunk perezoso: el top y sus filas se piden
+   aparte al pintar, sin meter nada en el chunk de arranque. */
+import ArtistPopulares from "../download/ArtistPopulares.jsx";
 
 /* ---------------------------------------------------------------------------
    FICHA DE UN ALBUM, UN ARTISTA O UNA LISTA
@@ -172,6 +175,24 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     },
     [linkKey]
   );
+
+  /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
+     de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+  const [artistLinkId, setArtistLinkId] = useState(null);
+  useEffect(() => {
+    if (d.state !== "ok" || d.kind !== "artist") {
+      setArtistLinkId(null);
+      return undefined;
+    }
+    let vivo = true;
+    resolveArtistLink(d.name, d.rows).then((vista) => {
+      if (vivo) setArtistLinkId(vista?.id ?? null);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [d.state, d.kind, d.name]);
 
   if (d.state !== "ok") return <Gone d={d} backRef={backRef} ctx={ctx} nav={nav} pc={pc} />;
 
@@ -462,6 +483,9 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
             </Shelf>
           </section>
         )}
+        {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
+            sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
+        <ArtistPopulares name={name} artistId={artistLinkId} />
         {tracks}
       </div>
     );

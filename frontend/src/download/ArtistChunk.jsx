@@ -5,22 +5,18 @@ import { useShow } from "../listen/Notice.jsx";
 import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
-import { rowKey } from "../shared/api.js";
 import { Icon } from "../shared/icons.jsx";
-import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import Sheet from "../shared/Sheet.jsx";
 import Ico from "../shared/ico.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadAlbumChunk } from "./albumChunk.js";
 import { fetchAlbumMatch } from "./albumApi.js";
 import { loadQueue } from "./queueBoot.js";
-import { ownedSlots, trackSpec } from "./albumText.js";
+import { ownedSlots } from "./albumText.js";
 import { fetchArtist } from "./artistApi.js";
-import { popularSongs } from "./bestResultSong.js";
+import ArtistPopulares from "./ArtistPopulares.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
-import { pickResultAction, resultMenuGroups } from "./resultMenuActions.js";
 import { useResultPlayback } from "./resultPlayback.js";
-import { ResultRow } from "./ResultRow.jsx";
 import { queueStore } from "./queueStore.js";
 import {
   albumOwnership,
@@ -182,6 +178,9 @@ export function ArtistPage({ view, active }) {
   const { model, ctx } = useListen();
   const [state, setState] = useState({ status: "loading", data: null });
   const [attempt, setAttempt] = useState(0);
+  /* La lista de Populares vive en ArtistPopulares; aqui solo guardamos las
+     filas para que el play grande de la cabecera suene lo mismo. */
+  const [populares, setPopulares] = useState([]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -204,26 +203,9 @@ export function ArtistPage({ view, active }) {
     return out;
   }, [data, model.entries]);
   const hero = useMemo(() => (data ? artistHero(data, data.name, model.entries) : ""), [data, model.entries]);
-  const show = useShow();
-  const [fmt] = useDownloadFormat();
   const playRef = useRef(null);
   const titleRef = useRef(null);
   const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
-  /* Buscar manda sus resultados en la entrada de navegacion: con ellos se arma
-     Populares. Sin ellos (pagina abierta desde Escuchar) no hay seccion ni play. */
-  const populares = useMemo(() => popularSongs(data, view.songs, data?.name), [data, view.songs, data?.name]);
-  const songSource = useMemo(() => `artist:${data?.name}`, [data?.name]);
-  /* Las filas de Populares son memoizadas: callbacks y fuente estables para
-     que abrir la hoja de discografia no pinte toda la lista de nuevo. */
-  const onSongDl = useCallback(
-    (one) => queueStore.enqueue({ items: [trackSpec(one, data?.name || "")] }),
-    [data?.name]
-  );
-  const onSongMenu = useCallback(
-    (one, el) => nav.open({ type: "downmenu", kind: "song", t: one, anchor: el }),
-    [nav.open]
-  );
-
   /* El foco de entrada va al play; si no hay Populares, al titulo. Nunca al
      boton de descargar, que ademas ya no existe en la cabecera. */
   useEffect(() => {
@@ -245,17 +227,6 @@ export function ArtistPage({ view, active }) {
     nav.back();
     if (kind === "discography") nav.open({ type: "discsheet", anchor });
   };
-
-  const pickSongMenu = (kind) =>
-    pickResultAction(kind, {
-      t: menuAt?.t,
-      query: view.name || data?.name || "",
-      onDownload: onSongDl,
-      show,
-      locationToken: ctx.locationToken,
-      nav,
-      anchor: menuAt?.anchor,
-    });
 
   const openAlbum = useCallback(
     (release, anchor) => {
@@ -341,26 +312,13 @@ export function ArtistPage({ view, active }) {
         )}
       </div>
 
-      {populares.length > 0 && (
-        <section className="aps appop" aria-labelledby="aph-pop">
-          <h2 className="sh2" id="aph-pop">Populares</h2>
-          <ul className="rlist rlist--compact">
-            {populares.map((t, i) => (
-              <ResultRow
-                key={rowKey(t)}
-                t={t}
-                i={i}
-                query={view.name || data.name}
-                queue={populares}
-                source={songSource}
-                variant="popular"
-                onDl={onSongDl}
-                onMenu={onSongMenu}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
+      <ArtistPopulares
+        name={data.name}
+        artistId={view.id}
+        results={view.songs}
+        query={view.name || data.name}
+        onSongs={setPopulares}
+      />
 
       {groups.filter((g) => g.items.length).map((g) => (
         <section className="aps" key={g.key} aria-labelledby={`aph-${g.key}`}>
@@ -413,15 +371,6 @@ export function ArtistPage({ view, active }) {
         title={data.name}
         anchor={menuAt.anchor}
         onPick={pickArtistMenu}
-        onClose={nav.back}
-      />
-    )}
-    {menuAt?.kind === "song" && menuAt.t && (
-      <MenuSurface
-        groups={resultMenuGroups(menuAt.t, { fmt })}
-        title={menuAt.t.title || "sin título"}
-        anchor={menuAt.anchor}
-        onPick={pickSongMenu}
         onClose={nav.back}
       />
     )}
