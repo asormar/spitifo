@@ -12,8 +12,9 @@ Pentatonix. Con matching ingenuo las tres acababan en el video de Queen.
 
 Reglas del matching:
 - el video tiene que nombrar al ARTISTA de la ficha, en el canal o en el
-  titulo. Sin eso no se empareja: "Creep" de TLC no puede quedarse con un
-  directo de Radiohead solo porque el titulo y la duracion se parecen.
+  titulo. Tambien vale un invitado acreditado como "feat." en el titulo de la
+  ficha. Sin nada de eso no se empareja: "Creep" de TLC no puede quedarse con
+  un directo de Radiohead solo porque el titulo y la duracion se parecen.
 - el titulo de la ficha tiene que estar ENTERO en el del video ("La Fama" no
   vale para "La Yugular" aunque compartan "la").
 - un video que es otra version (en directo, cover, remix, karaoke...) que la
@@ -62,6 +63,12 @@ _ITUNES_QUALIFIER = re.compile(
     r"[^\)\]]*[\)\]]|-\s*(?:\d{4}\s*)?remaster(?:ed)?(?:\s*\d{4})?\s*$"
     r"|-\s*\d{4}\s+(?:mix|version|stereo mix|mono)\s*$)",
     re.IGNORECASE)
+#: Creditos "feat." entre parentesis o corchetes en el titulo de la ficha.
+#: `core_title` se los saca antes de comparar titulos, pero siguen siendo
+#: artistas de la cancion: el canal o el video pueden nombrar solo a ellos.
+_FEAT_IN_TITLE = re.compile(
+    r"[(\[]\s*(?:feat\.?|ft\.?|featuring|with)\s+([^\)\]]*)[)\]]",
+    re.IGNORECASE)
 
 
 def catalog_status(query: str, items: list[dict]) -> str:
@@ -88,6 +95,22 @@ def catalog_status(query: str, items: list[dict]) -> str:
 @lru_cache(maxsize=1024)
 def _credits(artist: str) -> tuple[str, ...]:
     return tuple(f for f in (fold(p) for p in _CREDIT_SPLIT.split(artist or "")) if f)
+
+
+@lru_cache(maxsize=1024)
+def _feat_artists(title: str) -> tuple[str, ...]:
+    """Invitados acreditados en el titulo: "Refrain (feat. Kasane Teto)"."""
+    invitados: list[str] = []
+    for grupo in _FEAT_IN_TITLE.findall(title or ""):
+        invitados.extend(f for f in (fold(p) for p in _CREDIT_SPLIT.split(grupo)) if f)
+    return tuple(invitados)
+
+
+def credits_artist(name: str, it_artist: str, it_title: str) -> bool:
+    """`name` figura en el credito de la ficha o como "feat." en su titulo."""
+    wanted = fold(name)
+    return bool(wanted) and (wanted in _credits(it_artist)
+                             or wanted in _feat_artists(it_title))
 
 
 def credited_artists(artist: str) -> list[str]:
@@ -136,8 +159,15 @@ def core_title(title: str) -> str:
 def score_pair(it_title: str, it_artist: str, it_dur: float,
                v_title: str, v_upl: str, v_dur: float) -> tuple[float, str]:
     """0..1 + motivo. 0 = sin confianza (no se empareja)."""
-    chan = channel_matches(it_artist, v_upl)
-    in_title = chan or artist_in(it_artist, v_title)
+    # La puerta de artista incluye a los invitados del titulo de la ficha:
+    # "Refrain (feat. Kasane Teto)" de "HAL@修羅場P" bien puede estar en el
+    # canal de Teto. El resto de las reglas no se toca.
+    credit = it_artist or ""
+    invitados = _feat_artists(it_title)
+    if invitados:
+        credit = (f"{credit} & " if credit else "") + " & ".join(invitados)
+    chan = channel_matches(credit, v_upl)
+    in_title = chan or artist_in(credit, v_title)
     if not in_title:
         return 0.0, "sin-artista"
 

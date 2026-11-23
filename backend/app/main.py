@@ -825,6 +825,29 @@ def _artist_top_cache_put(artista_id: str, payload: dict) -> None:
         _ARTIST_TOP_CACHE.pop(vieja, None)
 
 
+async def _buscar_pista_suelta(raw: dict, ysrc, *,
+                               sem: asyncio.Semaphore | None = None,
+                               artista: str = "") -> dict:
+    """Busca UNA pista con su artista y su titulo, con concurrencia acotada.
+
+    La comparten el segundo paso del top de artista y el del match de albumes.
+    En recopilatorios el artista del album es "Varios artistas": la pista busca
+    con el SUYO, no con ese.
+    """
+    from .matcher import enrich_with_ytdlp
+
+    async def _buscar() -> dict:
+        track_artist = raw.get("artistName") or artista
+        query = f"{track_artist} {raw.get('trackName', '')}".strip()
+        return await enrich_with_ytdlp([raw], query, ysrc,
+                                       limit=_ALBUM_TRACK_LIMIT)
+
+    if sem is None:
+        return await _buscar()
+    async with sem:
+        return await _buscar()
+
+
 async def artist_top_songs(request: Request):
     """GET /api/artist/{id}/top -> { id, name, songs: [Track, ...] }.
 
@@ -856,8 +879,16 @@ async def artist_top_songs(request: Request):
             # Un fallo de red no se cachea: la pagina lo reintentara al volver.
             return JSONResponse({"id": ident, "name": None, "songs": []})
 
-        # iTunes a veces mezcla items de otros artistas en el lookup.
-        raws = [r for r in raws if str(r.get("artistId")) == artista_id]
+        from .matcher import credits_artist
+        wrapper = next((r for r in raws if r.get("wrapperType") == "artist"), None)
+        page_name = (wrapper or {}).get("artistName") or ""
+        # iTunes a veces mezcla items de otros artistas en el lookup. Se queda
+        # lo que es del artista: por id, o porque lo nombra el credito o un
+        # "feat." del titulo (en Kasane Teto casi todo va a nombre del productor).
+        raws = [r for r in raws if r.get("kind") == "song" and (
+            str(r.get("artistId")) == artista_id
+            or credits_artist(page_name, r.get("artistName", ""),
+                              r.get("trackName", "")))]
         # Y repite el mismo tema en varias ediciones. Se dedupe ANTES del tope,
         # quedandose con la primera (la que iTunes puso mas arriba en el ranking).
         vistos: set[str] = set()
@@ -869,7 +900,7 @@ async def artist_top_songs(request: Request):
             vistos.add(clave)
             unicos.append(raw)
         raws = unicos[:TOP_SONGS_LIMIT]
-        name = (raws[0].get("artistName") if raws else None)
+        name = page_name or (raws[0].get("artistName") if raws else None)
         songs: list[dict] = []
         match_fallo = False
         if raws:
@@ -891,6 +922,38 @@ async def artist_top_songs(request: Request):
                 match_fallo = True
                 if videos:
                     videos.cancel()
+
+            # 2) las que quedaron sin video se buscan sueltas, igual que en
+            # albumes: el video de una pista puede no estar entre los 40 de la
+            # busqueda del artista. Un fallo puntual no tumba el endpoint: esa
+            # pista se queda con el preview y ya.
+            if not match_fallo:
+                misses = [r for r in raws
+                          if not (matched.get(_track_key(r)) or {}).get("video")]
+                if misses:
+                    sem = asyncio.Semaphore(_ALBUM_MATCH_SEMAPHORE)
+
+                    async def _una(raw):
+                        return raw, await _buscar_pista_suelta(raw, ysrc, sem=sem)
+
+                    tareas = [asyncio.create_task(_una(r)) for r in misses]
+                    try:
+                        resultados = await asyncio.gather(
+                            *tareas, return_exceptions=True)
+                    finally:
+                        for t in tareas:
+                            if not t.done():
+                                t.cancel()
+                        await asyncio.gather(*tareas, return_exceptions=True)
+                    for res in resultados:
+                        if isinstance(res, BaseException):
+                            log.warning("artist top busqueda suelta fallo: %s", res)
+                            continue
+                        _, res_match = res
+                        for clave, m in res_match.items():
+                            if (m or {}).get("video"):
+                                matched[clave] = m
+
             songs = [_itunes_track(r, matched.get(_track_key(r))).to_dict()
                      for r in raws]
 
@@ -961,14 +1024,10 @@ async def _album_match_eventos(album_id: str):
             sem = asyncio.Semaphore(_ALBUM_MATCH_SEMAPHORE)
 
             async def _una(raw):
-                async with sem:
-                    # En recopilatorios el artista del album es "Varios
-                    # artistas": la pista busca con el SUYO, no con ese.
-                    track_artist = raw.get("artistName") or artista
-                    return raw, await enrich_with_ytdlp(
-                        [raw],
-                        f"{track_artist} {raw.get('trackName', '')}".strip(),
-                        ysrc, limit=_ALBUM_TRACK_LIMIT)
+                # En recopilatorios el artista del album es "Varios
+                # artistas": la pista busca con el SUYO, no con ese.
+                return raw, await _buscar_pista_suelta(
+                    raw, ysrc, sem=sem, artista=artista)
 
             tareas = [asyncio.create_task(_una(r)) for r in misses]
             try:
