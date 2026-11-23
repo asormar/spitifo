@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
@@ -370,7 +370,13 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     <>
       <h2 className="np__title">{track.title}</h2>
       <p className="np__sub" title={meta}>
-        {named(artist, links.artist)}
+        {/* Sin entrada ni resultado no hay partes: el artista va como texto. */}
+        {(links.artists.length ? links.artists : [{ name: artist, sep: "", link: null }]).map((p, i) => (
+          <Fragment key={i}>
+            {p.sep || null}
+            {named(p.name, p.link)}
+          </Fragment>
+        ))}
         {album && <> · {named(album, links.album)}</>}
       </p>
     </>
