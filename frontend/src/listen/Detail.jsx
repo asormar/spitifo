@@ -8,6 +8,7 @@ import { Icon } from "../shared/icons.jsx";
 import { toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
+import "../shared/pinkPlay.css";
 import { useNav } from "../app/useNav.js";
 import { AlbumCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";

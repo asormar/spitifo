@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { NavIcon } from "../app/navIcons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
+import "../shared/pinkPlay.css";
 import { useHistory } from "./history.js";
 import { Icon } from "./icons.jsx";
 import { playlists } from "./playlists.js";

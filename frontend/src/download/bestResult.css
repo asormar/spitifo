@@ -1,6 +1,7 @@
 /* ---------------------------------------------------------------------------
    MEJOR RESULTADO (Buscar)
-   Solo transform y opacity; colores de tokens.css.
+   Solo transform y opacity; colores de tokens.css. Prefijo propio para no
+   chocar con .best, que es la tarjeta de la biblioteca (home.css).
    ------------------------------------------------------------------------- */
 
 .bestsec {
@@ -9,11 +10,20 @@
   gap: 10px;
 }
 
-.best {
+/* La tarjeta y el play son dos botones hermanos: el envoltorio los alinea y el
+   texto se queda con el espacio que sobre. */
+.bestc {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+
+.bestc__main {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 14px;
-  width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 10px 12px;
   border: 0;
@@ -26,30 +36,30 @@
   transition: var(--tr-press);
 }
 
-.best:active {
-  transform: scale(0.99);
+.bestc__main:active {
+  transform: scale(0.98);
 }
 
 /* Doble clase: la .cv compartida trae su propio alto y radio. */
-.cv.best__cv {
+.cv.bestc__cv {
   width: 72px;
   height: 72px;
   border-radius: 50%;
   font: 700 24px var(--font-display);
 }
 
-.best__txt {
+.bestc__txt {
   min-width: 0;
 }
 
-.best__t {
+.bestc__t {
   display: block;
   font: 700 17px / 1.25 var(--font-display);
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
-.best__m {
+.bestc__m {
   display: block;
   margin-top: 3px;
   color: var(--mut);

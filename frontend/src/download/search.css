@@ -36,16 +36,6 @@
   font-weight: 600;
 }
 
-/* Aviso bajo los controles: solo con "original" (lo pinta el componente). Texto
-   secundario, con una entrada corta para que no aparezca de golpe. */
-.shint {
-  margin: 10px 4px 0;
-  color: var(--mut);
-  font-size: 13px;
-  line-height: 1.4;
-  animation: hint-in var(--t-quick) var(--ease) backwards;
-}
-
 @keyframes hint-in {
   from {
     opacity: 0;

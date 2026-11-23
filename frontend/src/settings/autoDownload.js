@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { localSetting } from "../shared/localSetting.js";
 
 /* ---------------------------------------------------------------------------
    DESCARGA AUTOMATICA DE LO GUARDADO
@@ -20,26 +20,12 @@ export function readAutoDownload(storage = typeof localStorage === "undefined" ?
   }
 }
 
-let enabled = readAutoDownload();
-const listeners = new Set();
+/* Boolean normaliza cualquier valor que llegue del conmutador; "1"/"0" es el
+   formato guardado que entiende readAutoDownload. */
+export const autoDownload = localSetting(AUTO_DOWNLOAD_KEY, false, {
+  read: readAutoDownload,
+  write: (on) => (on ? "1" : "0"),
+  normalize: Boolean,
+});
 
-const subscribe = (fn) => {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-};
-const get = () => enabled;
-
-function set(value) {
-  enabled = Boolean(value);
-  try {
-    localStorage.setItem(AUTO_DOWNLOAD_KEY, enabled ? "1" : "0");
-  } catch {
-    /* Sin almacenamiento: se aplica igual mientras dure la sesion. */
-  }
-  listeners.forEach((fn) => fn());
-}
-
-export const autoDownload = { get, set, subscribe };
-
-/* Devuelve [valor, cambiar], que es lo que desestructura Ajustes. */
-export const useAutoDownload = () => [useSyncExternalStore(subscribe, get), set];
+export const useAutoDownload = autoDownload.use;

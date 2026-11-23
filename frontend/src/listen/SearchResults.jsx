@@ -3,6 +3,7 @@ import { useNav } from "../app/useNav.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
+import "../shared/pinkPlay.css";
 import { Icon } from "./icons.jsx";
 import { AlbumCard, ArtistCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { albumTone, entryTone, toneOf, minutes, mosaicTones, songs } from "./home.js";

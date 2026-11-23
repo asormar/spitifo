@@ -4,6 +4,8 @@ import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
 import { useAutoDownload } from "./autoDownload.js";
+import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js";
+import { useDownloadFormat, useDownloadMedia } from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -22,6 +24,10 @@ const NAV_OPTIONS = [
   { id: "tabs", label: "Pestañas" },
   { id: "swipe", label: "Páginas deslizables" },
 ];
+
+/* Las mismas opciones que habia en la cabecera de Buscar, ahora aqui. El valor
+   que viaja al backend sigue siendo el `value` / `id`, sin traducir. */
+const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
 
 /* De donde sale lo que muestra Descubrir y con que licencia. */
 const DATA_SOURCES = [
@@ -67,6 +73,8 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
   const [autoDownload, setAutoDownload] = useAutoDownload();
+  const [fmt, setFmt] = useDownloadFormat();
+  const [media, setMedia] = useDownloadMedia();
   const nav = useNav();
   const pc = usePc();
   const [finder, setFinder] = useState(false);
@@ -182,6 +190,29 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             >
               <span />
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-downloads">
+        <h2 id="settings-downloads" className="settings__h">
+          Descargas
+        </h2>
+        <div className="settings__card">
+          <div className="settings__row">
+            <p className="settings__label">Formato</p>
+            <ChipRadio label="Formato de descarga" options={FMT_OPTIONS} value={fmt} onPick={setFmt} />
+            <p className="settings__note">
+              Cómo se guarda el audio al bajar una canción. También puedes cambiarlo al descargar desde el menú ⋯.
+            </p>
+            {fmt === "original" && media === "audio" && <p className="settings__note">{ORIGINAL_HINT}</p>}
+          </div>
+          <div className="settings__row">
+            <p className="settings__label">Contenido de YouTube</p>
+            <ChipRadio label="Contenido de YouTube" options={MEDIA_OPTIONS} value={media} onPick={setMedia} />
+            <p className="settings__note">
+              Qué se baja cuando buscas en YouTube: solo el audio, solo el vídeo o las dos cosas.
+            </p>
           </div>
         </div>
       </section>
