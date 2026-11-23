@@ -46,7 +46,7 @@ const ListenContext = createContext(null);
 
 export const useListen = () => useContext(ListenContext);
 
-export default function ListenProvider({ files, nav, storage, refresh, hideKeys, restoreFiles, children }) {
+export default function ListenProvider({ files, nav, leaveNp, locationToken, storage, refresh, hideKeys, restoreFiles, children }) {
   /* Solo se leen las acciones (estables): depender de `nav` entero
      reconstruiria el contexto en cada cambio de pestana. */
   const { open: navOpen, back: navBack, replace: navReplace, getStack } = nav;
@@ -192,6 +192,9 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
     const ctx = {
       openMenu,
       show,
+      /* Token del sitio actual: las acciones que esperan la red lo guardan al
+         empezar y solo actuan si sigue igual al resolverse. */
+      locationToken,
       /* Borrado de la biblioteca: ocultar ahora, restaurar si se deshace y
          volver a consultar /api/library cuando se confirma. */
       hideKeys,
@@ -213,16 +216,23 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
         whenReady(overlaysReady, loadOverlays, () =>
           navReplace({ type: "art", target, kind, name, query: query || name, anchor })
         ),
-      /* Cambia el menu de arriba por una pagina ("Ir al album"): atras vuelve
-         a donde estaba el menu. */
-      goTo: (v) => whenReady(pageReady, loadPageHost, () => navReplace(v)),
+      /* Cambia el menu de arriba por una pagina ("Ir al album"). Si el menu
+         estaba sobre "Ahora suena", primero se cierran el menu y la vista de
+         una vez (si solo se sustituyera el menu, la entrada de la vista
+         quedaria muerta) y la pagina se apila sobre la que habia debajo: atras
+         vuelve ahi, al artista por ejemplo, y no a la raiz. */
+      goTo: (v) =>
+        whenReady(pageReady, loadPageHost, () => {
+          if (leaveNp?.(() => navOpen(v))) return;
+          navReplace(v);
+        }),
       back: navBack,
       song: (entry, list, extra) => (
         <SongRow key={entry.key} entry={entry} list={list} onPlay={play} onMenu={openMenu} {...extra} />
       ),
     };
     return { ctx, model, show };
-  }, [model, show, online, navOpen, navBack, navReplace, getStack, refresh, hideKeys, restoreFiles]);
+  }, [model, show, online, navOpen, navBack, navReplace, getStack, leaveNp, locationToken, refresh, hideKeys, restoreFiles]);
 
   /* El menu de una cancion, la hoja de listas o la ficha del archivo, si es lo
      de arriba de la pila (el de una lista lo pinta su pagina). */
@@ -242,6 +252,7 @@ export default function ListenProvider({ files, nav, storage, refresh, hideKeys,
             replace={navReplace}
             goTo={value.ctx.goTo}
             show={show}
+            locationToken={locationToken}
             storage={model.storage}
             refresh={refresh}
             hideKeys={hideKeys}

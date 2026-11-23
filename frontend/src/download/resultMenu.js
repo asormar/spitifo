@@ -19,6 +19,13 @@ export const PLAY_ITEMS = [
   { kind: "end", icon: "queue", text: "Añadir al final de la cola" },
 ];
 
+/* «Cerrar reproductor» va siempre el ultimo, tanto en el menu de la biblioteca
+   abierto desde "Ahora suena" como en el menu de resultados de un stream. */
+export const CLOSE_PLAYER_GROUP = {
+  label: "Reproductor",
+  items: [{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }],
+};
+
 export function resultMenuGroups(t, { downloaded = false, fmt = "m4a" } = {}) {
   const groups = [{ label: "Escuchar", items: PLAY_ITEMS }];
 

@@ -21,6 +21,7 @@ import Scrub from "./Scrub.jsx";
 import NowCards, { FichaCard } from "./NowCards.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { npLinks } from "./npLinks.js";
+import { npMenuKey, npMenuKind } from "./npMenu.js";
 import { panel, usePanel } from "./panel.js";
 import { playStateText } from "./playState.js";
 import { artTint, toneTint } from "./tint.js";
@@ -269,14 +270,19 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   /* El menu ⋯ reusa el de Tu biblioteca cuando la pista tiene entrada (archivo
      o cancion guardada). Un stream suelto cae a los grupos de Buscar. */
   const record = track.sid ? savedById.get(track.sid) : null;
-  const menuKey = library || listen.model.byKey.has(track.key)
-    ? track.key
-    : record?.file_key || track.sid || track.key;
+  const menuKey = npMenuKey({
+    library,
+    byKey: listen.model.byKey,
+    record,
+    key: track.key,
+    sid: track.sid,
+  });
+  const menuKind = npMenuKind({ byKey: listen.model.byKey, record, result: track.result, menuKey });
   const openMore = (e) => {
     const anchor = e.currentTarget;
-    if (listen.model.byKey.has(menuKey) || record) {
+    if (menuKind === "menu") {
       listen.ctx.openMenu(menuKey, anchor, "menu", { closePlayer: true });
-    } else if (track.result) {
+    } else if (menuKind === "npmenu") {
       listen.ctx.openMenu(menuKey, anchor, "npmenu", { t: track.result, closePlayer: true });
     }
   };

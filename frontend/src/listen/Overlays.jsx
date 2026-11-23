@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Ico from "../shared/ico.jsx";
 import Sheet, { Popover } from "../shared/Sheet.jsx";
-import { keyUrl } from "../shared/api.js";
+import { keyUrl, rowKey } from "../shared/api.js";
 import { coverTone } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -21,9 +21,12 @@ import { songTarget } from "./artLogic.js";
 import { useNav } from "../app/useNav.js";
 import { closePlayer } from "../player/useDock.js";
 import { MenuSurface } from "../download/ResultMenu.jsx";
-import { resultMenuGroups } from "../download/resultMenu.js";
-import { pickResultAction } from "../download/resultMenuActions.js";
+import { goToArtistWhenCurrent, pickResultAction } from "../download/resultMenuActions.js";
 import { readDownloadFormat } from "../settings/downloadPrefs.js";
+import { npLinks } from "../player/npLinks.js";
+import { npMenuGroups } from "../download/npResultGroups.js";
+import { loadAlbumChunk } from "../download/albumChunk.js";
+import { loadArtistChunk } from "../download/artistChunk.js";
 import "./menus.css";
 
 /* ---------------------------------------------------------------------------
@@ -169,23 +172,72 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
 /* Menu ⋯ de "Ahora suena" cuando la pista es un stream que aun no se puede abrir
    como cancion de la biblioteca: los grupos de Buscar y, al final, cerrar el
    reproductor (la misma accion que la X de la pastilla). */
-function NpResultMenu({ top, back, show }) {
+function NpResultMenu({ top, back, show, goTo, replace, locationToken }) {
   const nav = useNav();
-  const groups = [
-    ...resultMenuGroups(top.t, { fmt: readDownloadFormat() }),
-    { label: "Reproductor", items: [{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }] },
-  ];
+  const fmt = readDownloadFormat();
+  const groups = npMenuGroups(top.t, { fmt });
   const pick = (kind) => {
     if (kind === "closePlayer") {
       closePlayer();
       return;
     }
+    if (kind === "ficha") {
+      /* «Ver ficha» sustituye al menu en su entrada: sin popstate, App no
+         interpreta el cambio como un cierre y la hoja queda encima de la
+         vista, como en el menu de la biblioteca. */
+      return pickResultAction(kind, {
+        t: top.t,
+        nav,
+        show,
+        anchor: top.anchor,
+        closeMenu: false,
+        onFicha: (one, anchor) => replace({ type: "ficha", key: rowKey(one), t: one, anchor }),
+      });
+    }
+    if (kind === "album" || kind === "artist") {
+      /* «Ir a» abre una pagina: el menu y "Ahora suena" salen en un solo
+         unwind y la pagina se abre desde la raiz. No se pide ademas un back:
+         dos go() seguidos dejarian otra entrada muerta. «Ver ficha», en
+         cambio, sigue abriendose por encima de la vista. */
+      return pickResultAction(kind, {
+        t: top.t,
+        show,
+        nav,
+        anchor: top.anchor,
+        closeMenu: false,
+        onAlbum: (t, anchor) => {
+          loadAlbumChunk();
+          goTo({ ...npLinks({ result: t }, null).album.sheet, anchor });
+        },
+        onArtist: (t) => {
+          const link = npLinks({ result: t }, null).artist;
+          if (link?.view) return goTo(link.view);
+          const name = link?.name || t.artist;
+          /* Sin id hay que buscar el nombre: mientras llega, un atras desmonta
+             este menu. El token del padre (no un ref de aqui) dice si seguimos
+             en el mismo sitio antes de navegar o de mostrar el aviso. */
+          return goToArtistWhenCurrent({
+            name,
+            entries: [{ artist: name, artist_id: t.extra?.artist_id }],
+            resolve: async (who, list) => {
+              loadArtistChunk();
+              const { resolveArtistLink } = await import("../download/artistLink.js");
+              return resolveArtistLink(who, list);
+            },
+            locationToken,
+            onView: (view) => goTo(view),
+            onMiss: (who) => show?.(`No se encontró la página de ${who}`),
+          });
+        },
+      });
+    }
     return pickResultAction(kind, {
       t: top.t,
-      onDownload: (one) => queueStore.enqueue({ items: [trackSpec(one, "")] }),
+      onDownload: (one) => queueStore.enqueue({ items: [{ ...trackSpec(one, ""), fmt }] }),
       show,
       nav,
       anchor: top.anchor,
+      locationToken,
     });
   };
   return (
@@ -202,7 +254,7 @@ function NpResultMenu({ top, back, show }) {
 /* El menu de una cancion, la hoja de listas o la ficha del archivo de la
    entrada de arriba de la pila. `back` cierra (nav.back), `replace` cambia el
    menu por otra cosa y `goTo` por una pagina (ListenProvider). */
-export default function Overlays({ top, byKey, back, replace, goTo, show, storage, hideKeys, restoreFiles, refresh }) {
+export default function Overlays({ top, byKey, back, replace, goTo, show, locationToken, storage, hideKeys, restoreFiles, refresh }) {
   const savedById = useSaved((s) => s.byId);
   /* La hoja de foto y el menu de un stream suelto no necesitan entrada de la
      biblioteca: en el segundo lo que viaja es el resultado de Buscar. */
@@ -226,7 +278,7 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
       />
     );
   }
-  if (top.type === "npmenu") return <NpResultMenu top={top} back={back} show={show} />;
+  if (top.type === "npmenu") return <NpResultMenu top={top} back={back} show={show} goTo={goTo} replace={replace} locationToken={locationToken} />;
   if (!entry) return null;
 
   if (top.type === "picker") {

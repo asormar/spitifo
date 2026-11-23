@@ -14,8 +14,7 @@ import { loadArtistChunk } from "./artistChunk.js";
 import { resolveArtistLink } from "./artistLink.js";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
-import { resultMenuGroups } from "./resultMenu.js";
-import { pickResultAction } from "./resultMenuActions.js";
+import { pickResultAction, resultMenuGroups } from "./resultMenuActions.js";
 import { albumPlayable, matchProgress } from "./albumPlay.js";
 import "../shared/pinkPlay.css";
 import "./rows.css";
@@ -269,6 +268,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
       query: ask,
       onDownload: (one) => queueStore.enqueue({ items: [spec(one)] }),
       show: listen?.show,
+      locationToken: listen?.ctx.locationToken,
       nav,
       anchor: menuAt?.anchor,
     });
