@@ -1,6 +1,7 @@
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import Ico from "../shared/ico.jsx";
+import { previewKey, previewTrack } from "./streamTrack.js";
 
 /* ---------------------------------------------------------------------------
    30 S DE UN RESULTADO
@@ -13,7 +14,7 @@ import Ico from "../shared/ico.jsx";
 
 /* `text`: la version de la ficha, un boton con su etiqueta. */
 export default function PreviewButton({ t, text = false }) {
-  const key = `preview:${t.preview_url}`;
+  const key = previewKey(t);
   const current = useEngine((s) => s.track?.key === key);
   const playing = useEngine((s) => s.track?.key === key && s.playing);
   const failed = useEngine((s) => s.track?.key === key && s.failed);
@@ -23,19 +24,7 @@ export default function PreviewButton({ t, text = false }) {
     if (current) engine.toggle();
     /* Sin cola: el motor la completa con este track. La clave lleva la URL para
        que dos filas con el mismo preview no choquen. */
-    else {
-      engine.play({
-        key,
-        src: t.preview_url,
-        title,
-        label: `el preview de ${title}`,
-        meta: `${t.artist || "artista desconocido"} · preview de 30 s`,
-        duration: 30,
-        artwork: t.artwork_url,
-        kind: "preview",
-        result: t,
-      });
-    }
+    else engine.play(previewTrack(t));
   };
 
   return (

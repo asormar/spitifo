@@ -26,7 +26,12 @@ import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
 import LibraryHits from "./LibraryHits.jsx";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
+import ResultMenu from "./ResultMenu.jsx";
 import ResolutionMenu from "./ResolutionMenu.jsx";
+import { engine } from "../player/engine.js";
+import { resultTrackFor } from "./resultPlayback.js";
+import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
+import { useShow } from "../listen/Notice.jsx";
 import ShowGroup from "./ShowGroup.jsx";
 import Strip from "./Strip.jsx";
 import "../shared/chips.css";
@@ -64,6 +69,7 @@ export default function SearchScreen({
   onOpenLibrary,
 }) {
   const pc = usePc();
+  const show = useShow();
   /* Foco tras buscar: el boton de un ejemplo se desmonta al buscar y el foco
      caia al <body>; en escritorio, ademas, toda busqueda terminada lleva el
      foco a los resultados (tambien las que llegan de la barra de arriba).
@@ -94,15 +100,17 @@ export default function SearchScreen({
   const nav = useNav();
   const stack = nav.stackOf("search");
   const menuAt = stack.at(-1)?.type === "resmenu" ? stack.at(-1) : null;
+  const resmoreAt = stack.at(-1)?.type === "resmore" ? stack.at(-1) : null;
   const fichaAt = stack.find((e) => e.type === "ficha");
   /* Solo la ficha del estante de Buscar (sin `from`); la que abre la pagina
      del artista o Escuchar trae su propio album en la entrada. */
   const albumAt = stack.find((e) => e.type === "albumsheet" && !e.from);
   const menuT = menuAt && results.find((t) => rowKey(t) === menuAt.key);
+  const resmoreT = resmoreAt && results.find((t) => rowKey(t) === resmoreAt.key);
   const fichaT = fichaAt && results.find((t) => rowKey(t) === fichaAt.key);
   const albumT = albumAt && albums.find((a) => String(a.id) === String(albumAt.id));
   /* Una busqueda nueva se lleva el resultado: lo abierto ya no apunta a nada. */
-  const gone = (menuAt && !menuT) || (fichaAt && !fichaT) || (albumAt && !albumT);
+  const gone = (menuAt && !menuT) || (resmoreAt && !resmoreT) || (fichaAt && !fichaT) || (albumAt && !albumT);
   useEffect(() => {
     if (gone) nav.back();
   }, [gone, stack.length, nav.back]);
@@ -132,6 +140,13 @@ export default function SearchScreen({
     [nav.back, dl.onDownload]
   );
 
+  /* El ⋯ de una fila vive en la pila como la ficha: atras, Escape y el atras de
+     Android lo cierran, y el foco vuelve al boton (lo hace Sheet/Popover). */
+  const openResultMenu = useCallback(
+    (t, anchor) => nav.open({ type: "resmore", key: rowKey(t), anchor }),
+    [nav.open]
+  );
+
   /* La ficha del album es otra entrada de la pila, como la de un resultado:
      atras, Escape y el atras de Android la cierran y el foco vuelve a la
      tarjeta que la abrio (lo hace Sheet). */
@@ -151,6 +166,48 @@ export default function SearchScreen({
       nav.open({ type: "itunesartist", id: artist.id, name: artist.name, genre: artist.genre, anchor });
     },
     [nav.open]
+  );
+
+  const pickResult = useCallback(
+    async (kind) => {
+      const t = resmoreT;
+      if (!t) return;
+      const anchor = resmoreAt?.anchor;
+      nav.back();
+      if (kind === "download") return onDl(t, anchor);
+      if (kind === "ficha") return nav.open({ type: "ficha", key: rowKey(t), anchor });
+      if (kind === "next" || kind === "end") {
+        const track = await resultTrackFor(t, { query, source: query ? `search:${query}` : null });
+        if (!track) return show("No se pudo añadir a la cola");
+        const idle = !engine.getState().track;
+        const done = kind === "next" ? engine.playNext(track) : engine.enqueue(track);
+        return show(idle
+          ? "Reproduciendo"
+          : !done
+            ? "Ya está en la cola"
+            : kind === "next"
+              ? "Sonará a continuación"
+              : "Añadida a la cola");
+      }
+      const links = npLinks({ result: t }, null);
+      if (kind === "album" && canOpenAlbumSheet(t)) {
+        loadAlbumChunk();
+        return nav.open({ ...links.album.sheet, anchor });
+      }
+      if (kind === "artist") {
+        loadArtistChunk();
+        if (links.artist?.view) return nav.goTo("search", links.artist.view);
+        if (links.artist?.resolve) {
+          const { resolveArtistLink } = await import("./artistLink.js");
+          const view = await resolveArtistLink(links.artist.name, []);
+          if (view) return nav.goTo("search", view);
+        }
+        const name = links.artist?.name || t.artist;
+        setQ(name);
+        run.run(name, mode);
+      }
+    },
+    [resmoreT, resmoreAt, nav.back, nav.open, nav.goTo, onDl, query, show, setQ, run.run, mode]
   );
 
   /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
@@ -444,7 +501,7 @@ export default function SearchScreen({
                   busy={dl.busyIds.has(rowKey(t))}
                   downloaded={dl.downloadedIds.has(rowKey(t))}
                   onDl={onDl}
-                  onOpen={nav.open}
+                  onMenu={openResultMenu}
                   queue={shown}
                   source={query ? `search:${query}` : null}
                 />
@@ -510,6 +567,18 @@ export default function SearchScreen({
           onPick={(height) => pickHeight(menuT, height)}
           onClose={nav.back}
           onBotCheck={dl.onBotCheck}
+        />
+      )}
+
+      {resmoreT && (
+        <ResultMenu
+          key={`r${resmoreAt.key}`}
+          t={resmoreT}
+          fmt={fmt}
+          downloaded={dl.downloadedIds.has(resmoreAt.key)}
+          anchor={resmoreAt.anchor}
+          onPick={pickResult}
+          onClose={nav.back}
         />
       )}
     </div>

@@ -38,6 +38,26 @@ export function streamTrack(t, source = null) {
   };
 }
 
+/* El preview de 30 s que mandaban PreviewButton y el toque de una fila. La
+   clave lleva la URL para que dos resultados con el mismo preview no choquen
+   en la cola. El mini-reproductor ya dice «preview de 30 s» en su linea de datos. */
+export const previewKey = (t) => `preview:${t?.preview_url}`;
+
+export function previewTrack(t) {
+  const title = t.title || "sin título";
+  return {
+    key: previewKey(t),
+    src: t.preview_url,
+    title,
+    label: `el preview de ${title}`,
+    meta: `${t.artist || "artista desconocido"} · preview de 30 s`,
+    duration: 30,
+    artwork: t.artwork_url || null,
+    kind: "preview",
+    result: t,
+  };
+}
+
 /* Internet Archive no tiene preview: el archivo que se bajaria se encuentra
    con la misma verificacion de «¿Es esta la cancion?» y suena directo desde
    archive.org. Solo los que todavia hay que resolver (o ya traen su URL). */

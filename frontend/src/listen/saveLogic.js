@@ -1,5 +1,6 @@
 import { ownedEntries, trackSlot } from "../download/albumText.js";
 import { trackState } from "../download/constants.js";
+import { needsResolve } from "../download/resolveResult.js";
 import { songIdOf } from "../shared/songId.js";
 
 /* ---------------------------------------------------------------------------
@@ -10,8 +11,17 @@ import { songIdOf } from "../shared/songId.js";
    que la foto del registro y las filas se miran juntas antes de pintar nada.
    ------------------------------------------------------------------------- */
 
-/* El corazon solo existe donde suena una cancion completa. Un avance de 30 s no
-   tiene corazon, y un resultado sin version completa tampoco. */
+/* Un resultado de Buscar se puede guardar si suena entero, si hay que resolverlo
+   (guardar ya resuelve) o si ya trae una identidad estable. El avance suelto de
+   iTunes, sin archivo ni resolucion, no se puede guardar: no hay cancion que
+   identificar. Puro, sin React ni DOM. */
+export const canSaveResult = (t) => Boolean(t) && (
+  trackState(t) === "full" || needsResolve(t) || Boolean(songIdOf(t))
+);
+
+/* El corazon existe donde hay una cancion guardable, aunque la fila suene solo
+   30 s mientras llega la completa. La pista del motor que ES un avance sigue sin
+   el: ahi no hay cancion que guardar todavia. */
 export function heartState({ kind = null, full = false, saved = false, owned = false } = {}) {
   if (kind === "preview" || !full) return { show: false, filled: false };
   return { show: true, filled: Boolean(saved || owned) };

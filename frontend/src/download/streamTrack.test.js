@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { canStream, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
+import { canStream, previewKey, previewTrack, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
 
 const WEB = "https://www.youtube.com/watch?v=abcdefghijk";
 const full = {
@@ -48,6 +48,24 @@ describe("streamTrack", () => {
 
   it("uses one key per video", () => {
     expect(streamKey(WEB)).toBe(`stream:${WEB}`);
+  });
+});
+
+describe("previewTrack", () => {
+  it("builds the same 30 s track PreviewButton and the result row play", () => {
+    const t = { title: "Otro", artist: "A", artwork_url: "https://a/x.jpg", preview_url: "https://itunes/30s", extra: {} };
+    expect(previewKey(t)).toBe("preview:https://itunes/30s");
+    expect(previewTrack(t)).toEqual({
+      key: "preview:https://itunes/30s",
+      src: "https://itunes/30s",
+      title: "Otro",
+      label: "el preview de Otro",
+      meta: "A · preview de 30 s",
+      duration: 30,
+      artwork: "https://a/x.jpg",
+      kind: "preview",
+      result: t,
+    });
   });
 });
 

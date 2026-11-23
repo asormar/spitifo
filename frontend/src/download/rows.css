@@ -87,6 +87,20 @@
   transform: scale(0.985);
 }
 
+/* La fila que suena lleva el peso, no un boton: titulo en acento y ecualizador
+   en la linea de datos (el mismo de las filas de la biblioteca). */
+.res.is-current .res__t {
+  color: var(--pink);
+}
+
+/* La estructura y la animacion viven en listen.css (global); aqui solo el
+   tamano en la fila, mas chico que el de la biblioteca. */
+.res .eq {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
 .res__n,
 .res__src,
 .res__f {
@@ -158,8 +172,36 @@
   white-space: nowrap;
 }
 
-.res__no {
-  font-weight: 600;
+/* Solo 30 s: la etiqueta sustituye al circulo tachado de antes. */
+.res__30 {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--s2);
+  color: var(--mut);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Resolviendo la version completa: el aviso vive en la fila y se anuncia una
+   sola vez (role=status en el JSX), sin spinner global. */
+.res__wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mut);
+}
+
+/* Punto verde de «descargada», el mismo que usa la biblioteca. */
+.res__dl {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--ok);
 }
 
 /* Etiqueta corta de la fuente (telefono). */
@@ -201,7 +243,8 @@
 /* --- 30 s, descarga y sin descarga -------------------------------------------- */
 
 .pre,
-.dlr {
+.dlr,
+.res__more {
   position: relative;
   display: grid;
   flex: none;
@@ -214,7 +257,8 @@
 }
 
 .pre:active,
-.dlr:active {
+.dlr:active,
+.res__more:active {
   transform: scale(0.92);
 }
 
@@ -225,8 +269,17 @@
   color: var(--acc);
 }
 
+/* El ⋯ comparte la base redonda; aqui solo su tamano y color. */
+.res__more {
+  width: 40px;
+  height: 40px;
+  background: var(--s2);
+  color: var(--mut);
+}
+
 /* Area de toque de 44 sin mover el diseno. */
-.pre::after {
+.pre::after,
+.res__more::after {
   content: "";
   position: absolute;
   inset: -2px;
@@ -335,16 +388,6 @@
 /* Procesando el archivo: el anillo lleno y el cuadro respira. */
 .dlr[data-s="proc"] .ring i::after {
   animation: breathe 1.2s ease-in-out infinite;
-}
-
-/* El circulo tachado: no hay descarga completa. */
-.nodl {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  color: var(--dim);
 }
 
 /* --- Esqueleto ---------------------------------------------------------------- */
@@ -569,6 +612,17 @@
   outline: none;
 }
 
+/* Rotulo de grupo del menu de resultados: el group de arriba lo anuncia al
+   lector de pantalla, esto es solo lo que se ve. */
+.rm__g {
+  margin: 10px 14px 4px;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .rm__i {
   display: flex;
   flex: none;
@@ -661,6 +715,11 @@
 
   .pre:not(:disabled):not([aria-pressed="true"]):hover {
     background: color-mix(in oklab, var(--acc) 18%, transparent);
+  }
+
+  .res__more:hover {
+    background: var(--s3);
+    color: var(--ink);
   }
 
   .rm__i:hover {
@@ -811,7 +870,7 @@
     margin: 0;
   }
 
-  .res .res__m > :not(.vb, .res__no) {
+  .res .res__m > :not(.vb, .eq, .res__30, .res__wait, .res__dl) {
     display: none;
   }
 
@@ -824,8 +883,7 @@
     gap: 8px;
   }
 
-  .dlr,
-  .nodl {
+  .dlr {
     width: 44px;
     height: 44px;
   }
