@@ -56,10 +56,38 @@ export function AlbumCard({ album, onOpen }) {
   );
 }
 
-export default function AlbumShelf({ albums, onOpen }) {
+/* El hueco del estante mientras llega el catalogo: las mismas cajas que ocho
+   tarjetas (y por tanto su alto), quietas y sin texto. Las clases .shk las
+   comparte con el hueco del «Mejor resultado». */
+export function AlbumShelfSkeleton() {
+  return (
+    <div className="alsec shk" aria-hidden="true">
+      <div className="alhead">
+        <span className="sh2">Álbumes</span>
+      </div>
+      <div className="alshelf">
+        {Array.from({ length: 8 }, (_, i) => (
+          <span key={i} className="alcard">
+            <span className="alcard__cv" />
+            <b className="alcard__t">
+              &nbsp;
+              <br />
+              &nbsp;
+            </b>
+            <span className="alcard__m">&nbsp;</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* `stale`: los albumes son de la busqueda anterior y la nueva todavia no
+   trajo los suyos; se atenuan como la lista. */
+export default function AlbumShelf({ albums, stale, onOpen }) {
   if (!albums?.length) return null;
   return (
-    <section className="alsec" aria-labelledby="al-h">
+    <section className={cx("alsec", stale && "is-stale")} aria-labelledby="al-h">
       <div className="alhead">
         <h2 className="sh2" id="al-h">Álbumes</h2>
         <span className="alcount num" aria-hidden="true">{albums.length}</span>

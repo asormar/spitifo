@@ -7,11 +7,11 @@ import { listKey } from "../shared/keyNav.js";
 import { usePc } from "../shared/viewport.js";
 import { MODES, PLACEHOLDER } from "./constants.js";
 import { useDownloadFormat, useDownloadMedia } from "../settings/downloadPrefs.js";
-import { catalogFallback, noticeFromError, resultsHead, summarize } from "./searchPlan.js";
+import { catalogFallback, entranceOn, noticeFromError, resultsHead, summarize } from "./searchPlan.js";
 import useDownloads from "./useDownloads.js";
 import useSearchRun from "./useSearchRun.js";
-import AlbumShelf from "./AlbumShelf.jsx";
-import BestResult from "./BestResult.jsx";
+import AlbumShelf, { AlbumShelfSkeleton } from "./AlbumShelf.jsx";
+import BestResult, { BestResultSkeleton } from "./BestResult.jsx";
 import { loadAlbumChunk } from "./albumChunk.js";
 import { loadArtistChunk } from "./artistChunk.js";
 import { bestArtwork, bestMatch } from "./artistLogic.js";
@@ -75,6 +75,7 @@ export default function SearchScreen({
   const fine = () => window.matchMedia("(pointer: fine)").matches;
   const run = useSearchRun({ onRequest: () => (focusPending.current = fine()) });
   const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter, listRef } = run;
+  const { shelvesPending, streamDone } = run;
 
   /* Formato y contenido se eligen en Ajustes y se leen igual que antes: la
      descarga recibe exactamente estos valores. M4A por defecto (en YouTube es
@@ -298,16 +299,23 @@ export default function SearchScreen({
 
   const { full: fullCount, shown, filterEmpty } = useMemo(() => summarize(results, filter), [results, filter]);
 
-  /* Las filas entran una tras otra SOLO con resultados nuevos: volver a la
-     pantalla (display:none -> block) no debe repetirlo, y .screen[data-seen] no
+  /* Las filas entran una tras otra SOLO con la primera lista de cada
+     busqueda: los lotes que la completan no la repiten ni alargan el reloj, y
+     volver a la pantalla (display:none -> block) tampoco. .screen[data-seen] no
      sirve aqui porque los resultados llegan despues de verla por primera vez. */
-  const [settled, setSettled] = useState(null);
-  const fresh = results.length > 0 && settled !== results;
+  const [settled, setSettled] = useState(0);
+  const fresh = entranceOn({ count: results.length, run: run.resultsRun, settled });
   useEffect(() => {
     if (!fresh) return undefined;
-    const id = setTimeout(() => setSettled(results), 700);
+    const id = setTimeout(() => setSettled(run.resultsRun), 700);
     return () => clearTimeout(id);
-  }, [fresh, results]);
+  }, [fresh, run.resultsRun]);
+
+  /* La cola se lee al tocar: una funcion estable deja que memo salte las
+     filas que el lote no cambio. */
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const getQueue = useCallback(() => shownRef.current, []);
 
   /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
@@ -324,7 +332,9 @@ export default function SearchScreen({
   /* iTunes no tiene la cancion (empty) o la tiene pero no es lo pedido (weak).
      En ambos casos el usuario elige adonde seguir buscando. */
   /* Sin YouTube, "nofull" ya lo explica el aviso de matchedDead. */
-  const fallback = matchedDead ? null : catalogFallback({ mode, catalog, count: results.length, full: fullCount });
+  const fallback = matchedDead
+    ? null
+    : catalogFallback({ mode, catalog, count: results.length, full: fullCount, done: streamDone });
   const small = fallback === "weak" || fallback === "nofull";
 
   /* Mensaje para lectores de pantalla: los resultados cambian sin mover el foco.
@@ -333,7 +343,7 @@ export default function SearchScreen({
     ? "Buscando…"
     : searched && !err
     ? results.length
-      ? resultsHead(results.length, fullCount)
+      ? resultsHead(results.length, fullCount, streamDone)
       : "Sin resultados"
     : "";
 
@@ -407,14 +417,23 @@ export default function SearchScreen({
         <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
       )}
 
-      {bestArtist && (
-        <section className="bestsec" aria-labelledby="best-h">
+      {/* Hasta el catalogo, los estantes viejos siguen (atenuados, como la
+          lista) o, sin ellos, un hueco con su alto: llegar no empuja a las
+          canciones. Un estante vacio se va en el mismo pintado que ellas. */}
+      {bestArtist ? (
+        <section className={cx("bestsec", shelvesPending && "is-stale")} aria-labelledby="best-h">
           <h2 className="sh2" id="best-h">Mejor resultado</h2>
           <BestResult artist={bestArtist} results={results} query={query} onOpen={onOpenArtist} />
         </section>
+      ) : (
+        shelvesPending && <BestResultSkeleton />
       )}
 
-      <AlbumShelf albums={albums} onOpen={onOpenAlbum} />
+      {shelvesPending && !albums.length ? (
+        <AlbumShelfSkeleton />
+      ) : (
+        <AlbumShelf albums={albums} stale={shelvesPending} onOpen={onOpenAlbum} />
+      )}
 
       {fallback && !loading && searched && !err && (
         <div className={cx("empty", small && "fbweak")}
@@ -438,13 +457,13 @@ export default function SearchScreen({
               <h2 className="sh2" id="rs-h" ref={resultsRef} tabIndex={-1}>
                 Canciones
               </h2>
-              <p className="rhead__s">{resultsHead(results.length, fullCount)}</p>
+              <p className="rhead__s">{resultsHead(results.length, fullCount, streamDone)}</p>
             </div>
             <Choice
               kind="toggle"
               options={[
                 { id: "all", label: "Todos", n: results.length },
-                { id: "full", label: "Completas", n: fullCount },
+                { id: "full", label: "Completas", n: streamDone ? fullCount : undefined },
               ]}
               value={filter}
               onChange={setFilter}
@@ -488,7 +507,7 @@ export default function SearchScreen({
                   downloaded={dl.downloadedIds.has(rowKey(t))}
                   onDl={onDl}
                   onMenu={openResultMenu}
-                  queue={shown}
+                  queue={getQueue}
                   source={query ? `search:${query}` : null}
                 />
               )

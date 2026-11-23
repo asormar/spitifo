@@ -45,14 +45,22 @@ export function shouldResync({ searched, query, mode, lastSig }) {
 /* Salida del catalogo de iTunes en Música: "empty" (no hay nada o iTunes no
    tiene la cancion), "weak" (hay resultados pero ninguno es lo pedido), "nofull"
    (los hay, pero ninguno se baja entero: suelen ser versiones de otros) o null
-   (todo normal). Otros modos y respuestas viejas sin `catalog` siguen igual. */
-export function catalogFallback({ mode, catalog, count, full }) {
+   (todo normal). Otros modos y respuestas viejas sin `catalog` siguen igual.
+   "empty" y "weak" los decide iTunes y valen desde el catalogo; "nofull"
+   espera a que termine la busqueda (`done`): antes todas las filas estan
+   buscando y el 0 de completas no dice nada. */
+export function catalogFallback({ mode, catalog, count, full, done = true }) {
   if (mode !== "matched") return null;
   if (!count || catalog === "none") return "empty";
   if (catalog === "weak") return "weak";
-  if (full === 0) return "nofull";
+  if (full === 0 && done) return "nofull";
   return null;
 }
+
+/* La entrada en cascada de la lista: una vez por busqueda, cuando su primera
+   lista pinta. Los lotes de la misma busqueda no la repiten (`settled` es la
+   ultima busqueda que ya entro). */
+export const entranceOn = ({ count, run, settled }) => count > 0 && run !== settled;
 
 /* El texto con que se consulta la biblioteca mientras se escribe, o null. */
 export function libraryQuery(q) {
@@ -97,10 +105,12 @@ export function summarize(results, filter) {
 
 /* «12 resultados · 5 completas». `full` cuenta los resultados con cancion
    completa disponible (lo que antes se llamaba "descargable"); el marco es de
-   escucha, no de descarga. */
-export function resultsHead(total, full) {
+   escucha, no de descarga. Mientras las filas siguen buscando (`done` falso)
+   el recuento no es definitivo y no se dice. */
+export function resultsHead(total, full, done = true) {
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
-  return `${n(total, "resultado", "resultados")} · ${n(full, "completa", "completas")}`;
+  const head = n(total, "resultado", "resultados");
+  return done ? `${head} · ${n(full, "completa", "completas")}` : head;
 }
 
 /* El estado de una fila de descarga vivo aparte (lo usa el shell en el chunk

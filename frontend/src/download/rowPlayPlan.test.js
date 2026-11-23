@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rowPlayPlan } from "./rowPlayPlan.js";
+import { rowChip, rowPlayPlan } from "./rowPlayPlan.js";
 
 describe("rowPlayPlan", () => {
   it("reproduce en streaming una pista de YouTube con version completa", () => {
@@ -78,5 +78,23 @@ describe("rowPlayPlan", () => {
       source_id: "123",
       extra: { needs_resolve: false, webpage_url: "https://www.youtube.com/watch?v=abcdefghijk" },
     })).toBe("stream");
+  });
+});
+
+describe("rowChip", () => {
+  const ola = (match_state) => ({ source: "itunes", source_id: "1", preview_url: "https://a/p.m4a", extra: { match_state } });
+
+  it("«Buscando» solo en las filas que el servidor busca ahora", () => {
+    expect(rowChip(ola("pending"))).toBe("seek");
+  });
+
+  it("una fila lazy no lleva pastilla: espera a verse callada", () => {
+    expect(rowPlayPlan(ola("lazy"))).toBe("eager");
+    expect(rowChip(ola("lazy"))).toBeNull();
+  });
+
+  it("sin video queda el «30 s»; con video, nada", () => {
+    expect(rowChip(ola("none"))).toBe("30");
+    expect(rowChip({ source: "itunes", extra: { match_state: "full", webpage_url: "https://www.youtube.com/watch?v=abcdefghijk" } })).toBeNull();
   });
 });

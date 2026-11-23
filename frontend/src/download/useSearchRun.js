@@ -31,14 +31,25 @@ export default function useSearchRun({ onRequest } = {}) {
   /* Que tan bien cubrio iTunes la consulta en modo Musica: none / weak / match.
      Vacio en respuestas viejas o en otros modos: la UI sigue como siempre. */
   const [catalog, setCatalog] = useState("");
-  /* Los albumes y los artistas van en paralelo y aparte: nunca retrasan a
-     las canciones, y un fallo de iTunes no rompe la busqueda principal. */
+  /* Los albumes y los artistas llegan con el catalogo de la ola (o en su
+     evento `shelves`, si tardan); un fallo de iTunes los deja vacios sin
+     romper la busqueda principal. */
   const [albums, setAlbums] = useState([]);
   const [artists, setArtists] = useState([]);
   /* El texto que produjo esta lista de artistas: si la busqueda de canciones
      falla, `query` queda en el anterior y no debe compararse con artistas
      nuevos. */
   const [artistQuery, setArtistQuery] = useState("");
+  /* Estantes de esta busqueda todavia en camino: la pantalla les guarda el
+     hueco para que no empujen a las canciones al llegar. */
+  const [shelvesPending, setShelvesPending] = useState(false);
+  /* La respuesta termino (done, JSON o error). Lo que depende del match de
+     todas las filas (el recuento de completas, «ninguno se puede descargar»)
+     espera a esto. */
+  const [streamDone, setStreamDone] = useState(true);
+  /* Que busqueda pinto la lista: la entrada en cascada es una por busqueda,
+     no una por lote. */
+  const [resultsRun, setResultsRun] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [filter, setFilter] = useState("all");
@@ -80,8 +91,10 @@ export default function useSearchRun({ onRequest } = {}) {
        usuario acaba de pedir, ni la URL, ni disparar una tercera peticion con
        el setQuery de la respuesta vieja. */
     const seq = ++searchSeq.current;
+    const matched = m === "matched";
     lastSig.current = searchSig(m, t);
     setLoading(true);
+    setStreamDone(false);
     setErr(null);
     setSearched(true);
     setFilter("all");
@@ -89,19 +102,28 @@ export default function useSearchRun({ onRequest } = {}) {
     const params = buildSearchParams(t, m);
     /* Solo Musica llega en olas; los otros modos y los servers viejos siguen
        con la respuesta de una sola vez. */
-    if (m === "matched") params.set("stream", "1");
+    if (matched) params.set("stream", "1");
     /* La busqueda anterior, si sigue en vuelo, se cancela. */
     searchAbort.current?.abort();
     const ac = new AbortController();
     searchAbort.current = ac;
-    /* Los albumes solo existen en modo Musica. Se piden aparte y sin esperar:
-       las canciones no dependen de iTunes ni de lo que tarde esta respuesta. */
     albumAbort.current?.abort();
     artistAbort.current?.abort();
-    setAlbums([]);
-    setArtists([]);
-    setArtistQuery("");
-    if (m === "matched") {
+    /* Los estantes se reemplazan de una vez, con el texto que los produjo. */
+    const setShelves = ({ artists: ar = [], albums: al = [] }, pending = false) => {
+      setAlbums(al);
+      setArtists(ar);
+      setArtistQuery(t);
+      setShelvesPending(pending);
+    };
+    /* En Musica los estantes viejos se quedan (atenuados, como la lista)
+       hasta el catalogo nuevo; sin ellos, la pantalla guarda su hueco. Los
+       demas modos no tienen estantes. */
+    if (matched) setShelvesPending(true);
+    else setShelves({});
+    /* Server sin estantes en la ola: se piden aparte, como antes, y su fallo
+       no toca ni las canciones ni el otro estante. */
+    const requestShelves = () => {
       const aa = new AbortController();
       albumAbort.current = aa;
       searchAlbums(t, aa.signal)
@@ -109,8 +131,6 @@ export default function useSearchRun({ onRequest } = {}) {
           if (seq === searchSeq.current && !aa.signal.aborted) setAlbums(list);
         })
         .catch(() => {});
-      /* El «Mejor resultado» es un extra: se pide aparte y su fallo no toca
-         ni las canciones ni el estante de albumes. */
       const ra = new AbortController();
       artistAbort.current = ra;
       searchArtists(t, 3, ra.signal)
@@ -121,7 +141,8 @@ export default function useSearchRun({ onRequest } = {}) {
           }
         })
         .catch(() => {});
-    }
+    };
+    let gotShelves = false;
     try {
       const r = await fetch(`${API}/search?${params.toString()}`, { signal: ac.signal });
       if (!r.ok) throw new Error(errMsg(await r.json().catch(() => ({})), "error de búsqueda"));
@@ -132,14 +153,24 @@ export default function useSearchRun({ onRequest } = {}) {
       const show = (list, ev) => {
         setLoading(false);
         setResults(list);
+        setResultsRun(seq);
         setCatalog(ev.catalog || "");
         setQuery(t);
         paint(list);
       };
       const streamed = await consumeWaves(r, {
-        onCatalog: (list, ev) => {
+        /* Estantes y canciones en el mismo pintado. Si los estantes tardan,
+           los viejos se van con la lista vieja y el hueco espera a `shelves`. */
+        onCatalog: (list, ev, shelves) => {
           if (seq !== searchSeq.current) return;
+          gotShelves = Boolean(shelves);
+          if (matched) setShelves(shelves || {}, !shelves);
           show(list, ev);
+        },
+        onShelves: (shelves) => {
+          if (seq !== searchSeq.current) return;
+          gotShelves = true;
+          setShelves(shelves);
         },
         onTracks: (tracks) => {
           if (seq !== searchSeq.current) return;
@@ -148,16 +179,29 @@ export default function useSearchRun({ onRequest } = {}) {
       });
       /* El evento done es la ultima linea: al terminar la lectura el finally
          de abajo marca la busqueda como terminada. */
-      if (streamed) return;
+      if (streamed) {
+        if (matched && !gotShelves && seq === searchSeq.current) requestShelves();
+        return;
+      }
       const d = await r.json();
-      if (seq === searchSeq.current) show(uniqueResults(d.results), d);
+      if (seq !== searchSeq.current) return;
+      if (matched) {
+        setShelves({});
+        requestShelves();
+      }
+      show(uniqueResults(d.results), d);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);
       setResults([]);
       setCatalog("");
+      setShelves({});
     } finally {
-      if (seq === searchSeq.current) setLoading(false);
+      if (seq === searchSeq.current) {
+        setLoading(false);
+        setStreamDone(true);
+        setShelvesPending(false);
+      }
     }
   }, []);
 
@@ -186,6 +230,8 @@ export default function useSearchRun({ onRequest } = {}) {
     setAlbums([]);
     setArtists([]);
     setArtistQuery("");
+    setShelvesPending(false);
+    setStreamDone(true);
     setQuery("");
     setErr(null);
     setFilter("all");
@@ -269,8 +315,9 @@ export default function useSearchRun({ onRequest } = {}) {
         if (!en.isIntersecting) continue;
         io.unobserve(en.target);
         const t = results.find((x) => rowKey(x) === en.target.dataset.k);
-        /* La fila ya dice «Buscando»; la cola la marca como ocupada mientras
-           vuela, asi no se pide dos veces aunque vuelva a observarse. */
+        /* La fila no dice nada hasta su match (pasa directo a entera o a
+           30 s); la cola la marca como ocupada mientras vuela, asi no se pide
+           dos veces aunque vuelva a observarse. */
         if (t && matchState(t) === "lazy") waveQueue.current?.add(t);
       }
     }, { rootMargin: "200px" });
@@ -286,6 +333,6 @@ export default function useSearchRun({ onRequest } = {}) {
 
   return {
     q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
-    runs, run, submit, reset, listRef,
+    shelvesPending, streamDone, resultsRun, runs, run, submit, reset, listRef,
   };
 }

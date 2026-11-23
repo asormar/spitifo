@@ -42,17 +42,25 @@ export async function fetchTrackMatch(t, signal, priority = false) {
   return d?.track || busyResult(t);
 }
 
+/* Artistas y albumes de un evento, o null si no los trae: el catalogo los
+   lleva solo si llegaron a tiempo; si no, vienen despues en `shelves`. */
+const shelvesOf = (ev) =>
+  Array.isArray(ev.artists) || Array.isArray(ev.albums)
+    ? { artists: ev.artists || [], albums: ev.albums || [] }
+    : null;
+
 /* Lee el NDJSON de /api/search?stream=1. Devuelve false cuando la respuesta
    no es un stream (server viejo): quien llama hace r.json() como siempre.
    Cada guardia de secuencia la pone quien recibe el evento; aborted corta el
    reader del fetch, asi que no hace falta un check intermedio. */
-export async function consumeWaves(r, { onCatalog, onTracks } = {}) {
+export async function consumeWaves(r, { onCatalog, onTracks, onShelves } = {}) {
   if (!/ndjson/i.test(r.headers.get("content-type") || "") || !r.body?.getReader) return false;
   const reader = r.body.getReader();
   try {
     await leerNdjson(reader, (ev) => {
-      if (ev.type === "catalog") onCatalog?.(uniqueResults(ev.results), ev);
+      if (ev.type === "catalog") onCatalog?.(uniqueResults(ev.results), ev, shelvesOf(ev));
       else if (ev.type === "tracks") onTracks?.(ev.tracks);
+      else if (ev.type === "shelves") onShelves?.(shelvesOf(ev) || { artists: [], albums: [] });
     });
   } finally {
     reader.releaseLock?.();

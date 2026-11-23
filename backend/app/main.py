@@ -961,14 +961,16 @@ async def artists_search(request: Request):
         # Igual que albums_search: iTunes caido no tumba la busqueda.
         log.warning("artists search fallo: %s", e)
         raws = []
-    return JSONResponse({
-        "query": q,
-        "results": [{
-            "id": _int_or_none(a.get("artistId")),
-            "name": a.get("artistName"),
-            "genre": a.get("primaryGenreName"),
-        } for a in raws],
-    })
+    return JSONResponse({"query": q, "results": [_artist_dict(a) for a in raws]})
+
+
+def _artist_dict(raw: dict) -> dict:
+    """Un artista de iTunes tal como lo ve el frontend (ruta y ola de Buscar)."""
+    return {
+        "id": _int_or_none(raw.get("artistId")),
+        "name": raw.get("artistName"),
+        "genre": raw.get("primaryGenreName"),
+    }
 
 
 async def artist_detail(request: Request):
@@ -1336,8 +1338,96 @@ async def album_match(request: Request):
     return JSONResponse(payload)
 
 
+# Los estantes (artistas y albumes) se esperan como mucho esto desde que
+# contesta iTunes para ir en el catalogo; si no, salen solos en `shelves`.
+_SHELVES_WAIT_S = 1.2
+# Tope antes de `done`: unos estantes colgados no retienen el final del stream.
+_SHELVES_MAX_S = 8.0
+
+
+async def _search_shelves(q: str) -> dict:
+    """«Mejor resultado» y «Albumes» de la ola: las mismas busquedas que
+    /api/artists/search y /api/albums/search. Un fallo deja su lista vacia y
+    nunca tumba la busqueda de canciones."""
+    isrc = BY_NAME["itunes"]
+
+    async def _una(buscar, mapa, que):
+        try:
+            return [mapa(r) for r in await buscar()]
+        except Exception as e:
+            log.warning("%s search fallo: %s", que, e)
+            return []
+
+    artists, albums = await asyncio.gather(
+        _una(lambda: isrc.search_artists(q, limit=3), _artist_dict, "artists"),
+        _una(lambda: isrc.search_albums(q, limit=8), _album_dict, "albums"))
+    return {"artists": artists, "albums": albums}
+
+
 async def _search_matched_eventos(q: str, limit: int, *,
                                   stream: bool = False):
+    """Modo Musica: las canciones y, en el stream, los estantes.
+
+    Artistas y albumes se buscan en paralelo con las canciones. Si estan
+    listos a tiempo viajan en el `catalog`, asi todo pinta de una vez; si no,
+    salen en un evento `shelves` en cuanto terminan (entre lotes, y siempre
+    antes de `done`). Sin stream es la respuesta de siempre.
+    """
+    canciones = _search_songs_eventos(q, limit, stream=stream)
+    if not stream:
+        async for ev in canciones:
+            yield ev
+        return
+    estantes = asyncio.ensure_future(_search_shelves(q))
+    # `catalogo`: ya salio la primera linea (antes no se adelantan estantes).
+    catalogo = enviados = False
+    siguiente = None
+    try:
+        while True:
+            if siguiente is None and (not catalogo or enviados):
+                ev = await canciones.__anext__()
+            else:
+                # Lo que llegue primero: un evento de canciones o los estantes.
+                # El pedido en vuelo se conserva: un generador no admite dos.
+                siguiente = siguiente or asyncio.ensure_future(canciones.__anext__())
+                if not enviados:
+                    await asyncio.wait({siguiente, estantes},
+                                       return_when=asyncio.FIRST_COMPLETED)
+                    if not siguiente.done():
+                        enviados = True
+                        yield "shelves", estantes.result()
+                        continue
+                ev, siguiente = await siguiente, None
+            tipo, datos = ev
+            if tipo == "catalog":
+                catalogo = True
+                await asyncio.wait({estantes}, timeout=_SHELVES_WAIT_S)
+                if estantes.done():
+                    enviados = True
+                    datos = {**datos, **estantes.result()}
+            elif not enviados and (tipo == "done" or estantes.done()):
+                if tipo == "done":
+                    await asyncio.wait({estantes}, timeout=_SHELVES_MAX_S)
+                enviados = True
+                yield "shelves", (estantes.result() if estantes.done()
+                                  else {"artists": [], "albums": []})
+            yield tipo, datos
+            if tipo == "done":
+                return
+    except StopAsyncIteration:
+        return
+    finally:
+        # Cliente desconectado (o iTunes caido): nada queda buscando.
+        if siguiente is not None and not siguiente.done():
+            siguiente.cancel()
+            await asyncio.gather(siguiente, return_exceptions=True)
+        if not estantes.done():
+            estantes.cancel()
+        await canciones.aclose()
+
+
+async def _search_songs_eventos(q: str, limit: int, *,
+                                stream: bool = False):
     """Modo Musica con eventos progresivos.
 
     `catalog` se emite apenas contesta iTunes, antes de que termine el match de

@@ -4,6 +4,7 @@ import {
   dlState,
   dlText,
   dlWaiting,
+  entranceOn,
   libraryQuery,
   noticeFromError,
   noticeFromJob,
@@ -88,6 +89,14 @@ describe("catalogFallback", () => {
     expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 0 })).toBe("nofull");
     expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 3 })).toBeNull();
     expect(catalogFallback({ mode: "matched", catalog: "weak", count: 14, full: 0 })).toBe("weak");
+  });
+
+  it("nofull espera al final de la busqueda; weak y empty valen desde el catalogo", () => {
+    /* En el catalogo todas las filas buscan todavia: 0 completas no es un veredicto. */
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 0, done: false })).toBeNull();
+    expect(catalogFallback({ mode: "matched", catalog: "match", count: 14, full: 0, done: true })).toBe("nofull");
+    expect(catalogFallback({ mode: "matched", catalog: "weak", count: 14, full: 0, done: false })).toBe("weak");
+    expect(catalogFallback({ mode: "matched", catalog: "none", count: 0, done: false })).toBe("empty");
   });
 
   it("null con match, con respuestas viejas y con weak sin resultados", () => {
@@ -236,6 +245,12 @@ describe("resultsHead", () => {
     expect(resultsHead(3, 0)).toBe("3 resultados · 0 completas");
   });
 
+  it("mientras la busqueda sigue no cuenta las completas", () => {
+    expect(resultsHead(30, 0, false)).toBe("30 resultados");
+    expect(resultsHead(1, 0, false)).toBe("1 resultado");
+    expect(resultsHead(30, 4, true)).toBe("30 resultados · 4 completas");
+  });
+
   it("sirve de resumen para lectores de pantalla: incluye las completas", () => {
     expect(resultsHead(14, 3)).toBe("14 resultados · 3 completas");
     expect(resultsHead(1, 0)).toBe("1 resultado · 0 completas");
@@ -305,5 +320,20 @@ describe("uniqueResults", () => {
 
   it("acepta una lista ausente", () => {
     expect(uniqueResults(undefined)).toEqual([]);
+  });
+});
+
+describe("entranceOn", () => {
+  it("entra una vez por busqueda, no una por lote", () => {
+    /* Busqueda 3 pinta su catalogo: entra. */
+    expect(entranceOn({ count: 30, run: 3, settled: 2 })).toBe(true);
+    /* Un lote de la misma busqueda (lista nueva, mismo run) sigue igual: el reloj no se reinicia. */
+    expect(entranceOn({ count: 30, run: 3, settled: 2 })).toBe(true);
+    /* Ya entro: los lotes siguientes no la repiten. */
+    expect(entranceOn({ count: 30, run: 3, settled: 3 })).toBe(false);
+  });
+
+  it("sin filas no hay entrada", () => {
+    expect(entranceOn({ count: 0, run: 4, settled: 3 })).toBe(false);
   });
 });

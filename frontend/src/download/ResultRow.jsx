@@ -12,7 +12,7 @@ import SaveHeart from "../listen/SaveHeart.jsx";
 import { V_LABEL, VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
 import { dlWaiting } from "./searchPlan.js";
-import { rowPlayPlan } from "./rowPlayPlan.js";
+import { rowChip, rowPlayPlan } from "./rowPlayPlan.js";
 import { matchState } from "./searchWaves.js";
 import { useResultPlayback } from "./resultPlayback.js";
 
@@ -76,7 +76,7 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
     : [variant === "popular" ? null : artist, alb, year].filter(Boolean).join(", ");
   const plan = rowPlayPlan(t);
   const state = matchState(t);
-  const pending = plan === "eager";
+  const chip = rowChip(t, plan);
   const { play, isCurrent, playing, resolving } = useResultPlayback({ t, query, queue, source });
   const dls = useDl(t, busy, downloaded);
   const progress = dlWaiting(dls);
@@ -89,8 +89,8 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
     `${isCurrent && playing ? "Pausar" : "Reproducir"} ${title}, ${people}`,
     realV && V_LABEL[realV],
     resolving ? "buscando la canción completa" : null,
-    pending ? "buscando la versión entera" : null,
-    plan === "preview" && !resolving ? "vista previa de 30 s" : null,
+    chip === "seek" ? "buscando la versión entera" : null,
+    chip === "30" && !resolving ? "vista previa de 30 s" : null,
     downloaded ? "descargada" : null,
     prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo,
     facts || null,
@@ -115,8 +115,8 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
           {sub && <span className="res__s">{sub}</span>}
           <span className="res__m">
             {isCurrent && <Bars on={playing} />}
-            {pending && !resolving && <span className="res__seek">Buscando</span>}
-            {plan === "preview" && !resolving && <span className="res__30">30 s</span>}
+            {chip === "seek" && !resolving && <span className="res__seek">Buscando</span>}
+            {chip === "30" && !resolving && <span className="res__30">30 s</span>}
             {realV && <VerdictPill v={realV} />}
             {resolving && (
               <span className="res__wait" role="status" aria-live="polite">
