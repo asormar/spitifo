@@ -364,6 +364,17 @@
   white-space: nowrap;
 }
 
+/* El corazon comparte altura con el boton de reproducir: 44 px de area de
+   toque, tambien en pantallas finas, sin cambiar el tamano del glifo. El
+   `display` va aqui y no en saveHeart.css (que llega con el chunk perezoso):
+   el hueco del fallback tiene que medir lo mismo antes de que llegue. */
+.mini .shrt {
+  display: inline-flex;
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+
 .mini .pbtn:active,
 .dock .pbtn:active {
   transform: scale(0.93);
@@ -527,8 +538,26 @@
   white-space: nowrap;
 }
 
+/* Titulo y corazon en la misma linea; el corazon es mas pequeno que en el
+   telefono porque aqui el dedo no necesita 44 px. */
+.lcd__line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .lcd__t {
+  min-width: 0;
   font: 800 14px / 1.3 var(--font-body);
+}
+
+.lcd .shrt {
+  display: inline-flex;
+  flex: none;
+  width: 26px;
+  height: 26px;
 }
 
 .lcd__s {

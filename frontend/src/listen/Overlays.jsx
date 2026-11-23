@@ -20,6 +20,12 @@ import { queueStore } from "../download/queueStore.js";
 import PlaylistPicker from "./PlaylistPicker.jsx";
 import ArtSheet from "./ArtSheet.jsx";
 import { songTarget } from "./artLogic.js";
+import { useNav } from "../app/useNav.js";
+import { closePlayer } from "../player/useDock.js";
+import { MenuSurface } from "../download/ResultMenu.jsx";
+import { resultMenuGroups } from "../download/resultMenu.js";
+import { pickResultAction } from "../download/resultMenuActions.js";
+import { readDownloadFormat } from "../settings/downloadPrefs.js";
 import "./menus.css";
 
 /* ---------------------------------------------------------------------------
@@ -49,10 +55,13 @@ const SONG_MENU = {
   remove: ["remove", "trash", "Quitar de tu biblioteca", "bad"],
 };
 
-function songItems(entry, pc) {
-  return menuKinds(entry).map((kind) => kind === "file"
+function songItems(entry, pc, closePlayer = false) {
+  const items = menuKinds(entry).map((kind) => kind === "file"
     ? ["file", "file", pc ? "Ver la ficha del archivo" : "Ficha del archivo", null, checkOf(entry)]
     : SONG_MENU[kind]);
+  /* Abierto desde "Ahora suena": el cierre de la pastilla va siempre el ultimo. */
+  if (closePlayer) items.push(["closePlayer", "x", "Cerrar reproductor"]);
+  return items;
 }
 
 const ALBUM_ITEMS = [
@@ -150,14 +159,15 @@ export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
   );
 }
 
-export function TrackMenu({ entry, anchor, onClose, onPick }) {
+export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false }) {
   const pc = usePc();
   const { title, artist, album } = entry;
   const label = `Opciones de ${title}`;
   /* Guardada sin archivo: se puede descargar y quitar de la biblioteca. Con
      archivo: quitar descarga, ficha y quitar de la biblioteca. Lo destructivo
-     va siempre al final (menuKinds ya lo pone ahi). */
-  const items = songItems(entry, pc);
+     va siempre al final (menuKinds ya lo pone ahi), salvo "Cerrar reproductor",
+     que se anade despues cuando el menu abre desde "Ahora suena". */
+  const items = songItems(entry, pc, closePlayer);
   const head = (
     <div className="mhead">
       <Cover tone={coverTone(artist, album)} label={artist} src={rowArt(entry, keyUrl, true)} target={songTarget(entry)} size={pc ? 40 : 56} />
@@ -193,18 +203,53 @@ export function ListMenu({ name, anchor, onClose, onPick }) {
   );
 }
 
+/* Menu ⋯ de "Ahora suena" cuando la pista es un stream que aun no se puede abrir
+   como cancion de la biblioteca: los grupos de Buscar y, al final, cerrar el
+   reproductor (la misma accion que la X de la pastilla). */
+function NpResultMenu({ top, back, show }) {
+  const nav = useNav();
+  const groups = [
+    ...resultMenuGroups(top.t, { fmt: readDownloadFormat() }),
+    { label: "Reproductor", items: [{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }] },
+  ];
+  const pick = (kind) => {
+    if (kind === "closePlayer") {
+      closePlayer();
+      return;
+    }
+    return pickResultAction(kind, {
+      t: top.t,
+      onDownload: (one) => queueStore.enqueue({ items: [trackSpec(one, "")] }),
+      show,
+      nav,
+      anchor: top.anchor,
+    });
+  };
+  return (
+    <MenuSurface
+      groups={groups}
+      title={top.t?.title || "sin título"}
+      anchor={top.anchor}
+      onPick={pick}
+      onClose={back}
+    />
+  );
+}
+
 /* El menu de una cancion, la hoja de listas o la ficha del archivo de la
    entrada de arriba de la pila. `back` cierra (nav.back), `replace` cambia el
    menu por otra cosa y `goTo` por una pagina (ListenProvider). */
 export default function Overlays({ top, byKey, back, replace, goTo, show, storage, hideKeys, restoreFiles, refresh }) {
   const savedById = useSaved((s) => s.byId);
-  /* La hoja de foto no necesita la entrada: album y artista solo tienen id. */
-  const entry = top.type === "art" ? null : byKey.get(top.key) || savedEntry(savedById.get(top.key));
+  /* La hoja de foto y el menu de un stream suelto no necesitan entrada de la
+     biblioteca: en el segundo lo que viaja es el resultado de Buscar. */
+  const bare = top.type === "art" || top.type === "npmenu";
+  const entry = bare ? null : byKey.get(top.key) || savedEntry(savedById.get(top.key));
 
   /* La biblioteca se refresco y la cancion ya no esta: no hay nada que mostrar. */
   useEffect(() => {
-    if (!entry && top.type !== "art") back();
-  }, [entry, top.type, back]);
+    if (!entry && !bare) back();
+  }, [entry, bare, back]);
 
   if (top.type === "art") {
     return (
@@ -218,6 +263,7 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
       />
     );
   }
+  if (top.type === "npmenu") return <NpResultMenu top={top} back={back} show={show} />;
   if (!entry) return null;
 
   if (top.type === "picker") {
@@ -238,6 +284,10 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
   }
 
   const pick = (kind) => {
+    if (kind === "closePlayer") {
+      closePlayer();
+      return;
+    }
     if (kind === "photo") {
       /* La hoja sustituye al menu: atras vuelve a la pagina, no al menu. */
       replace({
@@ -310,5 +360,5 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, storag
     );
   };
 
-  return <TrackMenu entry={entry} anchor={top.anchor} onClose={back} onPick={pick} />;
+  return <TrackMenu entry={entry} anchor={top.anchor} onClose={back} onPick={pick} closePlayer={top.closePlayer} />;
 }

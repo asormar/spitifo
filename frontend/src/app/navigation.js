@@ -95,7 +95,7 @@ export function modeDirection(from, to) {
    "art" es la hoja "Foto de..." de una cancion, un album o un artista.
    Todas viven en la pila para que atras, Escape y el atras de Android las
    cierren, pero la pantalla sigue a la vista debajo, sin pagina propia. */
-const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "art"]);
+const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "art", "npmenu"]);
 /* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
    cola que abre la pildora del shell; "discsheet" es la lista de discografia
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
@@ -138,6 +138,22 @@ export function viewKey(tab, stack) {
 /* Cuantas paginas tenia la pila cuando se creo la entrada del historial. */
 export const HISTORY_MARK = "spitifoNav";
 export const depthOf = (state) => Number(state?.[HISTORY_MARK]) || 0;
+
+/* "Ahora suena" tiene entrada propia ({ spitifo: "np" }) pero NO cambia la
+   pila: guarda la profundidad que tenia al abrirse (HISTORY_MARK). Asi un
+   popstate que aterra en esa entrada (porque habia un menu encima) deja la
+   pila como estaba entonces, sin cerrar la vista. */
+export const isNpEntry = (state) => state?.spitifo === "np";
+export const npState = (depth) => ({ spitifo: "np", [HISTORY_MARK]: depth });
+
+/* La pila que le corresponde a la entrada alcanzada por un popstate. Sirve
+   tanto para las paginas como para la entrada de "Ahora suena": en los dos
+   casos el estado dice cuantas entradas tenia la pila al crearla. */
+export const stackAfterPop = (stack, state) => truncate(stack, depthOf(state));
+
+/* Con "Ahora suena" abierta, Escape cierra primero lo mas pequeno: si la pila
+   crecio desde que se abrio, hay un menu (o una hoja) encima. */
+export const aboveNp = (stack, npDepth) => stack.length > npDepth;
 
 /* Un swipe horizontal de verdad: suficiente recorrido, mas horizontal que
    vertical y rapido. Devuelve el indice destino o null si no aplica. */

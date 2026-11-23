@@ -2,15 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HISTORY_MARK,
   TABS,
+  aboveNp,
   canStartSwipe,
   depthOf,
+  isNpEntry,
   isOverlay,
   modeDirection,
   nextGuess,
+  npState,
   pageOf,
   readPhoneNav,
   readView,
   replaceTop,
+  stackAfterPop,
   stackFor,
   swipeTarget,
   truncate,
@@ -281,6 +285,67 @@ describe("history mark", () => {
     expect(depthOf({ spitifo: "np" })).toBe(0);
     expect(depthOf(null)).toBe(0);
     expect(depthOf({ [HISTORY_MARK]: "x" })).toBe(0);
+  });
+
+  it("the Ahora suena entry carries the depth the stack had when it opened", () => {
+    const state = npState(2);
+    expect(state).toEqual({ spitifo: "np", [HISTORY_MARK]: 2 });
+    expect(depthOf(state)).toBe(2);
+    expect(isNpEntry(state)).toBe(true);
+    expect(isNpEntry({ [HISTORY_MARK]: 2 })).toBe(false);
+  });
+});
+
+describe("Ahora suena: pila e historial", () => {
+  const sheet = { type: "albumsheet", id: "a1" };
+  const menu = { type: "npmenu", t: { title: "Tema" } };
+
+  /* Modelo de lo que hacen useNav y App con un popstate: la pila se recorta a
+     la profundidad de la entrada alcanzada, y Ahora suena solo se cierra si la
+     entrada NO es la suya. */
+  const pop = (stack, state, npOpen) => ({
+    stack: stackAfterPop(stack, state),
+    npOpen: npOpen && isNpEntry(state),
+  });
+
+  it("with a menu over Ahora suena, back closes only the menu", () => {
+    const landed = pop([sheet, menu], npState(1), true);
+    expect(landed.stack).toEqual([sheet]);
+    expect(landed.npOpen).toBe(true);
+  });
+
+  it("back again closes Ahora suena and keeps the view underneath", () => {
+    const afterMenu = pop([sheet, menu], npState(1), true);
+    const landed = pop(afterMenu.stack, { [HISTORY_MARK]: 1 }, afterMenu.npOpen);
+    expect(landed.stack).toEqual([sheet]);
+    expect(landed.npOpen).toBe(false);
+  });
+
+  it("Escape closes the smallest thing first", () => {
+    expect(aboveNp([sheet, menu], 1)).toBe(true);
+    expect(aboveNp([sheet], 1)).toBe(false);
+    expect(aboveNp([], 0)).toBe(false);
+  });
+
+  it("opening Ahora suena from a sheet and backing out restores the sheet", () => {
+    const stack = [album, sheet];
+    const depth = stack.length;
+    const withMenu = [...stack, menu];
+    const afterMenu = pop(withMenu, npState(depth), true);
+    expect(afterMenu.stack).toEqual(stack);
+    expect(afterMenu.npOpen).toBe(true);
+    const afterNp = pop(afterMenu.stack, { [HISTORY_MARK]: depth }, afterMenu.npOpen);
+    expect(afterNp.stack).toEqual(stack);
+    expect(afterNp.npOpen).toBe(false);
+  });
+
+  it("npmenu is an overlay, so another openMenu replaces it instead of pushing", () => {
+    expect(isOverlay("npmenu")).toBe(true);
+    expect(pageOf([album, menu])).toBe(album);
+    expect(replaceTop([album, menu], { ...menu, t: { title: "Otra" } })).toEqual([
+      album,
+      { ...menu, t: { title: "Otra" } },
+    ]);
   });
 });
 

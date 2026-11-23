@@ -134,13 +134,13 @@ export function GenresCard({ artist }) {
   );
 }
 
-/* Las tarjetas en su orden; cada una es independiente. */
-export default function NowCards({ track, artist, onReveal }) {
+/* Las tarjetas de la vista principal, cada una independiente. La ficha del
+   archivo ya no se repite aqui: solo se pinta en la pestana Ficha (con `full`). */
+export default function NowCards({ artist, trackKey }) {
   return (
     <>
-      <FichaCard track={track} onReveal={onReveal} />
       <GenresCard artist={artist} />
-      <TryCard artist={artist} trackKey={track.key} />
+      <TryCard artist={artist} trackKey={trackKey} />
     </>
   );
 }

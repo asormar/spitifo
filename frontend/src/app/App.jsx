@@ -25,8 +25,11 @@ import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
 import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
+  aboveNp,
   canStartSwipe,
+  isNpEntry,
   nextGuess,
+  npState,
   readPhoneNav,
   readView,
   swipeTarget,
@@ -41,6 +44,7 @@ import { isPc, usePc } from "../shared/viewport.js";
 import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
 import { swapNowPlaying } from "./screenSwap.js";
 import { createPendingDeletes } from "../listen/pending.js";
+import { closeDock, registerClosePlayer } from "../player/useDock.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -278,6 +282,9 @@ export default function App() {
   const panelState = usePanel();
   const hasTrack = useEngine((s) => Boolean(s.track));
   const npEntry = useRef(0);
+  /* Profundidad de la pila cuando se abrio: la entrada del historial la lleva
+     consigo, y dice que hojas habia encima (para cerrarlas primero). */
+  const npDepth = useRef(0);
   /* Si el cierre es la animacion de vuelta a la pastilla o sin ella (el
      arrastre ya la saco de pantalla). */
   const npMorph = useRef(true);
@@ -511,15 +518,16 @@ export default function App() {
     }
     if (npEntry.current) return;
     npEntry.current = 1;
+    npDepth.current = nav.getStack().length;
     loadNowPlaying()
       .then(() => {
-        window.history.pushState({ spitifo: "np" }, "", window.location.href);
+        window.history.pushState(npState(npDepth.current), "", window.location.href);
         swapNowPlaying(() => panel.show(tab, nav.getKey()), true);
       })
       .catch(() => {
         npEntry.current = 0;
       });
-  }, [nav.getKey, np]);
+  }, [nav.getStack, nav.getKey, np]);
 
   const closeNp = useCallback((morph = true) => {
     if (npEntry.current === 2) return;
@@ -533,9 +541,37 @@ export default function App() {
     window.history.back();
   }, []);
 
-  /* Escape: cierra "Ahora suena" si esta abierta. */
+  /* «Cerrar reproductor» del menu de "Ahora suena": una sola accion deshace
+     la hoja que hubiera encima y la entrada de la vista. El popstate recorta
+     la pila en useNav y onNpPop cierra la columna; npEntry se deja en 1 para
+     que ese ultimo paso lo haga el mismo oyente de siempre. */
+  const closeFromMenu = useCallback(() => {
+    closeDock();
+    if (!npEntry.current) {
+      /* Sin entrada en el historial (escritorio): menu y columna se cierran
+         directamente. */
+      nav.back();
+      panel.close();
+      return;
+    }
+    npMorph.current = false;
+    const above = Math.max(0, nav.getStack().length - npDepth.current);
+    window.history.go(-(above + 1));
+  }, [nav.back, nav.getStack]);
+
+  useEffect(() => {
+    registerClosePlayer(closeFromMenu);
+    return () => registerClosePlayer(null);
+  }, [closeFromMenu]);
+
+  /* Escape: lo mas pequeno primero. Con un menu abierto encima de "Ahora
+     suena" se cierra ese; la segunda pulsacion cierra la vista. */
   const escapeNp = useCallback(() => {
     if (npEntry.current) {
+      if (aboveNp(nav.getStack(), npDepth.current)) {
+        nav.back();
+        return true;
+      }
       closeNp();
       return true;
     }
@@ -545,7 +581,7 @@ export default function App() {
       return true;
     }
     return false;
-  }, [closeNp]);
+  }, [closeNp, nav.back, nav.getStack]);
 
   const onWide = useCallback(
     (on) => (on ? panel.expand(nav.getKey()) : panel.collapse()),
@@ -557,6 +593,10 @@ export default function App() {
   useEffect(() => {
     const onNpPop = () => {
       if (!npEntry.current) return;
+      /* Un menu abierto encima de "Ahora suena" solo retrocede hasta la entrada
+         de la vista: no la cierra. useNav ya recorto la pila al llegar aqui;
+         esta entrada no es un cierre, sino el sitio donde seguir. */
+      if (isNpEntry(window.history.state)) return;
       npEntry.current = 0;
       const then = npThen.current;
       const morph = npMorph.current;

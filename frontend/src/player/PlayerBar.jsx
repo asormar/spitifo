@@ -9,7 +9,9 @@ import { useTrackPill } from "./useTrackPill.js";
 import Scrub from "./Scrub.jsx";
 
 const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
-const StreamDownload = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamDownload })));
+/* Como en la pastilla: el corazon y todo su registro de guardadas esperan a
+   que suene una pista. `.lcd .shrt` reserva el sitio mientras carga. */
+const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
 
 /* ---------------------------------------------------------------------------
    BARRA DEL REPRODUCTOR (escritorio)
@@ -32,6 +34,11 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
   const pill = useTrackPill(info);
+  const saveHeart = info ? (
+    <Suspense fallback={<span className="shrt" aria-hidden="true" />}>
+      <SaveHeart track={info} />
+    </Suspense>
+  ) : null;
 
   return (
     <section
@@ -58,8 +65,11 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
             <>
               <span className="lcd__time">{clock(shown)}</span>
               <span className="lcd__tx">
-                <span className="lcd__t" title={info?.title}>
-                  {info?.title}
+                <span className="lcd__line">
+                  <span className="lcd__t" title={info?.title}>
+                    {info?.title}
+                  </span>
+                  {saveHeart}
                 </span>
                 <span className="lcd__s" title={meta}>
                   {info?.kind === "stream" && !d.failed && (
@@ -80,9 +90,6 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
       </div>
 
       <div className="dock__end">
-        {info?.kind === "stream" && (
-          <Suspense fallback={null}><StreamDownload track={info} /></Suspense>
-        )}
         <Volume className="dock__vol" />
         {[
           [1, "Cola", "queue"],

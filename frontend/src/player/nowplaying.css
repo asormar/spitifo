@@ -105,6 +105,7 @@
 }
 
 .np__close:active,
+.np__more:active,
 .cbtn--w:active,
 .np__tab:active,
 .np__back:active,
@@ -240,8 +241,50 @@
   min-width: 0;
 }
 
-.np__v {
-  margin-top: 2px;
+/* Chip discreto con como suena la pista. Una sola pastilla bajo el titulo: no
+   compite con el veredicto, que vive en la pestana Ficha. Solo transform y
+   opacity se animan en esta vista; aqui no hay movimiento. */
+.np__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  background: rgba(14, 14, 24, 0.34);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.np__state-check {
+  color: var(--ok-glow);
+}
+
+.np--pane .np__state {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* El ⋯ de la cabecera: el mismo area de toque que la X en telefono. */
+.np__more {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.np__pane-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
 /* La pastilla sobre el panel oscuro: un chip con su punto de estado. */
@@ -264,7 +307,7 @@
 }
 
 .np .vb--ok::before {
-  background: #7ff0b0;
+  background: var(--ok-glow);
 }
 
 .np .vb--near::before {
@@ -607,16 +650,12 @@
   white-space: nowrap;
 }
 
-/* Ampliar/reducir y cerrar, a la derecha de las pestanas. */
+/* Ampliar/reducir, ⋯ y cerrar, a la derecha de las pestanas. */
 .np--pane .np__x,
-.np--pane .np__wide {
+.np--pane .np__wide,
+.np--pane .np__more {
   width: 36px;
   height: 36px;
-}
-
-.np--pane .np__tabs + .np__x,
-.np--pane .np__wide {
-  margin-left: auto;
 }
 
 .np--pane .np__body {
@@ -640,11 +679,6 @@
 .np--pane .np__row .np__meta {
   flex: 1;
   margin-top: 0;
-}
-
-/* El chip va bajo el artista: a su lado le quitaba el ancho al titulo. */
-.np--pane .np__v {
-  margin-top: 10px;
 }
 
 .np--pane .np__row .cbtn--w {
