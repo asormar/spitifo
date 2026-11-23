@@ -41,4 +41,5 @@ function set(value) {
 
 export const autoDownload = { get, set, subscribe };
 
-export const useAutoDownload = () => useSyncExternalStore(subscribe, get);
+/* Devuelve [valor, cambiar], que es lo que desestructura Ajustes. */
+export const useAutoDownload = () => [useSyncExternalStore(subscribe, get), set];
