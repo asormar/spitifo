@@ -331,6 +331,20 @@ class ITunesSource(Source):
         songs = [t for t in results if t.get("kind") == "song"]
         return collection, songs
 
+    async def lookup_track(self, track_id: str | int) -> dict | None:
+        """Un item crudo de iTunes por trackId (lookup?id=...).
+
+        La ruta de match puntual lo usa cuando la pista no estaba en la cache
+        de la busqueda que la origino. Reutiliza el httpx.Client compartido.
+        """
+        r = await self.client.get(
+            "https://itunes.apple.com/lookup", params={"id": track_id})
+        r.raise_for_status()
+        for item in r.json().get("results", []):
+            if str(item.get("trackId")) == str(track_id):
+                return item
+        return None
+
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         r = await self.client.get(
             "https://itunes.apple.com/search",
