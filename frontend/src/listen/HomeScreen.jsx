@@ -26,6 +26,42 @@ const FirstRunCard = lazy(loadFirstRunChunk);
    a la raiz mientras estan abiertas.
    ------------------------------------------------------------------------- */
 
+/* Esqueleto de Inicio mientras llega la biblioteca: la Mezcla, los chips y dos
+   estanterias, con las mismas clases que el contenido (home.css), asi cada caja
+   ocupa ya su sitio y nada salta cuando llega. */
+const SKEL_CHIPS = [150, 170, 156];
+const skelShelf = (n) => (
+  <section className="sec" aria-hidden="true">
+    <div className="shead">
+      <span className="hsk hsk--h" />
+    </div>
+    <div className="shelf">
+      {Array.from({ length: n }, (_, i) => (
+        <span key={i} className="card" style={{ "--i": i }}>
+          <span className="hsk hsk--cv" />
+          <span className="hsk hsk--t" />
+          <span className="hsk hsk--s" />
+        </span>
+      ))}
+    </div>
+  </section>
+);
+
+function HomeSkeleton() {
+  return (
+    <div className="hfeed" aria-busy="true" aria-label="Cargando tu música">
+      <div className="mezcla hsk hsk--hero" aria-hidden="true" />
+      <div className="mixes" aria-hidden="true">
+        {SKEL_CHIPS.map((w, i) => (
+          <span key={i} className="hsk hsk--chip" style={{ width: w, "--i": i }} />
+        ))}
+      </div>
+      {skelShelf(4)}
+      {skelShelf(4)}
+    </div>
+  );
+}
+
 export default function HomeScreen({ ready, error, errorCode, active, onRetry, storagePath }) {
   const nav = useNav();
   const { ctx, model } = useListen();
@@ -58,7 +94,14 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
           <FirstRunCard folder={folder} />
         </Suspense>
       )}
-      <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry} folder={folder}>
+      <LibraryGate
+        ready={ready}
+        error={error}
+        errorCode={errorCode}
+        onRetry={onRetry}
+        folder={folder}
+        loading={<HomeSkeleton />}
+      >
         <HomeFeed
           index={model.index}
           byKey={model.byKey}

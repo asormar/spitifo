@@ -224,6 +224,51 @@ button.allsongs__main:active {
   margin: 0;
 }
 
+/* Esqueleto de Inicio (HomeScreen): las cajas de Mezcla, chips y tarjetas, en
+   el color de superficie y respirando como los demas esqueletos. */
+.hsk {
+  display: block;
+  border-radius: var(--r-md);
+  background: var(--s2);
+  animation: breathe 1.6s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * -200ms);
+}
+
+.mezcla.hsk--hero {
+  background: var(--s1);
+  box-shadow: none;
+}
+
+.hsk--chip {
+  flex: none;
+  height: 44px;
+  border-radius: var(--r-pill);
+}
+
+.hsk--h {
+  width: 40%;
+  height: 22px;
+  border-radius: 8px;
+}
+
+.hsk--cv {
+  width: var(--s);
+  height: var(--s);
+}
+
+.hsk--t {
+  width: 80%;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 7px;
+}
+
+.hsk--s {
+  width: 55%;
+  height: 12px;
+  border-radius: 6px;
+}
+
 /* Se ve de 34 px y se toca en 44. */
 .more {
   position: relative;
