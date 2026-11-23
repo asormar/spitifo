@@ -99,6 +99,158 @@ _ALBUM_MATCH_MAX = 50
 _ALBUM_MATCH_SEMAPHORE = 3   # busquedas puntuales simultaneas por pista
 _ALBUM_TRACK_LIMIT = 8       # candidatos por busqueda puntual de una pista
 
+# Busquedas sueltas de /api/search y de la ruta lazy: comparten un solo limite
+# (el album sigue con el suyo de 3).
+_SEARCH_SINGLE_SEMAPHORE = 6
+# Uno por event loop: un Semaphore queda atado al loop donde espera por
+# primera vez, y los tests (y un reinicio del servidor) cambian de loop.
+_SEARCH_SINGLE_SEMS: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _search_single_sem() -> asyncio.Semaphore:
+    """El limite compartido de busquedas sueltas del loop actual."""
+    loop = asyncio.get_running_loop()
+    sem = _SEARCH_SINGLE_SEMS.get(loop)
+    if sem is None:
+        sem = _SEARCH_SINGLE_SEMS[loop] = asyncio.Semaphore(_SEARCH_SINGLE_SEMAPHORE)
+    return sem
+
+# Cache de matches sueltos: {trackId: (timestamp, match, acierto)}. Los aciertos
+# viven media hora; los fallos solo diez minutos para no repetir la busqueda en
+# cada scroll. Expulsion por antiguedad, como la cache de albumes.
+_TRACK_MATCH_CACHE: dict = {}
+_TRACK_MATCH_HIT_TTL_S = 30 * 60
+_TRACK_MATCH_MISS_TTL_S = 10 * 60
+_TRACK_MATCH_MAX = 2000
+
+# Dicts crudos de iTunes por busqueda, para que la ruta lazy sepa que pista
+# buscar sin volver a iTunes. Media hora y tope, igual que el match de albumes.
+_TRACK_RAW_CACHE: dict = {}
+_TRACK_RAW_TTL_S = 30 * 60
+_TRACK_RAW_MAX = 1000
+
+# Circuito de YouTube: un muro de verificacion o un 429 pausa las busquedas
+# sueltas cinco minutos. Reloj inyectable para poder moverlo en los tests.
+_YT_BREAKER_SECONDS = 5 * 60
+_YT_BREAKER_OPENED_AT: float | None = None
+_breaker_clock = time.monotonic
+_RATE_LIMIT_RE = re.compile(
+    r"\b429\b|too many requests|rate.limit|try again later|retry later",
+    re.IGNORECASE)
+
+
+def _breaker_reset() -> None:
+    """Cierra el circuito (lo usa el arranque limpio de cada test)."""
+    global _YT_BREAKER_OPENED_AT
+    _YT_BREAKER_OPENED_AT = None
+
+
+def _breaker_abierto() -> bool:
+    """True mientras el circuito este abierto; se cierra solo al vencer el TTL."""
+    global _YT_BREAKER_OPENED_AT
+    if _YT_BREAKER_OPENED_AT is None:
+        return False
+    if _breaker_clock() - _YT_BREAKER_OPENED_AT >= _YT_BREAKER_SECONDS:
+        _YT_BREAKER_OPENED_AT = None
+        return False
+    return True
+
+
+def _breaker_abrir() -> None:
+    """Abre el circuito una vez y avisa en el log, sin spam por cada pista."""
+    global _YT_BREAKER_OPENED_AT
+    if _YT_BREAKER_OPENED_AT is None:
+        log.warning("YouTube muro/rate limit: busquedas sueltas pausadas %ds",
+                    _YT_BREAKER_SECONDS)
+    _YT_BREAKER_OPENED_AT = _breaker_clock()
+
+
+def _es_error_de_youtube_ocupado(error) -> bool:
+    """Bot wall o rate limit: merece pausar las busquedas sueltas."""
+    from .ytdlp_source import is_bot_check_error
+    return is_bot_check_error(error) or bool(_RATE_LIMIT_RE.search(str(error)))
+
+
+class _YtConCircuito:
+    """Envuelve la fuente yt-dlp y abre el circuito en bot wall / rate limit.
+
+    Asi el matcher sigue recibiendo una fuente normal: no hay que cambiar su
+    firma y los dobles de los tests siguen funcionando.
+    """
+
+    def __init__(self, real):
+        self._real = real
+
+    def available(self) -> bool:
+        return self._real.available()
+
+    async def search_candidates(self, q, limit=40):
+        try:
+            return await self._real.search_candidates(q, limit)
+        except Exception as e:
+            if _es_error_de_youtube_ocupado(e):
+                _breaker_abrir()
+            raise
+
+
+def _track_match_cache_get(track_id: str) -> tuple[dict, bool] | None:
+    """(match, acierto) cacheado, o None. Aciertos y fallos tienen distinto TTL."""
+    hit = _TRACK_MATCH_CACHE.get(track_id)
+    if not hit:
+        return None
+    guardado, match, acierto = hit
+    ttl = _TRACK_MATCH_HIT_TTL_S if acierto else _TRACK_MATCH_MISS_TTL_S
+    if _breaker_clock() - guardado >= ttl:
+        _TRACK_MATCH_CACHE.pop(track_id, None)
+        return None
+    return match, acierto
+
+
+def _track_match_cache_put(track_id: str, match: dict) -> None:
+    """Guarda un match suelto con expulsion por antiguedad."""
+    match = match or {}
+    acierto = bool(match.get("video"))
+    _TRACK_MATCH_CACHE[track_id] = (_breaker_clock(), match, acierto)
+    if len(_TRACK_MATCH_CACHE) > _TRACK_MATCH_MAX:
+        vieja = min(_TRACK_MATCH_CACHE, key=lambda k: _TRACK_MATCH_CACHE[k][0])
+        _TRACK_MATCH_CACHE.pop(vieja, None)
+
+
+def _track_match_cache_put_muchos(matched: dict) -> None:
+    """Llena la cache con los ACIERTOS de una busqueda grupal.
+
+    Un fallo grupal no es un fallo definitivo: significa que el video no estaba
+    entre esos candidatos, y por eso se busca la pista suelta despues. Solo se
+    cachean los fallos de una busqueda puntual (que si completo la busqueda).
+    """
+    for clave, match in matched.items():
+        if (match or {}).get("video"):
+            _track_match_cache_put(clave, match)
+
+
+def _track_raw_put(raws: list[dict]) -> None:
+    """Recuerda los dicts crudos de una busqueda por su trackId."""
+    ahora = _breaker_clock()
+    for raw in raws:
+        track_id = str(raw.get("trackId") or "")
+        if track_id:
+            _TRACK_RAW_CACHE[track_id] = (ahora, raw)
+    if len(_TRACK_RAW_CACHE) > _TRACK_RAW_MAX:
+        vieja = min(_TRACK_RAW_CACHE, key=lambda k: _TRACK_RAW_CACHE[k][0])
+        _TRACK_RAW_CACHE.pop(vieja, None)
+
+
+def _track_raw_get(track_id: str) -> dict | None:
+    """Dict crudo cacheado, o None si no existe o vencio."""
+    hit = _TRACK_RAW_CACHE.get(track_id)
+    if not hit:
+        return None
+    guardado, raw = hit
+    if _breaker_clock() - guardado >= _TRACK_RAW_TTL_S:
+        _TRACK_RAW_CACHE.pop(track_id, None)
+        return None
+    return raw
+
 # Cache del top de artistas: {artist_id: (timestamp, respuesta)}. El match en
 # YouTube tarda, asi que la pagina lo pide aparte y aqui se reutiliza. Media
 # hora y ~50 artistas, igual que el match de albumes.
@@ -430,6 +582,16 @@ async def search(request: Request):
 
     # ---- modo "matched": iTunes es el catalogo, yt-dlp la descarga ----
     if mode == "matched" and not source:
+        if _query_str(request, "stream", default=None) in ("1", "true", "yes"):
+            eventos = _search_matched_eventos(q, limit, stream=True)
+            # El catalogo se saca antes de abrir el stream: si iTunes falla,
+            # aca todavia se puede devolver un error HTTP normal.
+            try:
+                primero = await eventos.__anext__()
+            except StopAsyncIteration:
+                primero = ("done", {"full": 0, "count": 0})
+            return _match_stream_response(
+                eventos, primero, done_keys=("full", "count"))
         return JSONResponse(await _search_matched(q, limit))
 
     sources = [source] if source else None
@@ -451,6 +613,49 @@ async def search(request: Request):
         "query": q, "mode": mode, "count": len(tracks),
         "results": [t.to_dict() for t in tracks],
     })
+
+
+async def search_match(request: Request):
+    """GET /api/search/match/{track_id}: match suelto de una fila `lazy`.
+
+    La ficha cruda sale de la cache de la busqueda; si expiro o el proceso
+    arranco de nuevo, se pide a iTunes por trackId. Con el circuito de YouTube
+    abierto no se busca: se devuelve 503 con codigo `youtube_busy`.
+    """
+    track_id = str(request.path_params["track_id"])
+    if not track_id.isdigit():
+        raise _invalid(["path", "id"], "Input should be a valid integer")
+    priority = _query_bool(request, "priority", False)
+
+    raw = _track_raw_get(track_id)
+    if raw is None:
+        try:
+            raw = await BY_NAME["itunes"].lookup_track(track_id)
+        except Exception as e:
+            log.warning("lookup de pista fallo: %s", e)
+            raise HTTPException(502, "iTunes no respondio") from e
+    if raw is None:
+        raise HTTPException(404, "pista no encontrada")
+
+    _register_ytdlp()
+    ysrc = BY_NAME.get("ytdlp")
+    yt_on = bool(ysrc and ysrc.available())
+    # Lo cacheado se sirve aunque el circuito este abierto: no toca YouTube.
+    if (yt_on and _track_match_cache_get(_track_key(raw)) is None
+            and _breaker_abierto()):
+        return JSONResponse({"detail": "YouTube ocupado, reintente en unos minutos",
+                             "code": "youtube_busy"}, status_code=503)
+
+    match = {}
+    if yt_on:
+        res = await _buscar_pista_suelta(
+            raw, ysrc, priority=priority,
+            sem=None if priority else _search_single_sem())
+        match = res.get(_track_key(raw), {})
+    track = _itunes_track(raw, match)
+    track.extra["match_state"] = (
+        "full" if (match or {}).get("video") else "none")
+    return JSONResponse({"track": track.to_dict()})
 
 
 # ------------------------------------------------------------------- albumes
@@ -827,22 +1032,38 @@ def _artist_top_cache_put(artista_id: str, payload: dict) -> None:
 
 async def _buscar_pista_suelta(raw: dict, ysrc, *,
                                sem: asyncio.Semaphore | None = None,
-                               artista: str = "") -> dict:
+                               artista: str = "",
+                                priority: bool = False) -> dict:
     """Busca UNA pista con su artista y su titulo, con concurrencia acotada.
 
-    La comparten el segundo paso del top de artista y el del match de albumes.
-    En recopilatorios el artista del album es "Varios artistas": la pista busca
-    con el SUYO, no con ese.
+    La comparten el segundo paso del top de artista, el del match de albumes,
+    el stream de busqueda y la ruta lazy. En recopilatorios el artista del
+    album es "Varios artistas": la pista busca con el SUYO, no con ese.
+    Antes de buscar consulta la cache; con el circuito abierto no busca.
+    `priority=True` (tap del usuario) salta el limite compartido.
     """
+    clave = _track_key(raw)
+    hit = _track_match_cache_get(clave)
+    if hit is not None:
+        # Los llamadores esperan el indice por clave, igual que el matcher.
+        return {clave: hit[0]}
+    if _breaker_abierto():
+        return {}
+
     from .matcher import enrich_with_ytdlp
 
     async def _buscar() -> dict:
         track_artist = raw.get("artistName") or artista
         query = f"{track_artist} {raw.get('trackName', '')}".strip()
-        return await enrich_with_ytdlp([raw], query, ysrc,
-                                       limit=_ALBUM_TRACK_LIMIT)
+        res = await enrich_with_ytdlp([raw], query, _YtConCircuito(ysrc),
+                                      limit=_ALBUM_TRACK_LIMIT)
+        # Sin la clave la busqueda fallo (red, muro): no es un "no hay video"
+        # y no se guarda, o la pista quedaria diez minutos en 30 s.
+        if clave in res:
+            _track_match_cache_put(clave, res[clave])
+        return res
 
-    if sem is None:
+    if priority or sem is None:
         return await _buscar()
     async with sem:
         return await _buscar()
@@ -916,6 +1137,7 @@ async def artist_top_songs(request: Request):
             try:
                 matched = (await enrich_with_ytdlp(
                     raws, query, ysrc, videos=videos)) if yt_on else {}
+                _track_match_cache_put_muchos(matched)
             except Exception as e:
                 log.warning("artist top match fallo: %s", e)
                 matched = {}
@@ -1010,6 +1232,7 @@ async def _album_match_eventos(album_id: str):
         # 1) una busqueda para TODO el album: reparte los videos entre pistas.
         res = await enrich_with_ytdlp(
             raws, f"{artista} {titulo}".strip(), ysrc)
+        _track_match_cache_put_muchos(res)
         nuevos = []
         for clave, m in res.items():
             if (m or {}).get("video") and clave in por_clave:
@@ -1059,8 +1282,13 @@ async def _album_match_eventos(album_id: str):
     yield "done", payload
 
 
-def _match_stream_response(eventos, primero) -> StreamingResponse:
-    """NDJSON: un objeto JSON por linea, en el orden de los eventos."""
+def _match_stream_response(eventos, primero,
+                           done_keys=("full", "tracks")) -> StreamingResponse:
+    """NDJSON: un objeto JSON por linea, en el orden de los eventos.
+
+    `done_keys` recorta el payload final al conjunto de claves que viajan en
+    el ultimo evento (el album manda tracks; la busqueda, full y count).
+    """
     async def cuerpo():
         try:
             tipo, datos = primero
@@ -1068,7 +1296,7 @@ def _match_stream_response(eventos, primero) -> StreamingResponse:
                 if tipo == "done":
                     # En el cable `done` lleva solo el resultado: album e
                     # ytdlp ya vinieron en la primera linea.
-                    datos = {"full": datos["full"], "tracks": datos["tracks"]}
+                    datos = {k: datos.get(k, 0) for k in done_keys}
                 yield (json.dumps({"type": tipo, **datos},
                                   ensure_ascii=False) + "\n").encode("utf-8")
                 try:
@@ -1108,12 +1336,15 @@ async def album_match(request: Request):
     return JSONResponse(payload)
 
 
-async def _search_matched(q: str, limit: int) -> dict:
-    """iTunes da el catalogo (metadata limpia + portada); yt-dlp, la descarga.
+async def _search_matched_eventos(q: str, limit: int, *,
+                                  stream: bool = False):
+    """Modo Musica con eventos progresivos.
 
-    Cada resultado conserva la ficha de iTunes y, si el matcher encontro un
-    video que corresponde, se puede bajar entero. Si no hay match confiable, se
-    muestra igual con su preview de 30s y se dice que no hay version entera.
+    `catalog` se emite apenas contesta iTunes, antes de que termine el match de
+    YouTube. Con `stream=True` las pistas del top 10 que el grupo no emparejo
+    se buscan sueltas y se anuncian una a una (las demas quedan `lazy`). Sin
+    stream se conserva la respuesta de siempre: una sola busqueda grupal,
+    orden full-first y ninguna busqueda suelta.
     """
     import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
     from .matcher import catalog_status, enrich_with_ytdlp
@@ -1121,11 +1352,8 @@ async def _search_matched(q: str, limit: int) -> dict:
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
 
-    # 1) catalogo de iTunes (metadata cruda, con duracion y portada)
-    # Fuente compartida: reutiliza su httpx.Client (una instancia nueva por
-    # busqueda quedaba abierta y nunca se cerraba).
-    # La busqueda en YouTube solo depende de la consulta: arranca ya, en
-    # paralelo con iTunes, en vez de esperar a que iTunes conteste.
+    # 1) catalogo de iTunes y busqueda grupal de YouTube en paralelo: la de
+    # YouTube solo depende de la consulta, no de lo que encuentre iTunes.
     isrc = BY_NAME["itunes"]
     videos = asyncio.ensure_future(ysrc.search_candidates(q, limit=40)) if yt_on else None
     try:
@@ -1138,24 +1366,137 @@ async def _search_matched(q: str, limit: int) -> dict:
     if not it_items:
         if videos:
             videos.cancel()
-        return {"query": q, "mode": "matched", "count": 0, "results": [],
-                "ytdlp": yt_on, "catalog": catalog}
+        yield "catalog", {"query": q, "mode": "matched", "ytdlp": yt_on,
+                          "catalog": catalog, "count": 0, "results": []}
+        # El cuerpo vacio de siempre no tenia clave `full`.
+        yield "done", {"query": q, "mode": "matched", "count": 0,
+                       "results": [], "ytdlp": yt_on, "catalog": catalog}
+        return
 
-    # 2) emparejar con esa unica busqueda en YouTube
-    matched = await enrich_with_ytdlp(it_items, q, ysrc, videos=videos) if yt_on else {}
+    _track_raw_put(it_items)
+    inicial = "pending" if (stream and yt_on) else "none"
+    estado = {_track_key(it): inicial for it in it_items}
+    matches: dict = {}
 
-    # 3) armar los Tracks con la misma fabrica que usan las rutas de album
-    out = [_itunes_track(it, matched.get(_track_key(it)))
-           for it in it_items]
+    def _fila(raw: dict, state: str) -> dict:
+        t = _itunes_track(raw, matches.get(_track_key(raw))
+                          if state == "full" else None)
+        if state in ("pending", "lazy"):
+            t.extra["has_full"] = None
+        t.extra["match_state"] = state
+        return t.to_dict()
 
-    # con version entera primero
-    out.sort(key=lambda t: 0 if t.extra.get("has_full") else 1)
-    return {
+    # Aciertos de busquedas anteriores van ya en el catalogo: una busqueda
+    # repetida no espera a YouTube para mostrar lo que ya se sabe.
+    if yt_on:
+        for clave in estado:
+            hit = _track_match_cache_get(clave)
+            if hit is not None and hit[1]:
+                matches[clave] = hit[0]
+                estado[clave] = "full"
+    enviado = dict(estado)
+
+    yield "catalog", {"query": q, "mode": "matched", "ytdlp": yt_on,
+                      "catalog": catalog, "count": len(it_items),
+                      "results": [_fila(it, estado[_track_key(it)])
+                                  for it in it_items]}
+
+    # 2) un solo match grupal reparte los 40 videos entre todas las pistas.
+    # Lo ya cacheado queda fuera: sus videos no le quitan sitio a las demas.
+    faltan = [it for it in it_items if estado[_track_key(it)] != "full"]
+    if yt_on and faltan:
+        res = await enrich_with_ytdlp(faltan, q, ysrc, videos=videos)
+        _track_match_cache_put_muchos(res)
+        for clave, m in res.items():
+            if (m or {}).get("video") and clave in estado:
+                matches[clave] = m
+                estado[clave] = "full"
+    elif videos:
+        videos.cancel()
+
+    # Fuera del top 10 nadie busca en este momento: se busca al hacer visible.
+    if stream:
+        for idx, it in enumerate(it_items):
+            clave = _track_key(it)
+            if idx >= 10 and estado[clave] == "pending":
+                estado[clave] = "lazy"
+
+    cambiadas = [it for it in it_items
+                 if estado[_track_key(it)] != enviado[_track_key(it)]]
+    if cambiadas:
+        yield "tracks", {"tracks": [_fila(it, estado[_track_key(it)])
+                                    for it in cambiadas]}
+
+    # 3) las del top 10 que siguen pendientes se buscan sueltas, de a 6 y en
+    # cuanto termina cada una se anuncia. El circuito abierto las deja en none.
+    if stream and yt_on and any(estado[_track_key(it)] == "pending"
+                                for it in it_items[:10]):
+        sem = _search_single_sem()
+        por_clave = {_track_key(it): it for it in it_items}
+
+        async def _una(clave):
+            res = await _buscar_pista_suelta(por_clave[clave], ysrc, sem=sem)
+            return clave, res
+
+        tareas = [asyncio.create_task(_una(_track_key(it)))
+                  for it in it_items[:10]
+                  if estado[_track_key(it)] == "pending"]
+        try:
+            for lista in asyncio.as_completed(tareas):
+                try:
+                    clave, res = await lista
+                except Exception as e:
+                    log.warning("search match suelto fallo: %s", e)
+                    continue
+                m = res.get(clave, {})
+                estado[clave] = "full" if (m or {}).get("video") else "none"
+                if estado[clave] == "full":
+                    matches[clave] = m
+                yield "tracks", {"tracks": [_fila(por_clave[clave],
+                                                  estado[clave])]}
+        finally:
+            # Cliente desconectado: no dejar busquedas huerfanas.
+            for t in tareas:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*tareas, return_exceptions=True)
+
+        rezagadas = [it for it in it_items[:10]
+                     if estado[_track_key(it)] == "pending"]
+        if rezagadas:
+            for it in rezagadas:
+                estado[_track_key(it)] = "none"
+            yield "tracks", {"tracks": [_fila(it, "none") for it in rezagadas]}
+
+    # 4) payload final; la ruta JSON lo devuelve entero y el stream solo saca
+    # `full` y `count` (el frontend ya tiene las filas de los lotes).
+    out = []
+    for it in it_items:
+        clave = _track_key(it)
+        state = estado[clave]
+        t = _itunes_track(it, matches.get(clave) if state == "full" else None)
+        if state in ("pending", "lazy"):
+            t.extra["has_full"] = None
+        t.extra["match_state"] = state if stream else (
+            "full" if state == "full" else "none")
+        out.append(t)
+    if not stream:
+        out.sort(key=lambda t: 0 if t.extra.get("has_full") else 1)
+    yield "done", {
         "query": q, "mode": "matched", "ytdlp": yt_on, "catalog": catalog,
         "count": len(out),
-        "full": sum(1 for t in out if t.extra.get("has_full")),
+        "full": sum(1 for t in out if t.extra["match_state"] == "full"),
         "results": [t.to_dict() for t in out],
     }
+
+
+async def _search_matched(q: str, limit: int) -> dict:
+    """JSON de siempre: una busqueda grupal, full-first, sin eventos sueltos."""
+    payload = None
+    async for tipo, datos in _search_matched_eventos(q, limit):
+        if tipo == "done":
+            payload = datos
+    return payload
 
 
 def _group_shows(tracks: list[Track]) -> list[Track]:
@@ -3043,6 +3384,7 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/search/match/{track_id}", search_match),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
