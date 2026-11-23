@@ -61,6 +61,17 @@ describe("rowPlayPlan", () => {
     expect(rowPlayPlan({ source: "ytdlp", source_id: "abcdefghijk", extra: {} })).toBeNull();
   });
 
+  it("una fila de una ola todavia sin video usa el match con prioridad", () => {
+    for (const match_state of ["pending", "lazy"]) {
+      expect(rowPlayPlan({
+        source: "itunes",
+        source_id: "123",
+        preview_url: "https://audio-ssl.itunes.apple.com/preview.m4a",
+        extra: { match_state },
+      })).toBe("eager");
+    }
+  });
+
   it("un match de iTunes ya resuelto con webpage_url suena completo", () => {
     expect(rowPlayPlan({
       source: "itunes",

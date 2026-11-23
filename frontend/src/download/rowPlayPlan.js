@@ -1,4 +1,5 @@
 import { needsResolve } from "./resolveResult.js";
+import { matchState } from "./searchWaves.js";
 import { canAudition, canStream } from "./streamTrack.js";
 
 /* ---------------------------------------------------------------------------
@@ -14,6 +15,10 @@ export function rowPlayPlan(t) {
   if (!t) return null;
   if (canStream(t)) return "stream";
   if (canAudition(t)) return "archive";
+  /* Fila de una ola todavia sin video: el toque pide su match con prioridad
+     y suena entera o, si no hay video, el avance de 30 s. */
+  const state = matchState(t);
+  if (state === "pending" || state === "lazy") return "eager";
   if (needsResolve(t)) return "resolve";
   if (t?.preview_url) return "preview";
   return null;

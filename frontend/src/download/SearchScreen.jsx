@@ -74,7 +74,7 @@ export default function SearchScreen({
   const focusPending = useRef(false);
   const fine = () => window.matchMedia("(pointer: fine)").matches;
   const run = useSearchRun({ onRequest: () => (focusPending.current = fine()) });
-  const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter } = run;
+  const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter, listRef } = run;
 
   /* Formato y contenido se eligen en Ajustes y se leen igual que antes: la
      descarga recibe exactamente estos valores. M4A por defecto (en YouTube es
@@ -461,6 +461,7 @@ export default function SearchScreen({
           )}
           <ul
             className="rlist"
+            ref={listRef}
             data-in={fresh ? "" : undefined}
             aria-busy={loading || undefined}
             inert={loading}

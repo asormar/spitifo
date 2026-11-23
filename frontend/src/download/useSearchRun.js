@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { API, errMsg } from "../shared/api.js";
+import { API, errMsg, rowKey } from "../shared/api.js";
 import { buildSearchParams, prepareTopStreams, warmTopResults } from "./api.js";
-import { searchAlbums } from "./albumApi.js";
+import { mergeMatchedTracks, searchAlbums } from "./albumApi.js";
 import { searchArtists } from "./artistApi.js";
 import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
 import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
+import { consumeWaves, createWaveQueue, fetchTrackMatch, matchState } from "./searchWaves.js";
+
+/* Los adelantos dedupean por URL: llamarlos por lote no cuesta red de mas. */
+const paint = (list) => { warmTopResults(list); prepareTopStreams(list); };
 
 /* ---------------------------------------------------------------------------
    LA BUSQUEDA DE DESCARGAS
@@ -49,9 +53,20 @@ export default function useSearchRun({ onRequest } = {}) {
   const searchAbort = useRef(null);
   const albumAbort = useRef(null);
   const artistAbort = useRef(null);
+  /* La lista y la cola de filas "lazy" viven aca: un cambio de busqueda
+     corta los pedidos que quedaron volando. */
+  const listRef = useRef(null);
+  const waveQueue = useRef(null);
   /* El modo que vale ahora, para las funciones estables (run, el pedido). */
   const modeRef = useRef(mode);
   modeRef.current = mode;
+
+  /* Un lote que llega reemplaza su fila sin moverla. Los dos adelantos
+     dedupean por URL, asi que llamarlos por lote no cuesta red de mas. */
+  const mergeIntoResults = useCallback((updates) => {
+    setResults((prev) => mergeMatchedTracks(prev, updates));
+    paint(updates);
+  }, []);
 
   /* Una sola funcion de busqueda, con el texto y el modo que llegan POR
      PARAMETRO. Asi Enter, los ejemplos, el resync automatico y los pedidos
@@ -72,6 +87,9 @@ export default function useSearchRun({ onRequest } = {}) {
     setFilter("all");
     setRuns((n) => n + 1);
     const params = buildSearchParams(t, m);
+    /* Solo Musica llega en olas; los otros modos y los servers viejos siguen
+       con la respuesta de una sola vez. */
+    if (m === "matched") params.set("stream", "1");
     /* La busqueda anterior, si sigue en vuelo, se cancela. */
     searchAbort.current?.abort();
     const ac = new AbortController();
@@ -106,15 +124,33 @@ export default function useSearchRun({ onRequest } = {}) {
     }
     try {
       const r = await fetch(`${API}/search?${params.toString()}`, { signal: ac.signal });
+      if (!r.ok) throw new Error(errMsg(await r.json().catch(() => ({})), "error de búsqueda"));
+      /* Catalogo de la ola y JSON de siempre pintan igual: el stream solo
+         adelanta ese instante y deja que los lotes reemplacen filas. */
+      /* Con el catalogo en pantalla la lista deja de estar vieja: las filas
+         que siguen buscando lo dicen ellas, no la lista entera. */
+      const show = (list, ev) => {
+        setLoading(false);
+        setResults(list);
+        setCatalog(ev.catalog || "");
+        setQuery(t);
+        paint(list);
+      };
+      const streamed = await consumeWaves(r, {
+        onCatalog: (list, ev) => {
+          if (seq !== searchSeq.current) return;
+          show(list, ev);
+        },
+        onTracks: (tracks) => {
+          if (seq !== searchSeq.current) return;
+          mergeIntoResults(tracks);
+        },
+      });
+      /* El evento done es la ultima linea: al terminar la lectura el finally
+         de abajo marca la busqueda como terminada. */
+      if (streamed) return;
       const d = await r.json();
-      if (!r.ok) throw new Error(errMsg(d, "error de búsqueda"));
-      if (seq !== searchSeq.current) return;
-      const list = uniqueResults(d.results);
-      setResults(list);
-      setCatalog(d.catalog || "");
-      setQuery(t);
-      warmTopResults(list);
-      prepareTopStreams(list);
+      if (seq === searchSeq.current) show(uniqueResults(d.results), d);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
       setErr(e.message);
@@ -211,6 +247,37 @@ export default function useSearchRun({ onRequest } = {}) {
     return subscribeSearch(take);
   }, [run, setQ]);
 
+  /* Una cola por busqueda: cambiar de texto, de modo o salir corta los
+     pedidos de las filas que todavia esperaban su version completa. */
+  useEffect(() => {
+    if (mode !== "matched") return;
+    const q = createWaveQueue({
+      match: fetchTrackMatch,
+      onMatched: (full) => mergeIntoResults([full]),
+    });
+    waveQueue.current = q;
+    return () => { q.abort(); waveQueue.current = null; };
+  }, [mode, runs, mergeIntoResults]);
+
+  /* Un solo observador para toda la lista. Cada fila "lazy" que entra (con
+     200 px de anticipo) pasa a la cola; las demas se ignoran. */
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        io.unobserve(en.target);
+        const t = results.find((x) => rowKey(x) === en.target.dataset.k);
+        /* La fila ya dice «Buscando»; la cola la marca como ocupada mientras
+           vuela, asi no se pide dos veces aunque vuelva a observarse. */
+        if (t && matchState(t) === "lazy") waveQueue.current?.add(t);
+      }
+    }, { rootMargin: "200px" });
+    root.querySelectorAll('[data-wave="lazy"]').forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [results, runs, mode, filter]);
+
   /* La barra de arriba (en escritorio) lee este bit para su "Buscando". */
   useEffect(() => {
     searchBusy.set(loading);
@@ -219,6 +286,6 @@ export default function useSearchRun({ onRequest } = {}) {
 
   return {
     q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
-    runs, run, submit, reset,
+    runs, run, submit, reset, listRef,
   };
 }

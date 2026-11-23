@@ -44,7 +44,7 @@ export async function fetchAlbumMatch(id, signal) {
 
 /* Lee NDJSON: une trozos y parte por lineas, inclusive una linea partida en
    dos chunks. Cada objeto se pasa a onEvento. */
-async function leerNdjson(reader, onEvento) {
+export async function leerNdjson(reader, onEvento) {
   const dec = new TextDecoder();
   let buf = "";
   for (;;) {

@@ -6,6 +6,7 @@ import { useEngine } from "../player/useEngine.js";
 import { listenArchive } from "./ArchiveListenButton.jsx";
 import { resolveResult } from "./resolveResult.js";
 import { rowPlayPlan } from "./rowPlayPlan.js";
+import { fetchTrackMatch } from "./searchWaves.js";
 import { auditionKey, canStream, previewKey, previewTrack, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
 
 /* ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ export function rowTrackKey(t) {
   const plan = rowPlayPlan(t);
   if (plan === "stream") return streamKey(t.extra?.webpage_url);
   if (plan === "archive") return auditionKey(t);
-  if (plan === "preview") return previewKey(t);
+  if (plan === "preview" || plan === "eager") return previewKey(t);
   return null;
 }
 
@@ -120,7 +121,8 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
     }
     if (plan === "preview") return engine.play(previewTrack(t));
 
-    /* resolve: un toque a la vez, y solo cuenta el ultimo. */
+    /* resolve y eager (fila de una ola): un toque a la vez, y solo cuenta
+       el ultimo. Los dos comparten el spinner y las guardias de seq. */
     if (busy.current) return;
     busy.current = true;
     const intento = ++seq.current;
@@ -128,9 +130,9 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
     abort.current = ac;
     setResolving(true);
     try {
-      const full = await resolveResult(t, query, (url, opts) =>
-        fetch(url, { ...opts, signal: ac.signal })
-      );
+      const full = plan === "eager"
+        ? await fetchTrackMatch(t, ac.signal, true)
+        : await resolveResult(t, query, (url, opts) => fetch(url, { ...opts, signal: ac.signal }));
       if (!alive.current || intento !== seq.current) return;
       if (canStream(full)) {
         const { queue: lista, index } = streamQueue([full], full, source);
