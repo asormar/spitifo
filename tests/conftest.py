@@ -83,6 +83,15 @@ def _sin_cache_de_itunes():
 
 
 @pytest.fixture(autouse=True)
+def _sin_cache_de_letras():
+    """La cache de letras (LRCLIB) no filtra entre tests."""
+    from backend.app import lyrics
+    lyrics.cache_clear()
+    yield
+    lyrics.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _sin_cache_de_match_de_pista():
     """El match suelto y el circuito de YouTube no filtran entre tests."""
     from backend.app import main
