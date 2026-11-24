@@ -127,17 +127,49 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
     if (plan === "preview") return engine.play(previewTrack(t));
 
     /* resolve y eager (fila de una ola): un toque a la vez, y solo cuenta
-       el ultimo. Los dos comparten el spinner y las guardias de seq. */
+       el ultimo. Los dos comparten las guardias de seq. */
     if (busy.current) return;
     busy.current = true;
     const intento = ++seq.current;
     const ac = new AbortController();
     abort.current = ac;
+
+    if (plan === "eager") {
+      /* Con preview, arranca YA (nada de esperar el match con el audio
+         parado) y la version entera, si llega a tiempo y la fila sigue
+         sonando, la reemplaza. Sin preview, el spinner de siempre. */
+      const previewed = Boolean(t.preview_url);
+      if (previewed) engine.play(previewTrack(t));
+      else setResolving(true);
+      try {
+        const full = await fetchTrackMatch(t, ac.signal, true);
+        if (!alive.current || intento !== seq.current) return;
+        if (canStream(full)) {
+          if (!previewed || isMine(engine.getState(), { key: previewKey(t), rk })) {
+            const { queue: lista, index } = streamQueue([full], full, source);
+            engine.play(lista[index], { queue: lista, index, source });
+          }
+        } else if (!previewed) {
+          if (full?.preview_url) {
+            engine.play(previewTrack({ ...t, preview_url: full.preview_url }));
+          } else {
+            fail();
+          }
+        }
+      } catch (e) {
+        if (e?.name === "AbortError" || !alive.current || intento !== seq.current) return;
+        if (!previewed) fail();
+      } finally {
+        abort.current = null;
+        busy.current = false;
+        if (alive.current && intento === seq.current) setResolving(false);
+      }
+      return;
+    }
+
     setResolving(true);
     try {
-      const full = plan === "eager"
-        ? await fetchTrackMatch(t, ac.signal, true)
-        : await resolveResult(t, query, (url, opts) => fetch(url, { ...opts, signal: ac.signal }));
+      const full = await resolveResult(t, query, (url, opts) => fetch(url, { ...opts, signal: ac.signal }));
       if (!alive.current || intento !== seq.current) return;
       if (canStream(full)) {
         const { queue: lista, index } = streamQueue([full], full, source);
@@ -155,7 +187,7 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
       busy.current = false;
       if (alive.current && intento === seq.current) setResolving(false);
     }
-  }, [t, query, queue, source, show, fail, key]);
+  }, [t, query, queue, source, show, fail, key, rk]);
 
   return { play, isCurrent, playing, resolving };
 }
