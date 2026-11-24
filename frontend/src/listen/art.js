@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { API } from "../shared/api.js";
+import { sameMap } from "../shared/mapEq.js";
 
 /* ---------------------------------------------------------------------------
    FOTOS PERSONALIZADAS
@@ -36,7 +37,10 @@ export function createArt({ fetchFn = (...a) => fetch(...a) } = {}) {
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error("http");
-        emit({ ready: true, error: false, byTarget: new Map(Object.entries(d.art || {})) });
+        const byTarget = new Map(Object.entries(d.art || {}));
+        /* Misma razon que saved.js: una recarga forzada sin fotos nuevas no
+           tiene por que invalidar nada que dependa de este Map. */
+        emit({ ready: true, error: false, byTarget: sameMap(byTarget, state.byTarget) ? state.byTarget : byTarget });
       })
       .catch(() => emit({ ready: false, error: true }))
       .finally(() => {
