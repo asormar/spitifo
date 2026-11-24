@@ -125,9 +125,57 @@ _TRACK_MATCH_MAX = 2000
 
 # Dicts crudos de iTunes por busqueda, para que la ruta lazy sepa que pista
 # buscar sin volver a iTunes. Media hora y tope, igual que el match de albumes.
+# Cada entrada recuerda tambien la consulta que la trajo: la ruta lazy puede
+# reusar los candidatos de esa busqueda (ver _YT_CANDIDATES_CACHE) en vez de
+# pedirle a YouTube una lista nueva para una sola pista.
 _TRACK_RAW_CACHE: dict = {}
 _TRACK_RAW_TTL_S = 30 * 60
 _TRACK_RAW_MAX = 1000
+
+# Candidatos crudos de YouTube por consulta+limite normalizados. La busqueda
+# grupal de modo Musica es el paso mas caro (un ytsearch40); una consulta
+# repetida (o una fila lazy de la MISMA busqueda, via _TRACK_RAW_CACHE) no
+# vuelve a pedirla. TTL mas corto que el de los matches: los resultados de
+# YouTube cambian mas seguido que "hay o no hay version entera".
+_YT_CANDIDATES_CACHE: dict = {}
+_YT_CANDIDATES_TTL_S = 5 * 60
+_YT_CANDIDATES_MAX = 32
+#: Candidatos de la busqueda grupal de modo Musica (mismo numero de siempre).
+_GROUP_SEARCH_LIMIT = 40
+
+
+def _candidates_cache_key(q: str, limit: int) -> str:
+    return f"{' '.join((q or '').split()).casefold()}::{limit}"
+
+
+def _candidates_cache_get(q: str, limit: int) -> list[dict] | None:
+    clave = _candidates_cache_key(q, limit)
+    hit = _YT_CANDIDATES_CACHE.get(clave)
+    if not hit:
+        return None
+    guardado, candidatos = hit
+    if _breaker_clock() - guardado >= _YT_CANDIDATES_TTL_S:
+        _YT_CANDIDATES_CACHE.pop(clave, None)
+        return None
+    return candidatos
+
+
+def _candidates_cache_put(q: str, limit: int, candidatos: list[dict]) -> None:
+    clave = _candidates_cache_key(q, limit)
+    _YT_CANDIDATES_CACHE[clave] = (_breaker_clock(), candidatos)
+    if len(_YT_CANDIDATES_CACHE) > _YT_CANDIDATES_MAX:
+        vieja = min(_YT_CANDIDATES_CACHE, key=lambda k: _YT_CANDIDATES_CACHE[k][0])
+        _YT_CANDIDATES_CACHE.pop(vieja, None)
+
+
+async def _search_candidates_cached(ysrc, q: str, limit: int) -> list[dict]:
+    """`ysrc.search_candidates` con una cache acotada por consulta+limite."""
+    cached = _candidates_cache_get(q, limit)
+    if cached is not None:
+        return cached
+    candidatos = await ysrc.search_candidates(q, limit=limit)
+    _candidates_cache_put(q, limit, candidatos)
+    return candidatos
 
 # Circuito de YouTube: un muro de verificacion o un 429 pausa las busquedas
 # sueltas cinco minutos. Reloj inyectable para poder moverlo en los tests.
@@ -228,28 +276,33 @@ def _track_match_cache_put_muchos(matched: dict) -> None:
             _track_match_cache_put(clave, match)
 
 
-def _track_raw_put(raws: list[dict]) -> None:
-    """Recuerda los dicts crudos de una busqueda por su trackId."""
+def _track_raw_put(raws: list[dict], query: str | None = None) -> None:
+    """Recuerda los dicts crudos de una busqueda por su trackId.
+
+    `query` es la consulta que trajo esta pista: la ruta lazy la usa para
+    reusar los candidatos de YouTube de esa busqueda en vez de pedir una lista
+    nueva (ver `_candidates_cache_get`).
+    """
     ahora = _breaker_clock()
     for raw in raws:
         track_id = str(raw.get("trackId") or "")
         if track_id:
-            _TRACK_RAW_CACHE[track_id] = (ahora, raw)
+            _TRACK_RAW_CACHE[track_id] = (ahora, raw, query)
     if len(_TRACK_RAW_CACHE) > _TRACK_RAW_MAX:
         vieja = min(_TRACK_RAW_CACHE, key=lambda k: _TRACK_RAW_CACHE[k][0])
         _TRACK_RAW_CACHE.pop(vieja, None)
 
 
-def _track_raw_get(track_id: str) -> dict | None:
-    """Dict crudo cacheado, o None si no existe o vencio."""
+def _track_raw_get(track_id: str) -> tuple[dict, str | None] | None:
+    """(dict crudo, consulta que lo trajo) cacheado, o None si no existe o vencio."""
     hit = _TRACK_RAW_CACHE.get(track_id)
     if not hit:
         return None
-    guardado, raw = hit
+    guardado, raw, query = hit
     if _breaker_clock() - guardado >= _TRACK_RAW_TTL_S:
         _TRACK_RAW_CACHE.pop(track_id, None)
         return None
-    return raw
+    return raw, query
 
 # Cache del top de artistas: {artist_id: (timestamp, respuesta)}. El match en
 # YouTube tarda, asi que la pagina lo pide aparte y aqui se reutiliza. Media
@@ -311,6 +364,14 @@ async def lifespan(app: Starlette):
     # El visitor_data del streaming se busca al arrancar, nunca en el primer
     # play: si falla, el camino rapido cae al completo y el usuario no lo nota.
     if any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
+        from .ytdlp_source import ensure_yt_dlp_imported
+        # El import de yt_dlp arranca YA, en un hilo: es CPU/disco puro y no
+        # compite por la conexion a youtube.com, asi que no espera los 4 s del
+        # prewarm de red (ese retraso es solo para no competir con la primera
+        # pantalla con trafico).
+        tarea = asyncio.ensure_future(ensure_yt_dlp_imported())
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
         from . import stream as stream_mod
         for coro in (stream_mod.warm_visitor(), _prewarm_search()):
             tarea = asyncio.create_task(coro)
@@ -627,8 +688,11 @@ async def search_match(request: Request):
         raise _invalid(["path", "id"], "Input should be a valid integer")
     priority = _query_bool(request, "priority", False)
 
-    raw = _track_raw_get(track_id)
-    if raw is None:
+    cacheado = _track_raw_get(track_id)
+    if cacheado is not None:
+        raw, origin_query = cacheado
+    else:
+        origin_query = None
         try:
             raw = await BY_NAME["itunes"].lookup_track(track_id)
         except Exception as e:
@@ -650,7 +714,8 @@ async def search_match(request: Request):
     if yt_on:
         res = await _buscar_pista_suelta(
             raw, ysrc, priority=priority,
-            sem=None if priority else _search_single_sem())
+            sem=None if priority else _search_single_sem(),
+            origin_query=origin_query)
         match = res.get(_track_key(raw), {})
     track = _itunes_track(raw, match)
     track.extra["match_state"] = (
@@ -1040,7 +1105,8 @@ def _artist_top_cache_put(artista_id: str, payload: dict) -> None:
 async def _buscar_pista_suelta(raw: dict, ysrc, *,
                                sem: asyncio.Semaphore | None = None,
                                artista: str = "",
-                                priority: bool = False) -> dict:
+                                priority: bool = False,
+                                origin_query: str | None = None) -> dict:
     """Busca UNA pista con su artista y su titulo, con concurrencia acotada.
 
     La comparten el segundo paso del top de artista, el del match de albumes,
@@ -1048,6 +1114,12 @@ async def _buscar_pista_suelta(raw: dict, ysrc, *,
     album es "Varios artistas": la pista busca con el SUYO, no con ese.
     Antes de buscar consulta la cache; con el circuito abierto no busca.
     `priority=True` (tap del usuario) salta el limite compartido.
+
+    `origin_query` es la busqueda que trajo esta ficha (si la ruta lazy la
+    encontro en `_TRACK_RAW_CACHE`): si esa busqueda grupal todavia tiene sus
+    candidatos en cache, se reusan y la fila se resuelve SIN pedirle nada
+    nuevo a YouTube; solo si ahi no aparece se cae a la busqueda puntual de
+    siempre (artista + titulo, un ytsearch de 8).
     """
     clave = _track_key(raw)
     hit = _track_match_cache_get(clave)
@@ -1060,10 +1132,24 @@ async def _buscar_pista_suelta(raw: dict, ysrc, *,
     from .matcher import enrich_with_ytdlp
 
     async def _buscar() -> dict:
+        if origin_query:
+            candidatos = _candidates_cache_get(origin_query, _GROUP_SEARCH_LIMIT)
+            if candidatos is not None:
+                res = await enrich_with_ytdlp(
+                    [raw], origin_query, _YtConCircuito(ysrc),
+                    limit=_GROUP_SEARCH_LIMIT, videos=candidatos)
+                if (res.get(clave) or {}).get("video"):
+                    _track_match_cache_put(clave, res[clave])
+                    return res
         track_artist = raw.get("artistName") or artista
         query = f"{track_artist} {raw.get('trackName', '')}".strip()
-        res = await enrich_with_ytdlp([raw], query, _YtConCircuito(ysrc),
-                                      limit=_ALBUM_TRACK_LIMIT)
+        yt = _YtConCircuito(ysrc)
+        # Corrutina sin await: la cubre el try/except de enrich_with_ytdlp, asi
+        # un muro o un fallo de red siguen cayendo a "sin video" en vez de
+        # tumbar la ruta (igual que la busqueda grupal en _search_songs_eventos).
+        res = await enrich_with_ytdlp(
+            [raw], query, yt, limit=_ALBUM_TRACK_LIMIT,
+            videos=_search_candidates_cached(yt, query, _ALBUM_TRACK_LIMIT))
         # Sin la clave la busqueda fallo (red, muro): no es un "no hay video"
         # y no se guarda, o la pista quedaria diez minutos en 30 s.
         if clave in res:
@@ -1436,31 +1522,27 @@ async def _search_songs_eventos(q: str, limit: int, *,
     """Modo Musica con eventos progresivos.
 
     `catalog` se emite apenas contesta iTunes, antes de que termine el match de
-    YouTube. Con `stream=True` las pistas del top 10 que el grupo no emparejo
-    se buscan sueltas y se anuncian una a una (las demas quedan `lazy`). Sin
-    stream se conserva la respuesta de siempre: una sola busqueda grupal,
-    orden full-first y ninguna busqueda suelta.
+    YouTube. Con `stream=True` lo que el grupo no emparejo queda `lazy`: se
+    busca suelto recien al hacerse visible (o al tocar la fila), nunca aca
+    adentro, asi `done` no espera ningun ytsearch por pista. Sin stream se
+    conserva la respuesta de siempre: una sola busqueda grupal, orden
+    full-first y ninguna busqueda suelta.
     """
-    import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
+    from .ytdlp_source import ensure_yt_dlp_imported
+    await ensure_yt_dlp_imported()
     from .matcher import catalog_status, enrich_with_ytdlp
     _register_ytdlp()
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
 
-    # 1) catalogo de iTunes y busqueda grupal de YouTube en paralelo: la de
-    # YouTube solo depende de la consulta, no de lo que encuentre iTunes.
+    # 1) catalogo de iTunes primero. La busqueda de YouTube es lo caro: recien
+    # se decide si hace falta despues de ver que trajo iTunes y que de eso ya
+    # esta en la cache de matches (una busqueda totalmente cacheada no debe
+    # pedirle nada a YouTube).
     isrc = BY_NAME["itunes"]
-    videos = asyncio.ensure_future(ysrc.search_candidates(q, limit=40)) if yt_on else None
-    try:
-        it_items = await isrc._raw_search(q, limit=min(limit, 30))
-    except BaseException:
-        if videos:
-            videos.cancel()
-        raise
+    it_items = await isrc._raw_search(q, limit=min(limit, 30))
     catalog = catalog_status(q, it_items)
     if not it_items:
-        if videos:
-            videos.cancel()
         yield "catalog", {"query": q, "mode": "matched", "ytdlp": yt_on,
                           "catalog": catalog, "count": 0, "results": []}
         # El cuerpo vacio de siempre no tenia clave `full`.
@@ -1468,7 +1550,7 @@ async def _search_songs_eventos(q: str, limit: int, *,
                        "results": [], "ytdlp": yt_on, "catalog": catalog}
         return
 
-    _track_raw_put(it_items)
+    _track_raw_put(it_items, query=q)
     inicial = "pending" if (stream and yt_on) else "none"
     estado = {_track_key(it): inicial for it in it_items}
     matches: dict = {}
@@ -1496,24 +1578,33 @@ async def _search_songs_eventos(q: str, limit: int, *,
                       "results": [_fila(it, estado[_track_key(it)])
                                   for it in it_items]}
 
-    # 2) un solo match grupal reparte los 40 videos entre todas las pistas.
-    # Lo ya cacheado queda fuera: sus videos no le quitan sitio a las demas.
+    # 2) un solo match grupal reparte los candidatos entre las que faltan. Lo
+    # ya cacheado queda fuera (sus videos no le quitan sitio a las demas) y,
+    # si no falta nada, ni se arranca la busqueda en YouTube.
     faltan = [it for it in it_items if estado[_track_key(it)] != "full"]
     if yt_on and faltan:
-        res = await enrich_with_ytdlp(faltan, q, ysrc, videos=videos)
+        videos = asyncio.ensure_future(_search_candidates_cached(
+            _YtConCircuito(ysrc), q, _GROUP_SEARCH_LIMIT))
+        try:
+            res = await enrich_with_ytdlp(faltan, q, ysrc,
+                                          limit=_GROUP_SEARCH_LIMIT, videos=videos)
+        finally:
+            # Cliente desconectado (o iTunes/matcher tiro): no dejar la
+            # busqueda de candidatos volando sin nadie que la espere.
+            if not videos.done():
+                videos.cancel()
         _track_match_cache_put_muchos(res)
         for clave, m in res.items():
             if (m or {}).get("video") and clave in estado:
                 matches[clave] = m
                 estado[clave] = "full"
-    elif videos:
-        videos.cancel()
 
-    # Fuera del top 10 nadie busca en este momento: se busca al hacer visible.
+    # Nadie busca mas en este momento: lo que sigue sin video se resuelve al
+    # hacerse visible (scroll) o al tocar la fila, con su propio pedido y, si
+    # es la misma busqueda, reusando estos mismos candidatos (sin red).
     if stream:
-        for idx, it in enumerate(it_items):
-            clave = _track_key(it)
-            if idx >= 10 and estado[clave] == "pending":
+        for clave in estado:
+            if estado[clave] == "pending":
                 estado[clave] = "lazy"
 
     cambiadas = [it for it in it_items
@@ -1522,48 +1613,7 @@ async def _search_songs_eventos(q: str, limit: int, *,
         yield "tracks", {"tracks": [_fila(it, estado[_track_key(it)])
                                     for it in cambiadas]}
 
-    # 3) las del top 10 que siguen pendientes se buscan sueltas, de a 6 y en
-    # cuanto termina cada una se anuncia. El circuito abierto las deja en none.
-    if stream and yt_on and any(estado[_track_key(it)] == "pending"
-                                for it in it_items[:10]):
-        sem = _search_single_sem()
-        por_clave = {_track_key(it): it for it in it_items}
-
-        async def _una(clave):
-            res = await _buscar_pista_suelta(por_clave[clave], ysrc, sem=sem)
-            return clave, res
-
-        tareas = [asyncio.create_task(_una(_track_key(it)))
-                  for it in it_items[:10]
-                  if estado[_track_key(it)] == "pending"]
-        try:
-            for lista in asyncio.as_completed(tareas):
-                try:
-                    clave, res = await lista
-                except Exception as e:
-                    log.warning("search match suelto fallo: %s", e)
-                    continue
-                m = res.get(clave, {})
-                estado[clave] = "full" if (m or {}).get("video") else "none"
-                if estado[clave] == "full":
-                    matches[clave] = m
-                yield "tracks", {"tracks": [_fila(por_clave[clave],
-                                                  estado[clave])]}
-        finally:
-            # Cliente desconectado: no dejar busquedas huerfanas.
-            for t in tareas:
-                if not t.done():
-                    t.cancel()
-            await asyncio.gather(*tareas, return_exceptions=True)
-
-        rezagadas = [it for it in it_items[:10]
-                     if estado[_track_key(it)] == "pending"]
-        if rezagadas:
-            for it in rezagadas:
-                estado[_track_key(it)] = "none"
-            yield "tracks", {"tracks": [_fila(it, "none") for it in rezagadas]}
-
-    # 4) payload final; la ruta JSON lo devuelve entero y el stream solo saca
+    # 3) payload final; la ruta JSON lo devuelve entero y el stream solo saca
     # `full` y `count` (el frontend ya tiene las filas de los lotes).
     out = []
     for it in it_items:
@@ -1632,26 +1682,18 @@ async def resolve(request: Request):
     t = payload.to_track()
     try:
         if t.source == "ytdlp":
-            # resolver via yt-dlp al endpoint de audio
-            import yt_dlp
+            # resolver via el mismo cache/camino rapido que /api/stream: antes
+            # esta ruta hacia su PROPIA extraccion completa (youtube_opts, sin
+            # visitor_data) y /api/stream volvia a resolver el mismo video
+            # para reproducirlo. Con esto queda una sola extraccion por toque.
             url = t.extra.get("webpage_url")
             if not url:
                 raise ValueError("falta webpage_url")
-            from .ytdlp_source import youtube_opts
-            opts = youtube_opts({"quiet": True, "skip_download": True,
-                                 "no_warnings": True})
-            loop = asyncio.get_running_loop()
-
-            def _run():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    fmts = info.get("formats", [])
-                    audio = [f for f in fmts if f.get("acodec") != "none"
-                             and f.get("vcodec") == "none"]
-                    pick = max(audio, key=lambda f: f.get("abr") or 0) if audio else info
-                    return pick.get("url") or info.get("url")
-
-            t.audio_url = await loop.run_in_executor(None, _run)
+            from . import stream as stream_mod
+            from .ytdlp_source import ensure_yt_dlp_imported
+            await ensure_yt_dlp_imported()
+            info = await stream_mod.resolve(url)
+            t.audio_url = info.url
             t.license = "ToS de la plataforma (uso personal)"
             from .identify import similarity, verdict
             from .ytdlp_source import identity_query

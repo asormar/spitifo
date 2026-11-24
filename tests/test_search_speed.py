@@ -19,11 +19,13 @@ class _YtFalso:
     def __init__(self, empezo: asyncio.Event | None = None):
         self.empezo = empezo
         self.cancelada = False
+        self.llamadas = 0
 
     def available(self):
         return True
 
     async def search_candidates(self, q, limit=20):
+        self.llamadas += 1
         if self.empezo:
             self.empezo.set()
         try:
@@ -43,14 +45,18 @@ def con_youtube(monkeypatch):
     return poner
 
 
-def test_youtube_arranca_sin_esperar_a_itunes(monkeypatch, con_youtube):
+def test_youtube_espera_a_saber_que_falta_antes_de_arrancar(monkeypatch, con_youtube):
+    """YouTube es lo caro: recien arranca despues de ver el catalogo de
+    iTunes y que de eso no este ya en la cache de matches (ver
+    `test_sin_resultados_de_itunes_no_toca_youtube` y
+    `test_catalogo_totalmente_cacheado_no_toca_youtube` para los casos donde
+    ni siquiera arranca)."""
     async def correr():
-        empezo = asyncio.Event()
-        con_youtube(_YtFalso(empezo))
+        yt = _YtFalso()
+        con_youtube(yt)
 
         async def itunes(self, q, limit=20):
-            # Si YouTube esperara a iTunes, este evento no llegaria nunca.
-            await asyncio.wait_for(empezo.wait(), 1)
+            assert yt.llamadas == 0, "YouTube no debe arrancar antes que iTunes"
             return [{"trackId": 1, "trackName": "Dreams", "artistName": "Fleetwood Mac"}]
 
         monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", itunes)
@@ -60,7 +66,8 @@ def test_youtube_arranca_sin_esperar_a_itunes(monkeypatch, con_youtube):
     assert data["count"] == 1
 
 
-def test_sin_resultados_de_itunes_se_cancela_la_busqueda_de_youtube(monkeypatch, con_youtube):
+def test_sin_resultados_de_itunes_no_toca_youtube(monkeypatch, con_youtube):
+    """Catalogo vacio: ni se decide si falta algo, directo no hay pistas."""
     yt = con_youtube(_YtFalso())
 
     async def itunes(self, q, limit=20):
@@ -70,12 +77,30 @@ def test_sin_resultados_de_itunes_se_cancela_la_busqueda_de_youtube(monkeypatch,
     monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", itunes)
 
     async def correr():
-        data = await main._search_matched("nada", 10)
-        await asyncio.sleep(0.01)
-        return data
+        return await main._search_matched("nada", 10)
 
     assert asyncio.run(correr())["count"] == 0
-    assert yt.cancelada
+    assert yt.llamadas == 0
+
+
+def test_catalogo_totalmente_cacheado_no_toca_youtube(monkeypatch, con_youtube):
+    """Finding #9 (network-caching): una busqueda cuyas pistas ya tienen
+    match cacheado no dispara ningun `search_candidates`."""
+    yt = con_youtube(_YtFalso())
+
+    async def itunes(self, q, limit=20):
+        return [{"trackId": 1, "trackName": "Dreams", "artistName": "Fleetwood Mac"}]
+
+    monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", itunes)
+    main._track_match_cache_put("1", {
+        "video": {"id": "v1", "title": "Dreams", "uploader": "Fleetwood Mac"},
+        "score": 0.9, "why": "canal",
+        "webpage_url": "https://www.youtube.com/watch?v=v1",
+    })
+
+    data = asyncio.run(main._search_matched("fleetwood mac dreams", 10))
+    assert data["full"] == 1
+    assert yt.llamadas == 0
 
 
 class _YdlFalso:

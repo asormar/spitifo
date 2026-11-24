@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -211,3 +212,61 @@ def test_sin_visitor_en_memoria_no_hay_extraccion_rapida():
     from backend.app import stream
     stream.clear()
     assert asyncio.run(stream.fast_raw(URL)) is None
+
+
+# ----------------------------------------------- import de yt_dlp en background
+def test_ensure_yt_dlp_imported_no_bloquea_el_loop(monkeypatch):
+    """Finding #3/#8 (search-latency, time-to-audio): `import yt_dlp` corre en
+    un hilo (`asyncio.to_thread`), no en el loop: una busqueda/play que lo
+    espera no congela al resto de la app mientras tanto."""
+    from backend.app import ytdlp_source as ys
+
+    llamadas = []
+
+    def _import_lento():
+        llamadas.append(1)
+        time.sleep(0.2)
+
+    monkeypatch.setattr(ys, "_import_yt_dlp_sync", _import_lento)
+    ys._IMPORT_TASK = None
+    try:
+        async def correr():
+            latidos = []
+
+            async def latir():
+                for _ in range(8):
+                    latidos.append(1)
+                    await asyncio.sleep(0.02)
+
+            await asyncio.gather(ys.ensure_yt_dlp_imported(), latir())
+            return latidos
+
+        latidos = asyncio.run(correr())
+    finally:
+        ys._IMPORT_TASK = None
+
+    assert llamadas == [1]
+    # el loop sigue latiendo cada ~20ms mientras el import de 200ms corre
+    # en un hilo aparte; si bloqueara el loop, latir() no completaria sus 8
+    # vueltas antes de que el import (sincrono) termine.
+    assert len(latidos) == 8
+
+
+def test_ensure_yt_dlp_imported_una_sola_vez(monkeypatch):
+    """El import se memoiza en la tarea, no hace falta nada mas: la segunda
+    espera no vuelve a importar."""
+    from backend.app import ytdlp_source as ys
+
+    llamadas = []
+    monkeypatch.setattr(ys, "_import_yt_dlp_sync", lambda: llamadas.append(1))
+    ys._IMPORT_TASK = None
+    try:
+        async def correr():
+            await ys.ensure_yt_dlp_imported()
+            await ys.ensure_yt_dlp_imported()
+
+        asyncio.run(correr())
+    finally:
+        ys._IMPORT_TASK = None
+
+    assert llamadas == [1]

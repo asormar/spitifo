@@ -150,14 +150,15 @@ class Source:
 
 
 # --------------------------------------------------------------------------
-# Cache de resultados de iTunes: acotada (128), TTL de 5 min, desalojo del mas
-# viejo primero. `album_detail` y `album_match` repiten la MISMA lookup: en un
+# Cache de resultados de iTunes: acotada (128), TTL de media hora (lo que dura
+# una sesion de escucha, igual que _TRACK_RAW_CACHE), desalojo del mas viejo
+# primero. `album_detail` y `album_match` repiten la MISMA lookup: en un
 # telefono eso son dos peticiones de red (y bateria) por cada visita al disco.
 # Los resultados se devuelven copiados para que ningun llamador pueda mutar lo
 # que quedo guardado. Los errores nunca entran: el `raise_for_status` salta
 # antes de guardar.
 # --------------------------------------------------------------------------
-ITUNES_CACHE_TTL_S = 300.0
+ITUNES_CACHE_TTL_S = 1800.0
 ITUNES_CACHE_MAX = 128
 
 _ITUNES_CACHE: "OrderedDict[tuple, tuple[float, Any]]" = OrderedDict()
@@ -332,11 +333,14 @@ class ITunesSource(Source):
         songs = [t for t in results if t.get("kind") == "song"]
         return collection, songs
 
+    @_cached
     async def lookup_track(self, track_id: str | int) -> dict | None:
         """Un item crudo de iTunes por trackId (lookup?id=...).
 
         La ruta de match puntual lo usa cuando la pista no estaba en la cache
-        de la busqueda que la origino. Reutiliza el httpx.Client compartido.
+        de la busqueda que la origino (expiro o el proceso reinicio). Cacheado
+        igual que el resto: sin esto, cada fila sin `_TRACK_RAW_CACHE` paga un
+        lookup nuevo aunque el mismo id ya se haya pedido antes.
         """
         r = await self.client.get(
             "https://itunes.apple.com/lookup", params={"id": track_id})

@@ -100,14 +100,17 @@ def _sin_alias_jp(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _sin_cache_de_match_de_pista():
-    """El match suelto y el circuito de YouTube no filtran entre tests."""
+    """El match suelto, los candidatos de YouTube y el circuito no filtran
+    entre tests."""
     from backend.app import main
     main._TRACK_MATCH_CACHE.clear()
     main._TRACK_RAW_CACHE.clear()
+    main._YT_CANDIDATES_CACHE.clear()
     main._breaker_reset()
     yield
     main._TRACK_MATCH_CACHE.clear()
     main._TRACK_RAW_CACHE.clear()
+    main._YT_CANDIDATES_CACHE.clear()
     main._breaker_reset()
 
 # --- tiempo maximo para cualquier test que hable con una API externa ----------
