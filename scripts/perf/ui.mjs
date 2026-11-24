@@ -6,6 +6,7 @@
 //   node scripts/perf/ui.mjs --launch <Spitifo.exe> [--runs 10] [--json]
 //   node scripts/perf/ui.mjs --adb [<path to adb>] [--runs 10] [--json]
 //   node scripts/perf/ui.mjs --endpoint http://127.0.0.1:9222 [--touch] [--reload]
+//   node scripts/perf/ui.mjs --endpoint <url> --reload --profile mid-range [--cpu-throttle 6]
 //
 // Windows: --launch starts the installed Spitifo.exe with WebView2's remote
 // debugging port open (WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS), so launch to
@@ -16,6 +17,23 @@
 // page that is already running (any Chromium started with
 // --remote-debugging-port); add --reload to load its root URL again first, with the
 // HTTP cache off, so the start-up is observed instead of bounded. --touch sends touch events instead of the mouse.
+//
+// --profile selects the device profile ("default", the bare Chromium the
+// --launch/--adb/--endpoint target already is, or "mid-range": CPU throttled
+// 4-6x through CDP, Lighthouse's "Slow 4G" network conditions, a 412x915
+// viewport at 2.625 device-scale-factor, and touch input), the same env var
+// SPITIFO_PERF_PROFILE works instead of the flag. "mid-range" stands in for
+// the brief's reference device (a Snapdragon 6-series phone on a mediocre 4G
+// connection): there is no such device in CI or on this machine, and
+// DevTools throttling does not reproduce a weaker microarchitecture's branch
+// prediction or memory bandwidth, so treat its numbers as a closer proxy than
+// the Pixel 9 Pro figures elsewhere in docs/performance.md, not as a
+// replacement for measuring on real mid-range hardware. --cpu-throttle (or
+// SPITIFO_PERF_CPU_THROTTLE) sets the rate, clamped to 4-6, default 4. The
+// profile is applied once, right after attaching, so it has no effect on
+// work the app already did before this script connected (true of --launch
+// and --adb; with --endpoint --reload the whole load is throttled). The
+// printed result always names the profile that ran ("profile").
 //
 // Every timing is taken inside the page:
 // - "usable" is when /api/library has answered AND the first content of the
@@ -44,8 +62,31 @@ const args = parseArgs(process.argv.slice(2));
 const adb = args.adb ? (args.adb === true ? "adb" : args.adb) : null;
 const endpoint = args.endpoint ?? (adb ? "http://127.0.0.1:9333" : "http://127.0.0.1:9222");
 const runs = Number(args.runs ?? 10);
-const touch = Boolean(args.touch) || Boolean(adb);
+const profileName = String(args.profile ?? process.env.SPITIFO_PERF_PROFILE ?? "default").toLowerCase();
+const midRange = ["mid-range", "midrange", "mid_range"].includes(profileName);
+const cpuThrottle = Math.min(6, Math.max(4, Number(args["cpu-throttle"] ?? process.env.SPITIFO_PERF_CPU_THROTTLE ?? 4)));
+const touch = Boolean(args.touch) || Boolean(adb) || midRange;
 const PACKAGE = "dev.spitifo";
+
+/** Applies the mid-range phone profile through CDP: CPU throttle, a "Slow 4G"
+ *  network (Lighthouse's preset: 150 ms RTT, 1.6 Mbps down, 750 Kbps up), and
+ *  a 412x915 viewport at 2.625 DPR, mobile + touch. */
+async function applyMidRangeProfile(cdp) {
+  await cdp.send("Network.enable");
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 150,
+    downloadThroughput: (1.6 * 1024 * 1024) / 8,
+    uploadThroughput: (750 * 1024) / 8,
+  });
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 412,
+    height: 915,
+    deviceScaleFactor: 2.625,
+    mobile: true,
+  });
+}
 
 function parseArgs(argv) {
   const out = {};
@@ -636,6 +677,11 @@ async function main() {
     result.warnings.push(msg);
     console.error(`ui.mjs: warning: ${msg}`);
   };
+  result.profile = midRange
+    ? `mid-range (CPU throttle ${cpuThrottle}x, Slow 4G, 412x915 @2.625 DPR, touch)`
+    : "default (no emulation)";
+  console.error(`ui.mjs: profile: ${result.profile}`);
+  if (midRange) await applyMidRangeProfile(cdp);
   // A desktop Chromium ignores touch input unless touch is emulated; on the
   // phone the input is real.
   if (touch && !adb) await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
