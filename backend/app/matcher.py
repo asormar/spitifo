@@ -227,6 +227,20 @@ def _score_pair_one(it_title: str, it_artist: str, it_dur: float,
     return round(max(0.0, min(1.0, score)), 4), why
 
 
+#: Kana y kanji (incluidos los de ancho completo): si nada de la busqueda los
+#: trae, no hay escritura japonesa que reconciliar y no se gasta ningun lookup.
+_JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
+
+
+def _japanese_in_play(query: str, videos: list[dict], itunes_tracks: list[dict]) -> bool:
+    textos = [query or ""]
+    textos += [f"{v.get('title') or ''} {v.get('uploader') or v.get('channel') or ''}"
+               for v in videos]
+    textos += [f"{it.get('trackName') or ''} {it.get('artistName') or ''}"
+               for it in itunes_tracks]
+    return any(_JAPANESE.search(t) for t in textos)
+
+
 async def _aliases_for(raw: dict) -> dict:
     """Nombres en japones de una ficha de iTunes. Best effort de verdad:
     ni un fallo de red ni un timeout pueden tumbar la busqueda. La cache vive
@@ -264,15 +278,6 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
         log.warning("matcher: ytdlp search fallo: %s", e)
         return {}
 
-    # Alias japoneses: la ficha suele venir en latin y el video en japones (o
-    # al reves). Se piden TODOS a la vez y se guardan en la ficha cruda para
-    # que el llamador los tenga tambien al armar el Track del veredicto.
-    alias_list = await asyncio.gather(
-        *(_aliases_for(it) for it in itunes_tracks), return_exceptions=True)
-    for it, alias in zip(itunes_tracks, alias_list):
-        if isinstance(alias, dict) and alias:
-            it["aliases"] = alias
-
     # Todas las parejas posibles y despues el reparto: de mejor a peor puntaje,
     # cada pista y cada video se usan una vez. Recorrer las pistas en orden y
     # darle a cada una su mejor video dejaba a la primera quedarse con el video
@@ -281,7 +286,8 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
             for it in itunes_tracks]
     pairs: list[tuple[float, int, int, str]] = []
     best_miss: dict[str, tuple[float, str]] = {}
-    for ti, it in enumerate(itunes_tracks):
+
+    def puntuar(ti: int, it: dict) -> None:
         title = it.get("trackName", "")
         artist = it.get("artistName", "")
         dur = (it.get("trackTimeMillis") or 0) / 1000
@@ -295,6 +301,25 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
                 pairs.append((s, ti, vi, w))
             elif s > best_miss.get(keys[ti], (-1.0, ""))[0]:
                 best_miss[keys[ti]] = (s, w)
+
+    for ti, it in enumerate(itunes_tracks):
+        puntuar(ti, it)
+
+    # Alias japoneses: la ficha suele venir en latin y el video en japones (o
+    # al reves). Cuestan un lookup a iTunes por pista, asi que solo se piden
+    # cuando hay japones en juego y solo para las pistas que se quedaron sin
+    # pareja; se guardan en la ficha cruda para que el llamador los tenga
+    # tambien al armar el Track del veredicto.
+    if _japanese_in_play(query, videos, itunes_tracks):
+        con_pareja = {p[1] for p in pairs}
+        sueltas = [ti for ti in range(len(itunes_tracks)) if ti not in con_pareja]
+        alias_list = await asyncio.gather(
+            *(_aliases_for(itunes_tracks[ti]) for ti in sueltas),
+            return_exceptions=True)
+        for ti, alias in zip(sueltas, alias_list):
+            if isinstance(alias, dict) and alias:
+                itunes_tracks[ti]["aliases"] = alias
+                puntuar(ti, itunes_tracks[ti])
     # orden estable: a igual puntaje, la pista que iTunes puso antes y el video
     # que YouTube puso antes
     pairs.sort(key=lambda p: (-p[0], p[1], p[2]))

@@ -24,7 +24,7 @@ from backend.app.saved import song_id
 from backend.app.sources import ITunesSource
 from backend.app.storage import set_storage
 from backend.app.storage.local import LocalStorage
-from backend.app.ytdlp_source import identity_reference
+from backend.app.ytdlp_source import identity_best_reference, identity_reference
 
 TRACK_ID = 1234567890
 DEFAULT = {"trackId": TRACK_ID, "trackName": "Mesmerizer", "artistName": "Satsuki"}
@@ -140,16 +140,66 @@ def test_enrich_with_ytdlp_uso_de_alias(monkeypatch, fake_ytdlp):
     assert raw["aliases"] == {"title": "メズマライザー", "artist": "サツキ"}
 
 
+def test_enrich_sin_japones_no_pide_alias(monkeypatch, fake_ytdlp):
+    """Cada alias es un lookup a iTunes: una busqueda sin kana ni kanji no
+    gasta ninguno."""
+    pedidos = []
+
+    async def _alias(ficha):
+        pedidos.append(ficha.get("trackId"))
+        return {}
+
+    monkeypatch.setattr(matcher, "_aliases_for", _alias)
+    raw = {"trackId": 1, "trackName": "Creep", "artistName": "Radiohead",
+           "trackTimeMillis": 238000}
+    videos = [{"id": "v1", "title": "Radiohead - Nope", "uploader": "Someone",
+               "duration": 100}]
+    asyncio.run(enrich_with_ytdlp([raw], "radiohead creep", fake_ytdlp(videos)))
+    assert pedidos == []
+
+
+def test_enrich_no_pide_alias_de_pistas_ya_emparejadas(monkeypatch, fake_ytdlp):
+    """Con japones en juego, solo las pistas sin pareja piden su alias."""
+    pedidos = []
+
+    async def _alias(ficha):
+        pedidos.append(ficha.get("trackId"))
+        return {}
+
+    monkeypatch.setattr(matcher, "_aliases_for", _alias)
+    ya = {"trackId": 1, "trackName": "Refrain", "artistName": "HAL",
+          "trackTimeMillis": 200000}
+    suelta = {**DEFAULT, "trackTimeMillis": 200000}
+    videos = [{"id": "v1", "title": "HAL - Refrain", "uploader": "HAL", "duration": 200},
+              {"id": "v2", "title": "サツキ - メズマライザー", "uploader": "サツキ",
+               "duration": 200}]
+    asyncio.run(enrich_with_ytdlp([ya, suelta], "q", fake_ytdlp(videos)))
+    assert pedidos == [TRACK_ID]
+
+
 # --------------------------------------------------------------- veredicto
-def test_identity_reference_con_alias_no_dice_no_es_lo_que_buscabas():
+def _track_con_alias() -> Track:
+    return Track(source="ytdlp", source_id="v1", title="Mesmerizer",
+                 artist="Satsuki",
+                 extra={"from_itunes": True,
+                        "aliases": {"title": "メズマライザー", "artist": "サツキ"}})
+
+
+def test_identity_con_alias_no_dice_no_es_lo_que_buscabas():
     """Con ficha de iTunes, el titulo japones del video SI es la cancion."""
-    track = Track(source="ytdlp", source_id="v1", title="Mesmerizer",
-                  artist="Satsuki",
-                  extra={"from_itunes": True,
-                         "aliases": {"title": "メズマライザー", "artist": "サツキ"}})
-    ref = identity_reference("satsuki mesmerizer", track, "t")
-    assert ref == "Satsuki Mesmerizer サツキ メズマライザー"
-    assert verdict(ref, "サツキ - メズマライザー")[0] == "match"
+    real = "サツキ - メズマライザー"
+    ref = identity_best_reference("satsuki mesmerizer", _track_con_alias(), real, real)
+    assert ref == "サツキ メズマライザー"
+    assert verdict(ref, real)[0] == "match"
+
+
+def test_identity_con_alias_no_hunde_el_video_en_latin():
+    """Los alias no se suman a la referencia: un video en latin con una palabra
+    de mas sigue coincidiendo como antes."""
+    real = "Satsuki - Mesmerizer (Official Video)"
+    ref = identity_best_reference("satsuki mesmerizer", _track_con_alias(), real, real)
+    assert ref == identity_reference("satsuki mesmerizer", _track_con_alias(), real)
+    assert verdict(ref, real)[0] == "match"
 
 
 # ------------------------------------------------------------ guardadas

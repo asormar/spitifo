@@ -127,16 +127,30 @@ def identity_reference(query: str | None, track: Track, fallback: str) -> str:
     if query and parse_youtube_url(query):
         return fallback
     if track.extra.get("from_itunes") and track.title:
-        ref = f"{track.artist or ''} {track.title}".strip()
-        # La ficha de iTunes puede estar en latin y el video en japones (o al
-        # reves). Los alias son SOLO los nombres que difieren, así que sumarlos
-        # deja que cualquiera de las dos escrituras cuente como la misma cancion.
-        aliases = track.extra.get("aliases") or {}
-        if isinstance(aliases, dict):
-            otros = [aliases.get(k) for k in ("artist", "title")]
-            ref = " ".join([ref] + [v for v in otros if isinstance(v, str)]).strip()
-        return ref
+        return f"{track.artist or ''} {track.title}".strip()
     return identity_query(query, fallback)
+
+
+def identity_best_reference(query: str | None, track: Track,
+                            real_title: str | None, fallback: str) -> str:
+    """La referencia de `identity_reference` o, si la ficha trae alias en otra
+    escritura (storefront jp), la variante que mejor coincide con el titulo
+    real. Juntar todo en una sola referencia no sirve, porque la similitud
+    divide por la lista mas corta y las palabras de mas hundirian a un video
+    titulado en la escritura de siempre.
+    """
+    from .identify import similarity
+    refs = [identity_reference(query, track, fallback)]
+    aliases = track.extra.get("aliases")
+    if track.extra.get("from_itunes") and track.title and isinstance(aliases, dict):
+        artistas = [track.artist or ""]
+        titulos = [track.title]
+        if isinstance(aliases.get("artist"), str):
+            artistas.append(aliases["artist"])
+        if isinstance(aliases.get("title"), str):
+            titulos.append(aliases["title"])
+        refs += [f"{a} {t}".strip() for a in artistas for t in titulos][1:]
+    return max(refs, key=lambda r: similarity(r, real_title))
 
 
 def _lock_de_ruta(clave: str) -> asyncio.Lock:
@@ -1091,8 +1105,9 @@ class YtDlpSource(Source):
         real_title = info.get("title")
         if real_title:
             from .identify import verdict
-            state, label = verdict(identity_reference(query, track, real_title),
-                                   real_title)
+            state, label = verdict(
+                identity_best_reference(query, track, real_title, real_title),
+                real_title)
             track.extra["real_title"] = real_title
             track.extra["real_artist"] = info.get("uploader")
             track.extra["match"] = state
@@ -1450,7 +1465,8 @@ class YtDlpSource(Source):
                 # publicaba en ningun lado del camino con job_id: la UI recibia
                 # status=done sin `match` y no podia avisar nada. La referencia es la
                 # ficha elegida o lo escrito (`identity_reference`); el titulo, la otra.
-                referencia = identity_reference(query, track, info_title or track.title)
+                referencia = identity_best_reference(
+                    query, track, info_title, info_title or track.title)
                 estado, etiqueta = verdict(referencia, info_title)
                 # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
                 # terminar ya trae el veredicto. Sin ficha y sin consulta, o con un
