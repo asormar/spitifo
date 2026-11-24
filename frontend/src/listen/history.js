@@ -41,10 +41,18 @@ const localCache = {
   },
 };
 
+/* Escribir en localStorage es sincrono y, con cientos de pistas distintas en
+   una sesion larga, el JSON a guardar crece a cientos de KB: hacerlo en CADA
+   evento bloquea el hilo principal cada vez mas. Se agrupan los escritos de
+   un segundo en uno: el estado en memoria (lo que lee la UI) sigue
+   actualizandose al instante, solo el disco se retrasa un poco. */
+const WRITE_DEBOUNCE_MS = 1_000;
+
 export function createHistory({
   fetchFn = (...a) => fetch(...a),
   now = () => Date.now() / 1000,
   cache = localCache,
+  windowRef = typeof window === "undefined" ? null : window,
 } = {}) {
   const cached = cache?.read();
   let state = {
@@ -54,18 +62,37 @@ export function createHistory({
   };
   const listeners = new Set();
   let loading = null;
+  let writeTimer = null;
+
+  /* Escribe ya mismo y cancela el aviso pendiente, si lo habia. Se usa al
+     cerrar la pagina: un timer de setTimeout no llega a disparar despues de
+     eso, asi que el ultimo evento se perderia sin este flush. */
+  const flush = () => {
+    if (writeTimer) {
+      clearTimeout(writeTimer);
+      writeTimer = null;
+    }
+    cache?.write({ tracks: state.tracks, recent: state.recent });
+  };
+
+  const scheduleWrite = () => {
+    if (!cache || writeTimer) return;
+    writeTimer = setTimeout(() => {
+      writeTimer = null;
+      cache.write({ tracks: state.tracks, recent: state.recent });
+    }, WRITE_DEBOUNCE_MS);
+  };
 
   const emit = (patch) => {
     state = { ...state, ...patch };
-    if ("tracks" in patch || "recent" in patch) {
-      cache?.write({ tracks: state.tracks, recent: state.recent });
-    }
+    if ("tracks" in patch || "recent" in patch) scheduleWrite();
     listeners.forEach((fn) => fn());
   };
   const subscribe = (fn) => {
     listeners.add(fn);
     return () => listeners.delete(fn);
   };
+  windowRef?.addEventListener("pagehide", flush);
 
   const load = (force = false) => {
     if (loading) return loading;
@@ -138,7 +165,7 @@ export function createHistory({
     return true;
   };
 
-  return { subscribe, getState: () => state, load, record };
+  return { subscribe, getState: () => state, load, record, flush };
 }
 
 export const history = createHistory();
