@@ -437,11 +437,10 @@ def test_lazy_priority_no_usa_el_semaphore(cliente, monkeypatch):
 
     original = main._buscar_pista_suelta
 
-    async def _espia(raw, ysrc, *, sem=None, artista="", priority=False,
-                     origin_query=None):
+    async def _espia(raw, ysrc, *, sem=None, artista="", priority=False):
         vistos.append(priority)
         return await original(raw, ysrc, sem=sem, artista=artista,
-                              priority=priority, origin_query=origin_query)
+                              priority=priority)
 
     monkeypatch.setattr(main, "_buscar_pista_suelta", _espia)
     assert cliente.get("/api/search/match/1?priority=1").status_code == 200
@@ -555,8 +554,7 @@ def test_lazy_y_stream_comparten_el_mismo_limite(monkeypatch):
         assert a._value == main._SEARCH_SINGLE_SEMAPHORE
         usados = []
 
-        async def _suelta(raw, ysrc, *, sem=None, artista="", priority=False,
-                         origin_query=None):
+        async def _suelta(raw, ysrc, *, sem=None, artista="", priority=False):
             usados.append(sem)
             return {}
 
@@ -621,20 +619,3 @@ def test_candidatos_cache_normaliza_ttl_y_tope(monkeypatch):
     main._candidates_cache_put("una mas", 40, [])
     assert len(main._YT_CANDIDATES_CACHE) == main._YT_CANDIDATES_MAX
     assert main._candidates_cache_get("q0", 40) is None  # la mas vieja, afuera
-
-
-def test_buscar_pista_suelta_reusa_candidatos_de_la_busqueda_grupal(monkeypatch):
-    """Finding #4 (search-latency): si la busqueda grupal que trajo esta
-    ficha todavia tiene sus candidatos en cache, la fila lazy se resuelve SIN
-    pedirle nada a YouTube."""
-    yt = _Youtube()
-    raw = _song(1, "C1")
-    main._candidates_cache_put("linkin park", main._GROUP_SEARCH_LIMIT,
-                              [_video("1", "C1")["video"]])
-
-    async def correr():
-        return await main._buscar_pista_suelta(raw, yt, origin_query="linkin park")
-
-    res = asyncio.run(correr())
-    assert res[main._track_key(raw)]["video"]["id"] == "v1"
-    assert yt.llamadas == []  # ningun ytsearch nuevo: salio de la cache

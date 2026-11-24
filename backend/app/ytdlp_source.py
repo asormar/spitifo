@@ -57,11 +57,19 @@ async def ensure_yt_dlp_imported() -> None:
 
     El modulo se carga una sola vez (Python lo cachea en sys.modules): despues
     de la primera vez, `import yt_dlp` es practicamente gratis, asi que no hace
-    falta memoizar nada mas que la tarea en si."""
+    falta memoizar nada mas que la tarea en si. Una tarea que fallo o se
+    cancelo se vuelve a intentar (un zip de yt-dlp roto no deja la busqueda
+    muerta hasta reiniciar), y `shield` evita que un pedido cancelado (el
+    cliente se fue) cancele el import que esperan todos los demas."""
     global _IMPORT_TASK
-    if _IMPORT_TASK is None:
-        _IMPORT_TASK = asyncio.ensure_future(asyncio.to_thread(_import_yt_dlp_sync))
-    await _IMPORT_TASK
+    task = _IMPORT_TASK
+    if task is not None and task.done() and not task.cancelled() \
+            and task.exception() is None:
+        return
+    if task is None or task.done():
+        task = _IMPORT_TASK = asyncio.ensure_future(
+            asyncio.to_thread(_import_yt_dlp_sync))
+    await asyncio.shield(task)
 
 # Estados finales: un job en cualquiera de estos ya no se va a tocar mas.
 _DONE_STATES = ("done", "error")
