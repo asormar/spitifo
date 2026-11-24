@@ -325,12 +325,18 @@ async def lifespan(app: Starlette):
     # de uno por cada uno al primer pedido de cada pantalla (P-drive-io-4).
     # Sin red (disco local, o la nube caida) no es grave: cada registro cae
     # a listar el suyo, como siempre.
+    # En segundo plano: el arranque nunca espera a la red (sin conexion, el
+    # listado podria tardar el timeout entero antes de SPITIFO_READY).
     warm = getattr(storage, "warm_small_files", None)
     if warm is not None:
-        try:
-            await asyncio.to_thread(warm)
-        except Exception as exc:
-            log.info("no se pudo precalentar los archivos chicos: %s", exc)
+        async def _warm_small_files() -> None:
+            try:
+                await asyncio.to_thread(warm)
+            except Exception as exc:
+                log.info("no se pudo precalentar los archivos chicos: %s", exc)
+        tarea = asyncio.create_task(_warm_small_files())
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
     yield
     for s in ALL_SOURCES:
         await s.aclose()
@@ -2125,6 +2131,15 @@ async def _fileinfo_records(storage) -> dict:
         return {}
 
 
+def _library_body(describe, files: list) -> tuple[bytes, str]:
+    """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
+    pistas son cerca de un megabyte que no se serializa en el loop."""
+    body = json.dumps({"library": describe, "count": len(files),
+                       "files": files}, ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+    return body, _library_etag(body)
+
+
 def _library_etag(body: bytes) -> str:
     """ETag debil del cuerpo de `/api/library`: mismos bytes, mismo ETag."""
     return f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
@@ -2147,10 +2162,8 @@ async def library(request: Request):
     files, records = await asyncio.gather(
         asyncio.to_thread(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
-    body = json.dumps({"library": storage.describe(), "count": len(files),
-                       "files": files}, ensure_ascii=False,
-                      separators=(",", ":")).encode("utf-8")
-    etag = _library_etag(body)
+    body, etag = await asyncio.to_thread(_library_body, storage.describe(),
+                                         files)
     headers = {**_LIBRARY_CACHE, "ETag": etag}
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:

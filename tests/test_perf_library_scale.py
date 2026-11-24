@@ -28,6 +28,7 @@ from starlette.testclient import TestClient
 
 from backend.app.cloud.cache import AudioCache
 from backend.app.cloud.drive import INDEX_TTL, DriveStorage
+from backend.app.cloud.library_index import LibraryIndex
 from backend.app.cloud.oauth import Provider, TokenSet
 from backend.app.cloud.tokens import PROACTIVE_REFRESH_MARGIN, StoredTokenSource
 from backend.app.main import create_app
@@ -224,6 +225,92 @@ def test_dos_dispositivos_escribiendo_a_la_vez_mergean_sin_perder_nada(tmp_path)
 
     now[0] += INDEX_TTL + 1
     assert {f.key for f in a.list()} == {"A/a.mp3", "B/b.mp3"}
+
+
+def _own_index_files(fake: FakeDrive, device_id: str = "A") -> list[str]:
+    return [fid for fid, f in fake.files.items()
+            if f["name"] == f"index-{device_id}.json"]
+
+
+def test_dos_subidas_del_indice_a_la_vez_no_se_pisan(tmp_path):
+    """Dos descargas que terminan juntas, FUERA de una tanda: la subida del
+    indice de la primera tarda, la segunda aplica su cambio mientras tanto.
+    Tiene que quedar UN solo `index-A.json` y con las dos claves (sin el
+    candado de subida, la segunda creaba un segundo archivo, o la vieja
+    pisaba a la nueva)."""
+    fake = FakeDrive()
+    storage = _storage(fake, tmp_path)
+    original = storage._store_small
+    primera = threading.Event()
+
+    def lenta(name, data, ref=None):
+        if name.startswith("index-") and not primera.is_set():
+            primera.set()
+            limite = time.monotonic() + 2
+            while ("A/b.mp3" not in storage._own.entries
+                   and time.monotonic() < limite):
+                time.sleep(0.01)
+        return original(name, data, ref)
+
+    storage._store_small = lenta
+    ta = threading.Thread(target=_put, args=(storage, tmp_path, "A/a.mp3"))
+    ta.start()
+    assert primera.wait(2)
+    tb = threading.Thread(target=_put, args=(storage, tmp_path, "A/b.mp3"))
+    tb.start()
+    ta.join()
+    tb.join()
+
+    propios = _own_index_files(fake)
+    assert len(propios) == 1
+    subido = LibraryIndex.from_bytes(fake.data_of(propios[0]))
+    assert {"A/a.mp3", "A/b.mp3"} <= set(subido.entries)
+
+
+def test_un_archivo_chico_nuevo_invalida_el_listado_combinado(tmp_path):
+    """El listado combinado del arranque no conoce el indice que se crea
+    despues: una relectura forzada dentro de su TTL tiene que verlo igual
+    (si no, el indice propio quedaba "ausente" y la proxima escritura
+    creaba un segundo `index-A.json`)."""
+    fake = FakeDrive()
+    now = [1000.0]
+    storage = _storage(fake, tmp_path, clock=lambda: now[0])
+    storage.warm_small_files()
+    _put(storage, tmp_path, "A/x.mp3")
+
+    assert "A/x.mp3" in storage._load_index(force=True).entries
+    _put(storage, tmp_path, "A/y.mp3")
+    assert len(_own_index_files(fake)) == 1
+
+
+def test_un_cambio_sin_subir_sobrevive_a_la_relectura_por_ttl(tmp_path):
+    """La subida del indice falla (sin red): el cambio queda en memoria y
+    marcado. Una relectura por TTL no lo pisa con la copia vieja de la nube,
+    y el proximo `flush_index` lo sube."""
+    fake = FakeDrive()
+    now = [1000.0]
+    storage = _storage(fake, tmp_path, clock=lambda: now[0])
+    _put(storage, tmp_path, "A/1.mp3")
+
+    original = storage._store_small
+
+    def sin_red(name, data, ref=None):
+        if name.startswith("index-"):
+            raise httpx.ConnectError("sin red")
+        return original(name, data, ref)
+
+    storage._store_small = sin_red
+    with pytest.raises(httpx.ConnectError):
+        _put(storage, tmp_path, "A/2.mp3")
+    storage._store_small = original
+
+    now[0] += INDEX_TTL + 1
+    assert "A/2.mp3" in storage._load_index().entries
+    storage.flush_index()
+
+    (tmp_path / "otra").mkdir()
+    otra = _storage(fake, tmp_path / "otra", clock=lambda: now[0])
+    assert {"A/1.mp3", "A/2.mp3"} <= {f.key for f in otra.list()}
 
 
 # ------------------------------------------------------------- audio cache

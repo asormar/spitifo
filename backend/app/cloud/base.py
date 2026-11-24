@@ -328,6 +328,13 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # que fallo), y cuantos `batch_index_writes` hay anidados ahora mismo.
         self._own_dirty = False
         self._index_batch_depth = 0
+        # Una sola subida del indice propio a la vez: dos descargas que
+        # terminan juntas no pueden subir versiones fuera de orden (la mas
+        # vieja pisaria a la nueva) ni crear dos `index-<device>.json`.
+        self._index_flush_lock = threading.Lock()
+        # Sube cada vez que un archivo chico se crea o se borra: un listado
+        # combinado pedido ANTES de ese cambio no se guarda como fresco.
+        self._small_gen = 0
         # True mientras los ids de carpeta vengan del disco y ninguna request
         # los haya confirmado: un listado vacio con ellos se vuelve a verificar.
         self._folders_from_disk = False
@@ -472,7 +479,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         """
         self._list_small(*SMALL_PREFIXES)
 
-    def _list_small(self, *prefixes: str) -> list[RemoteFile]:
+    def _list_small(self, *prefixes: str, fresh: bool = False) -> list[RemoteFile]:
         """Listado de los archivos chicos con alguno de `prefixes` (una request).
 
         Si un listado reciente de TODOS los prefijos (`warm_small_files`, o un
@@ -481,10 +488,15 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         entrada al hook `_list_small_files`: deja lo que dijo el listado (para
         decidir despues si la copia local sirve) y saca de la copia local lo
         que ya no existe en la nube.
+
+        `fresh` (una relectura forzada) siempre pregunta a la nube: forzar es
+        justamente querer ver lo que otro dispositivo escribio recien.
         """
         with self._small_lock:
             warm, warm_at = self._small_warm, self._small_warm_at
-        if warm is not None and (self._clock() - warm_at) < INDEX_TTL:
+            gen = self._small_gen
+        if (not fresh and warm is not None
+                and (self._clock() - warm_at) < INDEX_TTL):
             return [rf for rf in warm if rf.name.startswith(prefixes)]
         files = list(self._list_small_files(prefixes))
         by_prefix: dict[str, set[str]] = {prefix: set() for prefix in prefixes}
@@ -493,9 +505,13 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 prefix = _prefix_of(rf.name, prefixes)
                 by_prefix[prefix].add(rf.remote_id)
                 self._small[rf.remote_id] = (rf.name, rf.stamp, prefix)
-            if set(prefixes) == set(SMALL_PREFIXES):
+            if set(prefixes) == set(SMALL_PREFIXES) and gen == self._small_gen:
                 self._small_warm = files
                 self._small_warm_at = self._clock()
+            elif fresh:
+                # Lo que se acaba de ver es mas nuevo que el listado
+                # combinado: este ya no sirve para ningun prefijo.
+                self._small_warm = None
         if self._snap is not None:
             for prefix, keep in by_prefix.items():
                 self._snap.prune(prefix, keep)
@@ -618,9 +634,15 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         self._snap.put(remote_id, name, prefix, stamp, data)
         self._snap.save()
 
+    def _drop_warm_locked(self) -> None:
+        """Un archivo chico nuevo o borrado deja viejo el listado combinado."""
+        self._small_warm = None
+        self._small_gen += 1
+
     def _forget_small(self, remote_id: str) -> None:
         with self._small_lock:
             self._small.pop(remote_id, None)
+            self._drop_warm_locked()
         if self._snap is not None:
             self._snap.discard(remote_id)
             self._snap.save()
@@ -634,6 +656,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         else:
             meta = self._create_file(name, data)
             remote_id = str(meta["id"])
+            with self._small_lock:
+                self._drop_warm_locked()
         self._remember_small(remote_id, name, self._stamp_of(meta), data)
         return remote_id
 
@@ -691,7 +715,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = LibraryIndex()
             own_id: str | None = None
             own_unreadable = False
-            files = [rf for rf in self._list_small(INDEX_PREFIX)
+            files = [rf for rf in self._list_small(INDEX_PREFIX, fresh=force)
                      if rf.name.startswith(INDEX_PREFIX)]
             blobs = self._read_many(files)
             for rf in files:
@@ -709,6 +733,15 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 if name == self._own_name():
                     own_id = remote_id
                     own = parsed
+            if self._own_dirty:
+                # Un cambio propio todavia sin subir (una tanda abierta, o una
+                # subida que fallo): la copia de la nube es VIEJA para
+                # nuestras claves. Somos el unico escritor de nuestro
+                # archivo, asi que manda la de memoria, mergeada encima.
+                own = self._own
+                own_id = own_id or self._own_index_id
+                own_unreadable = False
+                merged = own.merge(merged)
             self._index = merged
             self._index_at = self._clock()
             self._own_index_id = own_id
@@ -757,17 +790,23 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         que todavia no esta en la nube), `batch_index_writes` al cerrar su
         bloque, y el apagado de la app. Fuera de un bloque de tanda esto es un
         no-op casi siempre: `_write_own` ya dejo todo subido.
+
+        Las subidas van de a una (`_index_flush_lock`), sin tener tomado
+        `_index_lock` durante la red: la segunda espera a la primera y sube
+        la version mas nueva al MISMO archivo.
         """
-        with self._index_lock:
-            if not self._own_dirty:
-                return
-            own = self._own
-            own_id = self._own_index_id
-        remote_id = self._store_small(self._own_name(), own.to_bytes(), own_id)
-        with self._index_lock:
-            self._own_index_id = remote_id
-            if self._own is own:
-                self._own_dirty = False
+        with self._index_flush_lock:
+            with self._index_lock:
+                if not self._own_dirty:
+                    return
+                own = self._own
+                own_id = self._own_index_id
+            remote_id = self._store_small(self._own_name(), own.to_bytes(),
+                                          own_id)
+            with self._index_lock:
+                self._own_index_id = remote_id
+                if self._own is own:
+                    self._own_dirty = False
             # Si `self._own` cambio de nuevo mientras esto subia, queda sucio:
             # el proximo `flush_index` (o el cierre de la app) lo termina.
 
@@ -849,7 +888,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = PlaylistBook()
             own_id: str | None = None
             own_unreadable = False
-            files = [rf for rf in self._list_small(PLAYLIST_PREFIX)
+            files = [rf for rf in self._list_small(PLAYLIST_PREFIX, fresh=force)
                      if rf.name.startswith(PLAYLIST_PREFIX)]
             blobs = self._read_many(files)
             for rf in files:
@@ -920,7 +959,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = SavedBook()
             own_id: str | None = None
             own_unreadable = False
-            files = [rf for rf in self._list_small(LIBRARY_PREFIX)
+            files = [rf for rf in self._list_small(LIBRARY_PREFIX, fresh=force)
                      if rf.name.startswith(LIBRARY_PREFIX)]
             blobs = self._read_many(files)
             for rf in files:
@@ -990,7 +1029,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             own = ArtBook()
             own_id: str | None = None
             own_unreadable = False
-            files = [rf for rf in self._list_small(ART_PREFIX)
+            files = [rf for rf in self._list_small(ART_PREFIX, fresh=force)
                      if rf.name.startswith(ART_PREFIX)]
             blobs = self._read_many(files)
             for rf in files:
