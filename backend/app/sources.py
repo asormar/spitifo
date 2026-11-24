@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from .config import USER_AGENT
+from .identify import fold
 from .models import Track
 
 log = logging.getLogger("spitifo.sources")
@@ -344,6 +345,52 @@ class ITunesSource(Source):
             if str(item.get("trackId")) == str(track_id):
                 return item
         return None
+
+    @_cached
+    async def _jp_names(self, track_id: str | int) -> dict:
+        """Titulo y artista del storefront de Japon para un trackId, crudos.
+
+        Mismo cliente, timeout y cache que el resto de iTunes. Best effort: un
+        fallo devuelve {} (que `_vacio` no guarda) para que la proxima busqueda
+        pueda reintentar sin quedar colgada de un resultado viejo.
+        """
+        try:
+            r = await self.client.get(
+                "https://itunes.apple.com/lookup",
+                params={"id": track_id, "country": "jp"})
+            r.raise_for_status()
+            results = r.json().get("results", [])
+        except Exception as e:
+            log.warning("iTunes lookup jp fallo para %s: %s", track_id, e)
+            return {}
+        item = next((t for t in results
+                     if str(t.get("trackId")) == str(track_id)), None)
+        if not item:
+            return {}
+        return {"title": item.get("trackName") or "",
+                "artist": item.get("artistName") or ""}
+
+    async def lookup_aliases(self, track: dict) -> dict:
+        """Los nombres en japones de una pista QUE DIFIEREN de su ficha actual.
+
+        Las fichas de iTunes suelen venir en latin y los videos de YouTube (o
+        otras fuentes) en japones, y al reves: sin alias el matcher ve titulos
+        distintos y el veredicto dice "NO es lo que buscabas" aunque sea la
+        misma cancion. El lookup con `country=jp` da el nombre nativo cuando
+        iTunes lo tiene; si dice lo mismo que la busqueda por defecto, no hay
+        alias que agregar. Best effort: ante un fallo devuelve {} y la busqueda
+        sigue igual.
+        """
+        track_id = track.get("trackId")
+        if not track_id:
+            return {}
+        jp = await self._jp_names(track_id)
+        aliases: dict[str, str] = {}
+        if jp.get("title") and fold(jp["title"]) != fold(track.get("trackName")):
+            aliases["title"] = jp["title"]
+        if jp.get("artist") and fold(jp["artist"]) != fold(track.get("artistName")):
+            aliases["artist"] = jp["artist"]
+        return aliases
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         r = await self.client.get(

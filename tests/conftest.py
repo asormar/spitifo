@@ -83,6 +83,22 @@ def _sin_cache_de_itunes():
 
 
 @pytest.fixture(autouse=True)
+def _sin_alias_jp(monkeypatch):
+    """El matcher NO pide alias japoneses por red en los tests.
+
+    Son best effort y viven detras de un timeout corto, pero ningun test
+    deberia golpear iTunes por ellos: los casos que los prueban inyectan el
+    alias directamente o usan un `MockTransport` en `ITunesSource`.
+    """
+    from backend.app import matcher
+
+    async def _sin_alias(raw):
+        return {}
+
+    monkeypatch.setattr(matcher, "_aliases_for", _sin_alias)
+
+
+@pytest.fixture(autouse=True)
 def _sin_cache_de_match_de_pista():
     """El match suelto y el circuito de YouTube no filtran entre tests."""
     from backend.app import main

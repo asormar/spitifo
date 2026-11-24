@@ -127,7 +127,15 @@ def identity_reference(query: str | None, track: Track, fallback: str) -> str:
     if query and parse_youtube_url(query):
         return fallback
     if track.extra.get("from_itunes") and track.title:
-        return f"{track.artist or ''} {track.title}".strip()
+        ref = f"{track.artist or ''} {track.title}".strip()
+        # La ficha de iTunes puede estar en latin y el video en japones (o al
+        # reves). Los alias son SOLO los nombres que difieren, así que sumarlos
+        # deja que cualquiera de las dos escrituras cuente como la misma cancion.
+        aliases = track.extra.get("aliases") or {}
+        if isinstance(aliases, dict):
+            otros = [aliases.get(k) for k in ("artist", "title")]
+            ref = " ".join([ref] + [v for v in otros if isinstance(v, str)]).strip()
+        return ref
     return identity_query(query, fallback)
 
 
