@@ -36,7 +36,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, release_check, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
@@ -572,6 +572,18 @@ async def health(request: Request):
         "ytdlp_pending": await asyncio.to_thread(ytdlp_update.pending_version),
         "js_runtime": configured_js_runtime(),
     })
+
+
+async def release_latest(request: Request):
+    """GET /api/release/latest -> {"version", "url"} de la ultima release.
+
+    `?force=1` ignora la cache de 24 h (el boton "Buscar actualizaciones" de
+    Ajustes). Sin internet devuelve los dos en None: nunca un error HTTP, para
+    que Ajustes lo trate como un estado tranquilo.
+    """
+    force = _query_bool(request, "force", False)
+    payload = await asyncio.to_thread(release_check.latest_release, force=force)
+    return JSONResponse(payload)
 
 
 async def search(request: Request):
@@ -3473,6 +3485,7 @@ def _exception_handlers() -> dict:
 # ---------------------------------------------------------------- aplicacion
 routes = [
     Route("/api/health", health),
+    Route("/api/release/latest", release_latest),
     Route("/api/search", search),
     Route("/api/search/match/{track_id}", search_match),
     Route("/api/albums/search", albums_search),
