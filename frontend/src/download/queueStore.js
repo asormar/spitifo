@@ -210,6 +210,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     const alive = new Set(incoming.map((i) => i.id));
 
     for (const key of published.keys()) if (!alive.has(key)) published.delete(key);
+    for (const key of resumed.keys()) if (!alive.has(key)) resumed.delete(key);
 
     for (const it of incoming) {
       const prev = prevById.get(it.id);
