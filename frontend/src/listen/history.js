@@ -93,6 +93,11 @@ export function createHistory({
     return () => listeners.delete(fn);
   };
   windowRef?.addEventListener("pagehide", flush);
+  /* En Android la app pasa a segundo plano sin pagehide: al ocultarse se
+     escribe lo pendiente, por si el sistema la cierra despues. */
+  windowRef?.document?.addEventListener?.("visibilitychange", () => {
+    if (writeTimer && windowRef.document.visibilityState === "hidden") flush();
+  });
 
   const load = (force = false) => {
     if (loading) return loading;
