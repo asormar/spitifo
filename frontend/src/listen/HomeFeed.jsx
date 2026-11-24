@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { usePc } from "../shared/viewport.js";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { useHistory } from "./history.js";
 import {
   AlbumCard,
@@ -203,13 +203,13 @@ export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, ac
 
       <button type="button" className="xcard" onClick={() => ctx.open({ type: "library", sort: "recent" })}>
         <span className="xcard__ico">
-          <Ico n="music" size={22} />
+          <Icon name="MusicNotes" size="lg" />
         </span>
         <span className="xcard__txt">
           <span className="xcard__t">Explorar la biblioteca</span>
           <span className="xcard__s">{plural(entries.length, "tema", "temas")} · A–Z, recientes, artista</span>
         </span>
-        <Ico n="caret" size={18} />
+        <Icon name="CaretRight" size="md" />
       </button>
     </div>
   );

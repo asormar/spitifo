@@ -1,5 +1,8 @@
 import { TABS } from "./navigation.js";
-import { NavIcon } from "./navIcons.jsx";
+import { Icon } from "../shared/icons.jsx";
+
+/* Nombres de Phosphor para cada pestana (ver DESIGN.md > Navigation). */
+const TAB_ICON = { home: "House", search: "MagnifyingGlass", library: "Books", discover: "VinylRecord" };
 
 /* Una sola lista para las piezas de la navegacion (barra, puntos y menu
    lateral): el orden de TABS manda en el indicador y en las etiquetas. */
@@ -29,7 +32,7 @@ export function TabBar({ tab, onTab }) {
             aria-current={active ? "page" : undefined}
             onClick={() => onTab(id)}
           >
-            <NavIcon name={id} filled={active} size={24} />
+            <Icon name={TAB_ICON[id]} weight={active ? "fill" : "regular"} size="lg" />
             <span>{label}</span>
           </button>
         );

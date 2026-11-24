@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
 import { becauseText, initials, percent } from "../shared/format.js";
-import Ico from "../shared/ico.jsx";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { useDrag } from "./useDrag.js";
@@ -76,8 +75,8 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
 
 /* Cada opcion con su glifo; el color del glifo lo pone el CSS (acento / mal). */
 const MENU_ITEMS = [
-  ["search", "Buscar para descargar", "dl"],
-  ["hide", "No me interesa", "nodl"],
+  ["search", "Buscar para descargar", "DownloadSimple"],
+  ["hide", "No me interesa", "Prohibit"],
 ];
 
 /* Menu de la fila: flechas para moverse, abre hacia arriba si abajo no cabe. */
@@ -108,7 +107,7 @@ function RowMenu({ onPick, listRef }) {
     <div ref={ref} className="fy-menu" role="menu" onKeyDown={onKeyDown}>
       {MENU_ITEMS.map(([kind, text, glyph]) => (
         <button key={kind} type="button" role="menuitem" onClick={() => onPick(kind)}>
-          <Ico n={glyph} />
+          <Icon name={glyph} size="md" />
           {text}
         </button>
       ))}
@@ -227,7 +226,7 @@ export function ArtistRow({
             aria-expanded={menuOpen}
             onClick={onToggleMenu}
           >
-            <Ico n="dots" />
+            <Icon name="DotsThree" size="md" />
           </button>
           {menuOpen && <RowMenu onPick={onMenuPick} listRef={listRef} />}
         </div>

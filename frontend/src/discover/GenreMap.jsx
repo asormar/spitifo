@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { cx } from "../shared/ui.jsx";
+import { Icon } from "./icons.jsx";
 import { normalize, placeCard, related, searchGenres } from "./map.js";
 import { createMapCanvas } from "./mapCanvas.js";
 
@@ -18,35 +19,6 @@ function paintRoom(el, o) {
   if (!el) return;
   if (o.right) el.style.setProperty("--fy-right", `${o.right}px`);
   else el.style.removeProperty("--fy-right");
-}
-
-/* Iconos sueltos: cada import de Phosphor trae sus seis pesos al chunk. */
-const PATH = {
-  plus: "M12 5v14M5 12h14",
-  minus: "M5 12h14",
-  fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
-  close: "M6 6l12 12M18 6L6 18",
-  lupa: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM21 21l-4.35-4.35",
-  play: "M8 5.5v13l11-6.5z",
-};
-
-function Icon({ name, size = 18, className }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={PATH[name]} />
-    </svg>
-  );
 }
 
 /* El mapa: lienzo + buscador + zoom + tarjeta del genero elegido.
@@ -342,7 +314,7 @@ export default function GenreMap({
       </div>
 
       <div className="gmap__search" role="search">
-        <Icon name="lupa" className="gmap__lupa" />
+        <Icon name="MagnifyingGlass" size="md" className="gmap__lupa" />
         <input
           ref={inputRef}
           className="gmap__input"
@@ -390,13 +362,13 @@ export default function GenreMap({
 
       <div className="gmap__zoom" role="group" aria-label="Zoom del mapa">
         <button type="button" className="gmap__btn" aria-label="Acercar" onClick={() => engineRef.current?.zoomBy(1.6)}>
-          <Icon name="plus" />
+          <Icon name="Plus" size="md" />
         </button>
         <button type="button" className="gmap__btn" aria-label="Alejar" onClick={() => engineRef.current?.zoomBy(1 / 1.6)}>
-          <Icon name="minus" />
+          <Icon name="Minus" size="md" />
         </button>
         <button type="button" className="gmap__btn" aria-label="Ver todo el mapa" onClick={() => engineRef.current?.fit()}>
-          <Icon name="fit" />
+          <Icon name="CornersOut" size="md" />
         </button>
       </div>
 
@@ -424,7 +396,7 @@ export default function GenreMap({
                   viewRef.current?.focus({ preventScroll: true });
                 }}
               >
-                <Icon name="close" size={16} />
+                <Icon name="X" size="sm" />
               </button>
             </div>
             {rel.length > 0 && (
@@ -453,7 +425,7 @@ export default function GenreMap({
                   disabled={sampleStatus === "loading" || sampleStatus === "empty"}
                   aria-busy={sampleStatus === "loading"}
                 >
-                  <Icon name="play" size={16} />
+                  <Icon name="Play" size="sm" weight="fill" />
                   {sampleStatus === "loading"
                     ? "Buscando…"
                     : sampleStatus === "empty"

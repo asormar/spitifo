@@ -4,7 +4,6 @@ import { useTheme } from "../shared/theme.js";
 import { PLACEHOLDER } from "../download/constants.js";
 import { useSearchBusy, useSearchDraft } from "../download/searchDraft.js";
 import { requestSearch } from "../download/searchRequest.js";
-import { NavIcon } from "./navIcons.jsx";
 import { useNav } from "./useNav.js";
 
 /* ---------------------------------------------------------------------------
@@ -33,7 +32,7 @@ export default function TopBar() {
     <header className="topbar">
       {(nav.pageOf(nav.tab) || nav.settings) && (
         <button type="button" className="cbtn cbtn--soft" aria-label="Volver" title="Volver" onClick={nav.back}>
-          <NavIcon name="back" size={22} />
+          <Icon name="CaretLeft" size="lg" />
         </button>
       )}
 
@@ -56,7 +55,7 @@ export default function TopBar() {
         title={toggle}
         onClick={() => chooseTheme(dark ? "light" : "dark")}
       >
-        <Icon name={dark ? "Sun" : "Moon"} weight="fill" size={22} />
+        <Icon name={dark ? "Sun" : "Moon"} weight="fill" size="lg" />
       </button>
     </header>
   );

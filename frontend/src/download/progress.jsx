@@ -1,4 +1,4 @@
-import Ico from "../shared/ico.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";
 import { dlState, dlText } from "./dlState.js";
@@ -39,9 +39,9 @@ export function ProgressBar({ job }) {
       <div className="prog__top">
         <span className="prog__ico">
           {failed || halted ? (
-            <Ico n="warn" size={19} />
+            <Icon name="Warning" size="md" />
           ) : done ? (
-            <Ico n="check" size={19} />
+            <Icon name="Check" size="md" />
           ) : (
             <span className="sp" aria-hidden="true" />
           )}

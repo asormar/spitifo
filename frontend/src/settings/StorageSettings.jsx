@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { API, fetchErr } from "../shared/api.js";
 import { connectErrorText, driveSub } from "./storageInfo.js";
 import QuotaBar from "./QuotaBar.jsx";
@@ -136,7 +136,7 @@ export default function StorageSettings({ active, onChanged }) {
   };
 
   const connectErr = connectErrorText(info?.connect?.error);
-  const deviceIcon = IS_ANDROID ? "device" : "laptop";
+  const deviceIcon = IS_ANDROID ? "DeviceMobile" : "Laptop";
 
   const sub = driveSub(info, { pending, viaAndroid });
 
@@ -145,7 +145,7 @@ export default function StorageSettings({ active, onChanged }) {
     driveSubNode = (
       <span className="store__state">
         {sub.state === "pending" ? (
-          <Ico n="retry" size={14} className="spin" />
+          <Icon name="ArrowClockwise" size="sm" className="spin" />
         ) : (
           <span className="store__dot" aria-hidden="true" />
         )}
@@ -167,7 +167,7 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickLocal}
           disabled={busy}
         >
-          <Ico n={deviceIcon} size={24} className="store__icon" />
+          <Icon name={deviceIcon} size="lg" className="store__icon" />
           <span>
             <span className="store__name">Este dispositivo</span>
             <span className="store__sub">Sin conexión, solo aquí</span>
@@ -184,7 +184,7 @@ export default function StorageSettings({ active, onChanged }) {
           onClick={pickDrive}
           disabled={busy}
         >
-          <Ico n="cloud" size={24} className="store__icon" />
+          <Icon name="Cloud" size="lg" className="store__icon" />
           <span>
             <span className="store__name">Google Drive</span>
             <span className="store__sub">{driveSubNode}</span>

@@ -7,7 +7,7 @@ import { cx } from "../shared/ui.jsx";
 import { SOURCE_CODE, provenance } from "./constants.js";
 import { thumbUrl } from "./artwork.js";
 import DlRing, { useDl } from "./DlRing.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import SaveHeart from "../listen/SaveHeart.jsx";
 import { V_LABEL, VerdictPill } from "../shared/Verdict.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
@@ -159,7 +159,7 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
           aria-haspopup="menu"
           onClick={(e) => onMenu(t, e.currentTarget)}
         >
-          <Ico n="dots" size={20} />
+          <Icon name="DotsThree" size="md" />
         </button>
       </span>
     </li>

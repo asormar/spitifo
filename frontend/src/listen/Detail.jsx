@@ -3,8 +3,7 @@ import { loadAlbumChunk } from "../download/albumChunk.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
-import Ico from "../shared/ico.jsx";
-import { Icon } from "../shared/icons.jsx";
+import { Icon } from "./icons.jsx";
 import { toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -245,7 +244,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       aria-haspopup="menu"
       onClick={(e) => ctx.openMenu(pl.id, e.currentTarget, "lmenu")}
     >
-      <Ico n="dots" size={22} />
+      <Icon name="DotsThree" size="lg" />
     </button>
   );
 
@@ -265,7 +264,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           className="btn btn--ghost"
           onClick={(e) => ctx.openArt(view.id, "artist", name, e.currentTarget)}
         >
-          <Ico n="upload" size={18} />
+          <Icon name="UploadSimple" size="md" />
           Cambiar foto
         </button>
       )}
@@ -278,7 +277,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           aria-haspopup="menu"
           onClick={(e) => ctx.openMenu(view.id, e.currentTarget, "almenu")}
         >
-          <Ico n="dots" size={20} />
+          <Icon name="DotsThree" size="md" />
         </button>
       )}
     </div>
@@ -293,7 +292,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         ) : (
           <>
             Esta lista está vacía. Añade canciones desde el menú{" "}
-            <Ico n="dots" size={18} /> de cualquier canción.
+            <Icon name="DotsThree" size="md" /> de cualquier canción.
           </>
         )
       ) : (

@@ -824,6 +824,38 @@ The limit drops with the bundle so the saving cannot erode unnoticed. On the
 emulator the warm start shows no difference (its WebView runs JavaScript on a
 fast x86 core); the Pixel is where the 127 KB less to parse should show.
 
+#### One icon system (2026-11-24)
+
+Three renderers drew the same glyphs differently: `Ico` (hand-drawn strokes,
+24 px grid), `NavIcon` (hand-drawn strokes, the shell's four tabs) and `Icon`
+(inline Phosphor paths, 256 grid, already split per lazy chunk). All three are
+now the one `Icon` component (`shared/icons.jsx`), regular weight at rest and
+fill when active, selected or playing, in four sizes from tokens
+(`--icon-sm/md/lg/xl`, 16/20/24/32). `GenreMap.jsx` drew a fourth, local one
+(the search, zoom and card buttons of the genre map) that is now the same
+component. Phosphor paths are bigger than the stroke paths they replace, and
+every chunk still inlines only the weights it uses, so the per-view
+`icons.jsx` modules (`discover/`, `listen/`, `download/`, `settings/`) and the
+shared `viewIcons.js` (icons two or more lazy views need, so Vite gives them
+one shared chunk instead of duplicating the paths) did not change shape, only
+their source:
+
+| Bundle | Three renderers | One icon system | Old limit | New limit |
+| --- | --- | --- | --- | --- |
+| JavaScript | 398,405 B | 408,485 B (+10,080) | 400,000 B | 420,750 B |
+| CSS | 128,554 B | 128,554 B (+0) | 131,000 B | 131,000 B |
+
+CSS does not move: icons never were stylesheet weight. The entry chunk grew
+141,238 B → 147,307 B (+6,069 B), the Phosphor paths the shell always needed
+(the four tabs, the mini-player, the video host) now carrying what `Ico` and
+`NavIcon` drew by hand. The limit is the measured size plus about 3%,
+rounded up: `421000 * ~1.03` gives headroom for the glyphs a later screen
+still needs to migrate off a view-local renderer, without inviting a second
+icon source back in. `shared/icons.test.jsx` fails the build if a raw `<svg>`
+with a path turns up outside the icon modules and the Disco logo, if `Ico` or
+`NavIcon` are imported again, or if a path written by hand in an icon module
+stops matching `@phosphor-icons/core` byte for byte.
+
 ### Windows installer: 22,707,225 B
 
 Installed, the app takes about 52 MB:
