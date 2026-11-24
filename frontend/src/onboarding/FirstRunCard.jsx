@@ -10,8 +10,14 @@ export default function FirstRunCard({ folder }) {
       "Busca en Buscar",
       "“Música” busca en el catálogo y encuentra la canción completa. Si no está, te ofrece otras fuentes.",
     ],
-    ["Descarga con un toque", "Canciones sueltas, discos enteros o la discografía de un artista."],
-    ["Escucha sin conexión", `Todo queda en ${place}. Puedes cambiarlo en Ajustes.`],
+    [
+      "Toca y suena",
+      "La canción empieza al momento. Con el corazón la guardas en tu biblioteca.",
+    ],
+    [
+      "Descarga para escuchar sin conexión",
+      `Canciones sueltas, discos enteros o la discografía de un artista. Todo queda en ${place}; puedes cambiarlo en Ajustes.`,
+    ],
   ];
   return (
     <section className="fr" aria-labelledby="fr-title">
