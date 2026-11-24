@@ -920,8 +920,8 @@ build them as `release.yml` does. Close everything else first.
 
 ```bash
 node scripts/perf/check_size.mjs bundle frontend/dist
-node scripts/perf/check_size.mjs installer Spitifo-X.Y.Z-windows-x64-setup.exe
-node scripts/perf/check_size.mjs apk Spitifo-X.Y.Z-android-arm64.apk
+node scripts/perf/check_size.mjs installer spitifo-X.Y.Z-windows-setup.exe
+node scripts/perf/check_size.mjs apk spitifo-X.Y.Z-android.apk
 ```
 
 The same commands run in CI: the bundle check in the `frontend` job of
