@@ -514,21 +514,26 @@ def test_drive_las_portadas_no_se_pinean_y_otro_dispositivo_ve_las_tres(tmp_path
 
 
 def test_drive_si_falla_una_portada_se_indexa_lo_que_ya_subio(tmp_path):
+    """Las subidas de `put_files` van en paralelo (P-drive-io-6): un fallo en
+    UNA clave no frena a las demas, que se intentan y se indexan igual (como
+    ya hacen `_read_many` y `_trash_keys`). Se dispara por CLAVE, no por el
+    N-esimo llamado: con subidas concurrentes el orden de llegada no esta
+    garantizado."""
     from fake_drive import FakeDrive
 
     fake = FakeDrive()
     storage = _drive_device(fake, "A", lambda: 1000.0)
-    subidas = {"n": 0}
     real = storage._upload
+    falla_portada = CLAVES_DESCARGA[1]
 
-    def a_medias(*args, **kwargs):
-        subidas["n"] += 1
-        if subidas["n"] == 2:
+    def a_medias(key, *args, **kwargs):
+        if key == falla_portada:
             raise OSError("se cayo la red")
-        return real(*args, **kwargs)
+        return real(key, *args, **kwargs)
 
     storage._upload = a_medias
     with pytest.raises(OSError):
         storage.put_files(_lote(tmp_path))
 
-    assert [f.key for f in storage.list()] == [CLAVES_DESCARGA[0]]
+    assert sorted(f.key for f in storage.list()) == sorted(
+        [CLAVES_DESCARGA[0], CLAVES_DESCARGA[2]])

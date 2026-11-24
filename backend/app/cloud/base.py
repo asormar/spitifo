@@ -79,6 +79,11 @@ QUOTA_TTL = 60.0
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_RETRIES = 3
 
+#: Cuanto se recuerda que una clave NO estaba en el indice. Una descarga nueva
+#: pregunta por 1 a 3 claves que sabe que son nuevas (audio + portadas): sin
+#: esto cada una fuerza su propia relectura completa del indice.
+MISSING_TTL = 10.0
+
 
 class QuotaExceeded(RuntimeError):
     """La cuenta de la nube esta llena: la UI avisa y la pista se queda local."""
@@ -291,7 +296,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         self.folder_name = folder_name
         self._clock = clock
         self.sleep = sleep
+        # Lock "general": ids de carpeta y la cuota en memoria. El indice, las
+        # playlists, las guardadas y las imagenes tienen cada uno el suyo (mas
+        # abajo): cargar uno no espera a que termine de cargar otro.
         self._lock = threading.RLock()
+        self._index_lock = threading.RLock()
+        self._playlists_lock = threading.RLock()
+        self._saved_lock = threading.RLock()
+        self._art_lock = threading.RLock()
         # Ids de carpeta del proveedor ya resueltos, por ruta relativa ("" es la
         # raiz de la biblioteca): la logica de carpetas vive en cada adapter.
         self._folders: dict[str, str] = {}
@@ -302,6 +314,20 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # `remote_id -> (name, stamp, prefix)`.
         self._small: dict[str, tuple[str, str, str]] = {}
         self._small_lock = threading.Lock()
+        # Un unico listado de TODOS los prefijos chicos, para que el arranque
+        # en frio no pida un `files.list` por cada registro (indice, playlists,
+        # guardadas, imagenes, escuchas, artistinfo, descartes, fileinfo).
+        self._small_warm: list[RemoteFile] | None = None
+        self._small_warm_at = float("-inf")
+        # Claves que el ultimo listado forzado confirmo ausentes, con cuando:
+        # una descarga nueva pregunta por audio + portadas, tres claves nuevas
+        # que de otro modo forzarian tres relecturas completas del indice.
+        self._missing: dict[str, float] = {}
+        # Si hay un cambio del indice propio aplicado en memoria pero todavia
+        # sin subir (dentro de un `batch_index_writes`, o un `flush_index`
+        # que fallo), y cuantos `batch_index_writes` hay anidados ahora mismo.
+        self._own_dirty = False
+        self._index_batch_depth = 0
         # True mientras los ids de carpeta vengan del disco y ninguna request
         # los haya confirmado: un listado vacio con ellos se vuelve a verificar.
         self._folders_from_disk = False
@@ -436,13 +462,30 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             resp.close()
 
     # ------------------------------------------------------------ archivos chicos
+    def warm_small_files(self) -> None:
+        """Un solo `files.list` para TODOS los prefijos chicos de una vez.
+
+        Se llama al arrancar (antes de que el indice, las playlists, las
+        guardadas o las imagenes pidan el suyo): deja un listado combinado
+        fresco que `_list_small` reusa durante `INDEX_TTL`, asi que el primer
+        pedido de cada registro no dispara su propio `files.list`.
+        """
+        self._list_small(*SMALL_PREFIXES)
+
     def _list_small(self, *prefixes: str) -> list[RemoteFile]:
         """Listado de los archivos chicos con alguno de `prefixes` (una request).
 
-        Es la unica puerta de entrada al hook `_list_small_files`: deja lo que
-        dijo el listado (para decidir despues si la copia local sirve) y saca de
-        la copia local lo que ya no existe en la nube.
+        Si un listado reciente de TODOS los prefijos (`warm_small_files`, o un
+        pedido anterior que ya los cubria) sigue fresco, se reusa filtrado en
+        memoria y no se pide nada a la nube. Si no, es la unica puerta de
+        entrada al hook `_list_small_files`: deja lo que dijo el listado (para
+        decidir despues si la copia local sirve) y saca de la copia local lo
+        que ya no existe en la nube.
         """
+        with self._small_lock:
+            warm, warm_at = self._small_warm, self._small_warm_at
+        if warm is not None and (self._clock() - warm_at) < INDEX_TTL:
+            return [rf for rf in warm if rf.name.startswith(prefixes)]
         files = list(self._list_small_files(prefixes))
         by_prefix: dict[str, set[str]] = {prefix: set() for prefix in prefixes}
         with self._small_lock:
@@ -450,6 +493,9 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 prefix = _prefix_of(rf.name, prefixes)
                 by_prefix[prefix].add(rf.remote_id)
                 self._small[rf.remote_id] = (rf.name, rf.stamp, prefix)
+            if set(prefixes) == set(SMALL_PREFIXES):
+                self._small_warm = files
+                self._small_warm_at = self._clock()
         if self._snap is not None:
             for prefix, keep in by_prefix.items():
                 self._snap.prune(prefix, keep)
@@ -629,8 +675,15 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
         Un indice que no parsea se saltea y se loguea: no puede tumbar la
         biblioteca entera. Se recuerda, ademas, el id del indice PROPIO.
+
+        `force` primero sube cualquier cambio propio pendiente
+        (`flush_index`): si no, la relectura pisaria la vista en memoria con
+        lo que todavia NO esta en la nube y el cambio recien hecho
+        desaparecia hasta el proximo escrito.
         """
-        with self._lock:
+        if force:
+            self.flush_index()
+        with self._index_lock:
             if (not force and self._index is not None
                     and (self._clock() - self._index_at) < INDEX_TTL):
                 return self._index
@@ -667,9 +720,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         """Aplica `change` al indice PROPIO y lo sube a la nube.
 
         Un solo escritor por archivo: no hace falta escritura condicional.
-        Despues mergea el resultado en la vista en memoria.
+        Despues mergea el resultado en la vista en memoria. Fuera de un
+        `batch_index_writes`, la subida es sincronica, como siempre: esta
+        llamada no vuelve hasta que el archivo esta en la nube. Dentro de uno,
+        el cambio se aplica en memoria YA (se ve de inmediato) pero la subida
+        se demora hasta que el bloque termina: asi una descarga de un album
+        entero sube el indice una sola vez, no una por tema.
         """
-        with self._lock:
+        with self._index_lock:
             self._load_index()
             if self._own_unreadable:
                 # Un corte de red pasajero: se reintenta una vez antes de rendirse.
@@ -679,9 +737,6 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                     f"no se pudo leer {self._own_name()}: no se sobrescribe")
             own = LibraryIndex(entries=dict(self._own.entries))
             change(own)
-            body = own.to_bytes()
-            self._own_index_id = self._store_small(
-                self._own_name(), body, self._own_index_id)
             self._own = own
             # El indice recien escrito es el mas fresco para SUS claves: en un
             # empate de `updated_at` (el reloj de Windows tiene resolucion
@@ -689,22 +744,89 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             # estaba en memoria.
             self._index = own.merge(self._index or LibraryIndex())
             self._index_at = self._clock()
+            self._own_dirty = True
+            batching = self._index_batch_depth > 0
+        if not batching:
+            self.flush_index()
 
-    def _entry(self, key: str) -> IndexEntry | None:
+    def flush_index(self) -> None:
+        """Sube el indice propio YA si tiene cambios sin subir. Bloqueante.
+
+        La llaman `_load_index(force=True)` (antes de cualquier relectura
+        forzada: si no, pisaria la vista en memoria con una copia vieja de lo
+        que todavia no esta en la nube), `batch_index_writes` al cerrar su
+        bloque, y el apagado de la app. Fuera de un bloque de tanda esto es un
+        no-op casi siempre: `_write_own` ya dejo todo subido.
+        """
+        with self._index_lock:
+            if not self._own_dirty:
+                return
+            own = self._own
+            own_id = self._own_index_id
+        remote_id = self._store_small(self._own_name(), own.to_bytes(), own_id)
+        with self._index_lock:
+            self._own_index_id = remote_id
+            if self._own is own:
+                self._own_dirty = False
+            # Si `self._own` cambio de nuevo mientras esto subia, queda sucio:
+            # el proximo `flush_index` (o el cierre de la app) lo termina.
+
+    @contextmanager
+    def batch_index_writes(self) -> Iterator[None]:
+        """Agrupa varios `_write_own` (una descarga de un album) en UNA sola
+        subida del indice al salir del bloque, en vez de una por tema.
+
+        Los archivos de audio y portada de cada tema YA estan subidos antes de
+        que `_write_own` se llame (eso no cambia): lo unico que se demora es
+        el registro de que existen. Si el proceso se corta a mitad del bloque,
+        lo que ya se subio sigue en la nube pero el indice puede no reflejar
+        las ultimas descargas del lote; el proximo arranque las vuelve a ver
+        si se reintenta la descarga, y `flush_index` corre solo al cerrar la
+        app para achicar esa ventana.
+        """
+        with self._index_lock:
+            self._index_batch_depth += 1
+        try:
+            yield
+        finally:
+            with self._index_lock:
+                self._index_batch_depth -= 1
+                depth = self._index_batch_depth
+            if depth == 0:
+                self.flush_index()
+
+    def _entry(self, key: str, *, allow_force: bool = True) -> IndexEntry | None:
         """Entrada viva de la clave. Recarga UNA vez si no esta en memoria.
 
         Ignora el TTL si la clave ya se conoce: `/api/audio` llama esto en
         cada seek y no puede esperar a releer todos los indices de la nube.
         `list()` es quien mantiene la vista fresca.
+
+        Con `allow_force=False` (una clave que el llamador sabe que recien va
+        a crear, p. ej. `put_files`) nunca fuerza la relectura: si no esta en
+        la vista en memoria, se la trata como ausente sin gastar un
+        `files.list`. Con la fuerza permitida, una clave que YA se confirmo
+        ausente hace poco (`MISSING_TTL`) tampoco repite el listado completo:
+        tres claves nuevas de una misma descarga (audio + portadas) fuerzan
+        como mucho una relectura, no tres.
         """
-        with self._lock:
+        with self._index_lock:
             index = self._index
         if index is None:
             index = self._load_index()
         entry = index.entries.get(key)
-        if entry is None:
-            index = self._load_index(force=True)
-            entry = index.entries.get(key)
+        if entry is None and allow_force:
+            now = self._clock()
+            with self._small_lock:
+                missed_at = self._missing.get(key)
+            if missed_at is None or (now - missed_at) >= MISSING_TTL:
+                index = self._load_index(force=True)
+                entry = index.entries.get(key)
+                with self._small_lock:
+                    if entry is None:
+                        self._missing[key] = now
+                    else:
+                        self._missing.pop(key, None)
         if entry is None or entry.deleted:
             return None
         return entry
@@ -719,7 +841,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
         PROPIO: escribir encima perderia las playlists del usuario.
         """
-        with self._lock:
+        with self._playlists_lock:
             if (not force and self._playlists is not None
                     and (self._clock() - self._playlists_at) < INDEX_TTL):
                 return self._playlists
@@ -759,7 +881,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un solo escritor por archivo, como el indice: no hace falta escritura
         condicional. Despues mergea el resultado en la vista en memoria.
         """
-        with self._lock:
+        with self._playlists_lock:
             self.load_playlists()
             if self._own_playlists_unreadable:
                 # Un corte de red pasajero: se reintenta una vez antes de rendirse.
@@ -790,7 +912,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
         PROPIO: escribir encima perderia las canciones guardadas del usuario.
         """
-        with self._lock:
+        with self._saved_lock:
             if (not force and self._saved is not None
                     and (self._clock() - self._saved_at) < INDEX_TTL):
                 return self._saved
@@ -829,7 +951,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un solo escritor por archivo, como el indice: no hace falta escritura
         condicional. Despues mergea el resultado en la vista en memoria.
         """
-        with self._lock:
+        with self._saved_lock:
             self.load_saved()
             if self._own_saved_unreadable:
                 # Un corte de red pasajero: se reintenta una vez antes de rendirse.
@@ -860,7 +982,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un archivo que no parsea se saltea y se loguea, y se recuerda si era el
         PROPIO: escribir encima perderia las imagenes del usuario.
         """
-        with self._lock:
+        with self._art_lock:
             if (not force and self._art is not None
                     and (self._clock() - self._art_at) < INDEX_TTL):
                 return self._art
@@ -899,7 +1021,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         Un solo escritor por archivo, como saved: no hace falta escritura
         condicional. Despues mergea el resultado en la vista en memoria.
         """
-        with self._lock:
+        with self._art_lock:
             self.load_art()
             if self._own_art_unreadable:
                 # Un corte de red pasajero: se reintenta una vez antes de rendirse.
@@ -1016,9 +1138,9 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         out.sort(key=lambda f: f.key)
         return out
 
-    def stat(self, key: str) -> StoredFile:
+    def stat(self, key: str, *, allow_force: bool = True) -> StoredFile:
         validate_key(key)
-        entry = self._entry(key)
+        entry = self._entry(key, allow_force=allow_force)
         if entry is None:
             raise FileNotFoundError(key)
         return StoredFile(key=key, size=entry.size, mtime=entry.updated_at,
@@ -1120,19 +1242,26 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         reescribe entero en cada `put_file`, asi que tres escrituras costarian
         tres veces el indice. Si uno falla, lo que ya se subio SI se indexa y
         despues se levanta el error. Cada `src` se BORRA al terminar.
+
+        Las tres claves son casi siempre NUEVAS (nadie bajo antes este tema):
+        `allow_force=False` en el chequeo de "ya existe" evita que cada una
+        fuerce su propia relectura completa del indice (`_entry`). Las subidas
+        en si van en paralelo (archivos distintos, nada que coordinar entre
+        ellas): es la misma espera de red de a una.
         """
         for key, _src in items:
             validate_key(key)
-        prepared: list[tuple[IndexEntry, IndexEntry | None, Path]] = []
-        failure: Exception | None = None
-        for key, raw_src in items:
-            src = Path(raw_src)
+
+        def _prepare(item: tuple[str, Path]
+                    ) -> "tuple[IndexEntry, IndexEntry | None, Path] | Exception":
+            key, raw_src = item
             try:
+                src = Path(raw_src)
                 size = src.stat().st_size
                 ext = _ext_of(key)
-                # Un jpg no tiene tags que leer (y mutagen no lo parsea): se sube
-                # con la metadata vacia. El video si se intenta; si mutagen falla,
-                # queda vacia.
+                # Un jpg no tiene tags que leer (y mutagen no lo parsea): se
+                # sube con la metadata vacia. El video si se intenta; si
+                # mutagen falla, queda vacia.
                 if Path(key).suffix.lower() in IMAGE_EXTS:
                     title = artist = album = ""
                     duration: float | None = None
@@ -1142,19 +1271,39 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 else:
                     (title, artist, album, duration,
                      track_no, disc_no, album_id) = _read_tags(src)
-                existing = self._entry(key)
+                existing = self._entry(key, allow_force=False)
                 existing_id = existing.remote_id if existing is not None else None
                 remote_id, revision = self._upload(
                     key, src, size, _mime_of(key), existing_id)
             except Exception as exc:
-                failure = exc
-                break
+                return exc
             entry = IndexEntry(key=key, remote_id=remote_id, revision=revision,
                                title=title, artist=artist, album=album,
                                duration=duration, size=size, format=ext,
                                updated_at=self._clock(), track_no=track_no,
                                disc_no=disc_no, album_id=album_id)
-            prepared.append((entry, existing, src))
+            return entry, existing, src
+
+        # Un fallo de un archivo no frena a los demas (igual que `_read_many` y
+        # `_trash_keys`): cada uno es independiente, asi que se intentan todos
+        # y se indexa lo que salio bien. El primer error encontrado es el que
+        # se levanta al final.
+        if len(items) > 1:
+            workers = min(SMALL_FILE_WORKERS, len(items))
+            with ThreadPoolExecutor(max_workers=workers,
+                                    thread_name_prefix="put-files") as pool:
+                results = list(pool.map(_prepare, items))
+        else:
+            results = [_prepare(item) for item in items]
+
+        prepared: list[tuple[IndexEntry, IndexEntry | None, Path]] = []
+        failure: Exception | None = None
+        for result in results:
+            if isinstance(result, Exception):
+                if failure is None:
+                    failure = result
+                continue
+            prepared.append(result)
 
         if prepared:
             def change(index: LibraryIndex) -> None:
@@ -1270,18 +1419,33 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         `limit` es None en cuentas sin tope. `usage` es todo lo de la cuenta
         (el proveedor suele compartirlo entre sus servicios); `app` es lo que
         ocupa la biblioteca de Spitifo, sumado desde el indice sin otra llamada.
+        `_quota_remote` (red) y `self.list()` (puede ser red, si el indice
+        esta vencido) no dependen una de la otra: van en paralelo.
         """
         with self._lock:
             if self._quota_cache is not None and (
                     self._clock() - self._quota_cache_at) < QUOTA_TTL:
                 return dict(self._quota_cache)
-        limit, usage = self._quota_remote()
-        app = sum(f.size for f in self.list())
+        with ThreadPoolExecutor(max_workers=2,
+                                thread_name_prefix="quota") as pool:
+            remote_future = pool.submit(self._quota_remote)
+            app_future = pool.submit(lambda: sum(f.size for f in self.list()))
+            limit, usage = remote_future.result()
+            app = app_future.result()
         quota = {"limit": limit, "usage": usage, "app": app}
         with self._lock:
             self._quota_cache = quota
             self._quota_cache_at = self._clock()
         return dict(quota)
+
+    def flush_all(self) -> None:
+        """Sube YA cualquier cambio del indice que haya quedado sin subir.
+
+        Para el apagado de la app: `batch_index_writes` ya sube solo al salir
+        de su bloque, pero esto es la red de seguridad si algo quedo a medio
+        terminar (p. ej. el proceso no llego a salir del bloque).
+        """
+        self.flush_index()
 
     # -------------------------------------------------------------------- hooks
     # Lo unico que cambia entre proveedores. Son chicos a proposito: el indice,
