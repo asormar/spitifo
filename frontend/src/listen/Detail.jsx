@@ -251,11 +251,11 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const acts = (
     <div className="dacts">
       <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
-        <Icon name="Play" size={18} weight="fill" />
+        <Icon name="Play" size="md" weight="fill" />
         Reproducir
       </button>
       <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={shuffle}>
-        <Icon name="Shuffle" size={18} />
+        <Icon name="Shuffle" size="md" />
         Aleatorio
       </button>
       {artist && (
@@ -453,7 +453,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
               <div className="ahero__in">
                 <h1>{name}</h1>
                 <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
-                  <Icon name="Play" size={28} weight="fill" />
+                  <Icon name="Play" size="xl" weight="fill" />
                 </button>
               </div>
             </>

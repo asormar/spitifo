@@ -110,6 +110,7 @@ export function createIcon(extra) {
       return null;
     }
     const px = SIZES[size] ?? SIZES.md;
+    if (import.meta.env.DEV && !(size in SIZES)) console.warn(`Icon con tamano fuera de los tokens: ${size}`);
     return (
       <svg
         viewBox="0 0 256 256"

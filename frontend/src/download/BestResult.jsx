@@ -37,7 +37,7 @@ function BestPlay({ song, query, queue, source }) {
       aria-label={`${on ? "Pausar" : "Reproducir"} ${title}, de ${artist}`}
       onClick={play}
     >
-      <Icon name={on ? "Pause" : "Play"} weight="fill" size={22} />
+      <Icon name={on ? "Pause" : "Play"} weight="fill" size="lg" />
     </button>
   );
 }

@@ -96,7 +96,7 @@ export default function Mezcla({ entries, byKey, ctx }) {
             aria-disabled={n ? undefined : true}
             onClick={press}
           >
-            <Icon name={on ? "Pause" : "Play"} weight="fill" size={34} className={on ? undefined : "rec__play"} />
+            <Icon name={on ? "Pause" : "Play"} weight="fill" size="xl" className={on ? undefined : "rec__play"} />
           </button>
         </div>
       </section>

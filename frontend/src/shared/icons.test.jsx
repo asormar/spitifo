@@ -83,6 +83,13 @@ describe("un solo sistema de iconos", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("los tamanos de icono salen de los tokens (sm, md, lg, xl), nunca en px", () => {
+    const offenders = SOURCE_FILES.flatMap((f) =>
+      (readFileSync(f.path, "utf8").match(/<Icon\b[^>]*\bsize=\{\d+\}[^>]*>/g) ?? []).map((tag) => `${f.rel}: ${tag}`)
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("Ico y NavIcon no vuelven a aparecer", () => {
     const offenders = SOURCE_FILES.filter((f) => {
       const text = readFileSync(f.path, "utf8");

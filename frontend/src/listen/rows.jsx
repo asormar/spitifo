@@ -311,7 +311,7 @@ export function QueueRow({
           title="Quitar de la cola"
           onClick={() => engine.removeAt(pos)}
         >
-          <Icon name="X" size={18} />
+          <Icon name="X" size="md" />
         </button>
       )}
     </div>

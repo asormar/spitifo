@@ -216,7 +216,7 @@ export function ArtistRow({
             aria-busy={busy}
             onClick={onPlay}
           >
-            <Icon name="Play" weight="fill" size={18} />
+            <Icon name="Play" weight="fill" size="md" />
           </button>
           <button
             type="button"
@@ -313,7 +313,7 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
                     aria-busy={busy === name}
                     onClick={() => onPlay(name)}
                   >
-                    <Icon name="Play" weight="fill" size={18} />
+                    <Icon name="Play" weight="fill" size="md" />
                   </button>
                 </li>
               );

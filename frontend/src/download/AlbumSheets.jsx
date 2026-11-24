@@ -332,7 +332,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
                 title="Aleatorio"
                 onClick={aleatorio}
               >
-                <Icon name="Shuffle" size={20} />
+                <Icon name="Shuffle" size="md" />
               </button>
             )}
             {lista.length > 0 && (
@@ -343,7 +343,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
                 aria-label={`${onAir ? "Pausar" : "Reproducir"} ${header.title || album.title}`}
                 onClick={playPause}
               >
-                <Icon name={onAir ? "Pause" : "Play"} size={28} weight="fill" />
+                <Icon name={onAir ? "Pause" : "Play"} size="xl" weight="fill" />
               </button>
             )}
           </div>

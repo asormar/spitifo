@@ -61,7 +61,7 @@ function ArtistPlay({ songs, name, query, btnRef }) {
       aria-label={`${on ? "Pausar" : "Reproducir"} ${name}`}
       onClick={play}
     >
-      <Icon name={on ? "Pause" : "Play"} size={28} weight="fill" />
+      <Icon name={on ? "Pause" : "Play"} size="xl" weight="fill" />
     </button>
   );
 }
