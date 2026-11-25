@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
-import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
 import { canStartSwipe, swipeTarget } from "../app/navigation.js";
 import { Icon } from "../listen/icons.jsx";
@@ -27,6 +26,7 @@ import { npMenuKey, npMenuKind } from "./npMenu.js";
 import { panel, usePanel } from "./panel.js";
 import { playStateText } from "./playState.js";
 import { artTint, toneTint } from "./tint.js";
+import { resistedDy, scrimOpacity, shouldDismiss, shouldSkip } from "./npGestures.js";
 import "./nowplaying.css";
 
 /* ---------------------------------------------------------------------------
@@ -53,19 +53,6 @@ const TABS = ["Ahora suena", "Cola", "Ficha"];
 
 /* Movimiento minimo antes de decidir si el arrastre es hacia abajo. */
 const SLOP = 8;
-/* Cierre por arrastre: 35 % de la altura, o rapido hacia abajo (px/ms), las
-   cifras de DESIGN.md. Pasado ese 35 %, la tarjeta resiste: solo avanza un
-   tercio de lo que se tira de mas (RESIST). El scrim (ver np__scrim) se
-   desvanece con el progreso del arrastre, hasta 70 % de la altura. */
-const CLOSE_FRACTION = 0.35;
-const CLOSE_SPEED = 0.5;
-const RESIST = 1 / 3;
-const SCRIM_RANGE = 0.7;
-
-/* Deslizar la portada salta de cancion (no cambia de pestana): mismas cifras
-   que el cierre por arrastre, pero en horizontal y sobre el ancho. */
-const SWIPE_FRACTION = 0.35;
-const SWIPE_SPEED = 0.5;
 
 const prefersReducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -170,6 +157,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const coverTrackRef = useRef(null);
   /* Gesto de la portada en curso: { id, x, y, t, started }. */
   const coverGesture = useRef(null);
+  /* Flechas fantasma que siguen al dedo durante el deslizamiento. */
+  const chevLRef = useRef(null);
+  const chevRRef = useRef(null);
 
   const meta = track?.meta ?? "";
   const { artist, album } = splitMeta(meta);
@@ -256,17 +246,14 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     }
     const el = rootRef.current;
     const h = el.clientHeight;
-    /* Pasado el 35 % de la altura, la tarjeta resiste: solo avanza un tercio
-       de lo que se tira de mas (DESIGN.md). `g.dy` guarda ya el valor con
-       resistencia: es lo que compara release(). */
-    const threshold = h * CLOSE_FRACTION;
-    g.dy = rawDy > threshold ? threshold + (rawDy - threshold) * RESIST : rawDy;
+    /* `g.dy` guarda ya el valor con resistencia (ver npGestures.js): es lo
+       que compara release(). */
+    g.dy = resistedDy(rawDy, h);
     el.style.transition = "none";
     el.style.transform = `translateY(${Math.max(0, g.dy)}px)`;
     if (scrimRef.current) {
-      const p = Math.min(1, Math.max(0, g.dy) / (h * SCRIM_RANGE));
       scrimRef.current.style.transition = "none";
-      scrimRef.current.style.opacity = String(1 - p);
+      scrimRef.current.style.opacity = String(scrimOpacity(g.dy, h));
     }
     g.samples.push([e.clientY, e.timeStamp]);
     if (g.samples.length > 5) g.samples.shift();
@@ -285,7 +272,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     gesture.current = null;
     if (!g || !g.mode) return;
     const el = rootRef.current;
-    const leave = !cancelled && (g.dy > el.clientHeight * CLOSE_FRACTION * 0.95 || g.v > CLOSE_SPEED);
+    const leave = !cancelled && shouldDismiss(g.dy, g.v, el.clientHeight);
     /* Cerrar sale con la curva de la casa; volver rebota un poco. */
     el.style.transition = `transform var(--t-move) var(${leave ? "--ease" : "--ease-spring"})`;
     el.style.transform = leave ? "translateY(100%)" : "";
@@ -333,12 +320,19 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
       trackEl.style.transition = "none";
       trackEl.style.transform = `translateX(${dx}px)`;
     }
+    /* La flecha fantasma del lado hacia el que se desliza, segun cuanto. */
+    const op = Math.min(1, Math.abs(dx) / 60);
+    const toNext = dx < 0;
+    if (chevLRef.current) chevLRef.current.style.opacity = toNext ? "0" : String(op);
+    if (chevRRef.current) chevRRef.current.style.opacity = toNext ? String(op) : "0";
   };
 
   const releaseCover = (e, cancelled) => {
     const g = coverGesture.current;
     coverGesture.current = null;
     const trackEl = coverTrackRef.current;
+    if (chevLRef.current) chevLRef.current.style.opacity = "0";
+    if (chevRRef.current) chevRRef.current.style.opacity = "0";
     if (!g || !trackEl) return;
     if (!g.started) return;
     const dx = cancelled ? 0 : e.clientX - g.x;
@@ -346,7 +340,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     const v = Math.abs(dx) / dt;
     const dir = dx < 0 ? 1 : -1; // izquierda => siguiente
     const neighbor = dir > 0 ? nextNeighbor : prevNeighbor;
-    const commit = Boolean(neighbor) && !cancelled && (Math.abs(dx) >= g.width * SWIPE_FRACTION || v > SWIPE_SPEED);
+    const commit = Boolean(neighbor) && !cancelled && shouldSkip(dx, v, g.width);
     const reduced = prefersReducedMotion();
     const dur = reduced ? 0 : 320;
     trackEl.style.transition = dur ? `transform ${dur}ms var(--drawer)` : "none";
@@ -597,6 +591,16 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 </div>
               </div>
             )}
+            {!pc && (
+              <>
+                <span ref={chevLRef} className="np__cover-chev np__cover-chev--l" aria-hidden="true">
+                  <Icon name="CaretLeft" size="sm" />
+                </span>
+                <span ref={chevRRef} className="np__cover-chev np__cover-chev--r" aria-hidden="true">
+                  <Icon name="CaretLeft" size="sm" />
+                </span>
+              </>
+            )}
           </div>
           {pc ? (
             <div className="np__row">
@@ -633,10 +637,10 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     <div className="np__transport">
       <div className="np__seek">
         <Scrub key={track.key} duration={duration} label={track.label}>
-          {(shown) => (
+          {({ elapsedRef, remainingRef }) => (
             <div className="np__times">
-              <span>{clock(shown)}</span>
-              <span>{duration ? `-${clock(duration - shown)}` : "--:--"}</span>
+              <span ref={elapsedRef} />
+              <span ref={remainingRef} />
             </div>
           )}
         </Scrub>
