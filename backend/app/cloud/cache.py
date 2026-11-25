@@ -146,6 +146,18 @@ class AudioCache:
             del self._index[key]
 
     # ---------------------------------------------------------------- puerto
+    def has(self, remote_id: str, revision: str) -> bool:
+        """¿Esta ya la revision? Sin tocar el LRU ni reescribir el indice.
+
+    `get()` marca como usada la entrada y guarda el indice, algo que no hace
+    falta cuando solo se pregunta «¿hay que bajarlo?». Con el adelanto de la
+    pista actual esa pregunta llega en cada play.
+    """
+        with self._lock:
+            key = self._key(remote_id, revision)
+            ent = self._index.get(key)
+            return bool(ent and self._file(key, ent["ext"]).is_file())
+
     def get(self, remote_id: str, revision: str) -> Path | None:
         """Ruta cacheada o None. Si existe, la marca como la ultima usada."""
         with self._lock:

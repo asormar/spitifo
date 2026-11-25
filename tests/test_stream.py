@@ -318,6 +318,87 @@ def test_403_antes_de_enviar_bytes_resuelve_una_vez_mas(api, monkeypatch):
     assert len(ranges) == 2, "el primer 403 no debe contar como trozo servido"
 
 
+def test_403_usa_la_url_ya_renovada_sin_re_resolver(api, monkeypatch):
+    primera = "https://googlevideo.test/viejo.webm?expire=1"
+    nueva = "https://googlevideo.test/nuevo.webm?expire=2"
+    ranges = []
+    instalar_cliente(monkeypatch, transporte(ranges, fallar_url=primera))
+    fuerza = []
+
+    async def resolve(url, force=False):
+        fuerza.append(force)
+        return stream.StreamInfo(
+            url=primera, headers={}, ext="webm", mime="audio/webm",
+            filesize=TOTAL, duration=180, expires_at=1, path="fast",
+        )
+
+    monkeypatch.setattr(stream, "resolve", resolve)
+    fresca = stream.StreamInfo(
+        url=nueva, headers={}, ext="webm", mime="audio/webm",
+        filesize=TOTAL, duration=180, expires_at=time.time() + 3600, path="fast",
+    )
+    monkeypatch.setattr(stream, "fresh_for", lambda vid, antes: fresca)
+
+    r = api.get("/api/stream", params={"url": URL}, headers={"Range": "bytes=0-100"})
+    assert r.status_code == 206
+    assert r.content == PAYLOAD[:101]
+    assert fuerza == [False], "la URL renovada evita la resolucion forzada"
+    assert len(ranges) == 2
+
+
+def test_fresh_for_solo_devuelve_una_entrada_mas_nueva():
+    ahora = time.time()
+    vieja = stream.StreamInfo(
+        "u1", {}, "webm", "audio/webm", TOTAL, 180, ahora, "fast")
+    stream._cache[VID] = vieja
+    assert stream.fresh_for(VID, ahora) is None
+    nueva = stream.StreamInfo(
+        "u2", {}, "webm", "audio/webm", TOTAL, 180, ahora + 100, "fast")
+    stream._cache[VID] = nueva
+    assert stream.fresh_for(VID, ahora) is nueva
+
+
+def test_maybe_refresh_no_bloquea_y_no_descarta_la_entrada_actual(monkeypatch):
+    calls = []
+
+    async def resolve(url, force=False):
+        calls.append(force)
+
+    monkeypatch.setattr(stream, "resolve", resolve)
+    proxima = time.time() + stream.CACHE_MARGIN_S + stream.REFRESH_LEAD_S - 1
+    stream._cache[VID] = stream.StreamInfo(
+        "u", {}, "webm", "audio/webm", TOTAL, 180, proxima, "fast")
+    async def escenario():
+        assert stream.maybe_refresh(URL) is True
+        assert stream.maybe_refresh(URL) is False, "una sola renovacion por video"
+        assert stream._cache[VID].expires_at == proxima
+        await asyncio.sleep(0)
+        assert calls == [True]
+
+    asyncio.run(escenario())
+
+
+def test_el_ultimo_visitor_vale_durante_el_backoff(monkeypatch):
+    pedidos = []
+
+    def falla():
+        pedidos.append(1)
+        return None
+
+    monkeypatch.setattr(stream, "_fetch_visitor_sync", falla)
+    # Un visitor bueno que ya vencio, tras un fallo reciente al refrescarlo.
+    monkeypatch.setattr(stream, "_visitor_stale", "visitor-anterior")
+    monkeypatch.setattr(stream, "_visitor", None)
+    monkeypatch.setattr(stream, "_visitor_failed_at", time.time())
+    assert asyncio.run(stream.ensure_visitor()) == "visitor-anterior"
+    assert pedidos == []
+    # Pasado el backoff se vuelve a probar: aunque falle, el ultimo bueno
+    # sigue sirviendo y no se pide la home en cada play.
+    monkeypatch.setattr(stream, "_visitor_failed_at", time.time() - stream.VISITOR_BACKOFF_S - 1)
+    assert asyncio.run(stream.ensure_visitor()) == "visitor-anterior"
+    assert len(pedidos) == 1
+
+
 def test_url_invalida_da_400(api):
     r = api.get("/api/stream", params={"url": "https://example.com/cancion"})
     assert r.status_code == 400

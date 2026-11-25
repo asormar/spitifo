@@ -33,6 +33,20 @@ def test_put_y_get(tmp_path):
     assert got.read_bytes() == b"audio"
 
 
+def test_has_no_reescribe_el_indice_ni_toca_el_lru(tmp_path):
+    reloj = Reloj()
+    cache = AudioCache(tmp_path / "cache", budget_bytes=1_000_000, clock=reloj)
+    cache.put("id1", "rev1", _src(tmp_path, "a.mp3", b"audio"), ".mp3")
+    key = cache._key("id1", "rev1")
+    antes = cache._index[key]["touched"]
+    indice = (cache.root / "index.json").read_bytes()
+
+    assert cache.has("id1", "rev1") is True
+    assert cache.has("id1", "rev2") is False
+    assert cache._index[key]["touched"] == antes
+    assert (cache.root / "index.json").read_bytes() == indice
+
+
 def test_otra_revision_es_un_miss(tmp_path):
     cache = AudioCache(tmp_path / "cache", 1_000_000)
     cache.put("id1", "rev1", _src(tmp_path, "a.mp3", b"x"), ".mp3")

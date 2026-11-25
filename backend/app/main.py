@@ -1884,16 +1884,23 @@ async def stream_audio(request: Request):
     try:
         await up.open()
     except stream_mod.UpstreamGone:
-        # La URL del formato vencio antes de mandar nada: se descarta y se
-        # resuelve una sola vez mas. Despues del primer byte ya no se reintenta.
-        stream_mod.drop(vid)
-        try:
-            info = await stream_mod.resolve(canon, force=True)
-        except BotCheckError as e:
-            return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
-        except Exception as e:
-            log.warning("ytdlp stream reintento fallo: %s", e)
-            raise HTTPException(502, f"yt-dlp: {e}")
+        # La URL del formato vencio antes de mandar nada. Si la renovacion en
+        # background ya dejo una mas nueva, se usa SIN volver a extraer; solo
+        # como ultimo recurso se fuerza aqui una resolucion nueva. Despues del
+        # primer byte ya no se reintenta.
+        info_nueva = stream_mod.fresh_for(vid, info.expires_at)
+        if info_nueva is None:
+            stream_mod.drop(vid)
+        if info_nueva is None:
+            try:
+                info = await stream_mod.resolve(canon, force=True)
+            except BotCheckError as e:
+                return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
+            except Exception as e:
+                log.warning("ytdlp stream reintento fallo: %s", e)
+                raise HTTPException(502, f"yt-dlp: {e}")
+        else:
+            info = info_nueva
         up = stream_mod.Upstream(info, cliente, start, end)
         try:
             await up.open()
@@ -1934,6 +1941,9 @@ async def stream_prepare(request: Request):
         from . import stream as stream_mod
         try:
             await stream_mod.resolve(canon)
+            # Preparar también programa la renovación: una URL resuelta ahora
+            # debe seguir sirviendo cuando venza dentro de unos minutos.
+            stream_mod.maybe_refresh(canon)
         except Exception as e:
             log.info("stream prepare fallo: %s", e)
 
@@ -3319,7 +3329,8 @@ async def audio(request: Request):
     try:
         # A un thread: en un adapter remoto stat es una llamada de red, y en
         # el local un acceso a disco que no debe frenar el event loop.
-        size = (await asyncio.to_thread(storage.stat, key)).size
+        stat = await asyncio.to_thread(storage.stat, key)
+        size = stat.size
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
 
@@ -3328,13 +3339,31 @@ async def audio(request: Request):
     ctype = mimetypes.guess_type(key)[0] or "application/octet-stream"
     # La miniatura no cambia mientras el archivo exista: sin esto cada fila que
     # se monta de nuevo en la lista virtual la vuelve a pedir (con Drive, un
-    # viaje a la red). El audio y el video ya viajan con `Range` y no se cachean.
+    # viaje a la red). El audio y el video viajan con `Range` y antes no tenian
+    # ningun validador: un seek atras volvia a Drive aunque el WebView ya
+    # tuviera esos bytes. La revision de Drive ya viene en `StoredFile.etag`.
+    es_imagen = key.startswith(f"{ART_DIR}/") or Path(key).suffix.lower() in IMAGE_EXTS
     cache = _ART_CACHE if key.startswith(f"{ART_DIR}/") else (
         _THUMB_CACHE if Path(key).suffix.lower() in IMAGE_EXTS else {})
+    etag = None if es_imagen else getattr(stat, "etag", None)
+    if etag:
+        cache = {
+            **cache,
+            "ETag": f'"{etag}"',
+            "Cache-Control": "private, max-age=86400",
+        }
     rango = _parse_range(request.headers.get("range"), size)
     if rango == "insatisfacible":
         return Response(status_code=416, headers={
             "Content-Range": f"bytes */{size}", "Accept-Ranges": _UNIT})
+
+    # Una peticion condicional sobre el archivo completo se contesta sin
+    # abrirlo: el WebView ya tiene esos bytes y no hay que volver a pedirlos.
+    # Con `Range` no se acorta: el rango pedido es distinto del que valida.
+    if etag and not isinstance(rango, tuple):
+        inm = request.headers.get("if-none-match", "").strip()
+        if inm in (f'"{etag}"', etag, f'W/"{etag}"'):
+            return Response(status_code=304, headers=cache)
 
     if isinstance(rango, tuple):
         start, end = rango
