@@ -3,6 +3,7 @@ import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
+import { knobOffset, pctFromPointer } from "./scrubMath.js";
 
 /* ---------------------------------------------------------------------------
    BARRA DE PROGRESO
@@ -43,7 +44,9 @@ export default function Scrub({ duration, label, children }) {
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${pct})`;
     if (knobRef.current) {
       const w = railRef.current?.clientWidth || 0;
-      knobRef.current.style.transform = `translateX(${pct * w - 7}px)`;
+      /* --knob-x compone con la escala que decide player.css (reposo, foco,
+         is-drag): un `style.transform` directo la pisaria por completo. */
+      knobRef.current.style.setProperty("--knob-x", `${knobOffset(pct, w)}px`);
     }
     if (sliderRef.current) {
       sliderRef.current.setAttribute("aria-valuenow", String(Math.round(pct * 100)));
@@ -68,7 +71,7 @@ export default function Scrub({ duration, label, children }) {
 
   const pctAt = (e) => {
     const r = railRef.current.getBoundingClientRect();
-    return clamp((e.clientX - r.left) / r.width, 0, 1);
+    return pctFromPointer(e.clientX, r.left, r.width);
   };
 
   const onPointerDown = (e) => {
