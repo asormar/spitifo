@@ -10,18 +10,19 @@ chicos y separados, lo uno nunca le saca hilos a lo otro.
 Tamanos pensados para el telefono de referencia (4-8 nucleos, 4 GB de RAM), NO
 para el PC de desarrollo:
 
-- `YTDLP_EXECUTOR` (6 hilos): 3 cubren el pool de busqueda (`_SEARCH_POOL` en
-  ytdlp_source.py, como mucho 3 instancias de `YoutubeDL` vivas a la vez), 2
-  cubren `downloads.MAX_RUNNING` (como mucho 2 descargas corriendo a la vez en
-  toda la app, y cada una ocupa su hilo por la descarga COMPLETA: yt-dlp baja
-  el archivo adentro de la misma llamada que extrae, no en dos pasos) y el
-  sexto es el margen para que un resolve de un toque del usuario (tocar play)
-  nunca haga cola detras de una racha de busquedas de 3 MAS las 2 descargas
-  de fondo que ya pudieran estar corriendo. Cada hilo sostiene como mucho una
-  instancia de `YoutubeDL` (certificados, una conexion TLS): 6 hilos pesan
-  unos pocos MB, por debajo de lo que reservaria el default de asyncio en el
-  telefono (cpu_count()+4, o sea entre 8 y 12 hilos, cada uno pudiendo abrir
-  SU PROPIA instancia si no hubiera pool).
+- `YTDLP_EXECUTOR` (8 hilos): 3 cubren el pool de busqueda (`_SEARCH_POOL` en
+  ytdlp_source.py, como mucho 3 instancias de `YoutubeDL` vivas a la vez), 4
+  cubren `downloads.MAX_NETWORK` (hasta 4 descargas en vuelo: la fase de red
+  separada del limite de 2 transcodificaciones de CPU, P-downloads-pipeline-1;
+  cada una ocupa su hilo por la descarga COMPLETA: yt-dlp baja el archivo
+  adentro de la misma llamada que extrae, no en dos pasos) y el octavo es el
+  margen para que un resolve de un toque del usuario (tocar play) nunca haga
+  cola detras de una racha de busquedas de 3 MAS las 4 descargas de fondo que
+  ya pudieran estar corriendo. Cada hilo sostiene como mucho una instancia de
+  `YoutubeDL` (certificados, una conexion TLS): 8 hilos pesan unos pocos MB,
+  por debajo de lo que reservaria el default de asyncio en el telefono
+  (cpu_count()+4, o sea entre 8 y 12 hilos, cada uno pudiendo abrir SU PROPIA
+  instancia si no hubiera pool).
 - `STORAGE_EXECUTOR` (6 hilos): alcanza para un `library_scan` completo mas un
   par de lecturas de rango de `/api/audio` (los saltos dentro de un tema) mas
   el guardado atomico de la cola de descargas, sin que unas esperen a otras y
@@ -47,7 +48,7 @@ from typing import Any, Callable, TypeVar
 T = TypeVar("T")
 
 #: Ver el modulo para la cuenta completa de por que estos numeros.
-YTDLP_WORKERS = 6
+YTDLP_WORKERS = 8
 STORAGE_WORKERS = 6
 PREFETCH_WORKERS = 2
 

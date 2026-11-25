@@ -1854,6 +1854,24 @@ async def downloads_enqueue(request: Request):
     return JSONResponse({"items": downloads.enqueue(specs, group)})
 
 
+async def downloads_network(request: Request):
+    """POST /api/downloads/network: informa la conexion y las preferencias.
+
+    La UI (Bridge de Android o `navigator.connection`) dice si hay red, si es
+    Wi-Fi y si el usuario exige Wi-Fi / prohibe roaming. Con eso la cola decide
+    si un item puede empezar o debe esperar con fase «Esperando Wi-Fi».
+    """
+    body = await _json_body(request)
+    tipo = body.get("type")
+    if tipo is not None and not isinstance(tipo, str):
+        raise _invalid(["body", "type"], "Input should be a valid string")
+    return JSONResponse(downloads.set_network(
+        type=tipo,
+        online=body.get("online"),
+        wifi_only=body.get("wifi_only"),
+        roaming_allowed=body.get("roaming_allowed")))
+
+
 async def downloads_cancel(request: Request):
     """POST /api/downloads/{id}/cancel: cancela un item en cola o en curso."""
     item_id = request.path_params["id"]
@@ -3374,6 +3392,11 @@ def _storage_payload(flow) -> dict:
         "quota": quota,
         # Como se firma el sign-in en este dispositivo: la UI decide con esto si
         # abre un link o si le pide el token al shell nativo.
+        # Cuanto pode estar atrasada una version antigua que solo lee el
+        # indice: los cambios del journal se funden en el al cerrar un grupo,
+        # al quedar idle o al apagar. Se muestra en Ajustes.
+        "index_journal": (storage.journal_stats()
+                          if hasattr(storage, "journal_stats") else None),
         "connect_via": "android" if android else "browser",
         "providers": [{
             "id": "google",
@@ -3705,6 +3728,7 @@ routes = [
     Route("/api/downloads", downloads_list, methods=["GET"]),
     Route("/api/downloads", downloads_enqueue, methods=["POST"]),
     Route("/api/downloads/cancel", downloads_cancel_group, methods=["POST"]),
+    Route("/api/downloads/network", downloads_network, methods=["POST"]),
     Route("/api/downloads/{id}/cancel", downloads_cancel, methods=["POST"]),
     Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),

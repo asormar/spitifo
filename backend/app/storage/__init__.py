@@ -118,8 +118,17 @@ class Storage(Protocol):
 
     def put_file(self, key: str, src: Path) -> StoredFile: ...
 
-    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
-        """Como `put_file` para varios: en la nube, UNA sola escritura del indice."""
+    def put_files(self, items: list[tuple[str, Path]], *,
+                  journal: bool = False,
+                  fileinfo: tuple[str, dict] | None = None,
+                  on_bytes: Callable[[int, int], None] | None = None
+                  ) -> list[StoredFile]:
+        """Como `put_file` para varios: en la nube, UNA sola escritura del indice.
+
+        `journal` registra el cambio en el journal local en vez de re-subir el
+        indice; `fileinfo` mete el veredicto en el mismo lote; `on_bytes` avisa
+        del progreso de la subida.
+        """
         ...
 
     def delete(self, key: str) -> None: ...

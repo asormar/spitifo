@@ -40,9 +40,10 @@ from ..saved import SavedBook, SavedFormatError
 from ..runtime import MEDIA_MIME_TYPES
 from ..storage import StoredFile, validate_key
 from .cache import AudioCache
+from .index_journal import IndexJournal, journal_path
 from .library_index import IndexEntry, IndexFormatError, LibraryIndex
 from .snapshot import RemoteFile, SmallFileSnapshot
-from .tokens import TokenSource
+from .tokens import TokenSource, default_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -288,7 +289,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                  cache: AudioCache | None = None, folder_name: str = FOLDER_NAME,
                  clock: Callable[[], float] = time.time,
                  sleep: Callable[[float], None] = time.sleep,
-                 snapshot: SmallFileSnapshot | None = None) -> None:
+                 snapshot: SmallFileSnapshot | None = None,
+                 journal_dir: Path | None = None) -> None:
         self.tokens = tokens
         self.client = client
         self.device_id = device_id
@@ -332,6 +334,14 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # terminan juntas no pueden subir versiones fuera de orden (la mas
         # vieja pisaria a la nueva) ni crear dos `index-<device>.json`.
         self._index_flush_lock = threading.Lock()
+        # Journal local de cambios del indice: una descarga NO re-sube el indice
+        # entero, solo agrega una linea. Se compacta en grupo / al quedar idle /
+        # al cerrar (ver `compact_index_journal`).
+        self._journal = IndexJournal(
+            journal_path(journal_dir or default_data_dir(), device_id),
+            clock=clock)
+        self._journal_loaded = False
+        self._journal_compact_lock = threading.Lock()
         # Sube cada vez que un archivo chico se crea o se borra: un listado
         # combinado pedido ANTES de ese cambio no se guarda como fresco.
         self._small_gen = 0
@@ -742,6 +752,18 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 own_id = own_id or self._own_index_id
                 own_unreadable = False
                 merged = own.merge(merged)
+            if not self._journal_loaded:
+                # Recuperacion tras un corte: lo que ya se subio a la nube pero
+                # cuyo registro quedo solo en el journal tiene que verse al
+                # reiniciar (data safety de las descargas en grupo).
+                self._journal_loaded = True
+                for entry in self._journal.load().values():
+                    if entry.deleted:
+                        own.remove(entry.key, entry.updated_at)
+                    else:
+                        own.upsert(entry)
+                if self._journal.stats()["pending"]:
+                    merged = own.merge(merged)
             self._index = merged
             self._index_at = self._clock()
             self._own_index_id = own_id
@@ -749,16 +771,21 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             self._own_unreadable = own_unreadable
             return merged
 
-    def _write_own(self, change: Callable[[LibraryIndex], None]) -> None:
-        """Aplica `change` al indice PROPIO y lo sube a la nube.
+    def _write_own(self, change: Callable[[LibraryIndex], None], *,
+                   journal: bool = False) -> None:
+        """Aplica `change` al indice PROPIO y lo publica.
 
         Un solo escritor por archivo: no hace falta escritura condicional.
         Despues mergea el resultado en la vista en memoria. Fuera de un
         `batch_index_writes`, la subida es sincronica, como siempre: esta
         llamada no vuelve hasta que el archivo esta en la nube. Dentro de uno,
         el cambio se aplica en memoria YA (se ve de inmediato) pero la subida
-        se demora hasta que el bloque termina: asi una descarga de un album
-        entero sube el indice una sola vez, no una por tema.
+        se demora hasta que el bloque termina.
+
+        Con `journal=True` (las descargas) la publicacion es una linea corta en
+        el journal LOCAL: ni una relectura ni una re-subida del indice por
+        tema. Se compacta al cerrar el grupo, al quedar la cola idle y al
+        apagar la app.
         """
         with self._index_lock:
             self._load_index()
@@ -768,7 +795,8 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             if self._own_unreadable:
                 raise RuntimeError(
                     f"no se pudo leer {self._own_name()}: no se sobrescribe")
-            own = LibraryIndex(entries=dict(self._own.entries))
+            antes = self._own.entries
+            own = LibraryIndex(entries=dict(antes))
             change(own)
             self._own = own
             # El indice recien escrito es el mas fresco para SUS claves: en un
@@ -777,9 +805,19 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             # estaba en memoria.
             self._index = own.merge(self._index or LibraryIndex())
             self._index_at = self._clock()
-            self._own_dirty = True
             batching = self._index_batch_depth > 0
-        if not batching:
+            if journal:
+                cambiados = [own.entries[k] for k in own.entries
+                             if k not in antes or antes[k] != own.entries[k]]
+                borrados = [k for k in antes if k not in own.entries]
+                self._journal.append(cambiados)
+                for key in borrados:
+                    self._journal.append_delete(key, self._clock())
+                # `_own_dirty` se deja como estaba: si una subida anterior
+                # fallo, esa si hay que terminarla al compactar.
+            else:
+                self._own_dirty = True
+        if not journal and not batching:
             self.flush_index()
 
     def flush_index(self) -> None:
@@ -810,6 +848,43 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             # Si `self._own` cambio de nuevo mientras esto subia, queda sucio:
             # el proximo `flush_index` (o el cierre de la app) lo termina.
 
+    def compact_index_journal(self) -> None:
+        """Funde el journal en `index-<device>.json` con UNA subida.
+
+        Regla: los cambios del journal se aplican al indice propio en memoria,
+        se sube ese indice una vez y solo despues se descartan del journal las
+        lineas ya incluidas. Si el proceso se corta en medio, el journal se
+        vuelve a aplicar al arrancar (los upserts son idempotentes): ninguna
+        pista ya subida se pierde. Un cambio que llegue DURANTE la subida tiene
+        seq mayor y se conserva para la siguiente compactacion.
+        """
+        with self._journal_compact_lock:
+            with self._index_lock:
+                if self._own_unreadable:
+                    # Pisaria una biblioteca que no pudimos leer: mejor dejar
+                    # el journal para la proxima compactacion.
+                    return
+            cambios, seq = self._journal.snapshot()
+            if cambios:
+                with self._index_lock:
+                    # La vista en memoria ya trae estos cambios, pero una
+                    # relectura por TTL pudo traer una copia vieja: reaplicar.
+                    for key, value in cambios.items():
+                        if isinstance(value, IndexEntry):
+                            self._own.upsert(value)
+                        else:
+                            self._own.remove(key, value)
+                    self._index = self._own.merge(self._index or LibraryIndex())
+                    self._own_dirty = True
+            if self._own_dirty:
+                self.flush_index()
+            if seq:
+                self._journal.drop_applied(seq)
+
+    def journal_stats(self) -> dict:
+        """Cuantos cambios del indice esperan compactacion (para Ajustes)."""
+        return self._journal.stats()
+
     @contextmanager
     def batch_index_writes(self) -> Iterator[None]:
         """Agrupa varios `_write_own` (una descarga de un album) en UNA sola
@@ -833,6 +908,10 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 depth = self._index_batch_depth
             if depth == 0:
                 self.flush_index()
+                # Fin de grupo: subir lo que el journal tenga, aunque no haya
+                # llegado al umbral de compactacion por tiempo/cantidad.
+                if self._journal.stats()["pending"]:
+                    self.compact_index_journal()
 
     def _entry(self, key: str, *, allow_force: bool = True) -> IndexEntry | None:
         """Entrada viva de la clave. Recarga UNA vez si no esta en memoria.
@@ -1274,7 +1353,11 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         """Sube `src` a `key` y lo BORRA (el puerto MUEVE)."""
         return self.put_files([(key, src)])[0]
 
-    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
+    def put_files(self, items: list[tuple[str, Path]], *,
+                  journal: bool = False,
+                  fileinfo: tuple[str, dict] | None = None,
+                  on_bytes: Callable[[int, int], None] | None = None
+                  ) -> list[StoredFile]:
         """Sube varios archivos y los indexa con UNA sola escritura del indice.
 
         Cada descarga trae el audio y sus dos portadas: el indice propio se
@@ -1282,14 +1365,42 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         tres veces el indice. Si uno falla, lo que ya se subio SI se indexa y
         despues se levanta el error. Cada `src` se BORRA al terminar.
 
-        Las tres claves son casi siempre NUEVAS (nadie bajo antes este tema):
-        `allow_force=False` en el chequeo de "ya existe" evita que cada una
-        fuerce su propia relectura completa del indice (`_entry`). Las subidas
-        en si van en paralelo (archivos distintos, nada que coordinar entre
-        ellas): es la misma espera de red de a una.
+        - `journal=True`: el registro va al journal local (una linea), no a
+          una re-subida del indice entero.
+        - `fileinfo`: el veredicto se escribe EN EL MISMO lote de hilos, en
+          paralelo con el audio y las portadas, en vez de ser una segunda
+          request serial justo despues.
+        - `on_bytes(done, total)`: progreso de la fase de subida, para que la
+          barra no se congele en 100 % durante el PUT mas largo.
         """
         for key, _src in items:
             validate_key(key)
+
+        total = 0
+        for _key, raw_src in items:
+            try:
+                total += Path(raw_src).stat().st_size
+            except OSError:
+                pass
+        progreso = [0]
+        progreso_lock = threading.Lock()
+
+        def _notify(done: int) -> None:
+            if on_bytes is None:
+                return
+            try:
+                on_bytes(done, total)
+            except Exception as exc:  # el progreso nunca tumba la subida
+                log.debug("on_bytes fallo: %s", exc)
+
+        def _save_info() -> None:
+            if fileinfo is None:
+                return
+            try:
+                self.save_fileinfo(*fileinfo)
+            except Exception as exc:
+                # Best effort, como `record_download`: el archivo ya esta subido.
+                log.warning("no se pudo guardar el veredicto: %s", exc)
 
         def _prepare(item: tuple[str, Path]
                     ) -> "tuple[IndexEntry, IndexEntry | None, Path] | Exception":
@@ -1314,6 +1425,9 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 existing_id = existing.remote_id if existing is not None else None
                 remote_id, revision = self._upload(
                     key, src, size, _mime_of(key), existing_id)
+                with progreso_lock:
+                    progreso[0] += size
+                    _notify(progreso[0])
             except Exception as exc:
                 return exc
             entry = IndexEntry(key=key, remote_id=remote_id, revision=revision,
@@ -1327,13 +1441,20 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # `_trash_keys`): cada uno es independiente, asi que se intentan todos
         # y se indexa lo que salio bien. El primer error encontrado es el que
         # se levanta al final.
-        if len(items) > 1:
-            workers = min(SMALL_FILE_WORKERS, len(items))
+        futuro_info = None
+        if len(items) > 1 or fileinfo is not None:
+            workers = min(SMALL_FILE_WORKERS, max(1, len(items)))
             with ThreadPoolExecutor(max_workers=workers,
                                     thread_name_prefix="put-files") as pool:
-                results = list(pool.map(_prepare, items))
+                futures = [pool.submit(_prepare, item) for item in items]
+                if fileinfo is not None:
+                    futuro_info = pool.submit(_save_info)
+                results = [f.result() for f in futures]
+                if futuro_info is not None:
+                    futuro_info.result()
         else:
             results = [_prepare(item) for item in items]
+        _notify(total)
 
         prepared: list[tuple[IndexEntry, IndexEntry | None, Path]] = []
         failure: Exception | None = None
@@ -1349,7 +1470,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 for entry, _existing, _src in prepared:
                     index.upsert(entry)
 
-            self._write_own(change)
+            self._write_own(change, journal=journal)
 
         out: list[StoredFile] = []
         for entry, existing, src in prepared:
@@ -1485,6 +1606,10 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         terminar (p. ej. el proceso no llego a salir del bloque).
         """
         self.flush_index()
+        # El cierre es el ultimo lugar donde garantizar que un indice viejo no
+        # se quede sin los cambios que ya tenia el journal local.
+        if self._journal.should_compact() or self._journal.stats()["pending"]:
+            self.compact_index_journal()
 
     # -------------------------------------------------------------------- hooks
     # Lo unico que cambia entre proveedores. Son chicos a proposito: el indice,
