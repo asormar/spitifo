@@ -1,7 +1,11 @@
 {
   "_comment": "Size budgets in bytes, checked by scripts/perf/check_size.mjs in CI. Baselines measured on v0.3.0 (docs/performance.md). Raising a budget is a deliberate, reviewed change: say why in the pull request.",
   "bundle": {
-    "js": { "budget": 400000, "baseline": 314126 },
+    "js": {
+      "budget": 405000,
+      "baseline": 314126,
+      "note": "Phase 8 downloads pipeline: +5 KB for the Wi-Fi/roaming gate, adaptive polling, upload phase, playlist download and quality prefs. Reviewed with the perf check."
+    },
     "css": { "budget": 131000, "baseline": 52787 }
   },
   "installer": { "budget": 24000000, "baseline": 22707225 },

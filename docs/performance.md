@@ -30,7 +30,7 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 400,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 405,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 131,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -72,6 +72,11 @@ open to DevTools); everything else comes from the published files.
   waves add 2,289 B (stream reader, lazy-row queue, the «Buscando» state and
   tap priority, reusing the album match stream client) and #96 adds 501 B.
   With both, the bundle sits at about 396,480 B.
+- **2026-11-25**: JS 400,000 → 405,000 B for phase 8 of the downloads pipeline:
+  the Wi-Fi/roaming gate (`networkPayload` in the queue store), adaptive polling,
+  the upload phase, the mp3 cost notice and quality prefs, the playlist download
+  button and the journal staleness note. The pre-change branch measured 398,746 B;
+  after the change it measures 403,572 B (about 5 KB of new code).
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.
