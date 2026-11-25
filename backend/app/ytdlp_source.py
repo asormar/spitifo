@@ -1370,7 +1370,11 @@ class YtDlpSource(Source):
                             _preparar_reintento()
                             await asyncio.sleep(espera)
                             continue
-                        _finish(job_id, status="error", error=str(e))
+                        # El frontend nunca muestra este texto: solo el codigo
+                        # (transitorio se puede resolver solo; permanente, no).
+                        _finish(job_id, status="error", error=str(e),
+                                error_code="transient" if is_transient_error(e)
+                                else "permanent")
                         log.warning("ytdlp download fallo: %s", e)
                         raise RuntimeError(f"yt-dlp: {e}")
 

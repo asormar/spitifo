@@ -131,8 +131,10 @@ const STILL_RUNNING =
    nadie emitio). */
 export function noticeFromSuccess({ filename, size_mb: size, match, real_title: real }, query) {
   if (match === "mismatch" || match === "unknown") {
-    const where = real ? `en el archivo dice «${real}»` : "no se pudo verificar de dónde viene el audio";
-    return { tone: "warn", text: `Ojo: ${where} y tú buscaste «${query}».`, key: `w:${filename}` };
+    const text = real
+      ? `El archivo no coincide con lo que buscaste: dice «${real}». Revisa la ficha antes de guardarlo.`
+      : "No pudimos comprobar de dónde viene este audio. Revisa la ficha antes de guardarlo.";
+    return { tone: "warn", text, key: `w:${filename}` };
   }
   return {
     tone: "ok",
@@ -144,11 +146,19 @@ export function noticeFromSuccess({ filename, size_mb: size, match, real_title: 
 
 export const noticeFromError = (text, cookies = false) => ({ tone: "err", text, cookies });
 
+/* El transporte (yt-dlp) nunca llega al usuario: el backend ya lo clasifico con
+   is_transient_error en "transient" (puede resolverse solo) o "permanent" (no). */
+const TRANSPORT_ERROR_TEXT = {
+  transient: "Problema de red. Puede resolverse solo.",
+  permanent: "Este archivo no está disponible.",
+};
+
 /* El job termino mal, o dejo de poder seguirse (tope de espera, ya no existe en
    el servidor: eso no es un fallo, la descarga puede seguir corriendo). */
 export function noticeFromJob(finished) {
   if (finished.status === "timeout" || finished.status === "gone") {
     return { tone: "warn", text: finished.error || STILL_RUNNING };
   }
-  return noticeFromError(finished.error || "la descarga falló", finished.error_code === "youtube_bot_check");
+  const text = TRANSPORT_ERROR_TEXT[finished.error_code] || finished.error || "la descarga falló";
+  return noticeFromError(text, finished.error_code === "youtube_bot_check");
 }

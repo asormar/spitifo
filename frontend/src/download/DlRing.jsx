@@ -1,7 +1,7 @@
 import { rowKey } from "../shared/api.js";
 import { Icon } from "./icons.jsx";
 import { useJob } from "./jobsStore.js";
-import { dlState, dlWaiting } from "./searchPlan.js";
+import { dlState, dlText, dlWaiting } from "./searchPlan.js";
 
 /* El estado de descarga de un resultado: el job del jobsStore (solo yt-dlp) y
    los Sets de la pantalla. useJob repinta SOLO esta fila con cada sondeo. */
@@ -24,18 +24,37 @@ export default function DlRing({ t, name, busy, downloaded, onDl, small = false 
   const wait = dlWaiting(s);
   const title = name || t.title || "este resultado";
   const done = s.id === "done";
-  const idle = !wait && !done;
+  const failed = s.id === "err";
+  const idle = !wait && !done && !failed;
 
   /* Nombre estable mientras corre: el porcentaje no puede renombrar el boton en
-     cada sondeo. El progreso vive en el progressbar de dentro, sin live region. */
+     cada sondeo. El progreso vive en el progressbar de dentro, sin live region.
+     Un fallo se queda fallido (con su motivo) hasta un reintento con exito: el
+     propio click reintenta, como cualquier otro estado de este boton. */
   return (
     <button
       type="button"
       className={small ? "dlr dlr--sm" : "dlr"}
       data-s={s.id}
       aria-disabled={wait || undefined}
-      aria-label={idle ? `Descargar ${title}` : done ? `Descargado: ${title}` : `Descargando ${title}`}
-      title={idle ? "Descargar a la biblioteca" : done ? "Descargado: pulsa para volver a descargarlo" : undefined}
+      aria-label={
+        idle
+          ? `Descargar ${title}`
+          : done
+            ? `Descargado: ${title}`
+            : failed
+              ? `${dlText(s)}. Reintentar descarga de ${title}`
+              : `Descargando ${title}`
+      }
+      title={
+        idle
+          ? "Descargar a la biblioteca"
+          : done
+            ? "Descargado: pulsa para volver a descargarlo"
+            : failed
+              ? "Pulsa para reintentar"
+              : undefined
+      }
       style={wait ? { "--p": `${s.pct}%` } : undefined}
       onClick={(e) => !wait && onDl(t, e.currentTarget)}
     >
@@ -44,7 +63,7 @@ export default function DlRing({ t, name, busy, downloaded, onDl, small = false 
           <i />
         </span>
       ) : (
-        <Icon name={done ? "Check" : "DownloadSimple"} size={small ? "md" : "lg"} />
+        <Icon name={done ? "Check" : failed ? "ArrowClockwise" : "DownloadSimple"} size={small ? "md" : "lg"} />
       )}
     </button>
   );

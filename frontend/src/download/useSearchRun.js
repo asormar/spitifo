@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg, rowKey } from "../shared/api.js";
+import { isOnline } from "../shared/online.js";
 import { buildSearchParams, prepareTopStreams, warmTopResults } from "./api.js";
 import { mergeMatchedTracks, searchAlbums } from "./albumApi.js";
 import { searchArtists } from "./artistApi.js";
@@ -192,10 +193,17 @@ export default function useSearchRun({ onRequest } = {}) {
       show(uniqueResults(d.results), d);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
-      setErr(e.message);
-      setResults([]);
-      setCatalog("");
-      setShelves({});
+      /* Una caida de red deja ver lo que ya habia (atenuado): un fetch roto no
+         puede borrar resultados que el usuario ya estaba mirando. Un error de
+         verdad del servidor (4xx/5xx con mensaje propio) si limpia, como antes. */
+      if (/failed to fetch|networkerror|load failed/i.test(e.message || "")) {
+        setErr(isOnline() ? "El servidor no responde. Vuelve a intentarlo." : "Sin conexión. Busca cuando vuelva la red.");
+      } else {
+        setErr(e.message);
+        setResults([]);
+        setCatalog("");
+        setShelves({});
+      }
     } finally {
       if (seq === searchSeq.current) {
         setLoading(false);
@@ -208,6 +216,10 @@ export default function useSearchRun({ onRequest } = {}) {
   /* Enter / "Buscar": pegar un enlace en otro modo lleva a "YouTube", que es
      el unico que lo entiende. run fija la firma, asi que el efecto de cambio de
      modo no repite la peticion. Devuelve si habia algo que buscar. */
+  /* Cierra el error de busqueda sin tocar los resultados: a diferencia de
+     reset(), no es "volver a la pantalla de reposo". */
+  const clearErr = useCallback(() => setErr(null), []);
+
   const submit = useCallback(() => {
     const plan = planSubmit({ q: searchDraft.get(), mode: modeRef.current });
     if (!plan) return false;
@@ -333,6 +345,6 @@ export default function useSearchRun({ onRequest } = {}) {
 
   return {
     q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
-    shelvesPending, streamDone, resultsRun, runs, run, submit, reset, listRef,
+    shelvesPending, streamDone, resultsRun, runs, run, submit, reset, clearErr, listRef,
   };
 }

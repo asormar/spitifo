@@ -36,10 +36,14 @@ export function createJobsStore(dismissMs = JOB_DISMISS_MS) {
     emit();
   };
 
-  /* Actualiza UN job sin tocar los demas. */
+  /* Actualiza UN job sin tocar los demas. Un error NO se retira solo: la fila
+     se queda fallida (con su motivo y su reintento) hasta un reintento con
+     exito o un descarte explicito; solo el toast de progreso lee el mismo job
+     y ese sigue retirandose por su cuenta (Strip/ProgressBar no usan temporizador
+     propio). */
   const setJobFor = (key, patch) => {
     jobs = { ...jobs, [key]: { ...jobs[key], ...patch, key } };
-    if (!isTerminal(jobs[key])) {
+    if (!isTerminal(jobs[key]) || jobs[key].status === "error") {
       clearTimeout(timers.get(key));
       timers.delete(key);
     } else if (!timers.has(key)) {
@@ -48,12 +52,20 @@ export function createJobsStore(dismissMs = JOB_DISMISS_MS) {
     emit();
   };
 
+  /* Descarte explicito de una fila fallida: la saca del almacen sin esperar. */
+  const dismiss = (key) => {
+    if (jobs[key]?.status !== "error") return;
+    clearTimeout(timers.get(key));
+    timers.delete(key);
+    drop(key);
+  };
+
   const subscribe = (fn) => {
     listeners.add(fn);
     return () => listeners.delete(fn);
   };
 
-  return { subscribe, getJobs: () => jobs, setJobFor };
+  return { subscribe, getJobs: () => jobs, setJobFor, dismiss };
 }
 
 export const jobsStore = createJobsStore();
@@ -68,3 +80,5 @@ export const useJob = (key) =>
 
 /* Lo que publica el espejo de la cola en jobsStore. */
 export const setJobFor = jobsStore.setJobFor;
+/* Descarte explicito de una fila fallida (el motivo deja de verse). */
+export const dismissJob = jobsStore.dismiss;

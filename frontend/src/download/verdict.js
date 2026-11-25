@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { fold } from "../listen/library.js";
 import { API, errMsg, fetchErr, rowKey } from "../shared/api.js";
+import { V_EXPLAIN } from "../shared/Verdict.jsx";
 import { trackState } from "./constants.js";
 
 /* ---------------------------------------------------------------------------
@@ -18,14 +19,6 @@ import { trackState } from "./constants.js";
    ni document: se importa en Node para los tests.
    ------------------------------------------------------------------------- */
 
-const V_TEXT = {
-  match: "El audio es la canción que buscaste.",
-  partial: "Se parece, pero no es exactamente lo que buscaste.",
-  mismatch: "No es lo que buscabas.",
-  p30: "Solo hay 30 s de esta fuente.",
-  unv: "No se pudo identificar el audio.",
-};
-
 /* El backend dice match | partial | mismatch | unknown. */
 const FROM_MATCH = { match: "match", partial: "partial", mismatch: "mismatch" };
 const known = (rec) => rec?.phase === "done" && !!FROM_MATCH[rec.match];
@@ -39,9 +32,11 @@ export function verdictOf(t, rec) {
   return (rec?.phase === "done" && FROM_MATCH[rec.match]) || "unv";
 }
 
-/* `untested`: nunca se comprobo (distinto de «no se pudo identificar»). */
-export function vText(key, { untested = false } = {}) {
-  return key === "unv" && untested ? "Todavía no se ha comprobado el audio." : V_TEXT[key];
+/* Una sola explicacion por veredicto, la misma que usa la pastilla
+   (shared/Verdict.jsx): intentado-y-fallido y nunca-comprobado dicen lo mismo,
+   «Sin verificar» no necesita distinguirlos. */
+export function vText(key) {
+  return V_EXPLAIN[key];
 }
 
 /* Un veredicto depende de la consulta: el mismo audio puede coincidir con una y

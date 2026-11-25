@@ -118,7 +118,8 @@ export function jobPatch(it) {
     case "saving":
       return { status: "processing", phase: "saving", progress: 100, title };
     case "done":
-      return { status: "done", phase: null, progress: 100, title };
+      /* `key` deja que la tarjeta de progreso ofrezca "Ver en biblioteca". */
+      return { status: "done", phase: null, progress: 100, title, key: it.key };
     case "error":
       return { status: "error", phase: null, progress: pct, title, error: it.error, error_code: it.error_code };
     case "cancelled":

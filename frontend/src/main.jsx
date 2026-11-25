@@ -13,6 +13,6 @@ import "./shared/motion.css";
 /* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
 import "./app/shell.css";
 
-document.title = "Spitifo: descarga contenido libre";
+document.title = "spitifo: descarga contenido libre";
 
 createRoot(document.getElementById("root")).render(<App />);
