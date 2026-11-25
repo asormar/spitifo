@@ -43,6 +43,13 @@ open to DevTools); everything else comes from the published files.
   but the room is visible. Raising one is a deliberate change to
   `scripts/perf/budgets.json`, reviewed in its own pull request with the reason
   in the description.
+- **2026-11-25 (phase 17, library pages and playlists at scale)**: JS
+  420,750 → 451,107 B and CSS 131,000 → 139,496 B. The limits grow by exactly
+  the measured bundle growth of this phase against `origin/feat/ds-icons`
+  (JS 408,517 → 438,874 B, +30,357; CSS 128,554 → 137,050 B, +8,496). The new
+  bytes are the playlist tools chunk (search, filters, sorting, folders,
+  import, duplicate warning), its CSS and the extra Phosphor paths; no budget
+  headroom was added beyond the measured change.
 - **2026-11-20**: JS 345,000 → 360,000 B and CSS 123,500 → 128,000 B, before
   the library redesign (saved songs without a file, custom pictures). After
   #69–#71 the bundle sat at 344,700 B of JS and 123,400 B of CSS, with no room
