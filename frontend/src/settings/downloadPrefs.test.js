@@ -8,7 +8,7 @@ const stored = (values) => ({ getItem: (key) => (key in values ? values[key] : n
 
 describe("preferencias de descarga", () => {
   it("original (sin recodificar) y solo audio por defecto", () => {
-    expect(readDownloadFormat(stored({}))).toBe("original");
+    expect(readDownloadFormat(stored({}))).toBe("m4a");
     expect(readDownloadMedia(stored({}))).toBe("audio");
   });
 
@@ -18,9 +18,9 @@ describe("preferencias de descarga", () => {
   });
 
   it("ignora valores desconocidos y un almacen bloqueado", () => {
-    expect(readDownloadFormat(stored({ "spitifo:download-format": "wav" }))).toBe("original");
+    expect(readDownloadFormat(stored({ "spitifo:download-format": "wav" }))).toBe("m4a");
     expect(readDownloadMedia(stored({ "spitifo:download-media": "x" }))).toBe("audio");
-    expect(readDownloadFormat(null)).toBe("original");
+    expect(readDownloadFormat(null)).toBe("m4a");
     expect(readDownloadMedia(null)).toBe("audio");
   });
 
@@ -39,6 +39,6 @@ describe("preferencias de descarga", () => {
     expect(qualityHint("normal")).toContain("4 MB");
     expect(qualityHint("alta", { video: true })).toContain("vídeo");
     expect(formatForQuality("ahorro")).toBe("m4a");
-    expect(formatForQuality("normal")).toBe("original");
+    expect(formatForQuality("normal")).toBe("m4a");
   });
 });

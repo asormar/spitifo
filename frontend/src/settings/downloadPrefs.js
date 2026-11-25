@@ -2,15 +2,17 @@ import { FORMATS, MEDIA_OPTIONS } from "../download/constants.js";
 import { localSetting } from "../shared/localSetting.js";
 
 /* Preferencias de descarga, un valor por dispositivo en localStorage. El
-   default NO recodifica: "original" conserva el contenedor de la fuente. mp3
-   es una eleccion explicita y su coste se avisa en Ajustes. */
+   default sigue siendo m4a: no recodifica (es el AAC de la fuente) y es el
+   formato que mejor llevan las caratulas y los otros reproductores. "original"
+   (opus u otro codec de origen) es la calidad Alta; mp3 es una eleccion
+   explicita y su coste se avisa en Ajustes. */
 export const DOWNLOAD_FMT_KEY = "spitifo:download-format";
 export const DOWNLOAD_MEDIA_KEY = "spitifo:download-media";
 export const DOWNLOAD_WIFI_KEY = "spitifo:download-wifi-only";
 export const DOWNLOAD_ROAMING_KEY = "spitifo:download-roaming-allowed";
 export const DOWNLOAD_QUALITY_KEY = "spitifo:download-quality";
 
-export const DEFAULT_FMT = "original";
+export const DEFAULT_FMT = "m4a";
 export const DEFAULT_MEDIA = "audio";
 export const DEFAULT_WIFI_ONLY = false;
 export const DEFAULT_ROAMING_ALLOWED = true;
@@ -19,7 +21,7 @@ export const DEFAULT_QUALITY = "normal";
 /* [id, etiqueta, formato, MB estimados por tema] */
 const QUALITY = [
   ["ahorro", "Ahorro", "m4a", 3],
-  ["normal", "Normal", "original", 4],
+  ["normal", "Normal", "m4a", 4],
   ["alta", "Alta", "original", 7],
 ];
 export const QUALITY_OPTIONS = QUALITY.map(([id, label]) => ({ id, label }));
