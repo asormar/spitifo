@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { activeGroup, backoffDelay, createQueueStore, groupItems, groupSummary } from "./queueStore.js";
 import { jobsStore } from "./jobsStore.js";
 import { verdictStore } from "./verdict.js";
+import { __setScreenOff } from "../shared/screenState.js";
 
 const track = (n) => ({ source: "itunes", source_id: `t${n}`, title: `Canción ${n}` });
 const item = (id, status, extra = {}) => ({
@@ -27,6 +28,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  __setScreenOff(false);
 });
 
 describe("cola: espera ante un corte de red", () => {
@@ -301,6 +303,34 @@ describe("cola: pantalla oculta", () => {
     expect(vi.getTimerCount()).toBe(0);
     state.value = "visible";
     await listeners.visibilitychange();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+});
+
+describe("cola: pantalla apagada (no solo pestaña tapada)", () => {
+  it("con trabajo pendiente y la pantalla apagada cae al sondeo lento de 10 s", async () => {
+    vi.useFakeTimers();
+    __setScreenOff(true);
+    const fetchImpl = vi.fn().mockResolvedValue(ok([item(70, "downloading")]));
+    const s = createQueueStore(fetchImpl);
+    await s.hydrate({ items: [item(70, "downloading")], running: 1, queued: 0 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+
+  it("con la pantalla encendida sigue al sondeo rapido de 1 s de siempre", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn().mockResolvedValue(ok([item(71, "downloading")]));
+    const s = createQueueStore(fetchImpl);
+    await s.hydrate({ items: [item(71, "downloading")], running: 1, queued: 0 });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     s.dispose();
   });

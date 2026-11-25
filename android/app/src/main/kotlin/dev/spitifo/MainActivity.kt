@@ -1,7 +1,10 @@
 package dev.spitifo
 
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -74,6 +77,15 @@ class MainActivity : ComponentActivity() {
         dispatchMediaAction(action, time)
     }
 
+    /**
+     * Real screen-off, not just this Activity being covered: `document.
+     * visibilityState` alone cannot tell the two apart (ADR for
+     * battery-background round 4). The page gates timers, rAF loops and
+     * pollers on this, through `window.spitifo-screen`; audio keeps playing
+     * either way, this never touches the WebView itself.
+     */
+    private var screenReceiver: BroadcastReceiver? = null
+
     /** The element the page asked to show full screen, while there is one. */
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
@@ -106,6 +118,7 @@ class MainActivity : ComponentActivity() {
         showStatus("Starting…")
         backend.addListener(listener)
         MediaActionRelay.register(mediaReceiver)
+        registerScreenReceiver()
     }
 
     override fun onResume() {
@@ -160,6 +173,8 @@ class MainActivity : ComponentActivity() {
             web = null
         }
         MediaActionRelay.unregister(mediaReceiver)
+        screenReceiver?.let { unregisterReceiver(it) }
+        screenReceiver = null
         // The audio dies with the WebView, so the notification must not outlive it.
         PlaybackService.clear(this)
         super.onDestroy()
@@ -235,6 +250,41 @@ class MainActivity : ComponentActivity() {
         val detail = if (time != null) "{action:'$action',time:$time}" else "{action:'$action'}"
         view.evaluateJavascript(
             "window.dispatchEvent(new CustomEvent('spitifo-media',{detail:$detail}))", null,
+        )
+    }
+
+    /**
+     * ACTION_SCREEN_OFF/ON cannot be declared in the manifest (protected,
+     * implicit-only broadcasts): a context-registered receiver is the only way
+     * to see them. Registered for as long as the Activity is alive, same as
+     * [mediaReceiver].
+     */
+    private fun registerScreenReceiver() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                dispatchScreenState(intent.action != Intent.ACTION_SCREEN_OFF)
+            }
+        }
+        registerReceiver(
+            receiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+        )
+        screenReceiver = receiver
+    }
+
+    /**
+     * Tells the page whether the physical display is on, so it can stop
+     * timers, rAF loops and pollers while it is off without pausing the
+     * WebView itself (the `<audio>` element lives there and must keep
+     * playing). See `frontend/src/shared/screenState.js`.
+     */
+    private fun dispatchScreenState(on: Boolean) {
+        val view = web ?: return
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('spitifo-screen',{detail:{on:$on}}))", null,
         )
     }
 

@@ -4,6 +4,7 @@ import { setJobFor } from "./jobsStore.js";
 import { verdictStore } from "./verdict.js";
 import { groupToast, reattachText } from "./albumText.js";
 import { markQueueReady } from "./queueBoot.js";
+import { isScreenOff } from "../shared/screenState.js";
 
 /* ---------------------------------------------------------------------------
    COLA DE DESCARGAS (espejo del servidor)
@@ -261,7 +262,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     clearTimeout(timer);
     timer = null;
     if (disposed) return;
-    /* Con la pantalla apagada no sondeamos: en el telefono ahorra bateria.
+    /* Con la pestana tapada no sondeamos: en el telefono ahorra bateria.
        visibilitychange ya llama a wake() en cuanto vuelve a ser visible. */
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     const busy = state.items.some((i) => BUSY_STATES.has(i.status));
@@ -271,7 +272,11 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     if (state.offline && !busy && !sheetOpen && capHits >= 2) return;
     let delay;
     if (state.offline) delay = retryDelay;
-    else if (busy) delay = POLL_FAST_MS;
+    /* Con la pantalla de verdad apagada (no solo la pestana tapada: ver
+       shared/screenState.js) una descarga activa no necesita el sondeo de
+       1 Hz de "alguien mira el anillo" — con la de 10 s alcanza para que no
+       se note al volver. */
+    else if (busy) delay = isScreenOff() ? POLL_SLOW_MS : POLL_FAST_MS;
     else if (sheetOpen && state.items.length) delay = POLL_SLOW_MS;
     else return;
     timer = setTimeout(poll, delay);

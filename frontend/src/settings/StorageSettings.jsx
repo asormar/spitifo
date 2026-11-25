@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { API, fetchErr } from "../shared/api.js";
 import { connectErrorText, driveSub } from "./storageInfo.js";
+import { isBackgrounded } from "../shared/screenState.js";
 import QuotaBar from "./QuotaBar.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent);
@@ -32,12 +33,16 @@ export default function StorageSettings({ active, onChanged }) {
   }, [active, load]);
 
   /* Mientras el sign-in esta pendiente se sondea; al conectar, la biblioteca
-     cambia sola en el backend y la app tiene que recargarla. */
+     cambia sola en el backend y la app tiene que recargarla. Con la pestana
+     tapada o la pantalla apagada no se hace trabajo de red (ver
+     shared/screenState.js); al volver, el siguiente tick lo reanuda. */
   const pending = info?.connect?.state === "pending";
   const wasPending = useRef(false);
   useEffect(() => {
     if (!active || !pending) return undefined;
-    const t = setInterval(load, 1500);
+    const t = setInterval(() => {
+      if (!isBackgrounded()) load();
+    }, 1500);
     return () => clearInterval(t);
   }, [active, pending, load]);
   useEffect(() => {

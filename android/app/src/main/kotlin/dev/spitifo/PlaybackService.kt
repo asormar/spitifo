@@ -268,11 +268,16 @@ class PlaybackService : Service() {
         val notification = buildNotification()
         if (playing || buffering) {
             if (!foregrounded) enterForeground() else notificationManager().notify(NOTIFICATION_ID, notification)
-            if (wakeLock?.isHeld != true) {
-                wakeLock = getSystemService(PowerManager::class.java)
-                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:playback")
-                    .apply { acquire() }
-            }
+            // Un acquire() sin plazo no tiene red de seguridad si algun camino
+            // futuro deja `playing = true` sin volver a `false`. El plazo se
+            // renueva en cada refresh (la pagina los manda seguido mientras
+            // suena), asi que una sesion real nunca lo nota; uno que se queda
+            // trabado se suelta solo en minutos, no al matar el proceso.
+            val lock = wakeLock ?: getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:playback")
+                .apply { setReferenceCounted(false) }
+            lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+            wakeLock = lock
         } else {
             wakeLock?.let { if (it.isHeld) it.release() }
             wakeLock = null
@@ -376,6 +381,7 @@ class PlaybackService : Service() {
         private const val ART_SIZE = 512
         private const val MAX_ART_BYTES = 8 * 1024 * 1024
         private const val EXTRA_UPDATE = "dev.spitifo.media.update"
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
         private const val ACTION_PLAY = "dev.spitifo.media.play"
         private const val ACTION_PAUSE = "dev.spitifo.media.pause"
         private const val ACTION_PREV = "dev.spitifo.media.prev"
