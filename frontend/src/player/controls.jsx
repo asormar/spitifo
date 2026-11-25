@@ -24,10 +24,17 @@ const REPEAT = {
 /* Iconos laterales, de saltar y de reproducir. */
 const SIZES = { np: ["lg", "xl", "xl"], dock: ["md", "lg", "lg"] };
 
+/* El nombre accesible del boton de reproducir: mientras carga dice "Cargando
+   <titulo>" (un lector de pantalla no puede ver el giro del icono), si no, lo
+   de siempre. Funcion aparte para poder probarla sin montar el boton. */
+export function playButtonLabel({ icon, playing, label }) {
+  if (icon === "load") return `Cargando ${label}`;
+  return `${playing ? "Pausar" : "Reproducir"} ${label}`;
+}
+
 /* Boton de reproducir/pausar/cargando (tres iconos, los muestra CSS segun
    data-icon). Lo comparten el mini-reproductor y los controles. Mientras
-   carga, el nombre accesible dice "Cargando <titulo>" y aria-busy lo refuerza:
-   un lector de pantalla no puede ver el giro del icono. */
+   carga, aria-busy refuerza el nombre accesible. */
 export function PlayButton({ className, icon, playing, label, size }) {
   const busy = icon === "load";
   return (
@@ -37,7 +44,7 @@ export function PlayButton({ className, icon, playing, label, size }) {
       data-icon={icon}
       onClick={() => engine.toggle()}
       aria-busy={busy || undefined}
-      aria-label={busy ? `Cargando ${label}` : `${playing ? "Pausar" : "Reproducir"} ${label}`}
+      aria-label={playButtonLabel({ icon, playing, label })}
     >
       <span className="pbtn__ico pbtn__ico--play">
         <Icon name="Play" size={size} weight="fill" />
