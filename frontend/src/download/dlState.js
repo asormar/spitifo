@@ -7,9 +7,17 @@
    de arranque y asi el resto de decisiones de Buscar se queda en el chunk
    perezoso de la pantalla. searchPlan.js lo reexporta para quien ya lo importa
    de ahi. */
+/* El transporte nunca llega al usuario: un motivo corto por error_code, nunca
+   el mensaje crudo de yt-dlp. */
+const FAIL_REASON = {
+  transient: "problema de red",
+  permanent: "archivo no disponible",
+  youtube_bot_check: "verificación de YouTube",
+};
+
 export function dlState({ busy = false, job, downloaded = false }) {
   const s = job?.status;
-  if (s === "error") return { id: "err", pct: 0 };
+  if (s === "error") return { id: "err", pct: 0, reason: FAIL_REASON[job?.error_code] || "no se pudo completar" };
   /* "queued" es la cola del servidor (dos a la vez); "pending", esperar el
      candado de la misma pista. Para la fila son lo mismo: en cola. */
   if (s === "pending" || s === "queued") return { id: "queued", pct: 0 };
@@ -30,10 +38,10 @@ export const dlWaiting = ({ id }) => WAITING.has(id);
 
 /* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
    de la fila. */
-export function dlText({ id, pct }) {
+export function dlText({ id, pct, reason }) {
+  if (id === "err") return `Falló: ${reason || "no se pudo completar"}`;
   return {
     idle: "Descargar",
-    err: "Falló la descarga",
     queued: "En cola",
     prep: "Preparando…",
     down: `Descargando, ${pct} %`,

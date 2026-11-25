@@ -365,6 +365,13 @@
   color: var(--ok-t);
 }
 
+/* Fallida, persistente: no se parece ni a reposo ni a "en curso". El click
+   reintenta, como cualquier otro estado de este boton. */
+.dlr[data-s="err"] {
+  background: var(--bad-bg);
+  color: var(--bad-t);
+}
+
 /* El anillo lleva el progreso en --p (el sondeo lo cambia, no se anima). */
 .ring {
   display: grid;
