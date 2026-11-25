@@ -619,3 +619,23 @@ def test_candidatos_cache_normaliza_ttl_y_tope(monkeypatch):
     main._candidates_cache_put("una mas", 40, [])
     assert len(main._YT_CANDIDATES_CACHE) == main._YT_CANDIDATES_MAX
     assert main._candidates_cache_get("q0", 40) is None  # la mas vieja, afuera
+
+
+def test_las_sugerencias_no_gastan_el_cupo_de_itunes(monkeypatch):
+    """Pasado el tope por minuto, /api/search/suggest responde vacio sin
+    llamar a iTunes: la busqueda de verdad conserva su cupo."""
+    llamadas = []
+
+    async def itunes(self, q, limit=20):
+        llamadas.append(q)
+        return []
+
+    monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", itunes)
+    monkeypatch.setattr(main, "_SUGGEST_CALLS", main.deque())
+    from starlette.testclient import TestClient
+    cliente = TestClient(main.create_app())
+    for i in range(main._SUGGEST_MAX_PER_MIN + 3):
+        r = cliente.get(f"/api/search/suggest?q=dreams{i}")
+        assert r.status_code == 200
+    assert len(llamadas) == main._SUGGEST_MAX_PER_MIN
+    assert r.json()["throttled"] is True

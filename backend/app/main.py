@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import deque
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -668,6 +669,24 @@ async def search(request: Request):
     })
 
 
+#: iTunes acepta unas 20 busquedas por minuto por IP: las sugerencias (una por
+#: pausa al escribir) no pueden gastarse ese cupo y dejar sin resultados a la
+#: busqueda de verdad. Pasado el tope, la respuesta va vacia y el frontend
+#: sigue con las sugerencias de la biblioteca.
+_SUGGEST_MAX_PER_MIN = 8
+_SUGGEST_CALLS: deque = deque()
+
+
+def _suggest_allowed() -> bool:
+    ahora = time.monotonic()
+    while _SUGGEST_CALLS and ahora - _SUGGEST_CALLS[0] > 60:
+        _SUGGEST_CALLS.popleft()
+    if len(_SUGGEST_CALLS) >= _SUGGEST_MAX_PER_MIN:
+        return False
+    _SUGGEST_CALLS.append(ahora)
+    return True
+
+
 async def search_suggest(request: Request):
     """GET /api/search/suggest: sugerencias baratas mientras se escribe.
 
@@ -676,6 +695,8 @@ async def search_suggest(request: Request):
     """
     q = _query_str(request, "q", required=True, min_length=2, max_length=200)
     limit = _query_int(request, "limit", 6, 1, 12)
+    if not _suggest_allowed():
+        return JSONResponse({"query": q, "suggestions": [], "throttled": True})
     try:
         raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
     except Exception as e:
