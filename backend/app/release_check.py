@@ -26,7 +26,9 @@ _TAG_EN_LOCATION = "/releases/tag/"
 _TAG_VALIDA = re.compile(r"^v\d+\.\d+\.\d+$")
 #: No tiene sentido consultar GitHub mas de una vez al dia.
 CHECK_INTERVAL = 24 * 60 * 60
-TIMEOUT = httpx.Timeout(10.0)
+#: Un fallo (sin red) se recuerda poco: al volver la red se vuelve a mirar.
+FAIL_INTERVAL = 60 * 60
+TIMEOUT = httpx.Timeout(5.0)
 
 #: {"checked_at": float, "version": str | None, "url": str | None}
 _cache: dict | None = None
@@ -48,7 +50,8 @@ def latest_release(client: httpx.Client | None = None, *, force: bool = False) -
     """
     global _cache
     ahora = time.time()
-    if not force and _cache is not None and ahora - _cache["checked_at"] < CHECK_INTERVAL:
+    vigencia = CHECK_INTERVAL if _cache and _cache["version"] else FAIL_INTERVAL
+    if not force and _cache is not None and ahora - _cache["checked_at"] < vigencia:
         return {"version": _cache["version"], "url": _cache["url"]}
 
     propio = client is None

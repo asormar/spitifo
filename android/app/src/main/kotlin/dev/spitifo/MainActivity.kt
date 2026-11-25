@@ -417,12 +417,18 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) return
+        // "Ahora no" se respeta una semana: no se insiste en cada arranque.
+        val prefs = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
+        val declinedAt = prefs.getLong(PERMISSION_DECLINED_AT, 0L)
+        if (System.currentTimeMillis() - declinedAt < PERMISSION_RETRY_MS) return
         AlertDialog.Builder(this)
             .setMessage(
                 "spitifo necesita ver tu carpeta de música para mostrar lo que " +
                     "descargas, y avisarte mientras una descarga está en curso.",
             )
-            .setNegativeButton("Ahora no", null)
+            .setNegativeButton("Ahora no") { _, _ ->
+                prefs.edit().putLong(PERMISSION_DECLINED_AT, System.currentTimeMillis()).apply()
+            }
             .setPositiveButton("Continuar") { _, _ ->
                 requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
             }
@@ -431,6 +437,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val PERMISSION_PREFS = "spitifo_permissions"
+        const val PERMISSION_DECLINED_AT = "declined_at"
+        const val PERMISSION_RETRY_MS = 7L * 24 * 60 * 60 * 1000
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
 
