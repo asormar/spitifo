@@ -75,6 +75,7 @@ from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
+from .suggest import suggestions_from_raw
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -665,6 +666,22 @@ async def search(request: Request):
         "query": q, "mode": mode, "count": len(tracks),
         "results": [t.to_dict() for t in tracks],
     })
+
+
+async def search_suggest(request: Request):
+    """GET /api/search/suggest: sugerencias baratas mientras se escribe.
+
+    Una sola llamada a iTunes, sin YouTube y sin el stream de Buscar. Un fallo
+    de iTunes deja la lista vacia: escribir nunca debe convertirse en un error.
+    """
+    q = _query_str(request, "q", required=True, min_length=2, max_length=200)
+    limit = _query_int(request, "limit", 6, 1, 12)
+    try:
+        raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
+    except Exception as e:
+        log.warning("suggest search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "suggestions": suggestions_from_raw(raws, limit)})
 
 
 async def search_match(request: Request):
@@ -3549,6 +3566,7 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/search/suggest", search_suggest),
     Route("/api/search/match/{track_id}", search_match),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
