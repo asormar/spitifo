@@ -250,20 +250,22 @@ The media cache is also SQLite now (`media-cache.sqlite3`, migrated once from
 the old JSON with a single transaction), so a warm scan writes one upsert per
 changed file instead of rewriting the whole JSON.
 
-With a seeded 2,000-track library and a fresh data dir (`backend_start.py
---python python --library <lib> --data-dir <dir> --runs 3`), measured before and
-after on this machine:
+With a freshly seeded 2,000-track library (`seed_library.py --count 2000
+--folders 100`) and a fresh data dir, on this machine:
 
-| | run 1 `library1_ms` | median `library1_ms` | median `ready_ms` |
+| | first-ever `library1_ms` | median `library1_ms` (snapshot warm) | median `ready_ms` |
 | --- | --- | --- | --- |
 | before | 19,156 ms | 203 ms | 954 ms |
-| after | 410 ms | 311 ms | 899 ms |
+| after | 349 ms (response marked pending, `count: 0`) | 74 ms (`count: 2000`) | 712 ms |
 
-Run 1 is the case that matters: the first usable screen no longer waits for the
-antivirus. The median after is slightly higher because the snapshot is checked
-and refreshed in the background; it stays in the same hundreds-of-ms range as
-a warm scan. These are checkout measurements, not a validated budget on the
-reference laptop.
+The first-ever response is bounded by the 250 ms snapshot wait, not by the
+antivirus: with a long-lived process the real 2,000 rows arrive ~12 s later,
+once Defender's first pass finishes, and the snapshot is saved. `backend_start.py`
+kills the process after two back-to-back GETs, so its first-run `count` is 0 by
+design — the browser does not do that: it gets the pending header and asks
+again. Later launches on the same library read the saved snapshot and answer
+in tens of milliseconds. These are checkout measurements, not a validated
+budget on the reference laptop.
 
 - **2026-11-25**: JS 400,150 → 402,000 B. The branches merged into the cold
   start work already built at 400,495 B (345 B over the stale budget), and the
