@@ -39,7 +39,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import activity, downloads, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
-from .executors import run_storage
+from .executors import run_prefetch, run_storage
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -2059,7 +2059,14 @@ async def download(request: Request):
         job_id = encolados[0]["id"]
 
         if wait:
-            await downloads.wait_item(job_id)
+            termino = await downloads.wait_item(job_id)
+            if not termino:
+                # Vencio el plazo de espera: el job SIGUE corriendo, no es un
+                # error. Mismo contrato que sin wait=1: la UI sigue el
+                # progreso por job_id en vez de colgarse esperando esta
+                # respuesta para siempre.
+                return JSONResponse({"ok": True, "source": "ytdlp",
+                                     "job_id": job_id, **ident})
             item = downloads.get_item(job_id) or {}
             if item.get("error_code") == "youtube_bot_check":
                 # Codigo propio: la UI ofrece importar un cookies.txt en vez de

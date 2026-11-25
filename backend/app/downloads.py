@@ -455,11 +455,35 @@ def _finish_task(item_id: str) -> None:
         ev.set()
 
 
-async def wait_item(item_id: str) -> None:
-    """Espera a que el item termine (para `POST /api/download?wait=1`)."""
+#: Plazo de `wait_item`: sin esto, un job atascado en una llamada de red de
+#: yt-dlp sin su propio timeout dejaba la conexion HTTP (y el navegador que
+#: la espera) colgada para siempre. Mismo valor que el deadline del lado del
+#: cliente que ya usan los jobs sueltos via progress-polling.
+WAIT_ITEM_TIMEOUT_S = 60.0
+
+
+async def wait_item(item_id: str, timeout: float | None = None) -> bool:
+    """Espera a que el item termine (para `POST /api/download?wait=1`).
+
+    Devuelve `True` si termino dentro del plazo. `False` significa que el job
+    SIGUE corriendo (no es un error): el caller debe tratarlo como si nunca
+    hubiera pedido `wait=1`, dejando que la UI siga por polling de progreso,
+    nunca inventando un resultado o un error.
+
+    `timeout=None` (el default real) lee `WAIT_ITEM_TIMEOUT_S` en el momento
+    de la llamada, no al definir la funcion: asi un test puede monkeypatchear
+    la constante del modulo sin tener que pasar el valor a mano.
+    """
     ev = _DONE.get(item_id)
-    if ev is not None:
-        await ev.wait()
+    if ev is None:
+        return True
+    if timeout is None:
+        timeout = WAIT_ITEM_TIMEOUT_S
+    try:
+        await asyncio.wait_for(ev.wait(), timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
 
 
 # ------------------------------------------------------------------- comandos
