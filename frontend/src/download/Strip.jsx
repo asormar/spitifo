@@ -1,5 +1,5 @@
 import { JOB_DISMISS_MS } from "./constants.js";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 
 /* ---------------------------------------------------------------------------
    AVISO DE LA PANTALLA (strip)
@@ -20,11 +20,11 @@ export default function Strip({ tone, onClose, innerRef, children }) {
       tabIndex={tone === "err" ? -1 : undefined}
       style={tone === "ok" ? { "--dismiss": `${JOB_DISMISS_MS}ms` } : undefined}
     >
-      <Ico n={tone === "ok" ? "check" : "warn"} size={20} />
+      <Icon name={tone === "ok" ? "Check" : "Warning"} size="md" />
       <p>{children}</p>
       {onClose && (
         <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar el aviso" onClick={onClose}>
-          <Ico n="x" size={16} />
+          <Icon name="X" size="sm" />
         </button>
       )}
     </div>

@@ -14,29 +14,29 @@ const streamable = (song) => song?.id && /^(yt:|ia:)/.test(song.id);
 export function songMenuGroups(entry, { fmt = "m4a", closePlayer = false, pc = false } = {}) {
   const groups = [{ label: "Escuchar", items: PLAY_ITEMS }];
 
-  const library = [{ kind: "list", icon: "addlist", text: "Añadir a una lista…" }];
+  const library = [{ kind: "list", icon: "ListPlus", text: "Añadir a una lista…" }];
   const saved = !!entry?.sid;
   const downloaded = !!entry?.downloaded;
   if (saved && !downloaded && streamable(entry?.song)) {
-    library.push({ kind: "download", icon: "dl", text: "Descargar", sub: fmt });
+    library.push({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: fmt });
   } else if (saved && downloaded) {
-    library.push({ kind: "undownload", icon: "nodl", text: "Quitar descarga" });
+    library.push({ kind: "undownload", icon: "Prohibit", text: "Quitar descarga" });
   }
   groups.push({ label: "Tu biblioteca", items: library });
 
   const go = [];
-  if (entry?.album) go.push({ kind: "album", icon: "disc", text: "Ir al álbum" });
-  if (entry?.artist) go.push({ kind: "artist", icon: "user", text: "Ir al artista" });
+  if (entry?.album) go.push({ kind: "album", icon: "VinylRecord", text: "Ir al álbum" });
+  if (entry?.artist) go.push({ kind: "artist", icon: "User", text: "Ir al artista" });
   if (go.length) groups.push({ label: "Ir a", items: go });
 
-  const file = [{ kind: "photo", icon: "upload", text: "Cambiar foto" }];
+  const file = [{ kind: "photo", icon: "UploadSimple", text: "Cambiar foto" }];
   /* La ficha del archivo solo existe cuando la cancion lo tiene descargado. */
-  if (downloaded) file.push({ kind: "file", icon: "file", text: pc ? "Ver la ficha del archivo" : "Ficha del archivo" });
+  if (downloaded) file.push({ kind: "file", icon: "File", text: pc ? "Ver la ficha del archivo" : "Ficha del archivo" });
   groups.push({ label: "Archivo", items: file });
 
   groups.push({
     label: "Quitar",
-    items: [{ kind: "remove", icon: "trash", text: "Quitar de tu biblioteca", danger: true }],
+    items: [{ kind: "remove", icon: "Trash", text: "Quitar de tu biblioteca", danger: true }],
   });
 
   /* Abierto desde "Ahora suena": el cierre de la pastilla va siempre el ultimo. */

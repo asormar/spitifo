@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { cx } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { coverTone } from "../shared/cover.js";
-import Ico from "../shared/ico.jsx";
 import { canStartSwipe, swipeTarget } from "../app/navigation.js";
 import { Icon } from "../listen/icons.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
@@ -263,7 +262,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const stateText = playStateText({ kind: track.kind, saved: savedStream });
   const stateChip = stateText && (
     <span className="np__state">
-      {library && <Ico n="check" size={14} className="np__state-check" />}
+      {library && <Icon name="Check" size="sm" className="np__state-check" />}
       {stateText}
     </span>
   );
@@ -353,7 +352,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
       aria-haspopup="menu"
       title="Más opciones"
     >
-      <Ico n="dots" size={22} />
+      <Icon name="DotsThree" size="lg" />
     </button>
   ) : null;
 
@@ -517,7 +516,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                   aria-label={wide ? "Reducir Ahora suena" : "Ampliar Ahora suena"}
                   title={wide ? "Reducir" : "Ampliar"}
                 >
-                  <Ico n={wide ? "collapse" : "expand"} size={20} />
+                  <Icon name={wide ? "ArrowsIn" : "ArrowsOut"} size="md" />
                 </button>
               )}
               {moreButton}
@@ -528,7 +527,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 aria-label="Cerrar el panel"
                 title="Cerrar el panel"
               >
-                <Ico n="x" size={20} />
+                <Icon name="X" size="md" />
               </button>
             </div>
           </div>
@@ -548,7 +547,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
                 aria-label="Cerrar"
                 title="Cerrar"
               >
-                <Icon name="CaretDown" size={26} />
+                <Icon name="CaretDown" size="lg" />
               </button>
               <p className="np__cap" title={caption.name}>
                 <small>{caption.head}</small>

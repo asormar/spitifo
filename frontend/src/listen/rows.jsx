@@ -1,5 +1,4 @@
 import { memo } from "react";
-import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
 import { clock } from "../shared/format.js";
@@ -136,7 +135,7 @@ export const SongRow = memo(function SongRow({
           aria-label={`Mover ${title}. Usa las flechas para subir o bajar`}
           {...drag.handleProps}
         >
-          <Ico n="grip" size={20} />
+          <Icon name="DotsSixVertical" size="md" />
         </button>
       )}
       {table && (rankCell || numCell)}
@@ -210,7 +209,7 @@ export const SongRow = memo(function SongRow({
           title="Quitar de la lista"
           onClick={() => onRemove(entry)}
         >
-          <Ico n="x" size={18} />
+          <Icon name="X" size="md" />
         </button>
       )}
       {!video && onMenu ? (
@@ -222,7 +221,7 @@ export const SongRow = memo(function SongRow({
           aria-haspopup="menu"
           onClick={(e) => onMenu(key, e.currentTarget)}
         >
-          <Ico n="dots" size={20} />
+          <Icon name="DotsThree" size="md" />
         </button>
       ) : (
         table && <span />
@@ -283,7 +282,7 @@ export function QueueRow({
           aria-label={`Mover ${track.title}. Usa las flechas para subir o bajar`}
           {...handleProps}
         >
-          <Ico n="grip" size={20} />
+          <Icon name="DotsSixVertical" size="md" />
         </button>
       )}
       <button
@@ -312,7 +311,7 @@ export function QueueRow({
           title="Quitar de la cola"
           onClick={() => engine.removeAt(pos)}
         >
-          <Icon name="X" size={18} />
+          <Icon name="X" size="md" />
         </button>
       )}
     </div>

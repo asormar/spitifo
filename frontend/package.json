@@ -15,6 +15,7 @@
     "preact": "^10.29.8"
   },
   "devDependencies": {
+    "@phosphor-icons/core": "^2.1.1",
     "@preact/preset-vite": "^2.10.6",
     "lightningcss": "^1.33.0",
     "preact-render-to-string": "^6.8.3",

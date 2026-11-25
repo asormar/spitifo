@@ -4,7 +4,7 @@ import { fmtSize, fmtTime } from "../shared/format.js";
 import { ExtLink } from "../shared/ui.jsx";
 import { SOURCE_CODE, provenance } from "./constants.js";
 import DlRing from "./DlRing.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { Thumb } from "./ResultRow.jsx";
 import { useVerdict, verdictKey, verdictOf } from "./verdict.js";
@@ -91,13 +91,13 @@ export default memo(function ShowGroup({ t, i, query, onDl, busyIds, downloadedI
               {SOURCE_CODE[t.source] || prov.ficha}
             </span>
             <ExtLink className="ext" url={t.extra?.item_url}>
-              procedencia <Ico n="ext" size={12} />
+              procedencia <Icon name="ArrowSquareOut" size="sm" />
             </ExtLink>
           </span>
         </span>
       </div>
       <button type="button" className="disc" onClick={toggle} aria-expanded={open}>
-        <Ico n="caret" size={16} />
+        <Icon name="CaretRight" size="sm" />
         {open ? "ocultar las canciones" : "ver qué canciones hay"}
       </button>
       {everOpened && (

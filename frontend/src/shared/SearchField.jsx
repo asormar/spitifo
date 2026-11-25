@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { isComposing } from "./ime.js";
 import { cx } from "./ui.jsx";
@@ -78,7 +77,7 @@ export default function SearchField({
         if (!busy && e.target.classList.contains("sfield__icon")) setScan(false);
       }}
     >
-      <NavIcon name="search" size={big ? 22 : 20} className="sfield__icon" />
+      <Icon name="MagnifyingGlass" size={big ? "lg" : "md"} className="sfield__icon" />
       <input
         ref={ref}
         type="text"
@@ -96,7 +95,7 @@ export default function SearchField({
       />
       {value && (
         <button type="button" className="cbtn cbtn--sm" aria-label={clearLabel} title={clearLabel} onClick={clear}>
-          <Icon name="X" size={16} />
+          <Icon name="X" size="sm" />
         </button>
       )}
       {go && (

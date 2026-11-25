@@ -21,7 +21,7 @@ const REPEAT = {
 };
 
 /* Iconos laterales, de saltar y de reproducir. */
-const SIZES = { np: [24, 28, 30], dock: [20, 22, 22] };
+const SIZES = { np: ["lg", "xl", "xl"], dock: ["md", "lg", "lg"] };
 
 /* Boton de reproducir/pausar/cargando (tres iconos, los muestra CSS segun
    data-icon). Lo comparten el mini-reproductor y los controles. */
@@ -120,7 +120,7 @@ export function Volume({ className = "np__vol" }) {
         aria-label={quiet ? "Activar el sonido" : "Silenciar"}
         title={quiet ? "Activar el sonido" : "Silenciar"}
       >
-        <Icon name={quiet ? "SpeakerSlash" : volume < 0.45 ? "SpeakerLow" : "SpeakerHigh"} size={20} />
+        <Icon name={quiet ? "SpeakerSlash" : volume < 0.45 ? "SpeakerLow" : "SpeakerHigh"} size="md" />
       </button>
       <input
         type="range"

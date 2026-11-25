@@ -1,6 +1,6 @@
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { previewKey, previewTrack } from "./streamTrack.js";
 
 /* ---------------------------------------------------------------------------
@@ -39,7 +39,7 @@ export default function PreviewButton({ t, text = false }) {
     >
       {/* En la fila no hay sitio para la etiqueta: «30 s» dice lo que dura, que
           es lo que lo separa de escuchar la cancion entera. */}
-      {playing ? <Ico n="pause" size={20} /> : text ? <Ico n="hp" size={20} /> : <span className="pre__30">30 s</span>}
+      {playing ? <Icon name="Pause" size="md" weight="fill" /> : text ? <Icon name="Headphones" size="md" /> : <span className="pre__30">30 s</span>}
       {text && (playing ? "Pausar" : "Escuchar 30 s")}
     </button>
   );

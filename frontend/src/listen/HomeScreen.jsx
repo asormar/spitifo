@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { useNav } from "../app/useNav.js";
 import BrandLogo from "../app/BrandLogo.jsx";
-import { NavIcon } from "../app/navIcons.jsx";
+import { Icon } from "./icons.jsx";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
@@ -85,7 +85,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
           aria-label="Ajustes"
           title="Abrir los ajustes"
         >
-          <NavIcon name="settings" size={22} />
+          <Icon name="GearSix" size="lg" />
         </button>
       </header>
       <h1 className="sr-only">Inicio</h1>
