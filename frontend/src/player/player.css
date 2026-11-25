@@ -399,8 +399,8 @@
 .mini .shrt {
   display: inline-flex;
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: var(--hit);
+  height: var(--hit);
 }
 
 /* Siguiente: mismo boton redondo que el resto del chrome, a 48px (toque). Dos
