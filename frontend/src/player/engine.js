@@ -295,6 +295,7 @@ export function createEngine({
       playing: false,
       ...meta,
     });
+    a.preload = "auto";
     a.src = track.src;
     /* Retomar: con el src recien puesto el navegador guarda la posicion y la
        aplica al cargar los metadatos. */
@@ -379,6 +380,9 @@ export function createEngine({
       source: null,
       endless: false,
     });
+    /* Sin precarga: retomar es una oferta, no un play. Un stream no se pide
+       (ni se resuelve en YouTube) hasta que el usuario toca reproducir. */
+    a.preload = "none";
     a.src = track.src;
     if (at > 0) a.currentTime = at;
     a.volume = state.volume;
