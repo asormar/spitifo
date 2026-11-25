@@ -72,6 +72,7 @@ export const SongRow = memo(function SongRow({
   table,
   drag,
   from,
+  select,
 }) {
   const { key, title, artist, album } = entry;
   const online = useOnline();
@@ -138,6 +139,13 @@ export const SongRow = memo(function SongRow({
           <Icon name="DotsSixVertical" size="md" />
         </button>
       )}
+      {select && (
+        <span className="srow__sel">
+          <input type="checkbox" checked={Boolean(select.checked)}
+            aria-label={`Seleccionar ${title}`}
+            onChange={(e) => select.onChange(e.target.checked)} />
+        </span>
+      )}
       {table && (rankCell || numCell)}
       <button
         type="button"
@@ -195,7 +203,9 @@ export const SongRow = memo(function SongRow({
         </span>
         {!table && pill && <VerdictPill v={pill} />}
         {!video && entry.downloaded && <span className={cx("srow__dl", table && "srow__dl--t")} aria-hidden="true" />}
-        {!table && num == null && dur && <span className="srow__d">{dur}</span>}
+        {/* La duración tiene su propia columna aunque la fila lleve número de
+            pista: en teléfono antes no se veía (U7). */}
+        {!table && dur && <span className="srow__d">{dur}</span>}
       </button>
       {lib && <span className="srow__c">{artist}</span>}
       {table && !page && <span className="srow__c">{album}</span>}

@@ -95,7 +95,7 @@ export function modeDirection(from, to) {
    "art" es la hoja "Foto de..." de una cancion, un album o un artista.
    Todas viven en la pila para que atras, Escape y el atras de Android las
    cierren, pero la pantalla sigue a la vista debajo, sin pagina propia. */
-const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "art", "npmenu"]);
+const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "artmenu", "art", "npmenu"]);
 /* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
    cola que abre la pildora del shell; "discsheet" es la lista de discografia
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de

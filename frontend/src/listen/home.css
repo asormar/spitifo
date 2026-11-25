@@ -368,6 +368,11 @@ button.allsongs__main:active {
   color: var(--acc);
 }
 
+/* Lo que suena es sonido: rosa en el titulo y las barras sobre la portada. */
+.card.is-playing .card__t { color: var(--sound); }
+.card.is-playing > .mos, .card.is-playing > .cv { box-shadow: 0 0 0 2px var(--sound); }
+.mos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
 .card--art {
   --s: 118px;
   align-items: center;

@@ -10,6 +10,8 @@ import { useMore } from "./useMore.js";
 import { useSaved } from "./saved.js";
 import { useArtRecord } from "./art.js";
 import { artSrc } from "./artLogic.js";
+import { useEngine } from "../player/useEngine.js";
+import { mosaicSources } from "./libraryView.js";
 import "../shared/pinkPlay.css";
 
 /* ---------------------------------------------------------------------------
@@ -65,19 +67,23 @@ export const NowBadge = ({ on }) => (
   </span>
 );
 
-/* Cuatro tonos en cuadricula 2x2; sin ninguno, una nota sobre fondo neutro. */
-export function Mosaic({ tones, className }) {
-  if (!tones.length) {
+/* Cuatro tonos en cuadricula 2x2. Si hay portadas reales se pintan encima;
+   la primera portada de cada cancion, no un color inventado (U5). */
+export function Mosaic({ tones, srcs = [], className }) {
+  if (!tones.length && !srcs.length) {
     return (
       <span className={cx("mos mos--empty", className)} aria-hidden="true">
         <Icon name="MusicNotes" size="lg" />
       </span>
     );
   }
+  const cells = tones.length ? tones : srcs.map(() => null);
   return (
     <span className={cx("mos", className)} aria-hidden="true">
-      {tones.map((t, i) => (
-        <span key={i} className={cx("cv", toneClass(t))} style={toneVars(t)} />
+      {cells.map((tone, i) => (
+        <span key={i} className={cx("cv", tone && toneClass(tone))} style={tone ? toneVars(tone) : undefined}>
+          {srcs[i] && <img src={srcs[i]} alt="" loading="lazy" decoding="async" />}
+        </span>
       ))}
     </span>
   );
@@ -109,7 +115,7 @@ export function Card({ cover, title, sub, round, current, label, onClick }) {
   return (
     <button
       type="button"
-      className={cx("card", round && "card--art", current && "is-current")}
+      className={cx("card", round && "card--art", current && "is-current is-playing")}
       aria-label={label}
       onClick={onClick}
     >
@@ -144,21 +150,34 @@ export const AlbumCard = ({ g, ctx, sub = g.artist }) => (
 );
 
 /* `sub` por defecto: cuantas canciones suyas siguen en la biblioteca. */
-export function ListCard({ list, byKey, ctx, sub }) {
+export function ListCard({ list, byKey, ctx, sub, playing }) {
   const tones = useMemo(() => mosaicTones(list.keys, byKey), [list.keys, byKey]);
   const savedById = useSaved((s) => s.byId);
+  const srcs = useMemo(
+    () => list.is_folder ? [] : mosaicSources(list.keys, byKey, savedById, keyUrl),
+    [list, byKey, savedById]
+  );
   const count = useMemo(
     () => list.keys.filter((k) => byKey.has(k) || savedById.has(k)).length,
     [list.keys, byKey, savedById]
   );
-  const text = songs(count);
+  const text = list.is_folder
+    ? `${list.keys.length} ${list.keys.length === 1 ? "lista" : "listas"}`
+    : songs(count);
+  const source = useEngine((s) => s.source);
+  const current = playing ?? (source === `list:${list.name}`);
   return (
     <Card
-      label={`${list.name}, ${text}`}
+      label={`${list.is_folder ? "Carpeta" : "Lista"} ${list.name}, ${text}`}
       onClick={() => ctx.open({ type: "list", id: list.id })}
-      cover={<Mosaic tones={tones} />}
+      cover={
+        list.cover_key
+          ? <Cover tone={tones[0]} label={list.name} src={keyUrl(list.cover_key)} />
+          : <Mosaic tones={tones} srcs={srcs} />
+      }
       title={list.name}
       sub={sub ? `${sub} · ${text}` : text}
+      current={current}
     />
   );
 }

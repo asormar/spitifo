@@ -7,7 +7,8 @@ import { Icon } from "./icons.jsx";
 import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import VirtualList from "./VirtualList.jsx";
-import { Thead } from "./rows.jsx";
+import { SortableHead } from "./PlaylistTools.jsx";
+import { cycleSort, sortRows } from "./libraryView.js";
 import { AllSongs, Cards, DownloadChips } from "./cards.jsx";
 import { emptyFilterNote, filterByDownload } from "./library.js";
 import {
@@ -67,6 +68,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   const newRef = useRef(null);
   const [naming, setNaming] = useState(Boolean(view.naming));
   const [download, setDownload] = useState("all");
+  const [colSort, setColSort] = useState(null);
   useFocusBack(backRef);
 
   /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
@@ -101,8 +103,8 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   const isTop = what === "top";
   const isSongs = isTop || what === "recent" || what === "r-songs";
   const shown = useMemo(
-    () => (isSongs ? filterByDownload(items, download) : items),
-    [isSongs, items, download]
+    () => sortRows(isSongs ? filterByDownload(items, download) : items, isSongs ? colSort : null),
+    [isSongs, items, download, colSort]
   );
   /* Origen de la cola: la etiqueta de la lista o lo que se busco. */
   const from = isTop
@@ -166,7 +168,8 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
         <p className="lnote">{emptyFilterNote(download)}</p>
       ) : isSongs ? (
         <>
-          {pc && <Thead lib={!isTop} sticky />}
+          {pc && <SortableHead kind={isTop ? "trk" : "lib"} sort={colSort}
+            onSort={(key) => setColSort((cur) => cycleSort(cur, key))} sticky />}
           <VirtualList
             active={active}
             count={shown.length}
@@ -216,9 +219,10 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
   const listRef = useRef(null);
   const [sort, setSort] = useState(view.sort ?? "recent");
   const [download, setDownload] = useState("all");
+  const [colSort, setColSort] = useState(null);
   useFocusBack(backRef);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
-  const shown = useMemo(() => filterByDownload(rows, download), [rows, download]);
+  const shown = useMemo(() => sortRows(filterByDownload(rows, download), colSort), [rows, download, colSort]);
   useReveal(shown, active, listRef);
 
   const play = () => ctx.playGroup(shown, false, "library:");
@@ -278,7 +282,8 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
       <DownloadChips filter={download} onChange={setDownload} />
       {shown.length ? (
         <>
-          {pc && <Thead lib sticky />}
+          {pc && <SortableHead kind="lib" sort={colSort}
+            onSort={(key) => setColSort((cur) => cycleSort(cur, key))} sticky />}
           <VirtualList
             key={`${sort}:${download}`}
             ref={listRef}

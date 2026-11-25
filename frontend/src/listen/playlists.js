@@ -26,7 +26,33 @@ const collator = new Intl.Collator("es", { sensitivity: "base" });
 const byName = (a, b) => collator.compare(a.name, b.name);
 
 const MAX_NAME = 100;
+const MAX_DESC = 500;
 const JSON_HEADERS = { "Content-Type": "application/json" };
+
+/* El cuerpo del PUT lleva TODOS los campos que conoce esta version. Los que
+   no conoce viajan en `extra` (un cliente mas nuevo pudo escribirlos) y se
+   devuelven tal cual: reescribir una lista nunca borra lo que no entendemos. */
+export function payloadOf(playlist) {
+  /* Los desconocidos primero: los conocidos ganan siempre, igual que en
+     PlaylistBook._playlist_to_dict en el backend. */
+  const body = { ...(playlist.extra || {}) };
+  body.name = playlist.name;
+  body.keys = [...playlist.keys];
+  if (playlist.description) body.description = playlist.description;
+  if (playlist.cover_key) body.cover_key = playlist.cover_key;
+  if (playlist.folder_id) body.folder_id = playlist.folder_id;
+  if (playlist.is_folder) body.is_folder = true;
+  else delete body.is_folder;
+  return body;
+}
+
+/* Cuantas claves de `keys` ya estan en la lista. Se usa ANTES de escribir
+   para avisar de duplicados en importaciones y movimientos en bloque. */
+export function duplicatesIn(playlist, keys) {
+  if (!playlist) return [];
+  const have = new Set(playlist.keys);
+  return [...new Set(keys)].filter((k) => have.has(k));
+}
 
 /* Mueve la clave de la posicion `from` a la posicion que ocupa `to` (indices
    de `keys`). Devuelve el arreglo nuevo, o null si no hay nada que mover. */
@@ -118,7 +144,7 @@ export function createPlaylists({
   const write = (next) => {
     const playlist = { ...next, updated_at: now() };
     place(playlist.id, playlist);
-    send(playlist.id, { name: playlist.name, keys: playlist.keys }, playlist.name);
+    send(playlist.id, payloadOf(playlist), playlist.name);
   };
 
   const load = (force = false) => {
@@ -141,14 +167,18 @@ export function createPlaylists({
 
   const clean = (name) => String(name ?? "").trim().slice(0, MAX_NAME);
 
-  /* Devuelve el id nuevo, o null si el nombre queda vacio. */
-  const create = (name, keys = []) => {
+  /* Devuelve el id nuevo, o null si el nombre queda vacio. `meta` son los
+     campos aditivos (descripcion, portada, carpeta, carpeta-misma). */
+  const create = (name, keys = [], meta = {}) => {
     const n = clean(name);
     if (!n) return null;
     const id = uuid();
-    write({ id, name: n, keys: [...new Set(keys)] });
+    write({ id, name: n, keys: [...new Set(keys)], ...meta });
     return id;
   };
+
+  const createFolder = (name, keys = []) =>
+    create(name, keys, { is_folder: true });
 
   const rename = (id, name) => {
     const p = find(id);
@@ -201,8 +231,51 @@ export function createPlaylists({
     return true;
   };
 
-  /* Borrar deja un tombstone; un PUT con el mismo id lo revive. */
-  const undoRemove = (p) => write({ id: p.id, name: p.name, keys: p.keys });
+  /* Borrar deja un tombstone; un PUT con el mismo id lo revive con TODOS sus
+     campos (incluidos los que esta version no entiende). */
+  const undoRemove = (p) => write(p);
+
+  /* --- seleccion multiple y campos aditivos -------------------------------- */
+
+  const removeKeys = (id, keys) => {
+    const p = find(id);
+    if (!p) return 0;
+    const gone = new Set(keys);
+    const kept = p.keys.filter((k) => !gone.has(k));
+    if (kept.length === p.keys.length) return 0;
+    write({ ...p, keys: kept });
+    return p.keys.length - kept.length;
+  };
+
+  /* Quitar varias y anadir otras en UN solo PUT: la foto y el servidor
+     coinciden y no hay una lista a medias entre medias. */
+  const replaceKeys = (id, keys) => {
+    const p = find(id);
+    if (!p) return false;
+    const next = [...new Set(keys)];
+    if (next.length === p.keys.length && next.every((k, i) => k === p.keys[i])) return false;
+    write({ ...p, keys: next });
+    return true;
+  };
+
+  const edit = (id, fields) => {
+    const p = find(id);
+    if (!p) return false;
+    write({ ...p, ...fields });
+    return true;
+  };
+
+  const setDescription = (id, description) =>
+    edit(id, { description: String(description ?? "").trim().slice(0, MAX_DESC) });
+
+  const setCover = (id, coverKey) => edit(id, { cover_key: coverKey || "" });
+
+  /* Mover listas a una carpeta: la carpeta guarda sus ids en `keys`. */
+  const addToFolder = (folderId, ids) => {
+    const folder = find(folderId);
+    if (!folder || !folder.is_folder || ids.includes(folderId)) return 0;
+    return addKeys(folderId, ids);
+  };
 
   return {
     subscribe,
@@ -210,11 +283,18 @@ export function createPlaylists({
     onError,
     load,
     create,
+    createFolder,
     rename,
     addKeys,
     removeKey,
+    removeKeys,
+    replaceKeys,
     restoreKey,
     move,
+    setDescription,
+    setCover,
+    edit,
+    addToFolder,
     remove,
     undoRemove,
   };
