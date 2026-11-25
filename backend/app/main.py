@@ -40,6 +40,7 @@ from starlette.staticfiles import StaticFiles
 from . import activity, downloads, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .executors import run_prefetch, run_storage
+from .library_snapshot import SnapshotStore
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -365,6 +366,20 @@ async def _recover_queue_and_cleanup() -> None:
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
+    # La instantanea de /api/library se lee y se refresca FUERA del camino de
+    # READY: el primer GET no debe esperar a que el escaneo termine (el primer
+    # analisis del antivirus puede tardar minutos en una biblioteca grande).
+    storage = get_storage()
+    root = getattr(storage, "root", None)
+    if root is not None:
+        data_dir = Path(root) / ".spitifo"
+    else:
+        from .cloud.tokens import default_data_dir
+        data_dir = default_data_dir()
+    state = _LibraryState(data_dir)
+    app.state.library_state = state
+    await asyncio.to_thread(state.load)
+    state.trigger()
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
     tarea = asyncio.create_task(_recover_queue_and_cleanup())
     BG_TASKS.add(tarea)
@@ -2262,6 +2277,106 @@ def _library_etag(body: bytes) -> str:
 #: cache local sin que el codigo de la UI note la diferencia.
 _LIBRARY_CACHE = {"Cache-Control": "private, no-cache"}
 
+#: Cuanto espera la primera request a que termine el escaneo de fondo antes de
+#: servir la instantanea. Un escaneo normal tarda decenas de ms y entra aqui;
+#: un escaneo frenado por el primer analisis del antivirus no: la UI ve la
+#: biblioteca anterior (o el esqueleto) y sigue usable (P-cold-start-1).
+LIBRARY_SNAPSHOT_WAIT_S = 0.25
+
+#: Header con el que se marca una respuesta servida de la instantanea mientras
+#: el escaneo real sigue corriendo. El frontend pide de nuevo al rato.
+LIBRARY_PENDING_HEADER = "x-spitifo-library-pending"
+
+
+def _fast_signature(storage) -> str | None:
+    """Firma barata del contenido, o None si el storage no la ofrece."""
+    firma = getattr(storage, "fast_signature", None)
+    if firma is None:
+        return None
+    try:
+        return firma()
+    except Exception as exc:
+        log.info("no se pudo firmar la biblioteca: %s", exc)
+        return None
+
+
+class _LibraryState:
+    """Instantanea servida por `/api/library` y su refresco en segundo plano."""
+
+    def __init__(self, data_dir: Path) -> None:
+        self.store = SnapshotStore(data_dir)
+        self.signature: str | None = None
+        self.describe = ""
+        self.body_files, self.etag_files = _library_body("", [], False)
+        self.body_compact, self.etag_compact = _library_body("", [], True)
+        self.refreshed = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    def load(self) -> None:
+        guardado = self.store.load()
+        if not guardado:
+            return
+        self.signature = guardado["signature"]
+        self.describe = guardado["describe"]
+        self.body_files = guardado["body_files"]
+        self.etag_files = guardado["etag_files"]
+        self.body_compact = guardado["body_compact"]
+        self.etag_compact = guardado["etag_compact"]
+
+    def body(self, compact: bool) -> tuple[bytes, str]:
+        if compact:
+            return self.body_compact, self.etag_compact
+        return self.body_files, self.etag_files
+
+    def trigger(self) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self.refreshed.clear()
+        self._task = asyncio.create_task(self._refresh())
+        BG_TASKS.add(self._task)
+        self._task.add_done_callback(BG_TASKS.discard)
+
+    async def _refresh(self) -> None:
+        storage = get_storage()
+        # Solo el adapter local ofrece una firma barata. Los demas (Drive) no
+        # tienen instantanea y siguen usando el camino sincronico de siempre.
+        if _fast_signature(storage) is None:
+            self.refreshed.set()
+            return
+        try:
+            # Si la biblioteca cambia MIENTRAS se escanea (un test que planta
+            # archivos, una descarga que termina), se repite: la instantanea
+            # tiene que corresponder al estado que ve el que la pide.
+            for _intentos in range(3):
+                antes = await asyncio.to_thread(storage.fast_signature)
+                files, records = await asyncio.gather(
+                    run_storage(library_scan), _fileinfo_records(storage))
+                files = with_checks(files, records)
+                describe = await asyncio.to_thread(storage.describe)
+                signature = await asyncio.to_thread(storage.fast_signature)
+                if signature == antes:
+                    break
+            body_files, etag_files = await asyncio.to_thread(
+                _library_body, describe, files, False)
+            body_compact, etag_compact = await asyncio.to_thread(
+                _library_body, describe, files, True)
+            self.signature = signature
+            self.describe = describe
+            self.body_files = body_files
+            self.etag_files = etag_files
+            self.body_compact = body_compact
+            self.etag_compact = etag_compact
+            await asyncio.to_thread(self.store.save, {
+                "signature": signature, "describe": describe,
+                "body_files": body_files, "etag_files": etag_files,
+                "body_compact": body_compact, "etag_compact": etag_compact,
+            })
+        except Exception as exc:
+            log.info("no se pudo refrescar la instantanea de la biblioteca: %s",
+                     exc)
+        finally:
+            self.refreshed.set()
+
 
 async def library(request: Request):
     """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
@@ -2277,12 +2392,34 @@ async def library(request: Request):
     """
     storage = get_storage()
     compact = request.query_params.get("shape") == "compact"
-    files, records = await asyncio.gather(
-        run_storage(library_scan), _fileinfo_records(storage))
-    files = with_checks(files, records)
-    body, etag = await asyncio.to_thread(_library_body, storage.describe(),
-                                         files, compact)
+    state: _LibraryState | None = getattr(request.app.state, "library_state", None)
+    signature = await asyncio.to_thread(_fast_signature, storage) if state else None
+
+    pending = False
+    if signature is None:
+        # Drive (u otro storage sin firma barata): se mantiene el camino de
+        # siempre, que ya corre en el pool de storage.
+        files, records = await asyncio.gather(
+            run_storage(library_scan), _fileinfo_records(storage))
+        files = with_checks(files, records)
+        body, etag = await asyncio.to_thread(_library_body, storage.describe(),
+                                             files, compact)
+    else:
+        if signature != state.signature:
+            state.trigger()
+            try:
+                await asyncio.wait_for(state.refreshed.wait(),
+                                       timeout=LIBRARY_SNAPSHOT_WAIT_S)
+            except asyncio.TimeoutError:
+                pass
+        body, etag = state.body(compact)
+        # El escaneo de fondo no alcanzo: se sirve la instantanea y se avisa
+        # al frontend para que pida de nuevo cuando la biblioteca este lista.
+        pending = signature != state.signature
+
     headers = {**_LIBRARY_CACHE, "ETag": etag}
+    if pending:
+        headers[LIBRARY_PENDING_HEADER] = "1"
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
         return Response(status_code=304, headers=headers)

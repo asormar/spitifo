@@ -279,6 +279,11 @@ export default function App() {
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
+  /* El servidor sirvio la biblioteca de la instantanea mientras el escaneo
+     sigue corriendo: se avisa y se pide de nuevo en cuanto hay hueco. */
+  const [libPending, setLibPending] = useState(false);
+  const retryTimer = useRef(null);
+  const loadLibRef = useRef(null);
   /* Espejo sincronico de `lib`: el borrado diferido necesita devolver EXACTAMENTE
      las filas que saco, aunque el deshacer llegue antes del siguiente render. */
   const libRef = useRef(lib);
@@ -406,14 +411,24 @@ export default function App() {
         /* El 503 del token de la nube se distingue del resto: ahi lo que hay
            que hacer es reconectar, no reintentar (ADR 0002, seccion 8). */
         const d = await r.json().catch(() => ({}));
+        setLibPending(false);
         setLibErr(true); // un 500 no puede pisar el contador
         setLibErrCode(d.code || null);
         return;
       }
+      const pending = r.headers.get("x-spitifo-library-pending") === "1";
       const d = await r.json();
       const fields = Array.isArray(d.fields) && d.fields.length ? d.fields : COMPACT_FIELDS;
       const files = Array.isArray(d.rows) ? expandCompactLibrary(fields, d.rows) : d.files || [];
       setLib(pendingDeletes.current.filter(files));
+      setLibPending(pending);
+      clearTimeout(retryTimer.current);
+      if (pending) {
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          loadLibRef.current?.();
+        }, 1200);
+      }
       /* Siempre se guarda compacto, aunque el backend haya mandado `files`
          (uno viejo que no entiende `shape=compact`): el espejo de
          localStorage no depende de la version del servidor. */
@@ -423,6 +438,7 @@ export default function App() {
       /* El borrado mira esta lista, sin filtrar, para saber que se fue de verdad. */
       return files;
     } catch (e) {
+      setLibPending(false);
       setLibErr(true);
       setLibErrCode(null);
       /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
@@ -430,6 +446,8 @@ export default function App() {
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
   }, []);
+  loadLibRef.current = loadLib;
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
   /* La notificacion (y Media Session) leen track.artwork del motor. Cuando
      cambia la foto de la pista que suena, o cambia de pista, se vuelve a
@@ -933,6 +951,13 @@ export default function App() {
               <SwipeDots tab={nav.tab} onTab={nav.goTab} />
             ))}
         </main>
+        {/* Mientras el servidor escanea se ve la biblioteca del espejo y este
+            aviso: la primera pantalla nunca espera al escaneo. */}
+        {libPending && (
+          <div className="lib-sync" role="status" aria-live="polite">
+            Actualizando biblioteca…
+          </div>
+        )}
         {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
             completa. */}
         {np && NowPlaying && (

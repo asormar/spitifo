@@ -5,6 +5,7 @@ relativo a `root`, que es exactamente lo que venia haciendo el downloader.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import secrets
@@ -221,17 +222,15 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         self._media_store.apply(upserts, gone)
 
     # --------------------------------------------------------------- puerto
-    def list(self) -> Iterable[StoredFile]:
-        """Media de la biblioteca, saltando ocultos y symlinks que escapan.
-
-        Incluye video y las miniaturas `.jpg`: `library_scan` decide despues
-        cuales son temas y cuales sidecars.
+    def _scan_files(self) -> list[tuple[str, int, float]]:
+        """Clave, tamano y mtime de cada archivo de media, ordenados.
 
         Recorre con `os.scandir` y no con `rglob` + `resolve()` por archivo: en
         Windows el `DirEntry` ya trae el stat, y resolver cada ruta (para cazar
         un symlink que sale de la raiz) costaba mas que leer la cache de media.
         Ahora solo se resuelve lo que ES un symlink; un archivo o carpeta normal
-        dentro de la raiz no puede salir de ella.
+        dentro de la raiz no puede salir de ella. No abre ningun archivo con
+        mutagen: eso lo hace despues `_media` solo para las fichas que cambiaron.
         """
         exts = {e.lower() for e in (*AUDIO_EXTS, *VIDEO_EXTS, *IMAGE_EXTS)}
         root = self.root.resolve()
@@ -279,6 +278,27 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
 
         walk(str(self.root), "")
         found.sort()
+        return found
+
+    def fast_signature(self) -> str:
+        """Firma barata del contenido de la biblioteca, sin leer los archivos.
+
+        La usa `/api/library` para saber si la instantanea que sirve sigue
+        vigente. `stat()` sale de la propia entrada de `scandir`; no hay
+        `mutagen`, que es lo que tarda durante el primer escaneo (P-cold-start-1).
+        """
+        h = hashlib.sha256()
+        for key, size, mtime in self._scan_files():
+            h.update(f"{key}\0{size}\0{mtime}\n".encode("utf-8"))
+        return h.hexdigest()
+
+    def list(self) -> Iterable[StoredFile]:
+        """Media de la biblioteca, saltando ocultos y symlinks que escapan.
+
+        Incluye video y las miniaturas `.jpg`: `library_scan` decide despues
+        cuales son temas y cuales sidecars.
+        """
+        found = self._scan_files()
         seen: set[str] = set()
         for key, size, mtime in found:
             if os.path.splitext(key)[1].lower() in IMAGE_EXTS:
