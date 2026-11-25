@@ -45,7 +45,9 @@
     --vt-dy: 16px;
     --top-h: 64px;
     --dock-l: calc(var(--nav-w) + 12px);
-    --mini-h: 96px;
+    /* Alto de .dock (88px, DESIGN.md > decision 3) mas su aire: 12px abajo
+       (bottom) + 12px arriba. */
+    --mini-h: 112px;
   }
 
   html {
@@ -70,7 +72,7 @@
   }
 
   body.has-mini .lnotice {
-    bottom: 96px;
+    bottom: var(--mini-h);
   }
 }
 

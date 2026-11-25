@@ -89,10 +89,12 @@
   animation: ring 1.9s var(--ease) infinite;
 }
 
-/* Barra de progreso. La zona de toque mide 20 px; el trazo visible, 5. El
-   relleno se mueve con scaleX (nunca con width) y el tirador con `left`, que
-   es un elemento de 14 px. Mientras se arrastra no hay transicion: el dedo
-   manda. */
+/* Barra de progreso. El trazo visible es fino (5 px, 8 en Ahora suena) pero la
+   zona de toque real mide 48px: un `::before` sin pintar, centrado sobre el
+   trazo y mas alto que la caja, en vez de agrandar la caja misma (eso
+   dejaria la pastilla y la pantallita, que son bajas, descuadradas). El
+   relleno se mueve con scaleX (nunca con width) y el tirador con `translate`.
+   Mientras se arrastra no hay transicion: el dedo manda. */
 .scrub {
   position: relative;
   display: flex;
@@ -104,6 +106,14 @@
   touch-action: pan-y;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.scrub::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: var(--hit);
+  transform: translateY(-50%);
 }
 
 .scrub[aria-disabled] {
@@ -125,36 +135,47 @@
   transition: var(--tr-press);
 }
 
+/* Rosa (--sound): el relleno es progreso de REPRODUCCION, y DESIGN.md
+   reserva el rosa para el sonido (nunca cobalto, que es para lo que se hace). */
 .scrub__fill {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--acc);
+  background: var(--sound);
   transform-origin: left center;
   transition: transform var(--t-enter) linear, background-color var(--t-enter) var(--ease);
 }
 
+/* Scrub.jsx solo escribe --knob-x (el `pointermove` manda, sin pasar por
+   React): la escala la decide esta hoja, compuesta en el mismo `transform`
+   con var(), asi is-drag y el foco siguen funcionando sin que el JS tenga que
+   conocerlos. */
 .scrub__knob {
   position: absolute;
   top: 50%;
+  left: 0;
   width: 14px;
   height: 14px;
   margin: -7px 0 0 -7px;
   border: 2px solid var(--s1);
   border-radius: 50%;
-  background: var(--acc);
+  background: var(--sound);
   box-shadow: 0 1px 4px rgba(var(--shadow-rgb), 0.3);
   opacity: 0;
-  transform: scale(0.6);
+  transform: translateX(var(--knob-x, 0)) scale(var(--knob-scale, 0.6));
   pointer-events: none;
-  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease),
-    left var(--t-enter) linear;
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
 }
 
 .np .scrub__knob,
 .scrub:focus-visible .scrub__knob {
   opacity: 1;
-  transform: scale(1);
+  --knob-scale: 1;
+}
+
+/* Sin duracion: ni rastro, ni tirador (ver aria-disabled arriba). */
+.scrub__knob--hidden {
+  display: none;
 }
 
 .scrub.is-drag .scrub__fill {
@@ -162,8 +183,8 @@
 }
 
 .scrub.is-drag .scrub__knob {
-  transform: scale(1.25);
-  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
+  opacity: 1;
+  --knob-scale: 1.25;
 }
 
 .scrub.is-drag .scrub__rail {
@@ -252,10 +273,14 @@
 
 :root {
   /* Alto del reproductor mas su aire. Lo usan el hueco de la pagina y la subida
-     de los avisos (96 en escritorio, ver shell.css). */
+     de los avisos (112 en escritorio, ver shell.css). */
   --mini-h: 74px;
 }
 
+/* Misma curva y duracion al entrar y al salir (antes 260ms var(--ease) al
+   entrar, 180ms var(--ease) al salir): la visibilidad retrasada (para no
+   desaparecer antes de que el fundido termine) vive solo en la salida; al
+   entrar no hace falta transicionarla, se vuelve visible en el acto. */
 .mini,
 .dock {
   position: fixed;
@@ -268,8 +293,8 @@
   visibility: hidden;
   pointer-events: none;
   transform: translateY(16px);
-  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease),
-    visibility 0s linear var(--t-quick);
+  transition: opacity 240ms var(--drawer), transform 240ms var(--drawer),
+    visibility 0s linear 240ms;
 }
 
 .mini[data-state="open"],
@@ -278,7 +303,7 @@
   visibility: visible;
   pointer-events: auto;
   transform: none;
-  transition: opacity 260ms var(--ease), transform 260ms var(--ease), visibility 0s;
+  transition: opacity 240ms var(--drawer), transform 240ms var(--drawer);
 }
 
 /* Pastilla del telefono: izquierda y derecha a 10 px sobre la barra inferior. */
@@ -304,17 +329,20 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  height: 72px;
+  height: 88px;
   padding: 0 12px;
   border-radius: 24px;
   box-shadow: 0 14px 36px rgba(var(--shadow-rgb), var(--dock-a)), 0 0 0 1px var(--hair);
 }
 
+/* calc(100% - 10px): deja la banda de progreso (ver .mini__bar) su propio
+   espacio en el fondo de la pastilla, sin que los botones de 44px, centrados
+   en toda la fila, le pisen los ultimos pixeles. */
 .mini__row {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 100%;
+  height: calc(100% - 10px);
 }
 
 /* Portada + titulo: un solo boton que abre "Ahora suena". */
@@ -375,20 +403,33 @@
   height: 44px;
 }
 
+/* Siguiente: mismo boton redondo que el resto del chrome, a 48px (toque). Dos
+   clases a proposito: le gana en especificidad a .cbtn (shell.css), que carga
+   despues y empataria en especificidad con una sola clase. */
+.mini .mini__next {
+  width: 48px;
+  height: 48px;
+}
+
 .mini .pbtn:active,
 .dock .pbtn:active {
   transform: scale(0.93);
 }
 
-/* Hilo de progreso pegado al borde de abajo: 3 px, sin tirador. */
+/* Hilo de progreso pegado al borde de abajo: su propia banda de 10px, fuera
+   de .mini__row (ver mas arriba), asi no pisa el corazon ni reproducir. */
 .mini__bar {
   position: absolute;
   inset: auto 20px 0;
   display: flex;
-  height: 12px;
+  height: 10px;
 }
 
-.mini .scrub,
+.mini .scrub {
+  height: 10px;
+  align-items: flex-end;
+}
+
 .lcd .scrub {
   height: 12px;
   align-items: flex-end;
@@ -450,7 +491,7 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  height: 52px;
+  height: 72px;
   padding: 0 12px 0 6px;
   overflow: hidden;
   border-radius: 18px;
@@ -506,18 +547,12 @@
   text-align: right;
 }
 
-/* La pastilla de veredicto: sobre el Scrub, que cubre la pantallita. */
+/* La pastilla de veredicto: sobre el Scrub, que cubre la pantallita. Con el
+   dock a 88px (DESIGN.md > decision 3) la pastilla completa, con su palabra,
+   cabe en todos los anchos de escritorio: no hace falta un punto compacto. */
 .lcd__v {
   position: relative;
   z-index: 1;
-}
-
-/* Por debajo de 1200 px la pantallita no tiene sitio para titulo y chip: el
-   boton Ficha de la barra abre lo mismo. */
-@media (max-width: 1199.98px) {
-  .lcd__v {
-    display: none;
-  }
 }
 
 .lcd__tx {
