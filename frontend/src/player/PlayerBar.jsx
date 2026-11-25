@@ -6,6 +6,7 @@ import { Controls, DockArt, Volume } from "./controls.jsx";
 import useDock from "./useDock.js";
 import { useTrackPill } from "./useTrackPill.js";
 import Scrub from "./Scrub.jsx";
+import { usePanel } from "./panel.js";
 
 const StreamBadge = lazy(() => import("./StreamBits.jsx").then((m) => ({ default: m.StreamBadge })));
 /* Como en la pastilla: el corazon y todo su registro de guardadas esperan a
@@ -29,7 +30,12 @@ const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
    esta a la vista cierra la columna (onOpen(tab, true)).
    ------------------------------------------------------------------------- */
 
-export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
+export default function PlayerBar({ onOpen, npOpen, tab }) {
+  /* La pestana la lee aqui, no en App: asi cambiar de Cola a Ficha no
+     reconstruye todo el shell por encima de la barra. */
+  const panelOpen = usePanel((s) => s.open);
+  const panelTab = usePanel((s) => s.tab);
+  const activeTab = tab === undefined ? (panelOpen ? panelTab : -1) : tab;
   const d = useDock(npOpen);
   const { info, show, meta } = d;
   const pill = useTrackPill(info);
@@ -95,9 +101,9 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
           <button
             key={i}
             type="button"
-            className={cx("cbtn cbtn--tab", tab === i && "is-open")}
+            className={cx("cbtn cbtn--tab", activeTab === i && "is-open")}
             onClick={() => onOpen(i, true)}
-            aria-pressed={tab === i}
+            aria-pressed={activeTab === i}
             aria-label={label}
             title={label}
           >

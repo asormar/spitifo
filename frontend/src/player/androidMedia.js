@@ -59,11 +59,17 @@ export function bindAndroidMedia(
     };
   };
 
-  const signature = (p) =>
-    JSON.stringify([
-      p.title, p.artist, p.artwork, p.playing, p.buffering,
-      p.duration, p.hasNext, p.hasPrev,
-    ]);
+  /* Firma barata: el puente recibia un `timeupdate` 4 veces por segundo y
+     construia un JSON con todos los campos para descubrir que no habia cambio.
+     Aqui solo se mira lo que NO es posicion; el `JSON.stringify` del payload
+     ocurre unicamente cuando de verdad se va a enviar. */
+  const signature = (s) => {
+    const t = s.track;
+    return [
+      t.title, t.meta, t.artwork, s.playing, s.buffering,
+      s.duration, s.index, s.queue.length,
+    ].join("\u0000");
+  };
 
   const send = (payload, sig) => {
     bridge.mediaUpdate(JSON.stringify(payload));
@@ -85,16 +91,22 @@ export function bindAndroidMedia(
       return;
     }
     cleared = false;
-    const payload = snapshot(s);
-    const sig = signature(payload);
-    const drift = Math.abs(payload.position - lastPos);
+    const position = Number(s.time);
+    const dur = Number(s.duration);
+    const pos = clamp(
+      Number.isFinite(position) ? position : 0,
+      0,
+      Number.isFinite(dur) && dur > 0 ? dur : Infinity
+    );
+    const sig = signature(s);
+    const drift = Math.abs(pos - lastPos);
     const due = now() - lastAt >= throttleMs && drift >= DRIFT_MIN_SECONDS;
     /* Mientras suena, el sistema avanza la barra solo: un salto es lo que se
        aparta de esa prediccion, no el avance normal de la cancion. Cubre a los
        motores que no exponen onSeek. */
     const expected = lastPos + (lastRunning ? (now() - lastAt) / 1000 : 0);
-    const jump = Math.abs(payload.position - expected) > JUMP_SECONDS;
-    if (force || sig !== lastSig || jump || due) send(payload, sig);
+    const jump = Math.abs(pos - expected) > JUMP_SECONDS;
+    if (force || sig !== lastSig || jump || due) send(snapshot(s), sig);
   };
 
   const offSeek =

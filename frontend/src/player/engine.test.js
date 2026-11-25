@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createEngine } from "./engine.js";
+import { createEngine, prefetchKey } from "./engine.js";
+import { setCrossfade } from "./playbackSettings.js";
 
 /* <audio> falso: solo lo que el motor usa (EventTarget + campos y metodos del
    HTMLMediaElement). `play()` dispara play y playing de forma sincrona, como
@@ -271,13 +272,16 @@ describe("seek", () => {
 });
 
 describe("prefetch", () => {
-  it("posts the next library key once", () => {
+  it("posts the next two library keys once each", () => {
     const { engine, fetches } = setup();
     engine.play(A, { queue: [A, B, C] });
-    expect(fetches).toHaveLength(1);
-    expect(fetches[0].url).toBe("/api/prefetch");
-    expect(fetches[0].init.method).toBe("POST");
-    expect(JSON.parse(fetches[0].init.body)).toEqual({ key: B.key });
+    expect(fetches).toHaveLength(2);
+    expect(fetches.map((f) => f.url)).toEqual(["/api/prefetch", "/api/prefetch"]);
+    expect(fetches.map((f) => f.init.method)).toEqual(["POST", "POST"]);
+    expect(fetches.map((f) => JSON.parse(f.init.body))).toEqual([
+      { key: B.key },
+      { key: C.key },
+    ]);
   });
 
   it("does not repeat the same key when resuming", () => {
@@ -776,6 +780,167 @@ describe("stream colgado: aviso y reintento automatico (R2-robustez)", () => {
     expect(engine.getState().failed).toBe(true);
     vi.advanceTimersByTime(10000);
     expect(engine.getState().stalled).toBe(false);
+  });
+});
+
+describe("adelanto de la pista actual (P-time-to-audio-4)", () => {
+  it("posts the current key once and ignores empty keys", () => {
+    const fetchFn = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("fetch", fetchFn);
+    try {
+      expect(prefetchKey("uedades/Tema.mp3")).toBe(true);
+      expect(prefetchKey("uedades/Tema.mp3")).toBe(false);
+      expect(prefetchKey("")).toBe(false);
+      expect(fetchFn).toHaveBeenCalledOnce();
+      expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ key: "uedades/Tema.mp3" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("canales de suscripcion (P-render-main-thread-3)", () => {
+  it("el timeupdate solo despierta a quien escucha el reloj", () => {
+    const { engine, audio } = setup();
+    let stateHits = 0;
+    let timeHits = 0;
+    let allHits = 0;
+    engine.subscribeState(() => { stateHits += 1; });
+    engine.subscribeTime(() => { timeHits += 1; });
+    engine.subscribe(() => { allHits += 1; });
+    engine.play(A);
+    stateHits = 0;
+    timeHits = 0;
+    allHits = 0;
+
+    audio().currentTime = 5;
+    audio().dispatchEvent(new Event("timeupdate"));
+
+    expect(stateHits).toBe(0);
+    expect(timeHits).toBe(1);
+    expect(allHits).toBe(1);
+    expect(engine.getState().time).toBe(5);
+  });
+});
+
+describe("cambio sin silencio y crossfade (P-time-to-audio-8 / R1)", () => {
+  class ReadyAudio extends FakeAudio {
+    constructor() {
+      super();
+      this.loads = 0;
+    }
+
+    load() {
+      this.loads += 1;
+    }
+
+    ready() {
+      this.dispatchEvent(new Event("canplay"));
+    }
+  }
+
+  const setupReady = () => {
+    const audios = [];
+    const engine = createEngine({
+      createAudio: () => {
+        const a = new ReadyAudio();
+        audios.push(a);
+        return a;
+      },
+      fetchFn: () => Promise.resolve(),
+    });
+    return { engine, audios };
+  };
+
+  const storage = (value) => ({
+    getItem: () => value,
+    setItem: () => {},
+    removeItem: () => {},
+  });
+
+  it("preloads the next track and switches without reassigning src", () => {
+    const { engine, audios } = setupReady();
+    engine.play(A, { queue: [A, B] });
+    expect(audios).toHaveLength(2);
+    const [first, second] = audios;
+    expect(second.src).toBe(B.src);
+    expect(second.loads).toBe(1);
+    expect(second.paused).toBe(true);
+
+    second.ready();
+    first.dispatchEvent(new Event("ended"));
+
+    expect(engine.getState().track).toBe(B);
+    expect(engine.getState().index).toBe(1);
+    expect(second.paused).toBe(false);
+    /* El src se puso UNA vez (al precargar): no hay segunda peticion ni
+       re-decodificacion en el cambio de pista. */
+    expect(second.srcSets).toBe(1);
+    expect(first.paused).toBe(true);
+    /* La pista activa es la nueva: un seek la mueve a ella. */
+    engine.seek(12);
+    expect(second.currentTime).toBe(12);
+  });
+
+  it("falls back to a plain load when the preload is not ready", () => {
+    const { engine, audios } = setupReady();
+    engine.play(A, { queue: [A, B] });
+    const [first] = audios;
+    first.dispatchEvent(new Event("ended"));
+    expect(engine.getState().track).toBe(B);
+    /* Sin `canplay` no se cambia de elemento: se carga en el actual. */
+    expect(audios).toHaveLength(2);
+    expect(first.src).toBe(B.src);
+    expect(first.srcSets).toBe(2);
+  });
+
+  it("ramps volumes when crossfade is on", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("localStorage", storage("2"));
+    setCrossfade(2);
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: false }),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    try {
+      const { engine, audios } = setupReady();
+      engine.play(A, { queue: [A, B] });
+      const [first, second] = audios;
+      second.ready();
+      first.dispatchEvent(new Event("ended"));
+
+      vi.advanceTimersByTime(1000);
+      expect(first.volume).toBeCloseTo(0.4);
+      expect(second.volume).toBeCloseTo(0.4);
+      vi.advanceTimersByTime(1000);
+      expect(first.paused).toBe(true);
+      expect(second.volume).toBeCloseTo(0.8);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it("reduced motion turns crossfade off, keeping the gapless swap", () => {
+    vi.stubGlobal("localStorage", storage("6"));
+    setCrossfade(6);
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: true }),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
+    try {
+      const { engine, audios } = setupReady();
+      engine.play(A, { queue: [A, B] });
+      const [first, second] = audios;
+      second.ready();
+      first.dispatchEvent(new Event("ended"));
+      expect(second.volume).toBeCloseTo(0.8);
+      expect(first.paused).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

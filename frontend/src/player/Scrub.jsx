@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
-import { useEngine } from "./useEngine.js";
+import { useEngineTime } from "./useEngine.js";
 import { knobOffset, pctFromPointer } from "./scrubMath.js";
 
 /* ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ import { knobOffset, pctFromPointer } from "./scrubMath.js";
    ------------------------------------------------------------------------- */
 
 export default function Scrub({ duration, label, children }) {
-  const time = useEngine((s) => s.time);
+  const time = useEngineTime((s) => s.time);
   const railRef = useRef(null);
   const fillRef = useRef(null);
   const knobRef = useRef(null);

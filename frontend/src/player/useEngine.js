@@ -8,7 +8,17 @@ import { engine } from "./engine.js";
    la biblioteca puede tener 300 filas: si el selector devolviera un objeto
    nuevo en cada emision, React veria un cambio en cada fila y repintaria todo
    cuatro veces por segundo. Por eso las filas preguntan por un booleano o un
-   numero ("soy la actual?", "que tiempo llevo?") y no por la foto entera. */
+   numero ("soy la actual?", "que tiempo llevo?") y no por la foto entera.
+
+   Desde el reloj se separo el canal: `useEngine` escucha solo cambios de
+   pista/estado, y `useEngineTime` el tick. Asi ni una fila ni un control se
+   despiertan 4 veces por segundo; solo la barra de progreso lo hace. */
 export function useEngine(selector = (s) => s) {
-  return useSyncExternalStore(engine.subscribe, () => selector(engine.getState()));
+  const subscribe = engine.subscribeState || engine.subscribe;
+  return useSyncExternalStore(subscribe, () => selector(engine.getState()));
+}
+
+export function useEngineTime(selector = (s) => s) {
+  const subscribe = engine.subscribeTime || engine.subscribe;
+  return useSyncExternalStore(subscribe, () => selector(engine.getState()));
 }

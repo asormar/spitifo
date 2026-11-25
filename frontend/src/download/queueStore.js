@@ -145,6 +145,11 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
   let pendingReattach = false;
   let failures = 0;
   let retryDelay = backoffDelay(0);
+  /* Firma del ultimo espejo publicado. El sondeo llega cada segundo, pero en
+     las fases largas (processing/saving) no cambia nada: sin esta guardia se
+     despertaba la pildora, el badge y la hoja una vez por segundo para pintar
+     exactamente lo mismo. */
+  let lastSig = null;
   /* Un solo sondeo a la vez. Si llega otro mientras corre, se pide uno mas al
      terminar: el ultimo payload gana siempre. */
   let inFlight = null;
@@ -250,12 +255,19 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     }
 
     firstPayload = false;
-    emit({
-      items: incoming,
-      groups,
-      running: Number.isFinite(d?.running) ? d.running : incoming.filter((i) => ACTIVE_STATES.has(i.status)).length,
-      queued: Number.isFinite(d?.queued) ? d.queued : incoming.filter((i) => i.status === "queued").length,
-    });
+    const running = Number.isFinite(d?.running) ? d.running : incoming.filter((i) => ACTIVE_STATES.has(i.status)).length;
+    const queued = Number.isFinite(d?.queued) ? d.queued : incoming.filter((i) => i.status === "queued").length;
+    const sig = [
+      incoming.map((i) => [
+        i.id, i.status, Math.round(i.progress), i.phase || "", i.resumedFrom ?? "",
+        i.error || "", i.error_code || "", i.rk,
+      ].join("~")).join("|"),
+      groups.map((g) => `${g.id}:${g.items.map((i) => i.id).join(",")}`).join("|"),
+      running, queued, state.offline,
+    ].join("#");
+    if (sig === lastSig) return;
+    lastSig = sig;
+    emit({ items: incoming, groups, running, queued });
   };
 
   const schedule = () => {
