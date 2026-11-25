@@ -3496,14 +3496,17 @@ def _prefetch_bg(fn, key: str) -> None:
 #: cancelacion: la descarga que ya arranco en Drive sigue aunque el usuario
 #: saltee de nuevo, igual que antes), sino la garantia de que un tap repetido
 #: de "siguiente" (saltar varias veces rapido) ya NO abre un hilo de SO por
-#: tap: se encola en el pool acotado de storage (`STORAGE_EXECUTOR`), que
-#: ademas sirve `/api/audio` y la biblioteca.
+#: tap: se encola en `PREFETCH_EXECUTOR`, un pool chico y PROPIO (ver
+#: executors.py) que nunca compite por hilos con `/api/audio`, la biblioteca
+#: o el guardado de la cola (eso sí pasaria si compartiera `STORAGE_EXECUTOR`:
+#: una racha de saltos llenaria ese pool de descargas de Drive y haria
+#: esperar a una lectura de audio real).
 _prefetch_future: "asyncio.Future | None" = None
 
 
 def _prefetch_submit(fn, key: str) -> None:
     global _prefetch_future
-    _prefetch_future = run_storage(_prefetch_bg, fn, key)
+    _prefetch_future = run_prefetch(_prefetch_bg, fn, key)
 
 
 async def prefetch(request: Request):
