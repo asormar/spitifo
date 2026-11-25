@@ -5,7 +5,10 @@ import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
 import { useAutoDownload } from "./autoDownload.js";
 import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js";
-import { useDownloadFormat, useDownloadMedia } from "./downloadPrefs.js";
+import {
+  QUALITY_OPTIONS, formatForQuality, qualityHint, useDownloadFormat,
+  useDownloadMedia, useDownloadQuality, useDownloadRoaming, useDownloadWifiOnly,
+} from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -41,6 +44,30 @@ const DATA_SOURCES = [
 
 /* Un grupo de chips que funciona como radio: uno activo, y el tabindex entra
    solo por el elegido. */
+function SwitchRow({ label, note, checked, onChange }) {
+  return (
+    <div className="settings__row settings__switch-row">
+      <div>
+        <p className="settings__label">{label}</p>
+        <p className="settings__note">{note}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        className={`settings__switch ${checked ? "is-on" : ""}`}
+        onClick={() => {
+          onChange(!checked);
+          window.dispatchEvent(new Event("spitifo-network"));
+        }}
+      >
+        <span />
+      </button>
+    </div>
+  );
+}
+
 function ChipRadio({ label, options, value, onPick }) {
   return (
     <div className="chips" role="radiogroup" aria-label={label}>
@@ -75,6 +102,9 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const [autoDownload, setAutoDownload] = useAutoDownload();
   const [fmt, setFmt] = useDownloadFormat();
   const [media, setMedia] = useDownloadMedia();
+  const [quality, setQuality] = useDownloadQuality();
+  const [wifiOnly, setWifiOnly] = useDownloadWifiOnly();
+  const [roaming, setRoaming] = useDownloadRoaming();
   const nav = useNav();
   const pc = usePc();
   const [finder, setFinder] = useState(false);
@@ -200,11 +230,31 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </h2>
         <div className="settings__card">
           <div className="settings__row">
+            <p className="settings__label">Calidad</p>
+            <ChipRadio
+              label="Calidad de descarga"
+              options={QUALITY_OPTIONS}
+              value={quality}
+              onPick={(q) => {
+                setQuality(q);
+                setFmt(formatForQuality(q));
+              }}
+            />
+            <p className="settings__note">
+              {qualityHint(quality, { video: media !== "audio" })}. El tamaño real depende del tema.
+            </p>
+          </div>
+          <div className="settings__row">
             <p className="settings__label">Formato</p>
             <ChipRadio label="Formato de descarga" options={FMT_OPTIONS} value={fmt} onPick={setFmt} />
             <p className="settings__note">
               Cómo se guarda el audio al bajar una canción. También puedes cambiarlo al descargar desde el menú ⋯.
             </p>
+            {fmt === "mp3" && (
+              <p className="settings__note" role="note">
+                MP3 recodifica en el teléfono: un álbum de 15 tarda varios minutos más que «original».
+              </p>
+            )}
             {fmt === "original" && media === "audio" && <p className="settings__note">{ORIGINAL_HINT}</p>}
           </div>
           <div className="settings__row">
@@ -214,6 +264,21 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               Qué se baja cuando buscas en YouTube: solo el audio, solo el vídeo o las dos cosas.
             </p>
           </div>
+          <SwitchRow
+            label="Descargar solo con Wi-Fi"
+            note="En datos móviles la descarga espera y dice «Esperando Wi-Fi»."
+            checked={wifiOnly}
+            onChange={setWifiOnly}
+          />
+          <SwitchRow
+            label="Permitir descargas en roaming"
+            note="Si lo apagas, no se descarga con datos del exterior."
+            checked={roaming}
+            onChange={setRoaming}
+          />
+          <p className="settings__note">
+            Los cambios del índice se agrupan: una versión antigua puede ver la biblioteca hasta 5 minutos atrasada.
+          </p>
         </div>
       </section>
 

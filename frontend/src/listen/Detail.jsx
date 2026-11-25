@@ -25,6 +25,10 @@ import MissingRow from "./MissingRow.jsx";
 import { Thead } from "./rows.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
+import { queueStore } from "../download/queueStore.js";
+import { trackSpec } from "../download/albumText.js";
+import { resultOf } from "../player/savedTrack.js";
+import { formatForQuality, readDownloadQuality } from "../settings/downloadPrefs.js";
 import "../shared/sheet.css";
 /* La ficha de Escuchar ya es un chunk perezoso: el top y sus filas se piden
    aparte al pintar, sin meter nada en el chunk de arranque. */
@@ -211,6 +215,23 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const from = `${kind}:${name}`;
   const play = () => ctx.playGroup(rows, false, from);
   const shuffle = () => ctx.playGroup(rows, true, from);
+  /* Un tap baja TODA la lista que todavia no tenes, como un solo grupo. Las
+     filas con `song` son las que no tienen archivo propio. */
+  const downloadList = () => {
+    const fmt = formatForQuality(readDownloadQuality());
+    const items = rows.filter((r) => r.song && !r.song.file_key).map((r) => {
+      const s = r.song;
+      return trackSpec(resultOf(s), `${s.title || ""} ${s.artist || ""}`.trim(), fmt);
+    });
+    if (!items.length) {
+      ctx.show("Todas las canciones de esta lista ya están descargadas");
+      return;
+    }
+    queueStore.enqueue({
+      items,
+      group: { id: `playlist:${pl.id}`, title: pl.name, artwork_url: null },
+    });
+  };
 
   /* El menu de la lista es lo de arriba de la pila: atras lo cierra. Borrar es
      inmediato y se puede deshacer unos segundos (la lista vuelve con el mismo
@@ -259,6 +280,12 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         <Icon name="Shuffle" size={18} />
         Aleatorio
       </button>
+      {isList && (
+        <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
+          <Ico n="dl" size={18} />
+          Descargar lista
+        </button>
+      )}
       {artist && (
         <button
           type="button"

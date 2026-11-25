@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activeGroup, backoffDelay, createQueueStore, groupItems, groupSummary } from "./queueStore.js";
+import { activeGroup, backoffDelay, createQueueStore, groupItems, groupSummary, jobPatch, pollDelay, POLL_ACTIVE_MS, POLL_IDLE_MS, POLL_QUEUED_MS } from "./queueStore.js";
 import { jobsStore } from "./jobsStore.js";
 import { verdictStore } from "./verdict.js";
 
@@ -32,6 +32,32 @@ afterEach(() => {
 describe("cola: espera ante un corte de red", () => {
   it("la espera crece hasta 15 s", () => {
     expect([0, 1, 2, 3, 4, 5, 8].map(backoffDelay)).toEqual([1000, 2000, 4000, 8000, 15000, 15000, 15000]);
+  });
+});
+
+describe("cola: sondeo adaptativo (P-downloads-pipeline-7)", () => {
+  it("rapido con trabajo activo, lento en cola, parado al estar quieto", () => {
+    expect(pollDelay({ active: true, busy: true })).toBe(POLL_ACTIVE_MS);
+    expect(pollDelay({ busy: true })).toBe(POLL_QUEUED_MS);
+    expect(pollDelay({ sheetOpen: true, items: 3 })).toBe(POLL_IDLE_MS);
+    expect(pollDelay({})).toBe(null);
+    expect(pollDelay({ offline: true, busy: true, retryDelay: 4000 })).toBe(4000);
+    expect(pollDelay({ offline: true, capHits: 2 })).toBe(null);
+  });
+});
+
+describe("cola: fases de red y subida (R2 / P-downloads-pipeline-3)", () => {
+  it("publica la fase de espera de Wi-Fi", () => {
+    expect(jobPatch(item(40, "queued", { phase: "waiting_wifi" }))).toMatchObject({
+      status: "queued", phase: "waiting_wifi", progress: 0,
+    });
+  });
+
+  it("la subida lleva su propio porcentaje en vez de un 100 falso", () => {
+    expect(jobPatch(item(41, "saving", { phase: "uploading", progress: 37 }))).toMatchObject({
+      status: "processing", phase: "uploading", progress: 37,
+    });
+    expect(jobPatch(item(42, "saving")).progress).toBe(100);
   });
 });
 
@@ -91,6 +117,21 @@ describe("cola: espejo de GET /api/downloads", () => {
     expect(onLibrary).toHaveBeenCalledTimes(1);
     expect(onToast).toHaveBeenCalledTimes(1);
     expect(onToast).toHaveBeenCalledWith("Dynamo: 1 descargada");
+    s.dispose();
+  });
+
+  it("un album refresca la biblioteca UNA vez, al terminar el grupo", () => {
+    const s = createQueueStore();
+    const onLibrary = vi.fn();
+    s.setHooks({ onLibrary });
+    vi.spyOn(verdictStore, "setFromDownload").mockImplementation(() => {});
+    const a = item(60, "downloading", { group: { id: "album:9", title: "D" } });
+    const b = item(61, "queued", { group: { id: "album:9", title: "D" } });
+    s.applyPayload({ items: [a, b] });
+    s.applyPayload({ items: [{ ...a, status: "done" }, b] });
+    expect(onLibrary).not.toHaveBeenCalled(), "el grupo sigue vivo";
+    s.applyPayload({ items: [{ ...a, status: "done" }, { ...b, status: "done" }] });
+    expect(onLibrary).toHaveBeenCalledTimes(1);
     s.dispose();
   });
 
