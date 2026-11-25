@@ -25,14 +25,28 @@ import shutil
 import threading
 import time
 import uuid
+import weakref
 from pathlib import Path
 from typing import Any, Callable
 
 from .config import AUDIO_EXTS, USER_AGENT, VIDEO_EXTS
+from .executors import run_storage, run_ytdlp
 from .models import Track, safe_name
 from .sources import Source, looks_like_music, relevance
 
 log = logging.getLogger("spitifo.ytdlp")
+
+#: Tope de reloj para cada llamada de red de yt-dlp (busqueda/resolve/probe):
+#: ninguna puede dejar un hilo del pool colgado para siempre. yt-dlp hace
+#: varios pedidos HTTP por extraccion (player API, formatos); su propio
+#: `socket_timeout` (30-60s, por llamada HTTP) no alcanza para acotar el
+#: TOTAL. Mismo valor que `stream.FAST_TIMEOUT_S`: ese camino ya probo que 8s
+#: alcanza para el caso sano en el telefono.
+YTDLP_CALL_TIMEOUT_S = 8.0
+
+#: La extraccion COMPLETA (`probe_info`, el camino resiliente con reintento de
+#: cookies) es mas lenta a proposito: mismo valor que `stream.FULL_TIMEOUT_S`.
+PROBE_TIMEOUT_S = 45.0
 
 # progreso de las descargas en curso: job_id -> dict
 JOBS: dict[str, dict] = {}
@@ -99,8 +113,8 @@ JOBS_TTL_S = 3600.0
 # `threading.Lock` para el dict de jobs: son cosas distintas y no se mezclan.
 # Ojo: NO llamar `_finish()` adentro de `_JOBS_LOCK` (no es reentrante) — el
 # camino de espera de este lock solo publica `status`, nunca `_finish`.
-_LOCKS_POR_RUTA: dict[str, asyncio.Lock] = {}
-_LOCKS_LOCK = threading.Lock()
+# (`_LOCKS_POR_RUTA`/`_LOCKS_LOCK`/`_lock_de_ruta` quedan mas abajo, junto al
+# resto de las constantes de pool/pruning de locks)
 
 
 # ------------------------------------------------------------ URLs de YouTube
@@ -186,6 +200,17 @@ def identity_best_reference(query: str | None, track: Track,
     return max(refs, key=lambda r: similarity(r, real_title))
 
 
+#: Por encima de esto se podan las libres (no tomadas) mas viejas: una sesion
+#: que descarga un album de miles de pistas no deja crecer el dict para
+#: siempre. Una lock TOMADA nunca se poda (ver abajo), asi que dos descargas
+#: de la MISMA clave en curso siguen compartiendo la MISMA instancia.
+_LOCKS_MAX = 512
+
+_LOCKS_POR_RUTA: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, tuple[asyncio.Lock, float]]]" = (
+    weakref.WeakKeyDictionary())
+_LOCKS_LOCK = threading.Lock()
+
+
 def _lock_de_ruta(clave: str) -> asyncio.Lock:
     """Lock de una clave de salida (la biblioteca, sin extension). Se crea una
     vez y se reusa.
@@ -194,14 +219,32 @@ def _lock_de_ruta(clave: str) -> asyncio.Lock:
     pista comparten esta clave y se serializan aunque cada una trabaje en su
     propia subcarpeta temporal.
 
-    El dict crece sin limite a proposito: son un par de entradas por pista
-    distinta descargada en toda la sesion, y un lock liberated no molesta.
+    Atada al loop actual (como `_top_lock` en main.py), con un
+    `WeakKeyDictionary`: un reinicio del loop (tests, un restart del server)
+    no deja locks colgando de un loop que ya no existe. Ademas se poda cuando
+    hay demasiadas sin uso (`_LOCKS_MAX`): antes el dict crecia sin limite "a
+    proposito" (un par de entradas por pista descargada EN TODA LA SESION),
+    que en una sesion larga de descargas masivas sí pesa.
     """
+    loop = asyncio.get_running_loop()
+    ahora = time.monotonic()
     with _LOCKS_LOCK:
-        lock = _LOCKS_POR_RUTA.get(clave)
-        if lock is None:
-            lock = asyncio.Lock()
-            _LOCKS_POR_RUTA[clave] = lock
+        por_loop = _LOCKS_POR_RUTA.get(loop)
+        if por_loop is None:
+            por_loop = _LOCKS_POR_RUTA[loop] = {}
+        entry = por_loop.get(clave)
+        if entry is not None:
+            por_loop[clave] = (entry[0], ahora)
+            return entry[0]
+        lock = asyncio.Lock()
+        por_loop[clave] = (lock, ahora)
+        if len(por_loop) > _LOCKS_MAX:
+            libres = sorted(
+                (k for k, (l, _) in por_loop.items()
+                 if k != clave and not l.locked()),
+                key=lambda k: por_loop[k][1])
+            for k in libres[: len(por_loop) - _LOCKS_MAX]:
+                del por_loop[k]
         return lock
 
 
@@ -733,7 +776,23 @@ async def probe_info(url: str, format: str | None = None) -> dict:
     sigue, se levanta `BotCheckError` para que la API conteste 502 con el codigo.
     `format` permite pedir "bestaudio" para el streaming, que necesita la URL del
     formato sin bajarlo.
+
+    Acotado a `PROBE_TIMEOUT_S` en total (extraccion + el reintento con
+    cookies, si hace falta): antes esta funcion no tenia deadline propio, asi
+    que `/api/formats` (via `video_formats`) podia quedar esperando para
+    siempre a un YouTube que nunca contesta. `stream.py` ya envuelve SU
+    llamada con el mismo limite (`FULL_TIMEOUT_S`); envolverlo tambien aca
+    protege al resto de los que llaman a `probe_info` directo.
     """
+    try:
+        return await asyncio.wait_for(_probe_info_sin_limite(url, format),
+                                      PROBE_TIMEOUT_S)
+    except asyncio.TimeoutError as e:
+        log.warning("ytdlp probe_info: %s tardo mas de %.0fs", url, PROBE_TIMEOUT_S)
+        raise RuntimeError(f"yt-dlp: timeout tras {PROBE_TIMEOUT_S:.0f}s") from e
+
+
+async def _probe_info_sin_limite(url: str, format: str | None = None) -> dict:
     import yt_dlp
     opts = youtube_opts({"quiet": True, "no_warnings": True, "skip_download": True,
                          "socket_timeout": 30, "retries": 1})
@@ -748,7 +807,7 @@ async def probe_info(url: str, format: str | None = None) -> dict:
             return ydl.extract_info(url, download=False)
 
     try:
-        return await asyncio.to_thread(_run)
+        return await run_ytdlp(_run)
     except Exception as e:
         if not is_bot_check_error(e):
             raise
@@ -760,7 +819,7 @@ async def probe_info(url: str, format: str | None = None) -> dict:
         log.info("ytdlp: probe de formatos reintenta con las cookies importadas")
         with youtube_cookies.plaintext_tempfile(texto, TEMP_DIR) as cookiefile:
             try:
-                return await asyncio.to_thread(_run, str(cookiefile))
+                return await run_ytdlp(_run, str(cookiefile))
             except Exception as e2:
                 if is_bot_check_error(e2):
                     raise bot_check_error() from e2
@@ -824,7 +883,7 @@ async def fetch_thumb(video_id: str | None, key: str, work: Path) -> str | None:
             data = r.content
         tmp = work / f".thumb-{uuid.uuid4().hex[:8]}.jpg"
         tmp.write_bytes(data)
-        await asyncio.to_thread(get_storage().put_file, thumb_key, tmp)
+        await run_storage(get_storage().put_file, thumb_key, tmp)
         return thumb_key
     except Exception as e:
         log.warning("ytdlp: no se pudo bajar la miniatura de %s: %s", video_id, e)
@@ -950,7 +1009,7 @@ def warm(url: str) -> bool:
 
     async def _job():
         try:
-            raw = await asyncio.to_thread(_extract_raw, url)
+            raw = await run_ytdlp(_extract_raw, url)
             if raw:
                 _warm_put(url, raw)
         except Exception as e:
@@ -981,23 +1040,74 @@ async def warmed_info(url: str, wait: float = WARM_WAIT_S) -> dict | None:
 #: se lleva uno del pool y lo devuelve al terminar; uno que fallo se descarta.
 _SEARCH_POOL: queue.Queue = queue.Queue(maxsize=3)
 
+#: Admite como mucho `_SEARCH_POOL.maxsize` extracciones de `search_candidates`
+#: a la vez: antes de esto, `_take_search_ydl()` construia una instancia NUEVA
+#: en cuanto el pool se vaciaba (cualquier concurrencia por encima de 3 creaba
+#: YoutubeDL de mas, cada una con su propia conexion TLS a youtube.com). El
+#: `priority=True` de un tap del usuario (main.py) salta el limite de
+#: concurrencia de la ruta, pero sigue esperando ACA: el pool de instancias
+#: nunca se desborda, taps repetidos incluidos. Atado al loop actual, como
+#: `_search_single_sem` en main.py: un Semaphore con esperas de OTRO loop
+#: revienta ("attached to a different loop") y los tests corren cada uno en
+#: su propio `asyncio.run`.
+_SEARCH_POOL_SEMS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary())
+
+
+def _search_pool_sem() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    sem = _SEARCH_POOL_SEMS.get(loop)
+    if sem is None:
+        sem = _SEARCH_POOL_SEMS[loop] = asyncio.Semaphore(_SEARCH_POOL.maxsize)
+    return sem
+
+
+#: El semaforo de arriba acota cuantas llamadas ENTRAN a la vez, pero un
+#: timeout libera su cupo mientras el hilo de abajo sigue corriendo con una
+#: instancia todavia prestada (ver el comentario en `search_candidates`): sin
+#: este contador, una racha de timeouts seguida de nuevas busquedas podia
+#: volver a crear instancias de mas, justo el bug que este pool existe para
+#: evitar. `_SEARCH_INSTANCES_ALIVE` cuenta instancias VIVAS (creadas y no
+#: cerradas), nunca mas de `_SEARCH_POOL.maxsize`: una nueva solo se crea
+#: mientras haya margen bajo ese tope; si no hay margen, se espera (bloqueante,
+#: pero siempre dentro de un hilo de `YTDLP_EXECUTOR`, nunca en el loop) a que
+#: alguna instancia vuelva.
+_SEARCH_INSTANCES_ALIVE = 0
+_SEARCH_INSTANCES_LOCK = threading.Lock()
+
 
 def _close_quietly(ydl) -> None:
+    global _SEARCH_INSTANCES_ALIVE
     try:
         ydl.close()
     except Exception:
         pass
+    with _SEARCH_INSTANCES_LOCK:
+        _SEARCH_INSTANCES_ALIVE -= 1
 
 
 def _take_search_ydl():
+    global _SEARCH_INSTANCES_ALIVE
     try:
         return _SEARCH_POOL.get_nowait()
     except queue.Empty:
+        pass
+    with _SEARCH_INSTANCES_LOCK:
+        if _SEARCH_INSTANCES_ALIVE < _SEARCH_POOL.maxsize:
+            _SEARCH_INSTANCES_ALIVE += 1
+            crear = True
+        else:
+            crear = False
+    if crear:
         import yt_dlp
         return yt_dlp.YoutubeDL(youtube_opts({
             "quiet": True, "no_warnings": True, "skip_download": True,
             "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
         }))
+    # Ya hay `maxsize` instancias vivas y todas prestadas (p. ej. una
+    # extraccion que vencio su timeout pero sigue corriendo en su hilo):
+    # esperar a que alguna vuelva, en vez de crear una de mas.
+    return _SEARCH_POOL.get()
 
 
 def _give_back_search_ydl(ydl) -> None:
@@ -1032,7 +1142,6 @@ class YtDlpSource(Source):
     # ---------------------------------------------------------------- search
     async def search_candidates(self, q: str, limit: int = 20) -> list[dict]:
         """Busca cruda en YouTube, sin filtrar por 'musical'. La usa el matcher."""
-        loop = asyncio.get_running_loop()
 
         def _run():
             ydl = _take_search_ydl()
@@ -1044,7 +1153,19 @@ class YtDlpSource(Source):
             _give_back_search_ydl(ydl)
             return data
 
-        data = await loop.run_in_executor(None, _run)
+        # El semaforo (tope = tamano del pool) va AFUERA del wait_for: si el
+        # tiempo de espera vence, se libera y la extraccion que sigue
+        # corriendo en su hilo se encarga sola de devolver o cerrar su
+        # instancia (ver `_run`); el pool nunca queda con una instancia
+        # "prestada y perdida".
+        async with _search_pool_sem():
+            try:
+                data = await asyncio.wait_for(
+                    run_ytdlp(_run), YTDLP_CALL_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                log.warning("ytdlp search_candidates: %r tardo mas de %.0fs", q,
+                            YTDLP_CALL_TIMEOUT_S)
+                raise
         return [e for e in (data or {}).get("entries", []) or [] if e]
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
@@ -1057,14 +1178,16 @@ class YtDlpSource(Source):
             "extract_flat": "in_playlist", "socket_timeout": 30, "retries": 1,
             "noplaylist": True, "playlistend": limit,
         })
-        loop = asyncio.get_running_loop()
 
         def _run():
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(url or f"ytsearch{limit}:{q}", download=False)
 
         try:
-            data = await loop.run_in_executor(None, _run)
+            data = await asyncio.wait_for(run_ytdlp(_run), YTDLP_CALL_TIMEOUT_S)
+        except asyncio.TimeoutError as e:
+            log.warning("ytdlp search: %r tardo mas de %.0fs", q, YTDLP_CALL_TIMEOUT_S)
+            raise RuntimeError(f"yt-dlp: timeout tras {YTDLP_CALL_TIMEOUT_S:.0f}s") from e
         except Exception as e:
             log.warning("ytdlp search fallo: %s", e)
             raise RuntimeError(f"yt-dlp: {e}")
@@ -1107,7 +1230,6 @@ class YtDlpSource(Source):
         opts = youtube_opts({"quiet": True, "no_warnings": True,
                              "skip_download": True, "socket_timeout": 30,
                              "retries": 1})
-        loop = asyncio.get_running_loop()
 
         def _run():
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -1123,7 +1245,10 @@ class YtDlpSource(Source):
                 return info, best
 
         try:
-            info, best = await loop.run_in_executor(None, _run)
+            info, best = await asyncio.wait_for(run_ytdlp(_run), YTDLP_CALL_TIMEOUT_S)
+        except asyncio.TimeoutError as e:
+            log.warning("ytdlp resolve: %s tardo mas de %.0fs", url, YTDLP_CALL_TIMEOUT_S)
+            raise RuntimeError(f"yt-dlp: timeout tras {YTDLP_CALL_TIMEOUT_S:.0f}s") from e
         except Exception as e:
             log.warning("ytdlp resolve fallo: %s", e)
             raise RuntimeError(f"yt-dlp: {e}")
@@ -1263,7 +1388,6 @@ class YtDlpSource(Source):
             "continuedl": True,
             **media_opts(media, fmt, height),
         })
-        loop = asyncio.get_running_loop()
 
         def _run(cookiefile: str | None = None, raw: dict | None = None):
             # `cookiefile` solo llega en el reintento del muro de verificacion:
@@ -1361,7 +1485,7 @@ class YtDlpSource(Source):
                     raw = await stream.fast_raw(parse_youtube_url(url) or url)
                 if raw is not None:
                     try:
-                        info, fp = await loop.run_in_executor(None, _run, None, raw)
+                        info, fp = await run_ytdlp(_run, None, raw)
                     except Exception as e:
                         if _es_cancel(e):
                             raise
@@ -1380,7 +1504,7 @@ class YtDlpSource(Source):
                         break
                     state["ultimo_intento"] = intento == intentos
                     try:
-                        info, fp = await loop.run_in_executor(None, _run)
+                        info, fp = await run_ytdlp(_run)
                         break
                     except Exception as e:
                         if _es_cancel(e):
@@ -1405,8 +1529,7 @@ class YtDlpSource(Source):
                             with youtube_cookies.plaintext_tempfile(
                                     texto, TEMP_DIR) as cookiefile:
                                 try:
-                                    info, fp = await loop.run_in_executor(
-                                        None, lambda: _run(str(cookiefile)))
+                                    info, fp = await run_ytdlp(_run, str(cookiefile))
                                     break
                                 except Exception as e2:
                                     if _es_cancel(e2):
@@ -1453,7 +1576,7 @@ class YtDlpSource(Source):
                     # tag_track nuevo los perderia y no habria orden de disco.
                     extra=dict(track.extra or {}),
                 )
-                await asyncio.to_thread(_write_tags, path, tag_track)
+                await run_storage(_write_tags, path, tag_track)
                 # La extension es la del archivo real: con "both" el merge deja
                 # un .mp4, pero el fallback a un unico archivo (`b`) puede ser
                 # .webm, y la clave no puede mentir sobre lo que contiene.
@@ -1473,7 +1596,7 @@ class YtDlpSource(Source):
                     items += [(thumb_sidecar_key(key), covers[0]),
                               (thumb_small_sidecar(key), covers[1])]
                 try:
-                    stored = (await asyncio.to_thread(
+                    stored = (await run_storage(
                         get_storage().put_files, items))[0]
                 except Exception as e:
                     if not covers:
@@ -1481,7 +1604,7 @@ class YtDlpSource(Source):
                     # Si fallo una portada, el audio (el primero) ya quedo.
                     log.warning("ytdlp: fallaron las portadas de %s: %s", key, e)
                     try:
-                        stored = await asyncio.to_thread(get_storage().stat, key)
+                        stored = await run_storage(get_storage().stat, key)
                     except Exception:
                         raise e
                     covers = None
@@ -1541,7 +1664,7 @@ class YtDlpSource(Source):
                 # ya salio por put_file). En ERROR se conserva: continuedl
                 # necesita el .part para no empezar de cero en el reintento.
                 if exito or cancelado:
-                    await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
+                    await run_storage(shutil.rmtree, work, ignore_errors=True)
 
 
 def get_job(job_id: str) -> dict | None:
