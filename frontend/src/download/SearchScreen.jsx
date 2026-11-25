@@ -141,7 +141,7 @@ export default function SearchScreen({
   /* El ⋯ de una fila vive en la pila como la ficha: atras, Escape y el atras de
      Android lo cierran, y el foco vuelve al boton (lo hace Sheet/Popover). */
   const openResultMenu = useCallback(
-    (t, anchor) => nav.open({ type: "resmore", key: rowKey(t), anchor }),
+    (t, anchor, point) => nav.open({ type: "resmore", key: rowKey(t), anchor, point }),
     [nav.open]
   );
 
@@ -584,6 +584,7 @@ export default function SearchScreen({
           })}
           title={resmoreT.title || "sin título"}
           anchor={resmoreAt.anchor}
+          point={resmoreAt.point}
           onPick={pickResult}
           onClose={nav.back}
         />

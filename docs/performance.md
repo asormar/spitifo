@@ -72,6 +72,15 @@ open to DevTools); everything else comes from the published files.
   waves add 2,289 B (stream reader, lazy-row queue, the «Buscando» state and
   tap priority, reusing the album match stream client) and #96 adds 501 B.
   With both, the bundle sits at about 396,480 B.
+- **2026-11-25**: JS 420,750 -> 434,903 B and CSS 131,000 -> 137,599 B for phase
+   20 (el escritorio). Measured against the branch point `feat/player-giro`:
+   JS 414,159 -> 428,312 B (+14,153) and CSS 129,842 -> 136,441 B (+6,599),
+   only the exact growth; the room before the change (6.4 KiB JS, 1.1 KiB CSS)
+   is kept. The bytes buy the collapsible rail and remembered width, both
+   dividers, the `?` sheet, the in-app shortcuts, the multi-selection bar,
+   the drop targets and the optional custom title bar. Menus, media keys and
+   icons are reused, not reimplemented. Gzip grows 155.2 -> 159.1 KiB (JS)
+   and 36.9 -> 37.4 KiB (CSS).
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.

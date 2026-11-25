@@ -15,7 +15,7 @@ import { useNav } from "./useNav.js";
    de tu biblioteca y Enter lanza la busqueda de descargas.
    ------------------------------------------------------------------------- */
 
-export default function TopBar() {
+export default function TopBar({ onHelp }) {
   const nav = useNav();
   const [q, setQ] = useSearchDraft();
   const busy = useSearchBusy();
@@ -41,12 +41,21 @@ export default function TopBar() {
         value={q}
         onChange={setQ}
         onSubmit={submit}
-        onFocus={() => nav.goTab("search")}
-        go="Buscar"
+        go="Ver resultados"
         busy={busy}
         placeholder={PLACEHOLDER.default}
         label="Qué quieres escuchar"
       />
+
+      <button
+        type="button"
+        className="cbtn"
+        aria-label="Ver atajos de teclado"
+        title="Atajos de teclado (?)"
+        onClick={onHelp}
+      >
+        <Icon name="Keyboard" size="lg" />
+      </button>
 
       <button
         type="button"

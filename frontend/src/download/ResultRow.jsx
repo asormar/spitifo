@@ -97,7 +97,25 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   ].filter(Boolean).join(", ");
 
   return (
-    <li className={cx("res", isCurrent && "is-current", resolving && "is-resolving")} style={{ "--i": i }} data-k={rowKey(t)} data-wave={state}>
+    <li
+      className={cx("res", isCurrent && "is-current", resolving && "is-resolving")}
+      style={{ "--i": i }}
+      data-k={rowKey(t)}
+      data-wave={state}
+      onContextMenu={(e) => {
+        if (!onMenu) return;
+        e.preventDefault();
+        const el = e.currentTarget.querySelector(".res__main") || e.currentTarget;
+        onMenu(t, el, { x: e.clientX, y: e.clientY });
+      }}
+      onKeyDown={(e) => {
+        if (!onMenu || !(e.shiftKey && e.key === "F10") && e.key !== "ContextMenu") return;
+        e.preventDefault();
+        const el = e.currentTarget.querySelector(".res__main") || e.currentTarget;
+        const r = el.getBoundingClientRect();
+        onMenu(t, el, { x: r.left + 24, y: r.bottom });
+      }}
+    >
       <span className="res__n num" aria-hidden="true">
         {i + 1}
       </span>

@@ -9,6 +9,7 @@ import LibraryHome from "./LibraryHome.jsx";
 import PageHost from "./pageLoader.jsx";
 import SearchResults from "./SearchResults.jsx";
 import { searchLibrary } from "./home.js";
+import { requestSearch } from "../download/searchRequest.js";
 import "./home.css";
 
 /* ---------------------------------------------------------------------------
@@ -72,19 +73,29 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
         </button>
       </header>
       <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry}>
-        {!pc && (
-          <div className="lstick">
-            <SearchField
-              big
-              inputRef={searchRef}
-              value={q}
-              onChange={onSearch}
-              placeholder="Buscar en tu biblioteca"
-              label="Buscar en tu biblioteca"
-              clearLabel="Borrar búsqueda"
-            />
-          </div>
-        )}
+        <div className={pc ? "lstick lstick--pc" : "lstick"}>
+          <SearchField
+            big={!pc}
+            inputRef={searchRef}
+            value={q}
+            onChange={onSearch}
+            placeholder="Buscar en tu biblioteca"
+            label="Buscar en tu biblioteca"
+            clearLabel="Borrar búsqueda"
+          />
+          {pc && (
+            <button
+              type="button"
+              className="lstick__cat"
+              onClick={() => {
+                requestSearch(q);
+                nav.goTab("search");
+              }}
+            >
+              Buscar en el catálogo →
+            </button>
+          )}
+        </div>
         {searching ? (
           <SearchResults r={results} query={dq} byKey={model.byKey} ctx={ctx} />
         ) : (

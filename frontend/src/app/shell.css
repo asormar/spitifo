@@ -61,8 +61,10 @@
     padding-left: calc(var(--nav-w) + var(--gutter));
   }
 
+  /* Sin tope: en una ventana maximizada el contenido usa todo el ancho y las
+     grillas deciden cuantas columnas caben (DESIGN.md > Layout). */
   .screens {
-    max-width: 1280px;
+    max-width: none;
     margin: 0 auto;
   }
 
@@ -649,19 +651,18 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 /* --- Columna de "Ahora suena" (escritorio) --------------------------------- */
 
-/* App pone html[data-rp] = docked | wide | over (ver App.jsx). Por debajo de
-   1200 px la columna se pone ENCIMA de las paginas (no queda sitio para las dos
-   y el menu): solo se aparta lo fijo. Desde 1200 px las paginas se estrechan
-   (340 de columna + 12 de aire a cada lado): eso vive en base.css, junto al
-   padding de .app (este archivo solo usa el umbral de 960). */
+/* App pone html[data-rp] = docked | wide | over (ver App.jsx). Desde 960 px la
+   columna comparte la pagina: lo fijo (barra y avisos) se aparta lo mismo que
+   el contenido en base.css, así que nada queda tapado. En Descubrir sigue
+   flotando ("over") porque allí no hay sitio para las dos. */
 @media (min-width: 960px) {
   html[data-rp="docked"] .topbar,
   html[data-rp="over"] .topbar {
-    right: 364px;
+    right: calc(var(--np-w, 340px) + 24px);
   }
 
   html[data-rp="docked"] .lnotice {
-    right: 364px;
+    right: calc(var(--np-w, 340px) + 24px);
   }
 }
 

@@ -12,6 +12,8 @@ import "./shared/controls.css";
 import "./shared/motion.css";
 /* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
 import "./app/shell.css";
+/* Ultimo: chrome del escritorio (barra propia, divisores, seleccion multiple). */
+import "./app/desktop.css";
 
 document.title = "Spitifo: descarga contenido libre";
 

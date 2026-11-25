@@ -1,0 +1,447 @@
+/* ---------------------------------------------------------------------------
+   CHROME DEL ESCRITORIO
+
+   Lo nuevo de la fase 20: riel colapsable y sus divisores, barra de titulo
+   opcional, chuleta de atajos, seleccion multiple y zonas de arrastrar y
+   soltar. Solo tokens y las variables que escribe app/desktop.js.
+   ------------------------------------------------------------------------- */
+
+body.rail-resizing,
+body.np-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+/* --- Barra de titulo propia (opt-in) -------------------------------------- */
+
+.wintitle {
+  position: fixed;
+  z-index: 60;
+  inset: 0 0 auto 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--sp-10);
+  padding-left: var(--sp-4);
+  background: var(--s1);
+  color: var(--ink);
+  box-shadow: 0 1px 0 var(--line);
+  font: 800 var(--fs-label) var(--font-display);
+}
+
+.wintitle__brand,
+.wintitle__drag {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 100%;
+}
+
+.wintitle__drag {
+  flex: 1;
+}
+
+.wintitle__disc {
+  width: var(--sp-4);
+  height: var(--sp-4);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--pink) 0 30%, var(--ink) 31% 100%);
+  flex: none;
+}
+
+.wintitle__caps {
+  display: flex;
+  height: 100%;
+}
+
+.wintitle__cap {
+  display: grid;
+  place-items: center;
+  width: var(--sp-12);
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--mut);
+  cursor: pointer;
+  transition: background-color var(--t-quick) var(--ease), color var(--t-quick) var(--ease);
+}
+
+.wintitle__cap:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.wintitle__cap--close:hover {
+  background: var(--bad);
+  color: var(--on);
+}
+
+/* La franja nueva corre el resto del chrome; sin el ajuste no existe. */
+body.custom-titlebar .leftnav {
+  top: var(--sp-10);
+}
+
+body.custom-titlebar .topbar {
+  top: var(--sp-10);
+}
+
+body.custom-titlebar .app {
+  padding-top: calc(var(--top-h) + var(--sp-10) + var(--sp-3));
+}
+
+body.custom-titlebar .np--pane {
+  top: calc(var(--sp-10) + var(--sp-3));
+}
+
+/* --- Riel colapsado -------------------------------------------------------- */
+
+.leftnav {
+  transition: width var(--t-move) var(--ease);
+}
+
+body.rail-collapsed .leftnav {
+  align-items: center;
+  padding-inline: var(--sp-2);
+}
+
+body.rail-collapsed .leftnav__item,
+body.rail-collapsed .nlist {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+body.rail-collapsed .leftnav__label,
+body.rail-collapsed .leftnav__head h2,
+body.rail-collapsed .nlist b,
+body.rail-collapsed .nlist span,
+body.rail-collapsed .nlist__empty,
+body.rail-collapsed .rail__collapse span {
+  display: none;
+}
+
+body.rail-collapsed .leftnav__head {
+  justify-content: center;
+  padding: 0;
+}
+
+body.rail-collapsed .leftnav__brand {
+  justify-content: center;
+  padding: 0;
+}
+
+/* Heredero del nombre cuando solo queda el icono. */
+.rail__tip {
+  position: relative;
+}
+
+body.rail-collapsed .rail__tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 5;
+  left: calc(100% + var(--sp-2));
+  top: 50%;
+  translate: 0 -50%;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--on);
+  font: 700 var(--fs-caption) var(--font-body);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-quick) var(--ease);
+}
+
+body.rail-collapsed .rail__tip:hover::after,
+body.rail-collapsed .rail__tip:focus-visible::after {
+  opacity: 1;
+}
+
+.rail__collapse {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--btn-h);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-inner);
+  background: transparent;
+  color: var(--mut);
+  font: 700 var(--fs-caption) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.rail__collapse:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+body.rail-collapsed .rail__collapse {
+  justify-content: center;
+}
+
+/* --- Divisores ------------------------------------------------------------- */
+
+.rail-divider,
+.np-divider {
+  position: fixed;
+  z-index: 45;
+  width: var(--sp-2);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.rail-divider {
+  top: 0;
+  bottom: 0;
+  left: calc(var(--nav-w) - var(--sp-1));
+}
+
+body.custom-titlebar .rail-divider {
+  top: var(--sp-10);
+}
+
+.np-divider {
+  top: calc(var(--top-h) + var(--sp-3));
+  bottom: var(--mini-h);
+  right: calc(var(--np-w, 340px) + var(--sp-3) - var(--sp-1));
+  z-index: 47;
+}
+
+.rail-divider::after,
+.np-divider::after {
+  content: "";
+  position: absolute;
+  inset: 0 var(--sp-1);
+  background: transparent;
+  transition: background-color var(--t-quick) var(--ease);
+}
+
+.rail-divider:hover::after,
+.rail-divider:focus-visible::after,
+body.rail-resizing .rail-divider::after,
+.np-divider:hover::after,
+.np-divider:focus-visible::after,
+body.np-resizing .np-divider::after {
+  background: var(--action);
+}
+
+.rail-divider__grip,
+.np-divider__grip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: var(--sp-4);
+  height: var(--sp-8);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  opacity: 0;
+  transition: opacity var(--t-quick) var(--ease);
+}
+
+.rail-divider:hover .rail-divider__grip,
+.rail-divider:focus-visible .rail-divider__grip,
+body.rail-resizing .rail-divider__grip,
+.np-divider:hover .np-divider__grip,
+.np-divider:focus-visible .np-divider__grip,
+body.np-resizing .np-divider__grip {
+  opacity: 1;
+}
+
+/* --- Zonas de arrastrar y soltar -------------------------------------------- */
+
+.srow[draggable="true"] {
+  cursor: grab;
+}
+
+.rail__drop.is-over,
+.dock__end .cbtn--tab.is-over {
+  background: color-mix(in srgb, var(--action) 14%, transparent);
+  box-shadow: inset 0 0 0 2px var(--action);
+}
+
+.srow.is-drag,
+.srow[draggable="true"]:active {
+  opacity: var(--dock-a);
+}
+
+/* --- Buscar en Tu biblioteca, tambien en PC -------------------------------- */
+
+.lstick--pc {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  max-width: 640px;
+}
+
+.lstick--pc .sfield {
+  flex: 1;
+}
+
+.lstick__cat {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font: 700 var(--fs-caption) var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lstick__cat:hover {
+  text-decoration: underline;
+}
+
+/* --- Chuleta de atajos ------------------------------------------------------ */
+
+.kbd {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.kbd__note {
+  color: var(--mut);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+
+.kbd__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2) var(--sp-6);
+}
+
+@media (max-width: 520px) {
+  .kbd__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kbd__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-caption);
+}
+
+.kbd__row > span:first-child {
+  color: var(--mut);
+}
+
+.kbd__keys {
+  display: flex;
+  flex: none;
+  gap: var(--sp-1);
+}
+
+.kbd__key {
+  display: inline-grid;
+  place-items: center;
+  min-width: var(--sp-8);
+  height: var(--sp-6);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  box-shadow: inset 0 -2px 0 var(--s3);
+  font: 700 var(--fs-micro) ui-monospace, monospace;
+  color: var(--ink);
+}
+
+/* --- Barra de seleccion multiple -------------------------------------------- */
+
+.bulkbar {
+  position: fixed;
+  z-index: 55;
+  left: 50%;
+  bottom: var(--sp-5);
+  translate: -50% var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - var(--sp-8));
+  height: calc(var(--sp-12) + var(--sp-1));
+  padding: 0 var(--sp-2) 0 var(--sp-5);
+  border-radius: var(--r-pill);
+  background: var(--ink);
+  color: var(--on);
+  box-shadow: var(--shadow);
+  translate: -50% 0;
+  transition: opacity var(--t-quick) var(--ease), translate var(--t-quick) var(--ease);
+}
+
+.bulkbar b {
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+
+.bulkbar__btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: none;
+  height: var(--sp-10);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--on) 14%, transparent);
+  color: inherit;
+  font: 700 var(--fs-caption) var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bulkbar__btn:hover {
+  background: color-mix(in srgb, var(--on) 22%, transparent);
+}
+
+.bulkbar__btn--danger {
+  color: var(--bad);
+}
+
+.bulkbar__btn--close {
+  width: var(--sp-10);
+  padding: 0;
+  justify-content: center;
+}
+
+.bulk__picker {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.bulk__pl {
+  min-height: var(--btn-h);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-inner);
+  background: var(--s2);
+  color: var(--ink);
+  font: 700 var(--fs-ui) var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bulk__pl:hover {
+  background: var(--hover);
+}
+
+.bulk__empty {
+  color: var(--mut);
+  font-size: var(--fs-caption);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leftnav,
+  .bulkbar,
+  .rail-divider__grip,
+  .np-divider__grip {
+    transition: none;
+  }
+}

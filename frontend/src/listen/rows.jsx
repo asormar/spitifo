@@ -14,6 +14,8 @@ import { rowState } from "./offline.js";
 import { useShow } from "./Notice.jsx";
 import { useArtRecord } from "./art.js";
 import { songTarget } from "./artLogic.js";
+import { selection } from "../app/selection.js";
+import { isPc } from "../shared/viewport.js";
 
 /* ---------------------------------------------------------------------------
    FILAS DE ESCUCHAR
@@ -74,6 +76,8 @@ export const SongRow = memo(function SongRow({
   from,
 }) {
   const { key, title, artist, album } = entry;
+  selection.remember(entry);
+  const pc = isPc();
   const online = useOnline();
   const show = useShow();
   const state = rowState(entry, online);
@@ -110,6 +114,29 @@ export const SongRow = memo(function SongRow({
     </span>
   );
 
+  /* Segundo punto de entrada del menu: clic derecho en la fila y Shift+F10 /
+     tecla Menú sobre la fila enfocada. El botón ⋯ sigue ahí para descubrirlo. */
+  const openRowMenu = (x, y, el) => {
+    if (onMenu) onMenu(key, el, "menu", { point: { x, y } });
+  };
+  const onContext = (e) => {
+    if (!onMenu) return;
+    e.preventDefault();
+    const el = e.currentTarget.querySelector(".srow__main") || e.currentTarget;
+    openRowMenu(e.clientX, e.clientY, el);
+  };
+  const onRowKey = (e) => {
+    if (!onMenu) return;
+    if ((e.key === "F10" && e.shiftKey) || e.key === "ContextMenu") {
+      e.preventDefault();
+      const el = e.currentTarget.querySelector(".srow__main") || e.currentTarget;
+      const r = el.getBoundingClientRect();
+      openRowMenu(r.left + 24, r.bottom, el);
+    }
+  };
+  const siblingKeys = (el) =>
+    [...el.parentElement.querySelectorAll("[data-song-key]")].map((n) => n.dataset.songKey);
+
   return (
     <div
       className={cx(
@@ -125,6 +152,21 @@ export const SongRow = memo(function SongRow({
         enter != null && "is-in"
       )}
       style={enter != null || drag?.transform ? { "--i": enter, transform: drag?.transform } : undefined}
+      data-song-key={key}
+      data-song-title={title}
+      draggable={pc && !drag}
+      onDragStart={(e) => {
+        e.dataTransfer?.setData(
+          "application/x-spitifo-song",
+          JSON.stringify({ key, title, artist, album, sid: entry.sid, song: entry.song || null })
+        );
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+      }}
+      onContextMenu={onContext}
+      onKeyDown={onRowKey}
+      onDoubleClick={() => {
+        if (!isCurrent && !state.blocked) onPlay(entry, undefined, list, from);
+      }}
     >
       {drag && (
         <button
@@ -150,6 +192,20 @@ export const SongRow = memo(function SongRow({
         }
         aria-disabled={state.blocked ? "true" : undefined}
         onClick={(e) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            selection.toggle(entry);
+            return;
+          }
+          if (e.shiftKey) {
+            e.preventDefault();
+            selection.rangeFromKeys(siblingKeys(e.currentTarget), entry.key);
+            return;
+          }
+          /* El segundo clic de un doble clic no debe pausar lo que el primero
+             acaba de poner a sonar. */
+          if (e.detail > 1) return;
+          selection.clear();
           if (state.blocked) {
             show?.(state.notice);
             return;

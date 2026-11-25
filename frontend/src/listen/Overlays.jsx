@@ -133,7 +133,7 @@ export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
   );
 }
 
-export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false }) {
+export function TrackMenu({ entry, anchor, point, onClose, onPick, closePlayer = false }) {
   const pc = usePc();
   const { title, artist, album } = entry;
   /* El estado de la entrada decide que grupos salen y el formato de descarga
@@ -153,6 +153,7 @@ export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false 
       groups={groups}
       title={title}
       anchor={anchor}
+      point={point}
       onPick={onPick}
       onClose={onClose}
       head={head}
@@ -161,9 +162,9 @@ export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false 
   );
 }
 
-export function ListMenu({ name, anchor, onClose, onPick }) {
+export function ListMenu({ name, anchor, point, onClose, onPick }) {
   return (
-    <Popover anchor={anchor} onClose={onClose} width={232}>
+    <Popover anchor={anchor} point={point} onClose={onClose} width={232}>
       <MenuItems items={LIST_ITEMS} label={`Opciones de ${name}`} onPick={onPick} />
     </Popover>
   );
