@@ -29,14 +29,17 @@ import {
   canStartSwipe,
   nextGuess,
   readPhoneNav,
+  readSwipeHint,
   readView,
   swipeTarget,
   viewKey,
   writePhoneNav,
+  writeSwipeHint,
 } from "./navigation.js";
 import { createLocationToken, createNpHistory } from "./npHistory.js";
 import useNavController, { NavContext } from "./useNav.js";
-import { SwipeDots, TabBar } from "./Nav.jsx";
+import { ITEMS, SwipeDots, TabBar } from "./Nav.jsx";
+import { crossGo } from "./crossMode.js";
 import LeftNav from "./LeftNav.jsx";
 import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
@@ -270,6 +273,7 @@ export default function App() {
 
   const pc = usePc();
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
+  const [swipeHint, setSwipeHint] = useState(readSwipeHint);
   const screensRef = useRef(null);
 
   /* "Ahora suena" abierta. Como Ajustes, abrirla empuja UNA entrada al
@@ -664,7 +668,11 @@ export default function App() {
         TABS.indexOf(tab),
         TABS.length
       );
-      if (next !== null) goTab(TABS[next]);
+      if (next !== null) {
+        writeSwipeHint();
+        setSwipeHint(false);
+        goTab(TABS[next]);
+      }
     };
 
     const onCancel = () => {
@@ -740,16 +748,18 @@ export default function App() {
           nav.open(link.sheet);
           return;
         }
+        const label = ITEMS.find((i) => i.id === nav.tab)?.label ?? "";
+        const origin = { tab: nav.tab, label };
         if (link.view) {
           if (link.view.type === "itunesartist") loadArtistChunk();
-          nav.goTo(link.tab, link.view);
+          crossGo(nav, link.view, origin);
           return;
         }
         loadArtistChunk();
         /* Solo hace falta aqui: no entra en el primer script. */
         const { resolveArtistLink } = await import("../download/artistLink.js");
         const view = await resolveArtistLink(link.name, []);
-        if (view) nav.goTo("search", view);
+        if (view) crossGo(nav, view, origin);
         else {
           requestSearch(link.name);
           nav.goTab("search");
@@ -902,9 +912,12 @@ export default function App() {
 
           {!pc &&
             (phoneNav === "tabs" ? (
-              <TabBar tab={nav.tab} onTab={nav.goTab} />
+              <TabBar tab={nav.activeId} onTab={nav.goTab} />
             ) : (
-              <SwipeDots tab={nav.tab} onTab={nav.goTab} />
+              <>
+                {swipeHint && <p className="swipe-hint">Desliza para cambiar de modo</p>}
+                <SwipeDots tab={nav.activeId} onTab={nav.goTab} />
+              </>
             ))}
         </main>
         {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla

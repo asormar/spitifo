@@ -5,6 +5,7 @@ import { PLACEHOLDER } from "../download/constants.js";
 import { useSearchBusy, useSearchDraft } from "../download/searchDraft.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { useNav } from "./useNav.js";
+import { backToLabel } from "./crossMode.js";
 
 /* ---------------------------------------------------------------------------
    BARRA DE ARRIBA (escritorio)
@@ -31,7 +32,13 @@ export default function TopBar() {
   return (
     <header className="topbar">
       {(nav.pageOf(nav.tab) || nav.settings) && (
-        <button type="button" className="cbtn cbtn--soft" aria-label="Volver" title="Volver" onClick={nav.back}>
+        <button
+          type="button"
+          className="cbtn cbtn--soft"
+          aria-label={backToLabel(nav)}
+          title={backToLabel(nav)}
+          onClick={nav.back}
+        >
           <Icon name="CaretLeft" size="lg" />
         </button>
       )}

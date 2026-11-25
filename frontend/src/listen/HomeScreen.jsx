@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { useNav } from "../app/useNav.js";
 import BrandLogo from "../app/BrandLogo.jsx";
-import { Icon } from "./icons.jsx";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
@@ -78,15 +78,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
     <section className="listen" aria-label="Inicio">
       <header className="apphead">
         <BrandLogo />
-        <button
-          type="button"
-          className="cbtn cbtn--l apphead__gear"
-          onClick={() => nav.openSettings()}
-          aria-label="Ajustes"
-          title="Abrir los ajustes"
-        >
-          <Icon name="GearSix" size="lg" />
-        </button>
+        <ChromeButtons className="apphead__gear" />
       </header>
       <h1 className="sr-only">Inicio</h1>
       {showFirstRun && (

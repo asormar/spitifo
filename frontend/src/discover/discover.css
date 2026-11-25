@@ -1,3 +1,10 @@
+/* La cabecera de Descubrir solo lleva la guia y Ajustes en el telefono; en PC
+   los pone el riel y la barra de arriba (ver shell.css). */
+.discoverhead {
+  justify-content: flex-end;
+  min-height: var(--hit);
+}
+
 /* ---------------------------------------------------------------------------
    DESCUBRIR: el mapa de generos
 

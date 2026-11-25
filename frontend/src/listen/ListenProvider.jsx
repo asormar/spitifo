@@ -1,5 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { isOverlay } from "../app/navigation.js";
+import { backToLabel, crossGo } from "../app/crossMode.js";
+import { requestSearch } from "../download/searchRequest.js";
+import { albumView, artistView } from "./entityLinks.js";
 import { keyUrl } from "../shared/api.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
@@ -189,9 +192,23 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
       );
     };
 
+    /* Un nombre de la fila abre siempre la misma pagina. Si el artista no
+       esta en la biblioteca se cae a la busqueda, que es lo unico honesto
+       mientras no haya un id de catalogo resuelto. */
+    const openEntity = (kind, name, entry) => {
+      const view = kind === "artista" ? artistView(name, model.entries) : albumView(entry.artist, name);
+      if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+      else {
+        requestSearch(name);
+        nav.goTab("search");
+      }
+    };
+
     const ctx = {
       openMenu,
       show,
+      /* «Volver a…»: el nombre de donde se cierra, no un generico. */
+      backLabel: () => backToLabel(nav),
       /* Token del sitio actual: las acciones que esperan la red lo guardan al
          empezar y solo actuan si sigue igual al resolverse. */
       locationToken,
@@ -228,7 +245,15 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
         }),
       back: navBack,
       song: (entry, list, extra) => (
-        <SongRow key={entry.key} entry={entry} list={list} onPlay={play} onMenu={openMenu} {...extra} />
+        <SongRow
+          key={entry.key}
+          entry={entry}
+          list={list}
+          onPlay={play}
+          onMenu={openMenu}
+          onEntity={(kind, name) => openEntity(kind, name, entry)}
+          {...extra}
+        />
       ),
     };
     return { ctx, model, show };
