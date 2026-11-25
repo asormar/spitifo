@@ -46,15 +46,11 @@ describe("verdictOf: la verdad de cada fila", () => {
 });
 
 describe("vText", () => {
-  it("distingue lo que nunca se comprobo de lo que no se pudo identificar", () => {
-    expect(vText("unv", { untested: true })).toBe("Todavía no se ha comprobado el audio.");
-    expect(vText("unv")).toBe("No se pudo identificar el audio.");
-  });
-
-  it("el resto de textos", () => {
+  it("una sola explicacion por veredicto, compartida con la pastilla", () => {
+    expect(vText("unv")).toBe("Todavía no se ha comprobado el audio.");
     expect(vText("match")).toBe("El audio es la canción que buscaste.");
-    expect(vText("partial")).toBe("Se parece, pero no es exactamente lo que buscaste.");
-    expect(vText("mismatch")).toBe("No es lo que buscabas.");
+    expect(vText("partial")).toBe("Se parece a lo que buscaste, pero no es exacto.");
+    expect(vText("mismatch")).toBe("No es la canción que buscaste.");
     expect(vText("p30")).toBe("Solo hay 30 s de esta fuente.");
   });
 });

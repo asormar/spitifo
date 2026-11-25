@@ -462,7 +462,7 @@ export default function ForYou({
         ) : (
           <>
             {rec.status.offline && (
-              <p className="fy-note">Sin conexión: se completará cuando vuelva.</p>
+              <p className="fy-note">Sin conexión. Las recomendaciones volverán cuando vuelva la red.</p>
             )}
             <ul className="fy-list" aria-label="Artistas recomendados">
               {rows.map((row) => (

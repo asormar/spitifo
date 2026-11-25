@@ -145,7 +145,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </h2>
         <div className="settings__card">
           <p className="settings__note settings__note--lead">
-            Los temas que bajaste antes de que Spitifo guardara portadas no tienen una. Puedes
+            Los temas que bajaste antes de que spitifo guardara portadas no tienen una. Puedes
             buscarlas en iTunes y elegir cuál va en cada tema. Nada se guarda sin tu confirmación.
           </p>
           <div className="settings__ckacts">
@@ -256,7 +256,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               nav.goTab("home");
             }}
           >
-            Ver cómo funciona Spitifo
+            Ver cómo funciona spitifo
           </button>
         </div>
       </section>

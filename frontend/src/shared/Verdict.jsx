@@ -14,8 +14,18 @@ export const V_LABEL = {
   match: "Coincide",
   partial: "Parecido",
   mismatch: "No coincide",
-  p30: "Solo 30 s",
+  p30: "Avance de 30 s",
   unv: "Sin verificar",
+};
+
+/* La explicacion de cada veredicto: una sola, compartida por la pastilla (aqui
+   solo la etiqueta) y la ficha (verdict.js, fileText.js). */
+export const V_EXPLAIN = {
+  match: "El audio es la canción que buscaste.",
+  partial: "Se parece a lo que buscaste, pero no es exacto.",
+  mismatch: "No es la canción que buscaste.",
+  p30: "Solo hay 30 s de esta fuente.",
+  unv: "Todavía no se ha comprobado el audio.",
 };
 
 export const V_TONE = { match: "ok", partial: "near", mismatch: "bad", p30: "mute", unv: "mute" };
