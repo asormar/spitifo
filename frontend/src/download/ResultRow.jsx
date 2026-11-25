@@ -125,9 +125,9 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
             )}
             {realV && <VerdictPill v={realV} />}
             {resolving && (
-              <span className="res__wait" role="status" aria-live="polite">
+              <span className="res__wait res__wait--now" role="status" aria-live="polite">
                 <span className="sp" aria-hidden="true" />
-                buscando la canción completa…
+                Buscando…
               </span>
             )}
             {downloaded && <span className="res__dl" aria-hidden="true" />}

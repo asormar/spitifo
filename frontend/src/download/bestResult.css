@@ -40,12 +40,25 @@
   transform: scale(0.98);
 }
 
-/* Doble clase: la .cv compartida trae su propio alto y radio. */
+/* Doble clase: la .cv compartida trae su propio alto. Redonda solo para el
+   artista; cancion y album llevan la esquina del disco. */
 .cv.bestc__cv {
   width: 72px;
   height: 72px;
-  border-radius: 50%;
+  border-radius: var(--r-cover);
   font: 700 24px var(--font-display);
+}
+
+.cv.bestc__cv.cv--round {
+  border-radius: 50%;
+}
+
+.bestc__kind {
+  display: block;
+  color: var(--action);
+  font: 700 var(--fs-micro) var(--font-body);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .bestc__txt {
