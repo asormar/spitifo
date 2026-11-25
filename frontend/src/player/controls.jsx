@@ -4,6 +4,7 @@ import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { initial } from "../listen/rows.jsx";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
+import { panel } from "./panel.js";
 
 /* ---------------------------------------------------------------------------
    CONTROLES COMPARTIDOS
@@ -24,15 +25,19 @@ const REPEAT = {
 const SIZES = { np: ["lg", "xl", "xl"], dock: ["md", "lg", "lg"] };
 
 /* Boton de reproducir/pausar/cargando (tres iconos, los muestra CSS segun
-   data-icon). Lo comparten el mini-reproductor y los controles. */
+   data-icon). Lo comparten el mini-reproductor y los controles. Mientras
+   carga, el nombre accesible dice "Cargando <titulo>" y aria-busy lo refuerza:
+   un lector de pantalla no puede ver el giro del icono. */
 export function PlayButton({ className, icon, playing, label, size }) {
+  const busy = icon === "load";
   return (
     <button
       type="button"
       className={cx("pbtn", className)}
       data-icon={icon}
       onClick={() => engine.toggle()}
-      aria-label={`${playing ? "Pausar" : "Reproducir"} ${label}`}
+      aria-busy={busy || undefined}
+      aria-label={busy ? `Cargando ${label}` : `${playing ? "Pausar" : "Reproducir"} ${label}`}
     >
       <span className="pbtn__ico pbtn__ico--play">
         <Icon name="Play" size={size} weight="fill" />
@@ -54,6 +59,9 @@ export function Controls({ dock = false }) {
   const icon = useEngine((s) => (s.buffering ? "load" : s.playing ? "pause" : "play"));
   const label = useEngine((s) => s.track?.label ?? "");
   const canNext = useEngine((s) => (s.index >= 0 && s.index + 1 < s.queue.length) || s.repeat === "all");
+  /* Lo que queda por sonar: la insignia del sexto boton (solo en Ahora suena,
+     la barra de escritorio ya tiene su propio boton de Cola). */
+  const upcoming = useEngine((s) => (s.index >= 0 ? s.queue.length - s.index - 1 : 0));
   const [repeatLabel, repeatIcon] = REPEAT[repeat];
   const [side, skip, big] = SIZES[dock ? "dock" : "np"];
   const btn = dock ? "cbtn" : "cbtn cbtn--w";
@@ -99,6 +107,22 @@ export function Controls({ dock = false }) {
       >
         <Icon name={repeatIcon} size={side} />
       </button>
+      {!dock && (
+        <button
+          type="button"
+          className={cx(btn, "np__ctl-queue")}
+          onClick={() => panel.show(1)}
+          aria-label="Cola"
+          title="Cola"
+        >
+          <Icon name="Queue" size={side} />
+          {upcoming > 0 && (
+            <span className="np__badge" aria-hidden="true">
+              {upcoming > 99 ? "99+" : upcoming}
+            </span>
+          )}
+        </button>
+      )}
     </div>
   );
 }
