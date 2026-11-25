@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIXES, mixEntries as entriesOf, mixName, mixSub } from "./mixes.js";
+import { MIXES, mixEntries as entriesOf, mixName, mixReady, mixSub } from "./mixes.js";
 import { normalizeLibrary } from "./library.js";
 
 const file = (key, extra = {}) => ({
@@ -94,6 +94,20 @@ describe("mixEntries", () => {
     const map = new Map([["A/a.mp3", saved], [saved.sid, saved], ["b", other]]);
     const h = { tracks: { [saved.sid]: rec(2) } };
     expect(keys(entriesOf("new", [saved, other], h, map))).toEqual(["b"]);
+  });
+});
+
+describe("mixReady", () => {
+  const LIB = normalizeLibrary([file("a"), file("v", { kind: "video" })]);
+  const byKey = new Map(LIB.map((e) => [e.key, e]));
+
+  it("is true when the mix has something to play", () => {
+    expect(mixReady("all", LIB, undefined, byKey)).toBe(true);
+  });
+
+  it("is false for an empty mix, so choosing it never stops the current queue", () => {
+    expect(mixReady("top", LIB, { tracks: {} }, byKey)).toBe(false);
+    expect(mixReady("new", LIB, { tracks: { a: rec(2) } }, byKey)).toBe(false);
   });
 });
 

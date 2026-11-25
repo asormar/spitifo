@@ -669,7 +669,7 @@ html[data-rp="wide"] .screens {
   visibility: hidden;
 }
 
-html[data-rp="wide"] .mezcla .rec__spin,
+html[data-rp="wide"] .mezcla .mz__spin,
 html[data-rp="wide"] .screens .eq i {
   animation-play-state: paused;
 }

@@ -36,6 +36,11 @@ export function mixEntries(key, entries, hist, byKey) {
   return key === "new" ? songs.filter((e) => !listened(e)) : songs;
 }
 
+/* ¿Tiene canciones esta mezcla? El chip solo cambia la cola si hay algo que
+   sonar: una mezcla vacia no debe callar la musica que venia sonando. */
+export const mixReady = (key, entries, hist, byKey) =>
+  mixEntries(key, entries, hist, byKey).length > 0;
+
 /* La linea bajo el titulo del disco. Una mezcla vacia dice por que. */
 export function mixSub(key, n) {
   if (n > 0) return `${songs(n)} en orden aleatorio, sin fin`;
