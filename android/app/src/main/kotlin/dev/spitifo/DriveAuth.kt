@@ -65,6 +65,11 @@ class DriveAuth(private val activity: Activity) {
         val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val token = prefs.getString(KEY_TOKEN, null) ?: return
         val expires = prefs.getString(KEY_EXPIRES, null)?.toDoubleOrNull() ?: return
+        // Un token vencido no sirve para nada: se borra en vez de quedar guardado.
+        if (expires * 1000 <= System.currentTimeMillis()) {
+            forgetCachedToken(activity)
+            return
+        }
         thread { python("set_token", token, expires, false) }
     }
 
@@ -214,12 +219,17 @@ class DriveAuth(private val activity: Activity) {
         Thread(block, "spitifo-drive-auth").apply { isDaemon = true }.start()
     }
 
-    private companion object {
+    companion object {
         const val TAG = "Spitifo"
 
         /** Private cache of the last access token, for the next cold start. */
         private const val PREFS = "spitifo-drive-token"
         private const val KEY_TOKEN = "access_token"
+
+        /** Sin Drive conectado, el token de la ultima sesion no se conserva. */
+        fun forgetCachedToken(context: Context) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        }
         private const val KEY_EXPIRES = "expires_at"
 
         /**

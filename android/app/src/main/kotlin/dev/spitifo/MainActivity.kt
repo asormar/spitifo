@@ -119,6 +119,8 @@ class MainActivity : ComponentActivity() {
                 auth.pushCachedToken()
                 runOnUiThread { auth.refreshSilently() }
             }, "spitifo-drive-startup").apply { isDaemon = true }.start()
+        } else {
+            DriveAuth.forgetCachedToken(applicationContext)
         }
         backend.addListener(listener)
         MediaActionRelay.register(mediaReceiver)
