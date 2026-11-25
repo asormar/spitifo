@@ -81,6 +81,7 @@ describe("normalizeEntry", () => {
       hasAudio: true,
       downloaded: true,
       search: "song artist album",
+      titleKey: "song",
     });
   });
 

@@ -146,7 +146,7 @@ describe("history cache", () => {
     expect(store.getState()).toMatchObject({ ready: false, recent: [{ key: "A/A - Uno.mp3" }] });
   });
 
-  it("saves what it loads and what it records", async () => {
+  it("saves what it loads and what it records, once flushed", async () => {
     const cache = memoryCache(null);
     const store = createHistory({
       fetchFn: async () => json(200, { tracks: {}, recent: [] }),
@@ -155,11 +155,54 @@ describe("history cache", () => {
     });
     await store.load();
     store.record(event());
+    /* La escritura no es sincronica con el evento (P-large-library-scale-9):
+       sin flushear, el cache todavia no vio el play nuevo. */
+    expect(cache.saved()).toBeNull();
+    store.flushCache();
     expect(cache.saved().recent[0].key).toBe("A/A - Uno.mp3");
+  });
+
+  it("coalesces several records into one write", async () => {
+    const cache = memoryCache(null);
+    let writes = 0;
+    const counting = { read: cache.read, write: (v) => { writes += 1; cache.write(v); } };
+    const store = createHistory({ fetchFn: async () => json(200, {}), now: () => 1000, cache: counting });
+    store.record(event({ k: "a" }));
+    store.record(event({ k: "b" }));
+    store.record(event({ k: "c" }));
+    expect(writes).toBe(0);
+    store.flushCache();
+    expect(writes).toBe(1);
+    expect(Object.keys(cache.saved().tracks).sort()).toEqual(["a", "b", "c"]);
   });
 
   it("ignores a broken snapshot", () => {
     const store = createHistory({ fetchFn: async () => json(200, {}), cache: memoryCache({ tracks: 3, recent: "x" }) });
     expect(store.getState()).toMatchObject({ tracks: {}, recent: [] });
+  });
+});
+
+describe("plays map", () => {
+  it("starts from the cached tracks and stays the same reference across records", () => {
+    const cache = { read: () => ({ tracks: { a: { plays: 2 }, b: { plays: 1 } }, recent: [] }), write: () => {} };
+    const store = createHistory({ fetchFn: async () => json(200, {}), cache });
+    const plays = store.getState().plays;
+    expect(plays.get("a")).toBe(2);
+    expect(plays.get("b")).toBe(1);
+
+    store.record(event({ k: "a" }));
+    expect(store.getState().plays).toBe(plays); // misma instancia: no invalida memos
+    expect(plays.get("a")).toBe(3);
+  });
+
+  it("a full load() rebuilds it from the server's tracks", async () => {
+    const store = createHistory({
+      fetchFn: async () => json(200, { tracks: { x: { plays: 5 }, y: { plays: 0 } }, recent: [] }),
+      cache: null,
+    });
+    await store.load();
+    expect(store.getState().plays.get("x")).toBe(5);
+    expect(store.getState().plays.get("y")).toBe(0);
+    expect(store.getState().plays.get("nunca-sonada")).toBeUndefined();
   });
 });

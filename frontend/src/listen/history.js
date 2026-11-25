@@ -19,6 +19,10 @@ const HALF_LIFE_DAYS = 60;
 const DAY_SECONDS = 86400;
 const RECENT_LIMIT = 30;
 const FINISHED_MS = 10_000;
+/* Cuanto se espera antes de escribir el espejo de localStorage tras un
+   evento: un play/skip/progreso ya no lo hace sincronico (P-large-library-
+   scale-9). `pagehide` lo adelanta si la app se cierra antes del plazo. */
+const CACHE_FLUSH_MS = 1000;
 
 /* Con Drive el resumen tarda mas de un segundo: sin foto previa "Seguir
    escuchando" apareceria tarde arriba de todo y empujaria la pantalla. Igual
@@ -41,24 +45,56 @@ const localCache = {
   },
 };
 
+/* `plays` por clave, para desempatar busquedas (model.plays en
+   ListenProvider). Un Map MUTABLE que nunca cambia de identidad: actualizarlo
+   en record() es O(1) en vez de reconstruirlo entero (Object.fromEntries
+   sobre TODO tracks) en cada evento, y al no cambiar de referencia no
+   invalida el memo de ListenProvider que lo usa (P-large-library-scale-5). */
+const playsOf = (tracks) => {
+  const m = new Map();
+  for (const [key, t] of Object.entries(tracks || {})) m.set(key, t?.plays || 0);
+  return m;
+};
+
 export function createHistory({
   fetchFn = (...a) => fetch(...a),
   now = () => Date.now() / 1000,
   cache = localCache,
 } = {}) {
   const cached = cache?.read();
+  const initialTracks = cached?.tracks && typeof cached.tracks === "object" ? cached.tracks : {};
   let state = {
     ...EMPTY,
-    tracks: cached?.tracks && typeof cached.tracks === "object" ? cached.tracks : {},
+    tracks: initialTracks,
     recent: Array.isArray(cached?.recent) ? cached.recent : [],
+    plays: playsOf(initialTracks),
   };
   const listeners = new Set();
   let loading = null;
+  let flushTimer = null;
+  let pendingCache = null;
+
+  const flushCache = () => {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+    if (pendingCache) {
+      cache?.write(pendingCache);
+      pendingCache = null;
+    }
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", flushCache);
+  }
 
   const emit = (patch) => {
     state = { ...state, ...patch };
     if ("tracks" in patch || "recent" in patch) {
-      cache?.write({ tracks: state.tracks, recent: state.recent });
+      /* La escritura en si no es sincronica con el evento: un play/skip/
+         progreso ya no paga un JSON.stringify de toda `tracks` en el hilo
+         principal en el momento (P-large-library-scale-9); `flushCache`
+         (el plazo, o pagehide si la app se cierra antes) la manda despues. */
+      pendingCache = { tracks: state.tracks, recent: state.recent };
+      if (!flushTimer) flushTimer = setTimeout(flushCache, CACHE_FLUSH_MS);
     }
     listeners.forEach((fn) => fn());
   };
@@ -74,11 +110,16 @@ export function createHistory({
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error("http");
+        const tracks = d.tracks && typeof d.tracks === "object" ? d.tracks : {};
         emit({
           ready: true,
           error: false,
-          tracks: d.tracks && typeof d.tracks === "object" ? d.tracks : {},
+          tracks,
           recent: Array.isArray(d.recent) ? d.recent.slice(0, RECENT_LIMIT) : [],
+          /* Una recarga entera (arranque o cambio de dispositivo) es la UNICA
+             vez que plays se reconstruye entero: no es un evento por tecla
+             ni por reproduccion. */
+          plays: playsOf(tracks),
         });
       })
       .catch(() => emit({ ready: false, error: true }))
@@ -134,11 +175,13 @@ export function createHistory({
       .sort((a, b) => b.last - a.last)
       .slice(0, RECENT_LIMIT);
 
+    /* La MISMA instancia de Map, mutada: ver playsOf() arriba. */
+    state.plays.set(event.k, track.plays);
     emit({ tracks: { ...state.tracks, [event.k]: track }, recent });
     return true;
   };
 
-  return { subscribe, getState: () => state, load, record };
+  return { subscribe, getState: () => state, load, record, flushCache };
 }
 
 export const history = createHistory();
