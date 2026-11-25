@@ -88,6 +88,14 @@
   font-size: 14.5px;
 }
 
+/* Dedo: el area de toque crece a 48px sin cambiar el glifo ni la altura visual
+   del boton en escritorio (§5). */
+@media (pointer: coarse) {
+  .sfield__go {
+    min-height: var(--hit);
+  }
+}
+
 .sfield__go:active {
   transform: scale(0.96);
 }

@@ -27,10 +27,10 @@ import {
   TABS,
   aboveNp,
   canStartSwipe,
+  inSwipeEdge,
   nextGuess,
   readPhoneNav,
   readView,
-  swipeTarget,
   viewKey,
   writePhoneNav,
 } from "./navigation.js";
@@ -44,6 +44,11 @@ import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
 import { swapNowPlaying } from "./screenSwap.js";
 import { createPendingDeletes } from "../listen/pending.js";
 import { closeDock, registerClosePlayer } from "../player/useDock.js";
+import { SLOP, pushSample, shouldSkip, velocity } from "../shared/gestures.js";
+import { motionAfter } from "../shared/motion.js";
+import { installVisibilityGuard } from "../shared/motionGuard.js";
+import { bindCoverMenu } from "../shared/longPress.js";
+import { usePullRefresh } from "../shared/pullRefresh.js";
 
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
@@ -630,56 +635,119 @@ export default function App() {
 
   /* Swipe entre pestanas: solo en telefono, con la barra de puntos, en la raiz
      de la pestana (con una pagina abierta el gesto es de la pagina y soltaria
-     la pila) y con Ajustes cerrado. El gesto no puede nacer en una zona con su
-     propio arrastre horizontal (progreso, video, menus). */
+     la pila) y con Ajustes cerrado. Sigue al dedo con translate3d y decide al
+     soltar con la MISMA aritmetica del reproductor: 35 % del ancho o 0,5 px/ms.
+     Los 20 dp de cada borde se ceden al attras del sistema (Decision 1). */
   const { tab, goTab } = nav;
   const canSwipe = phoneNav === "swipe" && nav.stack.length === 0;
   useEffect(() => {
     if (!canSwipe) return undefined;
     const root = screensRef.current;
     if (!root) return undefined;
-    let start = null;
+    const SWIPE_BACK_MS = 220; /* --t-swipe-back: la vuelta sin completar */
+    let g = null;
+    let clean = null;
 
-    const onStart = (e) => {
-      if (isPc() || e.touches.length !== 1) {
-        start = null;
+    const settle = () => {
+      root.style.transition = "";
+      root.style.transform = "";
+      clean = null;
+    };
+
+    const onDown = (e) => {
+      if (isPc() || !e.isPrimary || e.pointerType === "mouse") {
+        g = null;
         return;
       }
-      if (!canStartSwipe(e.target)) {
-        start = null;
+      /* El borde es el de la PANTALLA, no el de la columna con su gutter. */
+      const screen = { left: 0, right: window.innerWidth };
+      if (!canStartSwipe(e.target) || inSwipeEdge(e.clientX, screen)) {
+        g = null;
         return;
       }
-      const t = e.touches[0];
-      start = { x: t.clientX, y: t.clientY, time: performance.now() };
+      clean?.();
+      g = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        samples: [[e.clientX, e.timeStamp]],
+        started: false,
+        width: root.getBoundingClientRect().width || 1,
+        from: TABS.indexOf(tab),
+      };
     };
 
-    const onEnd = (e) => {
-      if (!start) return;
-      const from = start;
-      start = null;
-      const t = e.changedTouches?.[0];
-      if (!t) return;
-      const next = swipeTarget(
-        { dx: t.clientX - from.x, dy: t.clientY - from.y, dt: performance.now() - from.time },
-        TABS.indexOf(tab),
-        TABS.length
-      );
-      if (next !== null) goTab(TABS[next]);
+    const onMove = (e) => {
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x;
+      const dy = e.clientY - g.y;
+      if (!g.started) {
+        if (Math.hypot(dx, dy) < SLOP) return;
+        if (Math.abs(dx) <= Math.abs(dy)) {
+          g = null;
+          return;
+        }
+        g.started = true;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* sin captura el gesto sigue por los eventos normales */
+        }
+        root.style.transition = "none";
+      }
+      /* Pasar el primero o el ultimo modo rebota con un tercio del recorrido. */
+      const edge = (g.from === 0 && dx > 0) || (g.from === TABS.length - 1 && dx < 0);
+      root.style.transform = `translate3d(${edge ? dx * 0.3 : dx}px,0,0)`;
+      pushSample(g.samples, e.clientX, e.timeStamp);
     };
 
-    const onCancel = () => {
-      start = null;
+    const onUp = (e) => {
+      if (!g || e.pointerId !== g.id) return;
+      const gesture = g;
+      g = null;
+      if (!gesture.started) return;
+      const dx = e.type === "pointercancel" ? 0 : e.clientX - gesture.x;
+      const commit = shouldSkip(dx, Math.abs(velocity(gesture.samples)), gesture.width);
+      const to = gesture.from + (dx < 0 ? 1 : -1);
+      /* La capa vuelve a su sitio ANTES del cambio: la View Transition captura
+         la pestana nueva en posicion, no arrastrada. */
+      root.style.transition = `transform var(--t-swipe-back) var(--ease)`;
+      root.style.transform = "";
+      if (commit && to >= 0 && to < TABS.length) {
+        settle();
+        goTab(TABS[to]);
+      } else {
+        clean = motionAfter(settle, SWIPE_BACK_MS);
+      }
     };
 
-    root.addEventListener("touchstart", onStart, { passive: true });
-    root.addEventListener("touchend", onEnd, { passive: true });
-    root.addEventListener("touchcancel", onCancel, { passive: true });
+    root.addEventListener("pointerdown", onDown);
+    root.addEventListener("pointermove", onMove);
+    root.addEventListener("pointerup", onUp);
+    root.addEventListener("pointercancel", onUp);
     return () => {
-      root.removeEventListener("touchstart", onStart);
-      root.removeEventListener("touchend", onEnd);
-      root.removeEventListener("touchcancel", onCancel);
+      clean?.();
+      settle();
+      root.removeEventListener("pointerdown", onDown);
+      root.removeEventListener("pointermove", onMove);
+      root.removeEventListener("pointerup", onUp);
+      root.removeEventListener("pointercancel", onUp);
     };
   }, [canSwipe, tab, goTab]);
+
+  /* Los bucles ambientales se apagan con la pestaña oculta. */
+  useEffect(() => installVisibilityGuard(), []);
+
+  /* Mantener presionada una portada abre el menu de «⋯», no el del WebView. */
+  useEffect(() => bindCoverMenu(screensRef.current), []);
+
+  /* Tirar desde arriba solo recarga donde puede llegar algo nuevo: Inicio y
+     «Para ti». El WebView ya no muestra su brillo de sobre-scroll. */
+  const onPull = useCallback(() => {
+    if (nav.tab === "home") loadLib();
+    else if (nav.tab === "discover") window.dispatchEvent(new CustomEvent("spitifo-refresh"));
+  }, [nav.tab, loadLib]);
+  usePullRefresh(onPull, !pc && (nav.tab === "home" || nav.tab === "discover"), screensRef);
 
   /* Adelanto del chunk de la pestana vecina, de Ajustes y de Descubrir cuando
      la app esta ociosa (y no antes, para no competir con la primera pintura).

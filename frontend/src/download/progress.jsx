@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import { Icon } from "../shared/icons.jsx";
+import { HAPTIC, haptic } from "../shared/haptics.js";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";
 import { dlState, dlText } from "./dlState.js";
@@ -23,9 +25,14 @@ export function ProgressStack({ inline = false }) {
 }
 
 export function ProgressBar({ job }) {
+  const pct = Math.round(job?.progress || 0);
+  const done = job?.status === "done";
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current) haptic(HAPTIC.CONFIRM);
+    wasDone.current = done;
+  }, [done]);
   if (!job) return null;
-  const pct = Math.round(job.progress || 0);
-  const done = job.status === "done";
   const failed = job.status === "error";
   /* El tope de espera se vencio o el job ya no existe: no fallo, pero tampoco
      se puede seguir mirando. No es "descargando" porque ya no lo sabemos. */

@@ -3,6 +3,7 @@ import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
+import { useHaptics } from "../shared/haptics.js";
 import { useAutoDownload } from "./autoDownload.js";
 import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js";
 import { useDownloadFormat, useDownloadMedia } from "./downloadPrefs.js";
@@ -23,6 +24,12 @@ const THEME_OPTIONS = [
 const NAV_OPTIONS = [
   { id: "tabs", label: "Pestañas" },
   { id: "swipe", label: "Páginas deslizables" },
+];
+
+/* Solo confirmaciones discretas: se puede apagar entero (Decisión 3). */
+const ON_OFF = [
+  { id: true, label: "Activadas" },
+  { id: false, label: "Desactivadas" },
 ];
 
 /* Las mismas opciones que habia en la cabecera de Buscar, ahora aqui. El valor
@@ -72,6 +79,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const cookiesHeadRef = useRef(null);
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
+  const [hapticsOn, setHaptics] = useHaptics();
   const [autoDownload, setAutoDownload] = useAutoDownload();
   const [fmt, setFmt] = useDownloadFormat();
   const [media, setMedia] = useDownloadMedia();
@@ -225,6 +233,13 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           <div className="settings__row">
             <p className="settings__label">Tema</p>
             <ChipRadio label="Tema" options={THEME_OPTIONS} value={theme} onPick={chooseTheme} />
+          </div>
+          {/* Solo vibraciones de confirmacion: corazon, hoja o fila que encaja,
+              descarga terminada y el detente del progreso. Se apaga entero. */}
+          <div className="settings__row">
+            <p className="settings__label">Vibraciones</p>
+            <ChipRadio label="Vibraciones" options={ON_OFF} value={hapticsOn} onPick={setHaptics} />
+            <p className="settings__note">Solo confirmaciones, en el teléfono.</p>
           </div>
           {/* Solo en el telefono: en el escritorio la navegacion es el menu
               lateral y la barra de arriba. El ajuste se guarda igual. */}
