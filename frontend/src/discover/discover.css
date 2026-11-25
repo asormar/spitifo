@@ -240,17 +240,107 @@ body.has-mini .gmap {
   background: var(--s1);
   box-shadow: var(--shadow);
   color: var(--mut);
-  font-size: 12.5px;
+  font-size: var(--fs-caption);
   font-weight: 700;
   line-height: 1.4;
   pointer-events: none;
+}
+
+/* La guia de la primera visita: se cierra y se puede volver a abrir. */
+.gmap__coach {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  top: 64px;
+  max-width: min(260px, calc(100% - 24px));
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font: 500 var(--fs-caption) / 1.4 var(--font-body);
+  animation: var(--rise-enter);
+}
+
+.gmap__coach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  color: var(--mut);
+  font: 700 var(--fs-micro) / 1.2 var(--font-body);
+}
+
+.gmap__coach-x {
+  display: grid;
+  place-items: center;
+  width: var(--hit);
+  height: var(--hit);
+  margin: calc(var(--sp-3) * -1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mut);
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.gmap__coach-again {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  top: 64px;
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
+  color: var(--acc);
+  font: 700 var(--fs-label) / 1.2 var(--font-body);
+  cursor: pointer;
+}
+
+/* Una etiqueta por color en PC, con el genero que mas pesa en cada cluster. */
+.gmap__legend {
+  position: absolute;
+  z-index: 1;
+  right: calc(12px + var(--fy-right, 0px));
+  bottom: 12px;
+  display: grid;
+  gap: var(--sp-1);
+  max-width: 190px;
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  color: var(--mut);
+  font: 500 var(--fs-micro) / 1.2 var(--font-body);
+}
+
+.gmap__legend-i {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.gmap__legend-i i {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: 50%;
+}
+
+.gmap__legend--more {
+  color: var(--dim);
 }
 
 /* Con la hoja de "Para ti" abajo la nota sube sobre su barra. */
 .gmap.has-sheet .gmap__note {
   bottom: 76px;
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--fs-label);
 }
 
 /* --- Tarjeta del genero ---------------------------------------------------- */
@@ -618,6 +708,7 @@ html[data-rp="over"] :is(.fy--side, .fy__pill) {
   transition: none;
   will-change: auto;
 }
+
 
 /* --- Carga y error ---------------------------------------------------------- */
 

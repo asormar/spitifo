@@ -3,11 +3,30 @@ import { flushSync } from "react-dom";
 import { cx } from "../shared/ui.jsx";
 import { Icon } from "./icons.jsx";
 import { normalize, placeCard, related, searchGenres } from "./map.js";
-import { createMapCanvas } from "./mapCanvas.js";
+import { clusterLegend, createMapCanvas } from "./mapCanvas.js";
 
 /* Por debajo de este ancho la tarjeta pasa a hoja inferior. */
 const NARROW = 560;
 const NO_HIGHLIGHT = new Set();
+/* La guia del mapa se muestra una vez; guardar el visto sobrevive a abrir y
+   cerrar Descubrir (y a recargar), pero no cambia ningun dato del usuario. */
+const GUIDE_KEY = "spitifo.map.guide.v1";
+
+const guideSeen = () => {
+  try {
+    return globalThis.localStorage?.getItem(GUIDE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const guideRemember = () => {
+  try {
+    globalThis.localStorage?.setItem(GUIDE_KEY, "1");
+  } catch {
+    /* Modo privado: la guia se cierra igual, solo no se recuerda. */
+  }
+};
 
 /* Lo que tapa el panel, siempre con las dos claves. */
 const clean = (o) => ({ right: Math.max(0, o.right || 0), bottom: Math.max(0, o.bottom || 0) });
@@ -81,9 +100,12 @@ export default function GenreMap({
   const [active, setActive] = useState(0);
   /* Estado de la muestra del genero elegido: idle | loading | empty | error. */
   const [sample, setSample] = useState({ name: "", status: "idle" });
+  const [guide, setGuide] = useState(() => !guideSeen());
+  const [guideAgain, setGuideAgain] = useState(guideSeen);
   const listId = useId();
 
   const results = useMemo(() => searchGenres(data, query, 8), [data, query]);
+  const legend = useMemo(() => clusterLegend(data, 7), [data]);
 
   /* La tarjeta sigue al punto con un transform que pone el lienzo en cada
      fotograma; en hoja inferior la fija el CSS. */
@@ -372,6 +394,59 @@ export default function GenreMap({
         </button>
       </div>
 
+      {guide && (
+        <div className="gmap__coach" role="note" aria-label="Guía del mapa">
+          <p>
+            Cada punto es un género.
+            <br />
+            Cerca = comparten artistas.
+            <br />
+            Pellizca para acercar.
+          </p>
+          <div className="gmap__coach-row">
+            <span>Toca para explorar</span>
+            <button
+              type="button"
+              className="gmap__coach-x"
+              aria-label="Cerrar la guía del mapa"
+              onClick={() => {
+                setGuide(false);
+                setGuideAgain(true);
+                guideRemember();
+              }}
+            >
+              <Icon name="X" size="sm" />
+            </button>
+          </div>
+        </div>
+      )}
+      {guideAgain && !guide && (
+        <button
+          type="button"
+          className="gmap__coach-again"
+          onClick={() => {
+            setGuide(true);
+            setGuideAgain(false);
+          }}
+        >
+          Mostrar la guía de nuevo
+        </button>
+      )}
+      {!narrow && legend.shown.length > 0 && (
+        <div className="gmap__legend" role="list" aria-label="Colores de los géneros">
+          {legend.shown.map(({ c, name }) => (
+            <span key={c} className="gmap__legend-i" role="listitem">
+              <i style={{ background: `var(--genre-${c})` }} aria-hidden="true" />
+              {name}
+            </span>
+          ))}
+          {legend.more > 0 && (
+            <span className="gmap__legend-i gmap__legend--more" role="listitem">
+              +{legend.more} más
+            </span>
+          )}
+        </div>
+      )}
       {!(narrow && sel >= 0) && (
         <p className="gmap__note">Cerca = comparten artistas, no suenan parecido.</p>
       )}
