@@ -12,7 +12,9 @@ import { localSetting } from "../shared/localSetting.js";
 
 export const QUALITY_KEY = "spitifo:stream-quality";
 export const AUTO_SAVER_KEY = "spitifo:stream-auto-saver";
-export const CROSSFADE_KEY = "spitifo:crossfade";
+/* Contrato con el motor de reproduccion (perf/playback): SEGUNDOS en esta
+   clave, 0 = apagado. La UI trabaja con pasos (0 = apagado, n = n+1 s). */
+export const CROSSFADE_KEY = "spitifo.playback.crossfade";
 
 export const QUALITY_IDS = ["auto", "saver", "high"];
 export const DEFAULT_QUALITY = "auto";
@@ -55,9 +57,11 @@ export const readAutoSaver = (storage = browserStorage()) => {
   }
   return DEFAULT_AUTO_SAVER;
 };
+const secondsToStep = (s) => (Number.isInteger(s) && s >= 2 && s <= CROSSFADE_MAX + 1 ? s - 1 : 0);
+const stepToSeconds = (step) => (step === 0 ? 0 : step + 1);
 export const readCrossfade = (storage = browserStorage()) => {
-  const raw = read(storage, CROSSFADE_KEY, (v) => isStep(Number(v)), DEFAULT_CROSSFADE);
-  return Number(raw);
+  const raw = read(storage, CROSSFADE_KEY, (v) => /^\d+$/.test(String(v)), "0");
+  return secondsToStep(Number(raw));
 };
 
 export const quality = localSetting(QUALITY_KEY, DEFAULT_QUALITY, {
@@ -72,7 +76,7 @@ export const autoSaver = localSetting(AUTO_SAVER_KEY, DEFAULT_AUTO_SAVER, {
 });
 export const crossfade = localSetting(CROSSFADE_KEY, DEFAULT_CROSSFADE, {
   read: readCrossfade,
-  write: (v) => String(v),
+  write: (v) => String(stepToSeconds(v)),
   valid: isStep,
 });
 

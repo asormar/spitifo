@@ -22,9 +22,11 @@ describe("lectura y valores por defecto", () => {
 
   it("crossfade: 0..11 y solo números enteros", () => {
     expect(readCrossfade(store({}))).toBe(0);
-    expect(readCrossfade(store({ "spitifo:crossfade": "7" }))).toBe(7);
-    expect(readCrossfade(store({ "spitifo:crossfade": "99" }))).toBe(0);
-    expect(readCrossfade(store({ "spitifo:crossfade": "x" }))).toBe(0);
+    // La clave guarda segundos (contrato con el motor): 8 s es el paso 7.
+    expect(readCrossfade(store({ "spitifo.playback.crossfade": "8" }))).toBe(7);
+    expect(readCrossfade(store({ "spitifo.playback.crossfade": "0" }))).toBe(0);
+    expect(readCrossfade(store({ "spitifo.playback.crossfade": "99" }))).toBe(0);
+    expect(readCrossfade(store({ "spitifo.playback.crossfade": "x" }))).toBe(0);
     expect(CROSSFADE_MAX).toBe(11);
     expect(crossfadeLabel(0)).toBe("Apagado");
     expect(crossfadeLabel(11)).toBe("12 s");
