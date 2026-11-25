@@ -215,14 +215,18 @@ def test_el_lock_se_suelta_tras_el_error(yt_dlp_doble):
     from backend.app import ytdlp_source as ys
 
     src = ys.YtDlpSource()
-    lock = ys._lock_de_ruta("ruta/de/prueba")
 
     async def falla():
+        # `_lock_de_ruta` esta atada al loop actual (ver su docstring): se
+        # pide ADENTRO de `correr()`, con el loop ya corriendo, igual que en
+        # produccion (siempre se llama desde `download()`, un `async def`).
+        lock = ys._lock_de_ruta("ruta/de/prueba")
         with pytest.raises(RuntimeError):
             async with lock:
                 raise RuntimeError("boom")
 
     async def despues():
+        lock = ys._lock_de_ruta("ruta/de/prueba")
         # si el lock quedara tomado, esto colgaria para siempre
         async with lock:
             return "sigue funcionando"
