@@ -5,7 +5,6 @@ relativo a `root`, que es exactamente lo que venia haciendo el downloader.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import secrets
@@ -24,6 +23,7 @@ from ..listens import ListensStorageMixin
 from ..playlists import PlaylistBook, PlaylistFormatError
 from ..saved import SavedBook, SavedFormatError
 from . import InvalidKey, StoredFile, validate_key
+from .media_cache import MediaCache
 
 log = logging.getLogger(__name__)
 
@@ -40,9 +40,8 @@ ART_FILE = "art.json"
 #: Id estable de este dispositivo. Se usa en los nombres de los archivos de
 #: escucha, igual que el `device_id` del conector de nube.
 DEVICE_ID_FILE = "device-id"
-#: Duracion y etiquetas ya leidas, por clave. Ver `LocalStorage._media`.
-MEDIA_CACHE_FILE = "media-cache.json"
-MEDIA_CACHE_VERSION = 2  # v2 agrega track_no/disc_no/album_id
+#: Duracion y etiquetas ya leidas, por clave: SQLite (`media_cache.py`), con
+#: migracion unica del `media-cache.json` de las versiones anteriores.
 
 
 def _device_id(directory: Path) -> str:
@@ -132,7 +131,11 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # Cache de metadatos: se carga del disco la primera vez que se lista.
         self._media_lock = threading.Lock()
         self._media_cache: dict[str, dict] | None = None
-        self._media_dirty = False
+        # Solo lo que cambio desde la ultima escritura: la base recibe un
+        # upsert por clave, no un volcado de toda la cache.
+        self._media_pending: dict[str, dict] = {}
+        self._media_gone: set[str] = set()
+        self._media_store = MediaCache(self.root / STATE_DIR)
 
     # ------------------------------------------------------------- internos
     def _path(self, key: str) -> Path:
@@ -169,20 +172,9 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     # se usa lo guardado y el listado queda en un stat por archivo. Vive en
     # `.spitifo/` (oculta para `list()`) y se reescribe solo si algo cambio.
 
-    def _media_cache_path(self) -> Path:
-        return self.root / STATE_DIR / MEDIA_CACHE_FILE
-
     def _load_media_cache(self) -> dict[str, dict]:
-        """La cache del disco, o vacia si falta, no parsea o es de otra version."""
-        try:
-            payload = json.loads(self._media_cache_path().read_bytes())
-        except (OSError, ValueError):
-            return {}
-        if (not isinstance(payload, dict)
-                or payload.get("version") != MEDIA_CACHE_VERSION
-                or not isinstance(payload.get("files"), dict)):
-            return {}
-        return {k: v for k, v in payload["files"].items() if isinstance(v, dict)}
+        """La cache de SQLite (migrando el JSON viejo si hace falta)."""
+        return self._media_store.load()
 
     def _media(self, p: Path, key: str, size: int, mtime: float):
         """`(duracion, titulo, artista, album)`, de la cache si sigue valida."""
@@ -198,55 +190,35 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         info = ((None,) * 7 if p.suffix.lower() in IMAGE_EXTS
                 else _media_info(p))
         dur, title, artist, album, track_no, disc_no, album_id = info
+        ficha = {"size": size, "mtime": mtime, "duration": dur,
+                 "title": title, "artist": artist, "album": album,
+                 "track_no": track_no, "disc_no": disc_no,
+                 "album_id": album_id}
         with self._media_lock:
-            self._media_cache[key] = {"size": size, "mtime": mtime,
-                                      "duration": dur, "title": title,
-                                      "artist": artist, "album": album,
-                                      "track_no": track_no, "disc_no": disc_no,
-                                      "album_id": album_id}
-            self._media_dirty = True
+            self._media_cache[key] = ficha
+            self._media_pending[key] = ficha
         return info
 
     def _save_media_cache(self, seen: set[str]) -> None:
-        """Olvida las claves que ya no existen y escribe si algo cambio.
+        """Sube solo las fichas cambiadas y olvida las que ya no existen.
 
-        Falla en silencio: sin cache la biblioteca solo es mas lenta. El
-        `json.dumps` de una biblioteca grande (miles de pistas) es lo mas caro
-        de esta funcion: se copia el dict bajo el lock (barato, son punteros)
-        y se serializa AFUERA, asi un listado concurrente que solo necesita
-        leer una ficha (`_media`) no espera a que termine de escribirse el
-        archivo entero (P-large-library-scale-7).
+        El trabajo de SQLite corre FUERA del lock y en el hilo de storage (el
+        que ya llama a `list()`): un listado concurrente que solo consulta una
+        ficha no espera a que se escriba la base (P-large-library-scale-7).
+        Falla en silencio: sin cache la biblioteca solo es mas lenta.
         """
         with self._media_lock:
             cache = self._media_cache
             if cache is None:
                 return
-            gone = [k for k in cache if k not in seen]
+            gone = self._media_gone | {k for k in cache if k not in seen}
             for k in gone:
-                del cache[k]
-            if not gone and not self._media_dirty:
-                return
-            self._media_dirty = False
-            snapshot = dict(cache)
-        body = json.dumps({"version": MEDIA_CACHE_VERSION, "files": snapshot},
-                          ensure_ascii=False, sort_keys=True).encode("utf-8")
-        path = self._media_cache_path()
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".media-",
-                                       suffix=".tmp")
-            try:
-                with os.fdopen(fd, "wb") as f:
-                    f.write(body)
-                os.replace(tmp, path)
-            except BaseException:
-                try:
-                    os.unlink(tmp)
-                except OSError:
-                    pass
-                raise
-        except OSError as exc:
-            log.warning("no se pudo guardar la cache de media: %s", exc)
+                cache.pop(k, None)
+                self._media_pending.pop(k, None)
+            self._media_gone.clear()
+            upserts = dict(self._media_pending)
+            self._media_pending.clear()
+        self._media_store.apply(upserts, gone)
 
     # --------------------------------------------------------------- puerto
     def list(self) -> Iterable[StoredFile]:
@@ -429,7 +401,8 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
                 return
             for key in keys:
                 self._media_cache.pop(key, None)
-            self._media_dirty = True
+                self._media_pending.pop(key, None)
+                self._media_gone.add(key)
             seen = set(self._media_cache)
         # Fuera del lock: `_save_media_cache` lo toma de nuevo.
         self._save_media_cache(seen)
