@@ -20,6 +20,12 @@ import { API } from "../shared/api.js";
 import { pauseVideo } from "./videoStore.js";
 
 const DEFAULT_VOLUME = 0.8;
+/* Sin datos durante esto, se avisa "red lenta" (sin tapar los controles) y se
+   reintenta una vez solo, recargando el src (no solo resume()): un stream
+   (`/api/stream?url=`) re-resuelve en el backend con cada peticion nueva, asi
+   que una URL caducada necesita una peticion nueva, no seguir pulsando play
+   sobre la misma. */
+const STALL_MS = 8000;
 
 /* `track`: { key, src, title, meta, duration, artwork, kind, label }
    - key identifica la pista en la cola (es lo que mueve prev/next).
@@ -43,6 +49,9 @@ export function createEngine({
     playing: false,
     buffering: false,
     failed: false,
+    /* Buffering hace rato (STALL_MS) sin playing: "red lenta", distinto de un
+       buffering normal de arranque. */
+    stalled: false,
     time: 0,
     duration: 0,
     volume: DEFAULT_VOLUME,
@@ -181,21 +190,57 @@ export function createEngine({
     }
   };
 
+  /* Un stream colgado: 8 s en "waiting" sin pasar a "playing" avisa "red
+     lenta" y reintenta recargando el src UNA vez (autoRetried evita un bucle
+     si el reintento tambien se queda esperando). Un timer por intento, nunca
+     dos a la vez. */
+  let stallTimer = null;
+  let autoRetried = false;
+  const clearStall = () => {
+    if (stallTimer !== null) {
+      clearTimeout(stallTimer);
+      stallTimer = null;
+    }
+  };
+  const armStall = () => {
+    if (stallTimer !== null) return;
+    stallTimer = setTimeout(() => {
+      stallTimer = null;
+      /* Si "playing" o "pause" hubieran llegado, ya habrian limpiado este
+         timer (clearStall): llegar aca es buffering de verdad, sin resolver. */
+      if (!state.buffering) return;
+      emit({ stalled: true });
+      if (!autoRetried) {
+        autoRetried = true;
+        reloadAt(state.time);
+      }
+    }, STALL_MS);
+  };
+
   /* Los eventos se enganchan una sola vez, al crear el elemento. */
   const wire = (a) => {
     a.addEventListener("play", () => emit({ playing: true }));
     a.addEventListener("playing", () => {
-      emit({ playing: true, buffering: false });
+      clearStall();
+      autoRetried = false;
+      emit({ playing: true, buffering: false, stalled: false });
       prefetchNext();
     });
-    a.addEventListener("waiting", () => emit({ buffering: true }));
-    a.addEventListener("pause", () => emit({ playing: false, buffering: false }));
+    a.addEventListener("waiting", () => {
+      emit({ buffering: true });
+      armStall();
+    });
+    a.addEventListener("pause", () => {
+      clearStall();
+      emit({ playing: false, buffering: false });
+    });
     a.addEventListener("timeupdate", () => emit({ time: a.currentTime }));
     a.addEventListener("durationchange", () => emit({ duration: durationNow() }));
     a.addEventListener("loadedmetadata", () => emit({ duration: durationNow() }));
-    a.addEventListener("error", () =>
-      emit({ failed: true, playing: false, buffering: false })
-    );
+    a.addEventListener("error", () => {
+      clearStall();
+      emit({ failed: true, playing: false, buffering: false, stalled: false });
+    });
     a.addEventListener("ended", () => {
       /* repeat one repite sin recargar el src: asignarlo de nuevo haria un
          viaje al backend y cortaria el buffer ya descargado. */
@@ -259,6 +304,15 @@ export function createEngine({
     start();
   };
 
+  /* Recarga la pista actual en su misma posicion: una peticion nueva al
+     backend (no resume() sobre el mismo <audio>), para un stream cuya URL
+     pudo caducar. La usan el reintento automatico del stall y el manual
+     ("Reintentar") del aviso. */
+  const reloadAt = (time) => {
+    if (!state.track) return;
+    load(state.track, state.queue, state.index, "retry", time);
+  };
+
   const play = (track, opts = {}) => {
     if (!track) return;
     /* Misma pista: reanudar, no recargar (el src ya esta puesto y volver a
@@ -300,6 +354,35 @@ export function createEngine({
        emitir `playing` y el spinner se quedaria encendido. */
     if (!state.playing) emit({ buffering: true });
     start();
+  };
+
+  /* Retomar al reabrir la app: carga la pista, la cola y la posicion SIN
+     arrancar el audio (sin autoplay). El mini-reproductor la ve como
+     cualquier otra pista cargada, en pausa, lista para un toque. */
+  const restore = (track, queue, index, at = 0) => {
+    if (!track) return;
+    const q = queue && queue.length ? queue : [track];
+    const i = index >= 0 && index < q.length ? index : 0;
+    const a = ensureAudio();
+    baseArt.set(track.key, track.artwork || null);
+    original = q.slice();
+    emit({
+      track,
+      queue: q,
+      index: i,
+      time: at,
+      duration: track.duration || 0,
+      failed: false,
+      buffering: false,
+      playing: false,
+      stalled: false,
+      source: null,
+      endless: false,
+    });
+    a.src = track.src;
+    if (at > 0) a.currentTime = at;
+    a.volume = state.volume;
+    a.muted = state.muted;
   };
 
   const pause = () => {
@@ -570,6 +653,14 @@ export function createEngine({
     return () => seekEvents.delete(fn);
   };
 
+  /* Vuelve la red: una pista fallida se reanuda sola, sin que el usuario
+     toque nada (recarga con una peticion nueva, no resume() sobre lo mismo). */
+  if (typeof window !== "undefined") {
+    window.addEventListener("online", () => {
+      if (state.failed && state.track) reloadAt(state.time);
+    });
+  }
+
   return {
     subscribe,
     onTrackEvent,
@@ -577,6 +668,8 @@ export function createEngine({
     getState: () => state,
     play,
     resume,
+    restore,
+    reloadAt,
     pause,
     toggle,
     seek,
