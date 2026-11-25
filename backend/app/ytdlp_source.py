@@ -40,9 +40,11 @@ log = logging.getLogger("spitifo.ytdlp")
 #: ninguna puede dejar un hilo del pool colgado para siempre. yt-dlp hace
 #: varios pedidos HTTP por extraccion (player API, formatos); su propio
 #: `socket_timeout` (30-60s, por llamada HTTP) no alcanza para acotar el
-#: TOTAL. Mismo valor que `stream.FAST_TIMEOUT_S`: ese camino ya probo que 8s
-#: alcanza para el caso sano en el telefono.
-YTDLP_CALL_TIMEOUT_S = 8.0
+#: TOTAL. Mas holgado que `stream.FAST_TIMEOUT_S` (8 s, una sola extraccion
+#: con visitor_data): un ytsearch40 o una extraccion completa en un telefono
+#: de gama media con 4G flojo puede pasar de 8 s sin estar colgado, y cortarlo
+#: ahi deja la busqueda sin versiones enteras.
+YTDLP_CALL_TIMEOUT_S = 20.0
 
 #: La extraccion COMPLETA (`probe_info`, el camino resiliente con reintento de
 #: cookies) es mas lenta a proposito: mismo valor que `stream.FULL_TIMEOUT_S`.
