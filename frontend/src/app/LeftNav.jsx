@@ -1,4 +1,4 @@
-import { ProgressStack } from "../download/progress.jsx";
+import { lazy, Suspense } from "react";
 import { songs } from "../listen/home.js";
 import { usePlaylists } from "../listen/playlists.js";
 import BrandLogo from "./BrandLogo.jsx";
@@ -7,6 +7,12 @@ import { Icon } from "../shared/icons.jsx";
 import { useNav } from "./useNav.js";
 
 const TAB_ICON = { home: "House", search: "MagnifyingGlass", library: "Books", discover: "VinylRecord" };
+
+/* Las tarjetas de descarga no pintan nada en el primer frame: su modulo viaja
+   aparte, se pide al montar el shell y aparece sin spinner cuando hay trabajo. */
+const ProgressStack = lazy(() =>
+  import("../download/progress.jsx").then((m) => ({ default: m.ProgressStack }))
+);
 
 /* ---------------------------------------------------------------------------
    MENU LATERAL (escritorio)
@@ -95,7 +101,9 @@ export default function LeftNav() {
         />
       </div>
 
-      <ProgressStack inline />
+      <Suspense fallback={null}>
+        <ProgressStack inline />
+      </Suspense>
 
       <button
         type="button"

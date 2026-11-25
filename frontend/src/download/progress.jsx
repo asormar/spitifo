@@ -1,3 +1,4 @@
+import "./progress.css";
 import { Icon } from "../shared/icons.jsx";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./video.css";
 import { Icon } from "../shared/icons.jsx";
 import { engine } from "./engine.js";
 import { setVideoEl, setVideoHost, useVideoHost, videoHost } from "./videoStore.js";

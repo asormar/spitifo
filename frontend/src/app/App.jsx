@@ -6,12 +6,9 @@ import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
 import { useShow } from "../listen/Notice.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
-import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { panel, panelMode, usePanel } from "../player/panel.js";
 import { useEngine } from "../player/useEngine.js";
-import { createListenTracker } from "../player/listens.js";
-import { bindMediaSession } from "../player/mediaSession.js";
 import StreamErrors from "../player/StreamErrors.jsx";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
@@ -22,7 +19,6 @@ import { saved } from "../listen/saved.js";
 import { art } from "../listen/art.js";
 import { artSrc, songTarget } from "../listen/artLogic.js";
 import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
-import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
   aboveNp,
@@ -102,6 +98,15 @@ function DiscoverView(props) {
   return <View {...props} />;
 }
 const SettingsView = React.lazy(loadSettingsView);
+/* El <video> y las tarjetas de progreso no pintan nada en el primer frame: el
+   primero esta oculto hasta que se abre un video y las segundas solo existen
+   cuando hay una descarga en curso. Van en su propio chunk, se piden al montar
+   el shell y no muestran nada mientras llegan (sin spinner), asi que la primera
+   pintura queda igual. */
+const VideoHost = React.lazy(() => import("../player/VideoHost.jsx"));
+const ProgressStack = React.lazy(() =>
+  import("../download/progress.jsx").then((m) => ({ default: m.ProgressStack }))
+);
 /* La pildora llega con el espejo de la cola, no con el shell: hasta que el
    usuario descarga algo o el sondeo de entrada encuentra trabajo, no se carga. */
 const QueuePill = React.lazy(() => import("../download/QueuePill.jsx"));
@@ -319,10 +324,20 @@ export default function App() {
   }, []);
   useEffect(loadHealth, [loadHealth]);
 
-  /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez:
-     el motor avisa de cada cambio de pista o de estado y mediaSession solo
-     traduce. Sin la API, bindMediaSession devuelve un no-op. */
-  useEffect(() => bindMediaSession(engine), []);
+  /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez,
+     pero el traductor no pinta nada en la primera pantalla: su modulo viaja
+     aparte y se engancha en cuanto llega. Sin la API devuelve un no-op. */
+  useEffect(() => {
+    let off = () => {};
+    let alive = true;
+    import("../player/mediaSession.js").then(({ bindMediaSession }) => {
+      if (alive) off = bindMediaSession(engine);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
 
   /* El aviso del proximo stream se carga aparte: mientras suena musica de la
      biblioteca no hace falta ni el modulo ni ninguna peticion. */
@@ -359,11 +374,19 @@ export default function App() {
     };
   }, []);
 
-  /* Historial de escucha: UNA vez por app. El tracker vive mientras App este
-     montada y cierra la sesion abierta con "close" al desmontarse. */
+  /* Historial de escucha: UNA vez por app. Tampoco pinta nada al arrancar, asi
+     que su modulo viaja aparte y el tracker se arma cuando llega; al desmontarse
+     cierra la sesion abierta con "close". */
   useEffect(() => {
-    const tracker = createListenTracker(engine);
-    return () => tracker.stop();
+    let tracker = null;
+    let alive = true;
+    import("../player/listens.js").then(({ createListenTracker }) => {
+      if (alive) tracker = createListenTracker(engine);
+    });
+    return () => {
+      alive = false;
+      tracker?.stop();
+    };
   }, []);
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
@@ -892,13 +915,17 @@ export default function App() {
               marcha. En escritorio las tarjetas van en el menu lateral. */}
           {pc ? <PlayerBar onOpen={openNp} npOpen={false} tab={np ? panelState.tab : -1} /> : (
             <>
-              <ProgressStack />
+              <Suspense fallback={null}>
+                <ProgressStack />
+              </Suspense>
               <MiniPlayer onOpen={openNp} npOpen={full} />
             </>
           )}
           {/* Montado una sola vez: es el dueno del <video> y por eso la
               reproduccion no se corta al cambiar de pestana. */}
-          <VideoHost />
+          <Suspense fallback={null}>
+            <VideoHost />
+          </Suspense>
 
           {!pc &&
             (phoneNav === "tabs" ? (
