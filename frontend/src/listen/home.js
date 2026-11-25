@@ -1,7 +1,7 @@
 import { coverTone } from "../shared/cover.js";
 import { clock } from "../shared/format.js";
 import { collator, fold, groupAlbums, groupArtists } from "./library.js";
-import { continueListening, mostPlayed } from "./history.js";
+import { mostPlayed } from "./history.js";
 
 /* ---------------------------------------------------------------------------
    LOGICA DEL INICIO DE ESCUCHAR
@@ -24,7 +24,6 @@ export const SORTS = [
 
 /* Cuantas filas admite cada ranking al abrirse con "Ver todo". */
 export const TOP_ALL = 20;
-export const TOP_HOME = 5;
 
 /* --- Busqueda ------------------------------------------------------------- */
 
@@ -202,22 +201,25 @@ const SECONDS = 1000;
    terminada (misma regla que continueListening). */
 const FINISHED_S = 10;
 
-/* "Seguir escuchando": las pistas a medias que siguen en la biblioteca, con su
-   progreso. El historial guarda ms; aqui todo va en segundos. */
-export function continueItems(state, byKey, n) {
+/* "Seguir escuchando" y "Ya escuchadas": las pistas a medias y las terminadas
+   que siguen en la biblioteca, con su progreso. El historial guarda ms; aqui
+   todo va en segundos. Una terminada no ocupa sitio en "Seguir escuchando": se
+   repone con la siguiente a medias y se muda a su propio estante. */
+function historyCards(state, byKey, n, wantFinished) {
   const out = [];
   /* Una guardada con archivo puede tener escuchas bajo la clave del archivo y
      bajo su id: las dos resuelven a la MISMA entrada. Gana la mas reciente. */
   const seen = new Set();
   if (!(n > 0)) return out;
-  for (const rec of continueListening(state, Number.MAX_SAFE_INTEGER)) {
+  for (const rec of state?.recent || []) {
     const entry = byKey.get(rec.key);
-    if (!playable(entry) || seen.has(entry)) continue;
-    seen.add(entry);
+    if (!playable(entry)) continue;
     const dur = (Number(rec.dur) || 0) / SECONDS || entry.duration || 0;
     const pos = Math.min(Math.max(0, (Number(rec.pos) || 0) / SECONDS), dur || Infinity);
     const left = Math.max(0, dur - pos);
     const finished = dur > 0 && left <= FINISHED_S;
+    if (finished !== wantFinished || seen.has(entry)) continue;
+    seen.add(entry);
     out.push({
       entry,
       pos,
@@ -231,6 +233,34 @@ export function continueItems(state, byKey, n) {
     if (out.length >= n) break;
   }
   return out;
+}
+
+export const continueItems = (state, byKey, n) => historyCards(state, byKey, n, false);
+export const finishedItems = (state, byKey, n) => historyCards(state, byKey, n, true);
+
+/* Saludo del inicio: la hora y cuanta musica hay lista, en una sola linea. */
+export function greeting(hour = new Date().getHours()) {
+  if (hour < 6 || hour >= 20) return "Buenas noches";
+  if (hour < 12) return "Buenos días";
+  return "Buenas tardes";
+}
+
+export const homeGreeting = (n, hour) =>
+  `${greeting(hour)} · ${plural(n, "canción lista", "canciones listas")}`;
+
+/* Los atajos del hero: lo mas escuchado primero y lo mas reciente despues, sin
+   repetir y con tope (la rejilla del telefono cabe ocho). */
+export function shortcutEntries(top, recent, n = 8) {
+  const out = [];
+  const seen = new Set();
+  const add = (entry) => {
+    if (!entry || seen.has(entry)) return;
+    seen.add(entry);
+    out.push(entry);
+  };
+  for (const t of top || []) add(t.entry || t);
+  for (const entry of recent || []) add(entry);
+  return out.slice(0, Math.max(0, n));
 }
 
 /* "Lo que más escuchas": por reproducciones, solo las que de verdad se han

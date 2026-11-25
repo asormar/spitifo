@@ -5,7 +5,10 @@ import {
   buildIndex,
   continueItems,
   entryTone,
+  finishedItems,
+  greeting,
   GRID_ALL,
+  homeGreeting,
   libraryCounts,
   libraryGrid,
   progressLabel,
@@ -20,6 +23,7 @@ import {
   relevance,
   searchLibrary,
   searchSongs,
+  shortcutEntries,
   sortEntries,
   topArtists,
   topItems,
@@ -309,15 +313,34 @@ describe("continueItems", () => {
     expect(continueItems(state, byKey, 0)).toEqual([]);
   });
 
-  it("restarts a finished track from the beginning", () => {
-    const done = {
+  it("leaves finished tracks out and refills with the next unfinished one", () => {
+    const state = {
       tracks: {},
-      recent: [{ key: "zoe/azul", last: 5, pos: 195_000, dur: 200_000, o: "play" }],
+      recent: [
+        { key: "zoe/azul", last: 30, pos: 195_000, dur: 200_000, o: "play" },
+        { key: "rosalia/saoko", last: 29, pos: 50_000, dur: 200_000, o: "partial" },
+        { key: "soda/signos", last: 28, pos: 120_000, dur: 240_000, o: "partial" },
+      ],
     };
-    const [item] = continueItems(done, byKey, 5);
-    expect(item.finished).toBe(true);
-    expect(item.at).toBe(0);
-    expect(item.pct).toBe(98);
+    expect(continueItems(state, byKey, 5).map((i) => i.entry.key)).toEqual([
+      "rosalia/saoko",
+      "soda/signos",
+    ]);
+    expect(continueItems(state, byKey, 1).map((i) => i.entry.key)).toEqual(["rosalia/saoko"]);
+  });
+
+  it("puts finished tracks on their own shelf", () => {
+    const state = {
+      tracks: {},
+      recent: [
+        { key: "zoe/azul", last: 5, pos: 195_000, dur: 200_000, o: "play" },
+        { key: "rosalia/saoko", last: 4, pos: 50_000, dur: 200_000, o: "partial" },
+      ],
+    };
+    const [item] = finishedItems(state, byKey, 5);
+    expect(item.entry.key).toBe("zoe/azul");
+    expect(item).toMatchObject({ finished: true, at: 0, pct: 98 });
+    expect(finishedItems(state, byKey, 0)).toEqual([]);
   });
 
   it("falls back to the library duration when the record has none", () => {
@@ -436,6 +459,30 @@ describe("labels", () => {
     expect(minutes([{ duration: 20 }])).toBe(1);
     expect(minutes([{ duration: null }])).toBeNull();
     expect(minutes([])).toBeNull();
+  });
+});
+
+describe("greeting and shortcuts", () => {
+  it("greets by time of day and names how many songs are ready", () => {
+    expect(greeting(7)).toBe("Buenos días");
+    expect(greeting(15)).toBe("Buenas tardes");
+    expect(greeting(22)).toBe("Buenas noches");
+    expect(greeting(3)).toBe("Buenas noches");
+    expect(homeGreeting(1, 15)).toBe("Buenas tardes · 1 canción lista");
+    expect(homeGreeting(42, 15)).toBe("Buenas tardes · 42 canciones listas");
+  });
+
+  it("puts the most played first and refills with the newest without repeats", () => {
+    const top = [{ entry: LIB[0], plays: 9 }, { entry: LIB[1], plays: 4 }];
+    const recent = [LIB[1], LIB[2], LIB[3]];
+    expect(shortcutEntries(top, recent, 8).map((e) => e.key)).toEqual([
+      "rosalia/saoko",
+      "rosalia/candy",
+      "rosalia/malamente",
+      "soda/musica",
+    ]);
+    expect(shortcutEntries(top, recent, 2)).toHaveLength(2);
+    expect(shortcutEntries([], [], 8)).toEqual([]);
   });
 });
 
