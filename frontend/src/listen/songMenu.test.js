@@ -16,14 +16,14 @@ describe("songMenuGroups", () => {
     expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Quitar"]);
     expect(kinds(groups)).toEqual([
       ["next", "end"],
-      ["list"],
+      ["list", "share"],
       ["album", "artist"],
       ["photo", "file"],
       ["remove"],
     ]);
     expect(flat(groups).map((i) => i.text)).toEqual([
       "Reproducir a continuación", "Añadir al final de la cola",
-      "Añadir a una lista…",
+      "Añadir a una lista…", "Compartir",
       "Ir al álbum", "Ir al artista",
       "Cambiar foto", "Ficha del archivo",
       "Quitar de tu biblioteca",
@@ -43,7 +43,7 @@ describe("songMenuGroups", () => {
     };
     const groups = songMenuGroups(entry, { fmt: "mp4" });
     expect(item(groups, "download")).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "mp4" });
-    expect(kinds(groups)[1]).toEqual(["list", "download"]);
+    expect(kinds(groups)[1]).toEqual(["list", "download", "share"]);
     expect(flat(groups).map((i) => i.kind)).not.toContain("undownload");
     expect(flat(groups).map((i) => i.kind)).not.toContain("file");
   });
@@ -59,7 +59,7 @@ describe("songMenuGroups", () => {
       song: { id: "yt:dQw4w9WgXcQ" },
     };
     const groups = songMenuGroups(entry, { pc: true });
-    expect(kinds(groups)[1]).toEqual(["list", "undownload"]);
+    expect(kinds(groups)[1]).toEqual(["list", "undownload", "share"]);
     expect(kinds(groups)[3]).toEqual(["photo", "file"]);
     expect(item(groups, "undownload").text).toBe("Quitar descarga");
     expect(item(groups, "file").text).toBe("Ver la ficha del archivo");

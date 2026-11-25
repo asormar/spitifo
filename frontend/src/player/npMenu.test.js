@@ -45,19 +45,20 @@ describe("menu ⋯ de Ahora suena: que menu toca", () => {
 });
 
 describe("grupos del menu ⋯ de un stream suelto", () => {
-  it("Escuchar, Tu biblioteca con el formato, Ir a, Archivo y Reproductor al final", () => {
+  it("Escuchar, Tu biblioteca, Compartir, Ir a, Archivo y Reproductor al final", () => {
     const groups = npMenuGroups(stream, { fmt: "flac" });
     expect(groups.map((g) => g.label)).toEqual([
-      "Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Reproductor",
+      "Escuchar", "Tu biblioteca", "Compartir", "Ir a", "Archivo", "Reproductor",
     ]);
     expect(groups[0].items.map((i) => i.kind)).toEqual(["next", "end"]);
     expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "flac" });
-    expect(groups[2].items.map((i) => i.text)).toEqual([
+    expect(groups[2].items).toEqual([{ kind: "share", icon: "Share", text: "Compartir" }]);
+    expect(groups[3].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",
     ]);
-    expect(groups[3].items[0].kind).toBe("ficha");
-    expect(groups[4].items).toEqual([{ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" }]);
+    expect(groups[4].items[0].kind).toBe("ficha");
+    expect(groups[5].items).toEqual([{ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" }]);
   });
 
   it("«Ir al álbum» solo sale cuando se puede abrir la ficha del disco", () => {
@@ -67,7 +68,7 @@ describe("grupos del menu ⋯ de un stream suelto", () => {
     };
     const groups = npMenuGroups(withoutSheet, { fmt: "m4a" });
     expect(groups[1].label).toBe("Tu biblioteca");
-    expect(groups[2].items.map((i) => i.text)).toEqual(["Ir a Radiohead"]);
+    expect(groups[3].items.map((i) => i.text)).toEqual(["Ir a Radiohead"]);
     expect(groups.at(-1).label).toBe("Reproductor");
   });
 
@@ -80,7 +81,7 @@ describe("grupos del menu ⋯ de un stream suelto", () => {
     };
     const groups = npMenuGroups(bare, { fmt: "m4a" });
     expect(groups.map((g) => g.label)).toEqual([
-      "Escuchar", "Tu biblioteca", "Archivo", "Reproductor",
+      "Escuchar", "Tu biblioteca", "Compartir", "Archivo", "Reproductor",
     ]);
     expect(groups.at(-1).items[0].kind).toBe("closePlayer");
   });

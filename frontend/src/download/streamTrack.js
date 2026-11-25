@@ -1,5 +1,6 @@
 import { API } from "../shared/api.js";
 import { songIdOf } from "../shared/songId.js";
+import { withStreamQuality } from "../settings/playbackSettings.js";
 import { trackState } from "./constants.js";
 
 /* ---------------------------------------------------------------------------
@@ -24,7 +25,7 @@ export function streamTrack(t, source = null) {
     t.album && t.album !== t.title ? t.album : null].filter(Boolean).join(" · ");
   return {
     key: streamKey(url),
-    src: `${API}/stream?url=${encodeURIComponent(url)}`,
+    src: withStreamQuality(`${API}/stream?url=${encodeURIComponent(url)}`),
     title,
     label: title,
     meta,

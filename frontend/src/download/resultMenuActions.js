@@ -1,4 +1,5 @@
 import { rowKey } from "../shared/api.js";
+import { share } from "../shared/share.js";
 import { engine } from "../player/engine.js";
 import { canOpenAlbumSheet, npLinks } from "../player/npLinks.js";
 import { resolveArtistLink } from "./artistLink.js";
@@ -38,6 +39,13 @@ export async function pickResultAction(kind, {
   resolveArtist = resolveArtistLink,
 } = {}) {
   if (!t) return;
+  if (kind === "share") {
+    /* El enlace verificado vive en el resultado; si no hay, share() cae a
+       Apple Music. El aviso de «Enlace copiado» usa el toast de la vista. */
+    if (closeMenu) nav.back();
+    await share({ kind: "song", title: t.title, artist: t.artist, result: t }, show);
+    return;
+  }
   /* El menu de "Ahora suena" cierra la hoja y la vista en un solo unwind, asi
      que sus acciones «Ir a» no pueden pedir aqui un back por separado. */
   if (closeMenu) nav.back();

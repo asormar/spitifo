@@ -1,6 +1,7 @@
 package dev.spitifo
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -210,6 +211,27 @@ class MainActivity : ComponentActivity() {
             val parsed = runCatching { Color.parseColor(color) }.getOrNull() ?: return
             runOnUiThread { applyBars(parsed, light) }
         }
+
+        /**
+         * The WebView has no navigator.share, so the page builds the final text
+         * and hands it over here. Android draws the chooser; the app draws
+         * nothing of it. Kept as plain text/plain so every share target that
+         * accepts text shows up.
+         */
+        @JavascriptInterface
+        fun share(text: String) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            runOnUiThread {
+                try {
+                    startActivity(Intent.createChooser(intent, "Compartir"))
+                } catch (e: ActivityNotFoundException) {
+                    Log.w(TAG, "no activity can share text", e)
+                }
+            }
+        }
     }
 
     /** Paints both system bars one colour and picks icons that read on it. */
@@ -323,6 +345,11 @@ class MainActivity : ComponentActivity() {
             // blocks exactly that by default, so the next track would silently
             // never start.
             settings.mediaPlaybackRequiresUserGesture = false
+            // The typographic scale is in rem, so the system font size has to
+            // reach the WebView: textZoom is the only setting that does it.
+            // 100 is the default; 130/160 are the sizes we check the UI at.
+            settings.textZoom = (resources.configuration.fontScale * 100).toInt()
+                .coerceIn(MIN_TEXT_ZOOM, MAX_TEXT_ZOOM)
             // The Drive sign-in needs a native Activity: the page asks for it
             // through this interface instead of a link (see DriveAuth).
             addJavascriptInterface(AndroidBridge(), "SpitifoAndroid")
@@ -415,6 +442,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
+        /** Bounds for the system font scale mirrored into WebView textZoom. */
+        const val MIN_TEXT_ZOOM = 50
+        const val MAX_TEXT_ZOOM = 200
 
         /** THEME_COLOR in frontend/src/shared/theme.js: the page grounds. */
         const val BAR_DARK = 0xFF0E0E18.toInt()

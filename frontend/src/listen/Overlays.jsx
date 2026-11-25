@@ -12,6 +12,7 @@ import { albumId, artistId, rowArt } from "./library.js";
 import { useSaved } from "./saved.js";
 import { deferredDelete } from "./deleteSong.js";
 import { songMenuGroups } from "./songMenu.js";
+import { share } from "../shared/share.js";
 import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
@@ -181,6 +182,11 @@ function NpResultMenu({ top, back, show, goTo, replace, locationToken }) {
       closePlayer();
       return;
     }
+    if (kind === "share") {
+      share({ kind: "song", title: top.t?.title, artist: top.t?.artist, result: top.t }, show);
+      back();
+      return;
+    }
     if (kind === "ficha") {
       /* «Ver ficha» sustituye al menu en su entrada: sin popstate, App no
          interpreta el cambio como un cierre y la hoja queda encima de la
@@ -301,6 +307,16 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, locati
   const pick = (kind) => {
     if (kind === "closePlayer") {
       closePlayer();
+      return;
+    }
+    if (kind === "share") {
+      share({
+        kind: "song",
+        title: entry.title,
+        artist: entry.artist,
+        result: entry.song ? resultOf(entry.song) : null,
+      }, show);
+      back();
       return;
     }
     if (kind === "photo") {

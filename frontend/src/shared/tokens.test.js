@@ -184,3 +184,18 @@ describe("verdict chip on the Ahora suena pane", () => {
     expect(ratio(dot, chip)).toBeGreaterThanOrEqual(3);
   });
 });
+
+/* Texto grande: las nueve medidas viven en rem para que la escala del sistema
+   (textZoom en Android) pueda subirlas a 130% y 160% sin recortes. */
+describe("typographic scale follows the system font size", () => {
+  const PASOS = [
+    ["micro", 11], ["label", 12], ["caption", 13], ["ui", 14], ["body", 15],
+    ["title", 18], ["headline", 22], ["display", 28], ["display-xl", 44],
+  ];
+  it.each(PASOS)("%s is px/16 rem at 100%", (name, px) => {
+    expect(light[`--fs-${name}`]).toBe(`${px / 16}rem`);
+  });
+  it("dark inherits the same scale", () => {
+    for (const [name] of PASOS) expect(dark[`--fs-${name}`]).toBe(light[`--fs-${name}`]);
+  });
+});

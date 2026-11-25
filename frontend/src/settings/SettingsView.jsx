@@ -8,6 +8,7 @@ import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js"
 import { useDownloadFormat, useDownloadMedia } from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
 import StorageSettings from "./StorageSettings.jsx";
+import PlaybackSettings from "./PlaybackSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./settings.css";
 import "../shared/chips.css";
@@ -214,6 +215,15 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               Qué se baja cuando buscas en YouTube: solo el audio, solo el vídeo o las dos cosas.
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-playback">
+        <h2 id="settings-playback" className="settings__h">
+          Reproducción y datos
+        </h2>
+        <div className="settings__card">
+          <PlaybackSettings />
         </div>
       </section>
 

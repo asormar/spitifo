@@ -4,6 +4,7 @@ import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { Icon } from "./icons.jsx";
+import { share } from "../shared/share.js";
 import { toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -248,6 +249,19 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     </button>
   );
 
+  /* Compartir vive en la cabecera: un álbum y un artista mandan un enlace de
+     búsqueda, una lista manda su tracklist porque no tiene equivalente público.
+     El aviso de PC sale por el mismo toast que el resto de la app. */
+  const doShare = () => {
+    if (isList) {
+      share({ kind: "list", title: pl.name, songs: rows.map((r) => ({ title: r.title, artist: r.artist })) }, ctx.show);
+    } else if (album) {
+      share({ kind: "album", title: name, artist: rows[0]?.artist }, ctx.show);
+    } else {
+      share({ kind: "artist", title: name, artist: null }, ctx.show);
+    }
+  };
+
   const acts = (
     <div className="dacts">
       <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
@@ -257,6 +271,10 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={shuffle}>
         <Icon name="Shuffle" size="md" />
         Aleatorio
+      </button>
+      <button type="button" className="btn btn--ghost" aria-label={`Compartir ${name}`} onClick={doShare}>
+        <Icon name="Share" size="md" />
+        Compartir
       </button>
       {artist && (
         <button
