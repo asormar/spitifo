@@ -1,6 +1,7 @@
 package dev.spitifo
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +12,8 @@ import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
+import java.io.File
+import org.json.JSONObject
 
 /**
  * The Android half of the Google Drive token bridge (ADR 0002, sections 2, 3
@@ -51,6 +54,19 @@ class DriveAuth(private val activity: Activity) {
      * and the user can always reconnect from the dialog.
      */
     fun refreshSilently() = authorize(interactive = false)
+
+    /**
+     * Pushes the token left by the previous run before the silent refresh
+     * answers. `python()` waits for CPython to start, so this can run while
+     * the backend is still booting: the first library request finds a token
+     * instead of waiting for one (P-cold-start-2). Never prompts.
+     */
+    fun pushCachedToken() {
+        val prefs = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val token = prefs.getString(KEY_TOKEN, null) ?: return
+        val expires = prefs.getString(KEY_EXPIRES, null)?.toDoubleOrNull() ?: return
+        thread { python("set_token", token, expires, false) }
+    }
 
     fun onResume() {
         val age = SystemClock.elapsedRealtime() - lastPushAt
@@ -135,6 +151,10 @@ class DriveAuth(private val activity: Activity) {
         val expiresAt = System.currentTimeMillis() / 1000.0 + TOKEN_TTL_S
         thread {
             if (python("set_token", token, expiresAt, interactive)) {
+                activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_TOKEN, token)
+                    .putString(KEY_EXPIRES, expiresAt.toString())
+                    .apply()
                 lastPushAt = SystemClock.elapsedRealtime()
                 main.post { scheduleRefresh() }
             }
@@ -196,6 +216,27 @@ class DriveAuth(private val activity: Activity) {
 
     private companion object {
         const val TAG = "Spitifo"
+
+        /** Private cache of the last access token, for the next cold start. */
+        private const val PREFS = "spitifo-drive-token"
+        private const val KEY_TOKEN = "access_token"
+        private const val KEY_EXPIRES = "expires_at"
+
+        /**
+         * The persisted "Google connected" flag lives in the backend's
+         * `storage.json`. Reading it here — instead of asking Python through
+         * Chaquopy — lets startup begin before the backend is ready and keeps
+         * the flag in sync when the user disconnects from the UI.
+         */
+        fun persistedConnected(app: Context): Boolean {
+            return try {
+                val storage = File(app.filesDir, ".local/share/spitifo/storage.json")
+                if (!storage.isFile) return false
+                JSONObject(storage.readText()).optBoolean("google_connected", false)
+            } catch (e: Exception) {
+                false
+            }
+        }
 
         /** Request code for the consent screen (permissions use 1). */
         const val REQUEST_DRIVE_AUTH = 2

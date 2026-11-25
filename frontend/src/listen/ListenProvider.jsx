@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { isOverlay } from "../app/navigation.js";
 import { keyUrl } from "../shared/api.js";
+import { afterIdle } from "../shared/raf.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
@@ -76,12 +77,19 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
     [entries, index, byKey, savedById, plays, lists, listsReady, storage, check]
   );
 
-  /* Las listas y el historial se piden una vez al arrancar; los fallos de
-     escritura de las listas (que ya deshizo el almacen) se dicen en el aviso. */
+  /* Las listas y el historial no deciden el primer pintado: se van al ocio
+     para que no compitan con /api/library ni con el parseo del entry
+     (P-cold-start-3). Los fallos de escritura se dicen en el aviso. */
   useEffect(() => {
-    playlists.load();
-    history.load();
-    return playlists.onError(show);
+    const cancel = afterIdle(() => {
+      playlists.load();
+      history.load();
+    });
+    const off = playlists.onError(show);
+    return () => {
+      cancel();
+      off();
+    };
   }, [show]);
 
   const value = useMemo(() => {

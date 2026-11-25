@@ -36,10 +36,10 @@ def test_el_primer_get_no_espera_al_escaneo(library, monkeypatch):
     real = main.library_scan
     escaneo = threading.Event()
 
-    def lento():
+    def lento(storage=None):
         escaneo.set()
         time.sleep(0.8)
-        return real()
+        return real(storage) if storage is not None else real()
 
     monkeypatch.setattr(main, "library_scan", lento)
     monkeypatch.setattr(main, "LIBRARY_SNAPSHOT_WAIT_S", 0.05)
@@ -72,7 +72,7 @@ def test_la_instantanea_sobrevive_al_reinicio(library, monkeypatch):
 
     # Otro arranque sobre la MISMA biblioteca: la firma coincide con la de la
     # instantanea guardada, asi que no hace falta escanear para responder.
-    def no_escanear():
+    def no_escanear(storage=None):
         raise AssertionError("el arranque tibio no debia escanear")
 
     monkeypatch.setattr(main, "library_scan", no_escanear)

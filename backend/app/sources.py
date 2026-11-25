@@ -18,18 +18,18 @@ import time
 from collections import OrderedDict
 from typing import Any
 
-import httpx
-
 from .config import USER_AGENT
 from .identify import fold
 from .models import Track
 
 log = logging.getLogger("spitifo.sources")
-TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
 
 def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
+    """Cliente de busqueda. httpx se importa aqui, no al arrancar (P-cold-start-5)."""
+    import httpx
+    return httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0),
+                             follow_redirects=True,
                              headers={"User-Agent": USER_AGENT},
                              limits=httpx.Limits(max_connections=16))
 

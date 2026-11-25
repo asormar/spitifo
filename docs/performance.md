@@ -229,6 +229,47 @@ measured the same before and after):
 - every `Player` subscribes to the shared player state (`watchers`), so one
   change can re-render every row.
 
+## Cold start and the first scan of a real library (2026-11-25)
+
+The 2,000-track measurement from 2026-11-24 has a first run with
+`library1_ms` at 13.4 s and the next four at 78–92 ms. That gap is Windows
+Defender scanning the files `seed_library.py` had just written, not our scan
+code: a fresh library is unusable for as long as the first antivirus pass takes,
+and a 20,000-track one broke the measurement tool's 120 s read timeout.
+
+**Decision: accept the cost, do not add an antivirus exclusion.** A per-machine
+installer exception would move a one-off, OS-owned delay into a permanent
+security hole we would have to maintain and explain. Instead the cold start no
+longer waits for it: the backend answers `/api/library` from a SQLite snapshot
+(in `<library>/.spitifo/library-snapshot.sqlite3`) while the scan runs in a
+thread, marks the response with `X-Spitifo-Library-Pending: 1` when it served a
+stale one, and the frontend paints its localStorage mirror with an
+"Actualizando biblioteca…" notice and asks again. There is no UI timeout: the
+first answer is bounded by `LIBRARY_SNAPSHOT_WAIT_S` (250 ms), not by the scan.
+The media cache is also SQLite now (`media-cache.sqlite3`, migrated once from
+the old JSON with a single transaction), so a warm scan writes one upsert per
+changed file instead of rewriting the whole JSON.
+
+With a seeded 2,000-track library and a fresh data dir (`backend_start.py
+--python python --library <lib> --data-dir <dir> --runs 3`), measured before and
+after on this machine:
+
+| | run 1 `library1_ms` | median `library1_ms` | median `ready_ms` |
+| --- | --- | --- | --- |
+| before | 19,156 ms | 203 ms | 954 ms |
+| after | 410 ms | 311 ms | 899 ms |
+
+Run 1 is the case that matters: the first usable screen no longer waits for the
+antivirus. The median after is slightly higher because the snapshot is checked
+and refreshed in the background; it stays in the same hundreds-of-ms range as
+a warm scan. These are checkout measurements, not a validated budget on the
+reference laptop.
+
+- **2026-11-25**: JS 400,150 → 402,000 B. The branches merged into the cold
+  start work already built at 400,495 B (345 B over the stale budget), and the
+  snapshot progress UI, idle scheduling and font preload add the rest. The new
+  limit is the measured 401,745 B rounded up; CSS stays at 131,000 B.
+
 ## Música search (2026-11-20)
 
 `_search_matched` used to wait for iTunes before searching YouTube, although the

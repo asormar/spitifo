@@ -78,11 +78,15 @@ class MainActivity : ComponentActivity() {
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingShare: String? = null
+    /** True when the startup refresh was already started from onCreate. */
+    private var tokenRefreshStarted = false
 
     private val listener = object : Backend.Listener {
         override fun onReady(port: Int) {
             showUi(port)
-            refreshDriveTokenIfConnected()
+            // Fallback for an upgrade where the native flag is not set yet:
+            // normally onCreate already started the refresh (P-cold-start-2).
+            if (!tokenRefreshStarted) refreshDriveTokenIfConnected()
         }
 
         override fun onFailed(message: String) = showStatus(message)
@@ -104,6 +108,18 @@ class MainActivity : ComponentActivity() {
         pendingShare = shareUrl(intent)
         if (pendingShare != null) Log.i(TAG, "shared link: $pendingShare")
         showStatus("Starting…")
+        // Drive's silent refresh starts HERE, in parallel with Python boot,
+        // driven by the persisted flag read natively. The old path waited for
+        // onReady plus a Chaquopy round trip and could hand the first library
+        // request a 5 s token wait (P-cold-start-2).
+        val auth = driveAuth
+        if (DriveAuth.persistedConnected(applicationContext)) {
+            tokenRefreshStarted = true
+            Thread({
+                auth.pushCachedToken()
+                runOnUiThread { auth.refreshSilently() }
+            }, "spitifo-drive-startup").apply { isDaemon = true }.start()
+        }
         backend.addListener(listener)
         MediaActionRelay.register(mediaReceiver)
     }
@@ -242,10 +258,10 @@ class MainActivity : ComponentActivity() {
      * On startup the grant is usually already there, so this is the silent path
      * (ADR 0002, section 2: sign-in survives a restart with no user action).
      *
-     * Asks Python whether a Google account is connected — on Android that flag
-     * is persisted, while the token itself is memory-only and lost on restart —
-     * then refreshes in silence. Never on the main thread: Chaquopy can take a
-     * moment and the first frame must not wait for it.
+     * Fallback used when onCreate could not read the native flag (an upgrade
+     * from a build that did not write it). Asks Python whether a Google account
+     * is connected, then refreshes in silence. Never on the main thread:
+     * Chaquopy can take a moment and the first frame must not wait for it.
      */
     private fun refreshDriveTokenIfConnected() {
         Thread({

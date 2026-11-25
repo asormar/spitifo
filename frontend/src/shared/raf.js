@@ -26,3 +26,22 @@ export function rafThrottle(fn) {
   };
   return wrapped;
 }
+
+/* ---------------------------------------------------------------------------
+   TRABAJO DIFERIDO AL OCIO
+
+   Las peticiones que no hacen falta para el primer pintado (health, listas,
+   historial) se van a `requestIdleCallback`. Si el navegador no lo tiene, un
+   timeout corto despues del primer cuadro. Devuelve como cancelar para que un
+   desmontaje no deje trabajo pendiente (P-cold-start-3).
+   ------------------------------------------------------------------------- */
+
+export function afterIdle(fn) {
+  if (typeof window !== "undefined" &&
+      typeof window.requestIdleCallback === "function") {
+    const id = window.requestIdleCallback(fn);
+    return () => window.cancelIdleCallback?.(id);
+  }
+  const id = setTimeout(fn, 1200);
+  return () => clearTimeout(id);
+}
