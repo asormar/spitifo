@@ -391,9 +391,27 @@ async def lifespan(app: Starlette):
             tarea = asyncio.create_task(coro)
             BG_TASKS.add(tarea)
             tarea.add_done_callback(BG_TASKS.discard)
-    log.info("biblioteca: %s", get_storage().describe())
+    storage = get_storage()
+    log.info("biblioteca: %s", storage.describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
+    # Un solo `files.list` para TODOS los registros chicos (indice, playlists,
+    # guardadas, imagenes, escuchas, artistinfo, descartes, fileinfo) en vez
+    # de uno por cada uno al primer pedido de cada pantalla (P-drive-io-4).
+    # Sin red (disco local, o la nube caida) no es grave: cada registro cae
+    # a listar el suyo, como siempre.
+    # En segundo plano: el arranque nunca espera a la red (sin conexion, el
+    # listado podria tardar el timeout entero antes de SPITIFO_READY).
+    warm = getattr(storage, "warm_small_files", None)
+    if warm is not None:
+        async def _warm_small_files() -> None:
+            try:
+                await asyncio.to_thread(warm)
+            except Exception as exc:
+                log.info("no se pudo precalentar los archivos chicos: %s", exc)
+        tarea = asyncio.create_task(_warm_small_files())
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
     yield
     for s in ALL_SOURCES:
         await s.aclose()
@@ -402,6 +420,15 @@ async def lifespan(app: Starlette):
     from . import covers, identify
     await identify.aclose()
     await covers.aclose()
+    # Cualquier cambio del indice que haya quedado diferido (dentro de un
+    # `batch_index_writes` que no llego a cerrar su bloque) se sube ahora.
+    flush_all = getattr(storage, "flush_all", None)
+    if flush_all is not None:
+        try:
+            await asyncio.to_thread(flush_all)
+        except Exception as exc:
+            log.warning("no se pudo terminar de subir el indice al cerrar: %s",
+                       exc)
 
 
 # --------------------------------------------------------------- validacion
@@ -2189,13 +2216,45 @@ async def _json_response_threaded(content: Any, *, status_code: int = 200) -> Re
     return Response(body, status_code=status_code, media_type="application/json")
 
 
+def _library_body(describe, files: list) -> tuple[bytes, str]:
+    """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
+    pistas son cerca de un megabyte que no se serializa en el loop."""
+    body = json.dumps({"library": describe, "count": len(files),
+                       "files": files}, ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+    return body, _library_etag(body)
+
+
+def _library_etag(body: bytes) -> str:
+    """ETag debil del cuerpo de `/api/library`: mismos bytes, mismo ETag."""
+    return f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+
+
+#: `no-cache` NO es "no cachear": le dice al navegador que SI guarde la
+#: respuesta pero revalide siempre con el server antes de usarla. Con eso,
+#: `fetch()` (modo "default", el que ya usa el frontend) manda `If-None-Match`
+#: solo porque el navegador ya tiene una copia, y un 304 se lo sirve de la
+#: cache local sin que el codigo de la UI note la diferencia.
+_LIBRARY_CACHE = {"Cache-Control": "private, no-cache"}
+
+
 async def library(request: Request):
+    """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
+    mandar (y que el navegador vuelva a parsear) el JSON entero cuando nada
+    cambio desde el ultimo pedido (P-large-library-scale-8, P-network-caching-6).
+    """
     storage = get_storage()
     files, records = await asyncio.gather(
         run_storage(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
-    return await _json_response_threaded(
-        {"library": storage.describe(), "count": len(files), "files": files})
+    # Serializar en el pool de storage (no en el loop) y, ademas, responder 304
+    # si el cliente ya tiene el mismo cuerpo (ETag debil).
+    body, etag = await run_storage(_library_body, storage.describe(), files)
+    headers = {**_LIBRARY_CACHE, "ETag": etag}
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="application/json", headers=headers)
 
 
 # ------------------------------------------------------------ borrado en libro
@@ -2744,8 +2803,15 @@ def _store_art(storage, target: str, big: bytes, small: bytes,
     """
     big_key, small_key = art_keys(hashlib.sha256(big).hexdigest())
     try:
-        storage.stat(big_key)
-        storage.stat(small_key)
+        # `allow_force=False`: el hash del contenido es casi siempre NUEVO
+        # (dos imagenes iguales byte a byte son raras), asi que forzar una
+        # relectura completa del indice por cada subida de imagen es puro
+        # desperdicio (P-drive-io-8). Si otro dispositivo subio la MISMA
+        # imagen hace instantes y la vista en memoria todavia no lo sabe, en
+        # el peor caso se vuelve a subir el mismo contenido: no se pierde ni
+        # se corrompe nada.
+        storage.stat(big_key, allow_force=False)
+        storage.stat(small_key, allow_force=False)
         exists = True
     except (FileNotFoundError, OSError):
         exists = False
@@ -2846,8 +2912,14 @@ async def listens_append(request: Request):
 
 
 async def listens_summary(request: Request):
-    """GET /api/listens/summary: merge de todos los dispositivos."""
-    data = await asyncio.to_thread(get_storage().load_listens_summary)
+    """GET /api/listens/summary: merge de todos los dispositivos.
+
+    Por la misma cache de 30 s que ya usa Discover (`_cached_summary`): sin
+    esto, esta ruta releia todo de nuevo en cada apertura de la pestana de
+    historial aunque Discover ya lo tuviera fresco (P-drive-io-7).
+    """
+    storage = get_storage()
+    data = await asyncio.to_thread(_cached_summary, storage)
     return JSONResponse(data)
 
 
