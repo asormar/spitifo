@@ -48,6 +48,10 @@ export function useSaveTarget({ t = null, track = null, query = "" } = {}) {
   const savedById = useSaved((s) => s.byId);
   const listen = useListen();
   const [busy, setBusy] = useState(false);
+  /* El corazon se llena en el mismo frame del toque (optimista): guardar de
+     verdad tarda un viaje de red. Se borra en cuanto la operacion termina
+     (exito: el estado real ya coincide; fallo: vuelve atras). */
+  const [optimistic, setOptimistic] = useState(null);
   const result = track?.result || t || null;
   const kind = track?.kind || (result ? "stream" : null);
   const model = listen?.model;
@@ -67,40 +71,45 @@ export function useSaveTarget({ t = null, track = null, query = "" } = {}) {
   );
   const full = kind === "library" || (!track && canSaveResult(result)) ||
     (track?.kind === "stream" && Boolean(track.sid));
-  const state = heartState({ kind, full, saved: stored, owned: Boolean(entry) });
+  const realState = heartState({ kind, full, saved: stored, owned: Boolean(entry) });
+  const state = optimistic === null ? realState : { ...realState, filled: optimistic };
   const title = track?.title || result?.title || entry?.title || "sin título";
 
   const toggle = async () => {
     if (busy) return;
     setBusy(true);
+    setOptimistic(!realState.filled);
     const deps = {
       show: listen?.ctx?.show,
       hideKeys: listen?.ctx?.hideKeys,
       restoreFiles: listen?.ctx?.restoreFiles,
       refreshLibrary: listen?.ctx?.refreshLibrary,
     };
-    if (state.filled) {
+    if (realState.filled) {
       removeEntry(
         entry || (track ? { key: track.key, sid: track.sid, title, downloaded: false } : null),
         deps
       );
       setBusy(false);
+      setOptimistic(null);
       return;
     }
     let resolved = null;
     try {
       resolved = await resolveResult(result, query);
     } catch {
-      /* Sin resolucion no hay id: se dice y el corazon sigue vacio. */
+      /* Sin resolucion no hay id: se dice y el corazon vuelve atras. */
     }
     const song = resolved ? songFromResult(resolved) : null;
     if (!song || !(await saved.save(song))) {
       deps.show?.(saveNotice.fail(title));
+      setOptimistic(null);
       setBusy(false);
       return;
     }
     maybeAutoDownload(song, resolved, { downloaded: false });
     deps.show?.(saveNotice.ok);
+    setOptimistic(null);
     setBusy(false);
   };
 

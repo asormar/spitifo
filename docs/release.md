@@ -73,12 +73,15 @@ git push origin v0.1.0
 
 The tag drives everything: the `version` job strips the leading `v`, each build
 job runs `python scripts/set_version.py <version>` (so nothing is committed from
-CI), and the resulting artifacts are named `Spitifo-<version>-windows-x64-setup.exe`
-and `Spitifo-<version>-android-arm64.apk`.
+CI), and the resulting artifacts are named `spitifo-<version>-windows-setup.exe`
+and `spitifo-<version>-android.apk` — each name says what it installs, since the
+README's install guide points non-technical users straight at them.
 
-When both builds pass, the `release` job writes `SHA256SUMS.txt` and creates a
-draft release at `https://github.com/<owner>/<repo>/releases`. Review the notes
-and the assets, then publish the draft.
+When both builds pass, the `release` job writes `SHA256SUMS.txt`, prepends
+`docs/release-notes-header.md` to the auto-generated notes (`--notes-file`, in
+place of `--generate-notes`) and creates a draft release at
+`https://github.com/<owner>/<repo>/releases`. Review the notes and the assets,
+then publish the draft.
 
 ## Dry run
 

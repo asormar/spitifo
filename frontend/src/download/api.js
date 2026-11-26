@@ -1,9 +1,12 @@
 import { API, errMsg } from "../shared/api.js";
+import { addBoundedSet, setBoundedMap } from "../shared/bounded.js";
 import { canStream } from "./streamTrack.js";
 
 /* Resoluciones ya pedidas, por URL de video. Vive lo que vive la pestana: el
    menu se puede cerrar y reabrir sin volver a preguntar. Los fallos NO se
-   guardan (el usuario tiene que poder reintentar). */
+   guardan (el usuario tiene que poder reintentar). Acotado: una sesion con
+   muchas busquedas y streams distintos no puede crecer sin limite. */
+const FORMATS_CACHE_CAP = 100;
 export const formatsCache = new Map();
 
 /* GET /api/formats con el mismo fetch pelado que el resto de la app (mismo
@@ -26,7 +29,7 @@ export async function fetchFormats(url, signal) {
     duration_s: d.duration_s ?? null,
     resolutions: [...(d.resolutions || [])].sort((a, b) => b.height - a.height),
   };
-  formatsCache.set(url, data);
+  setBoundedMap(formatsCache, url, data, FORMATS_CACHE_CAP);
   return data;
 }
 /* Arma la query contra /api/search respetando los comportamientos reales:
@@ -38,10 +41,11 @@ export async function fetchFormats(url, signal) {
    peticion: no se espera, los fallos se ignoran y cada video se avisa una vez
    por pestana (el JSON va sin Content-Type: el backend lo lee igual y asi no
    hay preflight). */
+const WARM_SET_CAP = 200;
 const warmed = new Set();
 export function warmDownload(url) {
   if (!url || warmed.has(url)) return;
-  warmed.add(url);
+  addBoundedSet(warmed, url, WARM_SET_CAP);
   fetch(`${API}/download/warm`, { method: "POST", body: JSON.stringify({ url }) }).catch(() => {});
 }
 
@@ -58,6 +62,7 @@ export const warmTopResults = (results) =>
 /* Lo mismo para escuchar: los 2 primeros resultados con version completa
    dejan resuelta su URL de audio (una peticion liviana a YouTube por video),
    asi el primer toque en el boton de reproducir suena sin esperar. */
+const PREPARED_SET_CAP = 200;
 const prepared = new Set();
 export const prepareTopStreams = (results) =>
   results
@@ -66,7 +71,7 @@ export const prepareTopStreams = (results) =>
     .map((t) => t.extra.webpage_url)
     .filter((url) => !prepared.has(url))
     .forEach((url) => {
-      prepared.add(url);
+      addBoundedSet(prepared, url, PREPARED_SET_CAP);
       fetch(`${API}/stream/prepare`, { method: "POST", body: JSON.stringify({ url }) }).catch(() => {});
     });
 

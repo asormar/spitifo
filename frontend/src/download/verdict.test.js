@@ -46,15 +46,11 @@ describe("verdictOf: la verdad de cada fila", () => {
 });
 
 describe("vText", () => {
-  it("distingue lo que nunca se comprobo de lo que no se pudo identificar", () => {
-    expect(vText("unv", { untested: true })).toBe("Todavía no se ha comprobado el audio.");
-    expect(vText("unv")).toBe("No se pudo identificar el audio.");
-  });
-
-  it("el resto de textos", () => {
+  it("una sola explicacion por veredicto, compartida con la pastilla", () => {
+    expect(vText("unv")).toBe("Todavía no se ha comprobado el audio.");
     expect(vText("match")).toBe("El audio es la canción que buscaste.");
-    expect(vText("partial")).toBe("Se parece, pero no es exactamente lo que buscaste.");
-    expect(vText("mismatch")).toBe("No es lo que buscabas.");
+    expect(vText("partial")).toBe("Se parece a lo que buscaste, pero no es exacto.");
+    expect(vText("mismatch")).toBe("No es la canción que buscaste.");
     expect(vText("p30")).toBe("Solo hay 30 s de esta fuente.");
   });
 });
@@ -138,5 +134,14 @@ describe("verdictStore", () => {
     off();
     store.setFromDownload(archive, "c", { match: "match" });
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("se acota a 200 consultas: la mas vieja se olvida, no crece sin limite", () => {
+    const store = createVerdictStore(reply({}));
+    for (let i = 0; i < 201; i += 1) {
+      store.setFromDownload(archive, `q${i}`, { match: "match" });
+    }
+    expect(store.get(verdictKey(archive, "q0"))).toBeUndefined();
+    expect(store.get(verdictKey(archive, "q200"))).toMatchObject({ match: "match" });
   });
 });

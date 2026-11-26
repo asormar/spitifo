@@ -323,6 +323,27 @@ def test_url_invalida_da_400(api):
     assert r.status_code == 400
 
 
+def test_resolve_y_stream_comparten_la_misma_extraccion(api, monkeypatch):
+    """Finding #6 (time-to-audio): /api/resolve ya no hace su propia
+    extraccion completa; usa el mismo cache/camino rapido de stream.resolve,
+    asi el /api/stream que de verdad reproduce el toque no vuelve a extraer."""
+    calls = fake_pool(monkeypatch, result=format_info())
+    ranges = []
+    instalar_cliente(monkeypatch, transporte(ranges))
+
+    body = {"source": "ytdlp", "source_id": VID, "title": "Cancion",
+            "artist": "Artista", "extra": {"webpage_url": URL}}
+    r = api.post("/api/resolve", json=body)
+    assert r.status_code == 200
+    assert r.json()["audio_url"]
+
+    r2 = api.get("/api/stream", params={"url": URL})
+    assert r2.status_code == 200
+    assert r2.content == PAYLOAD
+
+    assert len(calls) == 1  # una sola extraccion para los dos toques
+
+
 def test_prepare_responde_202(api, monkeypatch):
     resueltas = []
 

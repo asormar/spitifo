@@ -196,7 +196,7 @@ describe("orden de encolado", () => {
     expect(batches[0].group.id).toBe("album:1");
     // Solo la pista 201: la 1 es tuya y la 101 es solo preview.
     expect(batches[0].items.map((i) => i.track.extra.track_number)).toEqual([201]);
-    expect(batches[0].items[0]).toMatchObject({ fmt: "m4a", media: "audio", query: "Soda Stereo Disco 1" });
+    expect(batches[0].items[0]).toMatchObject({ fmt: "original", media: "audio", query: "Soda Stereo Disco 1" });
   });
 
   it("no encola un disco que no dejo ninguna pista", () => {

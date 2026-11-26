@@ -36,7 +36,7 @@ import httpx
 
 from .identify import fold, similarity, version_conflict, version_markers
 from .models import Track
-from .sources import ITunesSource
+from .sources import BY_NAME, ITunesSource
 
 log = logging.getLogger("spitifo.matched")
 
@@ -45,6 +45,9 @@ DUR_TOL = 12.0       # segundos
 DUR_REJECT = 90.0   # mas que esto = live vs studio / remix
 #: Similitud minima del titulo: el de la ficha tiene que estar entero.
 TITLE_MIN = 0.8
+#: Cuanto espera el match a los alias japoneses. Son un extra best effort:
+#: pasar este tiempo NO es un fallo, se sigue con la ficha que ya tenemos.
+JP_ALIAS_TIMEOUT_S = 2.0
 
 #: Separadores de artistas en un credito de iTunes ("ROSALÍA & Rauw Alejandro",
 #: "Bad Bunny feat. Chencho", "Karol G, Shakira").
@@ -157,13 +160,42 @@ def core_title(title: str) -> str:
 
 
 def score_pair(it_title: str, it_artist: str, it_dur: float,
-               v_title: str, v_upl: str, v_dur: float) -> tuple[float, str]:
-    """0..1 + motivo. 0 = sin confianza (no se empareja)."""
-    # La puerta de artista incluye a los invitados del titulo de la ficha:
-    # "Refrain (feat. Kasane Teto)" de "HAL@修羅場P" bien puede estar en el
-    # canal de Teto. El resto de las reglas no se toca.
-    credit = it_artist or ""
+               v_title: str, v_upl: str, v_dur: float,
+               aliases: dict | None = None) -> tuple[float, str]:
+    """0..1 + motivo. 0 = sin confianza (no se empareja).
+
+    `aliases` trae los nombres en otra escritura que iTunes da para la MISMA
+    pista (storefront jp): "Mesmerizer"/"Satsuki" y "メズマライザー"/"サツキ".
+    Cualquiera de las dos escrituras vale; se queda la mejor pareja. Sin alias,
+    es exactamente la regla de siempre.
+    """
+    a = aliases or {}
+    titles = [it_title]
+    if a.get("title") and fold(a["title"]) != fold(it_title):
+        titles.append(a["title"])
+    artists = [it_artist]
+    if a.get("artist") and fold(a["artist"]) != fold(it_artist):
+        artists.append(a["artist"])
+    # Los invitados vienen del titulo original: el alias no los repite.
     invitados = _feat_artists(it_title)
+    mejor: tuple[float, str] | None = None
+    for titulo in titles:
+        for artista in artists:
+            s, w = _score_pair_one(titulo, artista, it_dur, v_title, v_upl,
+                                   v_dur, invitados)
+            if mejor is None or s > mejor[0]:
+                mejor = (s, w)
+    return mejor or (0.0, "sin-señal")
+
+
+def _score_pair_one(it_title: str, it_artist: str, it_dur: float,
+                    v_title: str, v_upl: str, v_dur: float,
+                    invitados: tuple[str, ...]) -> tuple[float, str]:
+    """Una combinacion titulo/artista. La puerta de artista incluye a los
+    invitados del titulo de la ficha: "Refrain (feat. Kasane Teto)" de
+    "HAL@修羅場P" bien puede estar en el canal de Teto. El resto no se toca.
+    """
+    credit = it_artist or ""
     if invitados:
         credit = (f"{credit} & " if credit else "") + " & ".join(invitados)
     chan = channel_matches(credit, v_upl)
@@ -195,39 +227,45 @@ def score_pair(it_title: str, it_artist: str, it_dur: float,
     return round(max(0.0, min(1.0, score)), 4), why
 
 
-async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
-                             ytdlp_source, limit: int = 40,
-                             videos=None) -> list[dict]:
-    """Busca los videos de YouTube UNA vez y devuelve idx de {itunes_id: video}.
+#: Kana y kanji (incluidos los de ancho completo): si nada de la busqueda los
+#: trae, no hay escritura japonesa que reconciliar y no se gasta ningun lookup.
+_JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
 
-    Devuelve un indice, no Tracks: el llamador los arma, asi puede mantener
-    el resto del pipeline (normalizacion, orden) igual para todas las fuentes.
-    `limit` baja el numero de candidatos en busquedas puntuales (un album
-    completo necesita 40; una pista suelta, menos). `videos` es la busqueda en
-    YouTube ya lanzada (una tarea): el modo Musica la arranca a la vez que la
-    de iTunes, porque solo depende de la consulta.
+
+def _japanese_in_play(query: str, videos: list[dict], itunes_tracks: list[dict]) -> bool:
+    textos = [query or ""]
+    textos += [f"{v.get('title') or ''} {v.get('uploader') or v.get('channel') or ''}"
+               for v in videos]
+    textos += [f"{it.get('trackName') or ''} {it.get('artistName') or ''}"
+               for it in itunes_tracks]
+    return any(_JAPANESE.search(t) for t in textos)
+
+
+async def _aliases_for(raw: dict) -> dict:
+    """Nombres en japones de una ficha de iTunes. Best effort de verdad:
+    ni un fallo de red ni un timeout pueden tumbar la busqueda. La cache vive
+    en `sources`, igual que la del resto de iTunes.
     """
-    if not ytdlp_source or not ytdlp_source.available() or not itunes_tracks:
-        return {}
-    loop = asyncio.get_running_loop()
     try:
-        if videos is None:
-            videos = await ytdlp_source.search_candidates(query, limit=limit)
-        else:
-            videos = await videos
+        return await asyncio.wait_for(
+            BY_NAME["itunes"].lookup_aliases(raw), timeout=JP_ALIAS_TIMEOUT_S)
     except Exception as e:
-        log.warning("matcher: ytdlp search fallo: %s", e)
+        log.warning("matcher: alias jp fallo para %s: %s", raw.get("trackId"), e)
         return {}
 
-    # Todas las parejas posibles y despues el reparto: de mejor a peor puntaje,
-    # cada pista y cada video se usan una vez. Recorrer las pistas en orden y
-    # darle a cada una su mejor video dejaba a la primera quedarse con el video
-    # que encajaba mejor con otra.
-    keys = [str(it.get("trackId") or it.get("collectionId") or it.get("trackName", ""))
-            for it in itunes_tracks]
+
+def _score_pass(itunes_tracks: list[dict], videos: list[dict], keys: list[str],
+                 indices: list[int] | None = None,
+                 ) -> tuple[list[tuple[float, int, int, str]], dict[str, tuple[float, str]]]:
+    """Puntua las parejas candidatas para los indices dados (todos por
+    defecto) contra todos los videos. Pura y sincrona a proposito: ni toca la
+    red ni el loop, asi que un pase (con o sin alias) se puede correr en un
+    hilo sin mas.
+    """
     pairs: list[tuple[float, int, int, str]] = []
     best_miss: dict[str, tuple[float, str]] = {}
-    for ti, it in enumerate(itunes_tracks):
+    for ti in (range(len(itunes_tracks)) if indices is None else indices):
+        it = itunes_tracks[ti]
         title = it.get("trackName", "")
         artist = it.get("artistName", "")
         dur = (it.get("trackTimeMillis") or 0) / 1000
@@ -235,14 +273,25 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
             s, w = score_pair(title, artist, dur,
                               v.get("title") or "",
                               v.get("uploader") or v.get("channel") or "",
-                              v.get("duration") or 0)
+                              v.get("duration") or 0,
+                              aliases=it.get("aliases"))
             if s >= MIN_SCORE:
                 pairs.append((s, ti, vi, w))
             elif s > best_miss.get(keys[ti], (-1.0, ""))[0]:
                 best_miss[keys[ti]] = (s, w)
+    return pairs, best_miss
+
+
+def _assign_pairs(keys: list[str], videos: list[dict],
+                   pairs: list[tuple[float, int, int, str]],
+                   best_miss: dict[str, tuple[float, str]]) -> dict[str, dict]:
+    """El reparto: de mejor a peor puntaje, cada pista y cada video usados una
+    sola vez. Recorrer las pistas en orden y darle a cada una su mejor video
+    dejaba a la primera quedarse con el video que encajaba mejor con otra.
+    """
     # orden estable: a igual puntaje, la pista que iTunes puso antes y el video
     # que YouTube puso antes
-    pairs.sort(key=lambda p: (-p[0], p[1], p[2]))
+    pairs = sorted(pairs, key=lambda p: (-p[0], p[1], p[2]))
 
     used_t: set[int] = set()
     used_v: set[int] = set()
@@ -266,3 +315,68 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
                     else best_miss.get(key, (0.0, "sin-señal")))
             matched[key] = {"video": None, "score": round(s, 2), "why": w or "sin-señal"}
     return matched
+
+
+async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
+                             ytdlp_source, limit: int = 40,
+                             videos=None) -> list[dict]:
+    """Busca los videos de YouTube UNA vez y devuelve idx de {itunes_id: video}.
+
+    Devuelve un indice, no Tracks: el llamador los arma, asi puede mantener
+    el resto del pipeline (normalizacion, orden) igual para todas las fuentes.
+    `limit` baja el numero de candidatos en busquedas puntuales (un album
+    completo necesita 40; una pista suelta, menos). `videos` es la busqueda en
+    YouTube ya lanzada (una tarea o corrutina) o, si ya se tiene la lista (por
+    ejemplo reusando la cache de otra busqueda), la lista misma: ahi no hay
+    nada que esperar ni que pedirle a YouTube.
+
+    El match grupal (hasta 30x40 parejas) pesa de verdad, asi que con mas de
+    una pista se corre en un hilo para no bloquear el loop justo cuando se
+    pinta la primera pantalla. Los alias japoneses son un lookup de red, asi
+    que viven en el loop entre los dos pases: se piden solo para las pistas
+    que el primer pase dejo sin pareja y solo si hay escritura japonesa en
+    juego; el segundo pase (con los alias ya puestos) se ofrece al mismo hilo
+    que el primero, no al loop.
+    """
+    if not ytdlp_source or not ytdlp_source.available() or not itunes_tracks:
+        return {}
+    try:
+        if videos is None:
+            videos = await ytdlp_source.search_candidates(query, limit=limit)
+        elif asyncio.isfuture(videos) or asyncio.iscoroutine(videos):
+            videos = await videos
+    except Exception as e:
+        log.warning("matcher: ytdlp search fallo: %s", e)
+        return {}
+
+    keys = [str(it.get("trackId") or it.get("collectionId") or it.get("trackName", ""))
+            for it in itunes_tracks]
+    offload = len(itunes_tracks) > 1
+
+    if offload:
+        pairs, best_miss = await asyncio.to_thread(_score_pass, itunes_tracks, videos, keys)
+    else:
+        pairs, best_miss = _score_pass(itunes_tracks, videos, keys)
+
+    if _japanese_in_play(query, videos, itunes_tracks):
+        con_pareja = {p[1] for p in pairs}
+        sueltas = [ti for ti in range(len(itunes_tracks)) if ti not in con_pareja]
+        if sueltas:
+            alias_list = await asyncio.gather(
+                *(_aliases_for(itunes_tracks[ti]) for ti in sueltas),
+                return_exceptions=True)
+            aliased = [ti for ti, alias in zip(sueltas, alias_list)
+                       if isinstance(alias, dict) and alias]
+            for ti, alias in zip(sueltas, alias_list):
+                if isinstance(alias, dict) and alias:
+                    itunes_tracks[ti]["aliases"] = alias
+            if aliased:
+                if offload:
+                    pairs2, best_miss2 = await asyncio.to_thread(
+                        _score_pass, itunes_tracks, videos, keys, aliased)
+                else:
+                    pairs2, best_miss2 = _score_pass(itunes_tracks, videos, keys, aliased)
+                pairs += pairs2
+                best_miss.update(best_miss2)
+
+    return _assign_pairs(keys, videos, pairs, best_miss)

@@ -33,6 +33,7 @@ export function savedEntry(song) {
     thumbKey: null,
     downloaded: false,
     search: fold(`${title} ${artist} ${song.album || ""}`),
+    titleKey: fold(title),
   };
 }
 
