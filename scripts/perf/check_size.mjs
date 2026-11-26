@@ -2,8 +2,8 @@
 // Fails when a build output is over its size budget (scripts/perf/budgets.json).
 //
 //   node scripts/perf/check_size.mjs bundle frontend/dist
-//   node scripts/perf/check_size.mjs installer dist/Spitifo-X.Y.Z-windows-x64-setup.exe
-//   node scripts/perf/check_size.mjs apk dist/Spitifo-X.Y.Z-android-arm64.apk
+//   node scripts/perf/check_size.mjs installer dist/spitifo-X.Y.Z-windows-setup.exe
+//   node scripts/perf/check_size.mjs apk dist/spitifo-X.Y.Z-android.apk
 //
 // `bundle` adds up every .js and every .css file under the folder (raw bytes:
 // what the WebView parses; gzip is printed for reference only). The result also

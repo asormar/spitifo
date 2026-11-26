@@ -18,7 +18,7 @@ from backend.app.playlists import (
     PlaylistFormatError,
     validate_playlist,
 )
-from backend.app.storage import set_storage
+from backend.app.storage import get_storage, set_storage
 from backend.app.storage.local import LocalStorage
 
 
@@ -44,6 +44,81 @@ def test_round_trip_con_bytes_estables():
         "a", "Alfa", ("A/a.mp3", "A/b.mp3"), 1.0)
     # la lista va ordenada por id, para que el archivo sea comparable
     assert [p["id"] for p in json.loads(data)["playlists"]] == ["a", "b"]
+
+
+def test_round_trip_conserva_campos_desconocidos():
+    """Un cliente viejo que reescribe el JSON no puede borrar lo que no
+    entiende: las claves nuevas de otra version vuelven intactas."""
+    data = json.dumps({"version": 1, "playlists": [{
+        "id": "p1", "name": "Viaje", "keys": ["A/a.mp3"], "updated_at": 1.0,
+        "deleted": False,
+        "campo_nuevo": {"profundo": [1, 2, None]},
+        "otro_mas": "tal cual",
+    }]}, sort_keys=True, ensure_ascii=False).encode()
+    book = PlaylistBook.from_bytes(data)
+    again = PlaylistBook.from_bytes(book.to_bytes())
+
+    assert again.to_bytes() == book.to_bytes() == data
+    assert again.playlists["p1"].extra == {
+        "campo_nuevo": {"profundo": [1, 2, None]}, "otro_mas": "tal cual"}
+
+
+def test_round_trip_conserva_los_campos_aditivos_y_una_carpeta():
+    data = json.dumps({"version": 1, "playlists": [{
+        "id": "carpeta", "name": "Para viajar", "keys": ["viaje", "gym"],
+        "updated_at": 2.0, "deleted": False, "is_folder": True,
+        "description": "Listas para el tren", "cover_key": "A/foto.jpg",
+    }]}, sort_keys=True, ensure_ascii=False).encode()
+    again = PlaylistBook.from_bytes(PlaylistBook.from_bytes(data).to_bytes())
+    p = again.playlists["carpeta"]
+
+    assert (p.is_folder, p.keys) == (True, ["viaje", "gym"])
+    assert p.description == "Listas para el tren"
+    assert p.cover_key == "A/foto.jpg"
+    assert again.to_bytes() == data
+
+
+def test_una_playlist_sin_campos_nuevos_mantiene_sus_bytes():
+    """El formato en disco de una playlist vieja no cambia ni un byte."""
+    data = json.dumps({"version": 1, "playlists": [{
+        "id": "p1", "name": "Viaje", "keys": ["A/a.mp3"],
+        "updated_at": 1.0, "deleted": False,
+    }]}, sort_keys=True, ensure_ascii=False).encode()
+    assert PlaylistBook.from_bytes(data).to_bytes() == data
+
+
+def test_un_campo_desconocido_no_puede_suplantar_un_campo_conocido():
+    from backend.app.playlists import _playlist_to_dict
+
+    p = _playlist("p1", "Real", ("A/a.mp3",), 1.0)
+    p.extra = {"name": "Falsa", "keys": ["../fuera.mp3"], "color": "rojo"}
+    d = _playlist_to_dict(p)
+    assert d["name"] == "Real"
+    assert d["keys"] == ["A/a.mp3"]
+    assert d["color"] == "rojo"
+
+
+def test_el_indice_de_claves_apunta_a_las_listas_vivas():
+    book = PlaylistBook()
+    book.upsert(_playlist("a", "A", ("A/x.mp3", "A/y.mp3"), 1.0))
+    book.upsert(_playlist("b", "B", ("A/y.mp3",), 1.0))
+    book.upsert(_playlist("c", "C", ("A/z.mp3",), 1.0, deleted=True))
+
+    assert book.owners({"A/y.mp3"}) == {"a", "b"}
+    assert book.owners({"A/x.mp3", "A/z.mp3"}) == {"a"}
+    assert book.owners({"A/nada.mp3"}) == set()
+
+    # Cambiar una lista reconstruye el indice; la clave vieja ya no apunta.
+    book.upsert(_playlist("a", "A", ("A/z.mp3",), 2.0))
+    assert book.owners({"A/x.mp3"}) == set()
+    assert book.owners({"A/z.mp3"}) == {"a"}
+
+
+def test_el_indice_incluye_la_portada():
+    p = _playlist("a", "A", ("A/x.mp3",), 1.0)
+    p.cover_key = "A/portada.jpg"
+    book = PlaylistBook(playlists={"a": p})
+    assert book.owners({"A/portada.jpg"}) == {"a"}
 
 
 def test_json_invalido_se_rechaza():
@@ -299,6 +374,58 @@ def test_delete_da_204_y_la_saca_de_la_lista(api):
     assert api.get("/api/playlists").json() == {"playlists": []}
     # Borrar una que no existe tambien es 204 (idempotente).
     assert api.delete("/api/playlists/no-existe").status_code == 204
+
+
+def test_put_y_get_de_campos_aditivos_y_carpeta(api):
+    r = api.put("/api/playlists/viaje", json={
+        "name": "Viaje", "keys": ["A/a.mp3"],
+        "description": "Para el tren", "cover_key": "A/a.jpg"})
+    assert r.status_code == 200
+    assert r.json()["description"] == "Para el tren"
+    assert r.json()["cover_key"] == "A/a.jpg"
+
+    r = api.put("/api/playlists/carpeta", json={
+        "name": "Para viajar", "keys": ["viaje"], "is_folder": True})
+    assert r.status_code == 200
+    assert r.json()["is_folder"] is True
+
+    by_id = {p["id"]: p for p in api.get("/api/playlists").json()["playlists"]}
+    assert by_id["carpeta"]["keys"] == ["viaje"]
+    # Una carpeta no pierde su descripcion al reescribirse.
+    assert by_id["viaje"]["description"] == "Para el tren"
+
+
+def test_put_de_carpeta_rechaza_claves_de_cancion_y_self(api):
+    assert api.put("/api/playlists/carpeta", json={
+        "name": "Carpeta", "keys": ["A/a.mp3"], "is_folder": True}).status_code == 422
+    assert api.put("/api/playlists/carpeta", json={
+        "name": "Carpeta", "keys": ["carpeta"], "is_folder": True}).status_code == 422
+
+
+def test_put_con_descripcion_o_portada_invalidos_da_422(api):
+    for campo, valor in (("description", 7), ("cover_key", "../fuera.jpg"),
+                         ("folder_id", "con espacio"), ("is_folder", "sí")):
+        r = api.put("/api/playlists/p1", json={
+            "name": "X", "keys": [], campo: valor})
+        assert r.status_code == 422, campo
+
+
+def test_un_write_que_falla_no_pierde_la_playlist_del_usuario(api, tmp_path, monkeypatch):
+    storage = get_storage()
+    ruta = tmp_path / "lib" / ".spitifo" / "playlists.json"
+    api.put("/api/playlists/p1", json={"name": "Viaje", "keys": ["A/a.mp3"]})
+    antes = ruta.read_bytes()
+
+    def romper(_book):
+        raise OSError("disco lleno")
+
+    monkeypatch.setattr(storage, "_write_playlists", romper)
+    with pytest.raises(OSError):
+        storage.save_playlist(lambda b: b.upsert(_playlist("nueva", "Nueva")))
+    assert ruta.read_bytes() == antes  # el archivo del usuario sigue ahi
+
+    monkeypatch.undo()
+    assert [p["id"] for p in api.get("/api/playlists").json()["playlists"]] == ["p1"]
 
 
 def test_re_put_despues_del_delete_la_revive(api):

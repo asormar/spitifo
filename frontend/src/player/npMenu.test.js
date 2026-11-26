@@ -51,7 +51,7 @@ describe("grupos del menu ⋯ de un stream suelto", () => {
       "Escuchar", "Tu biblioteca", "Compartir", "Ir a", "Archivo", "Reproductor",
     ]);
     expect(groups[0].items.map((i) => i.kind)).toEqual(["next", "end"]);
-    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "flac" });
+    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar" });
     expect(groups[2].items).toEqual([{ kind: "share", icon: "Share", text: "Compartir" }]);
     expect(groups[3].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",

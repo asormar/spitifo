@@ -79,7 +79,9 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   const chip = rowChip(t, plan);
   const { play, isCurrent, playing, resolving } = useResultPlayback({ t, query, queue, source });
   const dls = useDl(t, busy, downloaded);
-  const progress = dlWaiting(dls);
+  /* El anillo se queda en pantalla mientras corre Y mientras esta fallido: un
+     error no puede volver la fila a su estado de "nunca se intento". */
+  const progress = dlWaiting(dls) || dls.id === "err";
 
   /* El nombre accesible empieza por lo que hace el toque. Las comas separan las
      partes (lector encadena "Let Down Radiohead" sin ellas) y el nombre entero
@@ -91,13 +93,32 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
     resolving ? "buscando la canción completa" : null,
     chip === "seek" ? "buscando la versión entera" : null,
     chip === "30" && !resolving ? "vista previa de 30 s" : null,
+    chip === "busy" && !resolving ? "YouTube ocupado, vista previa de 30 s" : null,
     downloaded ? "descargada" : null,
     prov.split ? `ficha de ${prov.ficha}, archivo de ${prov.archivo}` : prov.archivo,
     facts || null,
   ].filter(Boolean).join(", ");
 
   return (
-    <li className={cx("res", isCurrent && "is-current", resolving && "is-resolving")} style={{ "--i": i }} data-k={rowKey(t)} data-wave={state}>
+    <li
+      className={cx("res", isCurrent && "is-current", resolving && "is-resolving")}
+      style={{ "--i": i }}
+      data-k={rowKey(t)}
+      data-wave={state}
+      onContextMenu={(e) => {
+        if (!onMenu) return;
+        e.preventDefault();
+        const el = e.currentTarget.querySelector(".res__main") || e.currentTarget;
+        onMenu(t, el, { x: e.clientX, y: e.clientY });
+      }}
+      onKeyDown={(e) => {
+        if (!onMenu || !(e.shiftKey && e.key === "F10") && e.key !== "ContextMenu") return;
+        e.preventDefault();
+        const el = e.currentTarget.querySelector(".res__main") || e.currentTarget;
+        const r = el.getBoundingClientRect();
+        onMenu(t, el, { x: r.left + 24, y: r.bottom });
+      }}
+    >
       <span className="res__n num" aria-hidden="true">
         {i + 1}
       </span>
@@ -116,12 +137,17 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
           <span className="res__m">
             {isCurrent && <Bars on={playing} />}
             {chip === "seek" && !resolving && <span className="res__seek">Buscando</span>}
-            {chip === "30" && !resolving && <span className="res__30">30 s</span>}
+            {chip === "30" && !resolving && <span className="res__30">Avance de 30 s</span>}
+            {chip === "busy" && !resolving && (
+              <span className="res__30" title="YouTube ocupado: suena el avance de 30 s">
+                YouTube ocupado
+              </span>
+            )}
             {realV && <VerdictPill v={realV} />}
             {resolving && (
-              <span className="res__wait" role="status" aria-live="polite">
+              <span className="res__wait res__wait--now" role="status" aria-live="polite">
                 <span className="sp" aria-hidden="true" />
-                buscando la canción completa…
+                Buscando…
               </span>
             )}
             {downloaded && <span className="res__dl" aria-hidden="true" />}

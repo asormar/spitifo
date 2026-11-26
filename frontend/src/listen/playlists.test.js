@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPlaylists, moveKey, visibleToKeyIndex } from "./playlists.js";
+import {
+  createPlaylists,
+  duplicatesIn,
+  moveKey,
+  payloadOf,
+  visibleToKeyIndex,
+} from "./playlists.js";
 
 /* fetch falso: cada peticion queda en `calls` y se resuelve a mano con
    `settle(i, ...)`, para controlar el orden en que "llega" cada respuesta. */
@@ -313,6 +319,80 @@ describe("pure helpers", () => {
     expect(moveKey(keys, from, to)).toEqual(["m1", "b", "m2", "c", "a"]);
     const [f2, t2] = visibleToKeyIndex(keys, visible, 2, 1);
     expect(moveKey(keys, f2, t2)).toEqual(["a", "m1", "c", "b", "m2"]);
+  });
+});
+
+describe("campos aditivos, bloque y carpetas", () => {
+  const meta = {
+    id: "a", name: "Viaje", keys: ["k1"], updated_at: 1,
+    description: "Para el tren", cover_key: "A/a.jpg", folder_id: "c1",
+    is_folder: false, extra: { campo_nuevo: 7 },
+  };
+
+  it("el PUT lleva todos los campos y devuelve los desconocidos", () => {
+    expect(payloadOf(meta)).toEqual({
+      name: "Viaje", keys: ["k1"], description: "Para el tren",
+      cover_key: "A/a.jpg", folder_id: "c1", campo_nuevo: 7,
+    });
+    expect(payloadOf({ name: "Vieja", keys: [] })).toEqual({ name: "Vieja", keys: [] });
+  });
+
+  it("duplicatesIn cuenta lo que ya estaba antes de escribir", () => {
+    expect(duplicatesIn({ keys: ["a", "b"] }, ["b", "c", "b"])).toEqual(["b"]);
+    expect(duplicatesIn(null, ["a"])).toEqual([]);
+  });
+
+  it("editar la descripcion o la portada no pierde los demas campos", async () => {
+    const { store, calls } = await loaded([{ ...meta }]);
+    expect(store.setDescription("a", "  Nueva  ")).toBe(true);
+    expect(store.setCover("a", "A/b.jpg")).toBe(true);
+    expect(store.getState().list[0]).toMatchObject({
+      description: "Nueva", cover_key: "A/b.jpg", folder_id: "c1",
+      extra: { campo_nuevo: 7 },
+    });
+    await tick();
+    expect(calls[1].body).toMatchObject({ description: "Nueva", cover_key: "A/a.jpg" });
+    calls[1].resolve(saved(calls[1], { id: "a" }));
+    await tick();
+    expect(calls[2].body).toMatchObject({ description: "Nueva", cover_key: "A/b.jpg" });
+  });
+
+  it("quitar y anadir en bloque hace un solo PUT", async () => {
+    const { store, calls } = await loaded([P("a", "A", ["x", "y", "z"])]);
+    expect(store.removeKeys("a", ["y", "nada"])).toBe(1);
+    expect(store.replaceKeys("a", ["z", "w", "w"])).toBe(true);
+    expect(store.getState().list[0].keys).toEqual(["z", "w"]);
+    await tick();
+    expect(calls).toHaveLength(2); // la segunda escritura espera a la primera
+    calls[1].resolve(saved(calls[1], { id: "a" }));
+    await tick();
+    expect(calls).toHaveLength(3); // GET + dos PUT
+    expect(calls[2].body.keys).toEqual(["z", "w"]);
+  });
+
+  it("una carpeta guarda ids de lista en sus claves", async () => {
+    const { store, calls } = await loaded([
+      { id: "c1", name: "Viajes", keys: [], is_folder: true, updated_at: 1 },
+      P("l1", "Tren"),
+    ]);
+    expect(store.addToFolder("c1", ["l1", "c1"])).toBe(0);
+    expect(store.addToFolder("c1", ["l1"])).toBe(1);
+    expect(store.getState().list.find((p) => p.id === "c1").keys).toEqual(["l1"]);
+    await tick();
+    expect(calls[1].body).toEqual({ name: "Viajes", keys: ["l1"], is_folder: true });
+  });
+
+  it("deshacer un borrado devuelve tambien los campos nuevos", async () => {
+    const { store, calls } = await loaded([meta]);
+    store.remove("a");
+    store.undoRemove(meta);
+    await tick();
+    calls[1].resolve({ ok: true, status: 204, json: async () => ({}) });
+    await tick();
+    expect(calls[2].body).toMatchObject({
+      description: meta.description, cover_key: meta.cover_key,
+      folder_id: meta.folder_id, campo_nuevo: 7,
+    });
   });
 });
 

@@ -2,9 +2,10 @@ import { Icon } from "../shared/icons.jsx";
 import SearchField from "../shared/SearchField.jsx";
 import { useTheme } from "../shared/theme.js";
 import { PLACEHOLDER } from "../download/constants.js";
-import { useSearchBusy, useSearchDraft } from "../download/searchDraft.js";
+import { useSearchBusy, useSearchDraft, useSearchSuggestions } from "../download/searchDraft.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { useNav } from "./useNav.js";
+import { backToLabel } from "./crossMode.js";
 
 /* ---------------------------------------------------------------------------
    BARRA DE ARRIBA (escritorio)
@@ -15,10 +16,11 @@ import { useNav } from "./useNav.js";
    de tu biblioteca y Enter lanza la busqueda de descargas.
    ------------------------------------------------------------------------- */
 
-export default function TopBar() {
+export default function TopBar({ onHelp }) {
   const nav = useNav();
   const [q, setQ] = useSearchDraft();
   const busy = useSearchBusy();
+  const suggestions = useSearchSuggestions();
   const [theme, chooseTheme] = useTheme();
   const dark = theme === "dark";
   const toggle = `Cambiar al tema ${dark ? "claro" : "oscuro"}`;
@@ -28,10 +30,32 @@ export default function TopBar() {
     nav.goTab("search");
   };
 
+  const pick = (item) => {
+    const text = item?.title || "";
+    setQ(text);
+    requestSearch(text);
+    nav.goTab("search");
+  };
+
+  /* En PC el campo esta aqui: bajar con la lista cerrada lleva el foco a la
+     primera fila de resultados en vez de no hacer nada. */
+  const arrowDown = (e) => {
+    const row = document.querySelector('.rlist .res__main, .rlist [role="button"]');
+    if (!row) return;
+    e.preventDefault();
+    row.focus({ preventScroll: true });
+  };
+
   return (
     <header className="topbar">
       {(nav.pageOf(nav.tab) || nav.settings) && (
-        <button type="button" className="cbtn cbtn--soft" aria-label="Volver" title="Volver" onClick={nav.back}>
+        <button
+          type="button"
+          className="cbtn cbtn--soft"
+          aria-label={backToLabel(nav)}
+          title={backToLabel(nav)}
+          onClick={nav.back}
+        >
           <Icon name="CaretLeft" size="lg" />
         </button>
       )}
@@ -43,10 +67,25 @@ export default function TopBar() {
         onSubmit={submit}
         onFocus={() => nav.goTab("search")}
         go="Buscar"
+        ghost
         busy={busy}
+        listId="topbar-combo"
+        suggestions={suggestions}
+        onPickSuggestion={pick}
+        onArrowDown={arrowDown}
         placeholder={PLACEHOLDER.default}
         label="Qué quieres escuchar"
       />
+
+      <button
+        type="button"
+        className="cbtn"
+        aria-label="Ver atajos de teclado"
+        title="Atajos de teclado (?)"
+        onClick={onHelp}
+      >
+        <Icon name="Keyboard" size="lg" />
+      </button>
 
       <button
         type="button"

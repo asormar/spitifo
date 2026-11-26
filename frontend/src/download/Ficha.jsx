@@ -39,19 +39,27 @@ function Verify({ t, query }) {
   const rec = useVerdict(verdictKey(t, query));
   const run = () => verdictStore.verify(t, query);
 
-  /* Sin hacer, haciendose o fallida: un solo boton que dice en que esta. */
+  /* Sin hacer, haciendose o fallida: la frase fija y el reintento por
+     separado, nunca fusionados con el mensaje crudo del transporte. */
   if (rec?.from !== "verify") {
     const wait = rec?.phase === "loading";
     const fail = rec?.phase === "error";
+    if (fail) {
+      return (
+        <div className="ver" aria-live="polite">
+          <p className="note">No se pudo leer el audio de esta fuente.</p>
+          <button type="button" className="vbtn" onClick={run}>
+            <Icon name="ArrowClockwise" size="sm" />
+            Reintentar
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="ver" aria-live="polite">
         <button type="button" className={wait ? "vbtn vbtn--wait" : "vbtn"} aria-disabled={wait || undefined} onClick={() => !wait && run()}>
-          {wait ? <span className="sp" aria-hidden="true" /> : <Icon name={fail ? "ArrowClockwise" : "Sparkle"} size="sm" />}
-          {wait
-            ? "Leyendo las etiquetas del audio"
-            : fail
-            ? `No pude verificar: ${rec.error}. Reintentar`
-            : "¿Es esta la canción?"}
+          {wait ? <span className="sp" aria-hidden="true" /> : <Icon name="Sparkle" size="sm" />}
+          {wait ? "Leyendo las etiquetas del audio" : "¿Es esta la canción?"}
         </button>
       </div>
     );
@@ -119,7 +127,7 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
         {v && (
           <div className="vcard">
             <VerdictPill v={v} />
-            <p>{vText(v, { untested: !done })}</p>
+            <p>{vText(v)}</p>
             <Facts
               rows={[
                 ["Buscaste", `«${query}»`],

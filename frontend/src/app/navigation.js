@@ -62,6 +62,66 @@ export function writeView(search, view) {
   return qs ? `?${qs}` : "";
 }
 
+/* ---------------------------------------------------------------------------
+   ESPEJO DE RUTA (fase 14)
+
+   La URL es un espejo de solo lectura de la pagina visible: ?view=<pestana>
+   mas ?page=<tipo>:<id>. Nunca crea entradas de historial: `writeRoute` solo
+   compone la cadena que los replaceState/pushState de useNav ya hacian. Las
+   hojas y los menus no son paginas y no cambian la ruta: pageOf las salta.
+   `readRoute` sirve para replayar la ruta sobre la pila antes del primer
+   pintado, al arrancar.
+   ------------------------------------------------------------------------- */
+
+export const PAGE_PARAM = "page";
+
+/* Solo las paginas con un destino estable reciben direccion. Las hojas
+   (menus, fichas, Ahora suena) viven en la misma pila pero no son paginas. */
+export const ADDRESSABLE = Object.freeze(["album", "artist", "itunesartist", "list", "all", "library"]);
+
+const ADDRESSABLE_SET = new Set(ADDRESSABLE);
+
+export function pageToken(view) {
+  if (!view || !ADDRESSABLE_SET.has(view.type)) return null;
+  const key = view.id ?? view.what;
+  return key === undefined || key === null ? view.type : `${view.type}:${key}`;
+}
+
+export function parsePage(token) {
+  if (typeof token !== "string" || !token) return null;
+  const cut = token.indexOf(":");
+  const type = cut < 0 ? token : token.slice(0, cut);
+  const key = cut < 0 ? null : token.slice(cut + 1);
+  if (!ADDRESSABLE_SET.has(type)) return null;
+  if (type === "all") return key ? { type, what: key } : null;
+  if (type === "library") return { type };
+  return key ? { type, id: key } : null;
+}
+
+export function readPage(search) {
+  return parsePage(new URLSearchParams(search || "").get(PAGE_PARAM));
+}
+
+export function writePage(search, view) {
+  const params = new URLSearchParams(search || "");
+  const token = pageToken(view);
+  if (token) params.set(PAGE_PARAM, token);
+  else params.delete(PAGE_PARAM);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/* Compone la ruta completa a partir del estado logico (pestana, Ajustes y
+   pagina). La pagina se pasa ya resuelta para que una hoja encima no cambie
+   la direccion de la pagina de debajo. */
+export function writeRoute(search, { tab, settings = false, page = null } = {}) {
+  return writePage(writeView(search, { tab, settings }), page);
+}
+
+export function readRoute(search) {
+  return { ...readView(search), page: readPage(search) };
+}
+
 /* La pestana que conviene adelantar mientras la app esta ociosa. */
 export function nextGuess(tab) {
   if (tab === "home") return "search";
@@ -95,7 +155,7 @@ export function modeDirection(from, to) {
    "art" es la hoja "Foto de..." de una cancion, un album o un artista.
    Todas viven en la pila para que atras, Escape y el atras de Android las
    cierren, pero la pantalla sigue a la vista debajo, sin pagina propia. */
-const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "art", "npmenu"]);
+const OVERLAYS = new Set(["menu", "picker", "lmenu", "file", "almenu", "aldel", "artmenu", "art", "npmenu"]);
 /* "albumsheet" es la ficha de un album de Buscar; "descargas" es la hoja de la
    cola que abre la pildora del shell; "discsheet" es la lista de discografia
    del artista. Son hojas, no paginas ("album" ya es la pagina de un album de
@@ -121,6 +181,32 @@ export function pageOf(stack) {
 
 /* La pila que ve la pestana `id`: la de la activa y ninguna en las demas. */
 export const stackFor = (id, active, stack) => (id === active ? stack : []);
+
+/* ---------------------------------------------------------------------------
+   PILAS POR PESTANA (fase 14)
+
+   El estado del controlador lleva `stack` (la pila activa) y `stacks` (un
+   Map<pestana, pila>). Las dos funciones puras de abajo son las unicas que
+   mueven una pila de sitio: `withStack` la cambia, `switchTab` cambia la
+   pestana activa sin tocar ninguna. Asi tocar la barra nunca borra lo que
+   habia en la pestana que dejas, y el scroll de cada pagina sigue en su clave.
+   ------------------------------------------------------------------------- */
+
+export function stackAt(state, id) {
+  if (id === state.tab) return state.stack ?? [];
+  return state.stacks?.get(id) ?? [];
+}
+
+export function withStack(state, stack) {
+  return { ...state, stack, stacks: new Map(state.stacks).set(state.tab, stack) };
+}
+
+export function switchTab(state, tab) {
+  if (!TAB_SET.has(tab)) return state;
+  const stacks = new Map(state.stacks);
+  stacks.set(state.tab, state.stack);
+  return { ...state, tab, stack: stacks.get(tab) ?? [], stacks };
+}
 
 /* Quita lo que sobra cuando el historial vuelve a una entrada de `depth`
    paginas. */
@@ -195,17 +281,34 @@ export function canStartSwipe(target) {
   return !target.closest(NO_SWIPE_SELECTOR);
 }
 
+/* 20 dp de borde cedidos al gesto de atras de Android (Decision 1). Con
+   viewport a escala 1 un dp CSS equivale a un dp del sistema; el escalado de
+   fuentes ya entra en la medida del rectangulo. El swipe de modos ignora el
+   toque que nace ahi: en ese borde solo manda el atrás del sistema. */
+export const SWIPE_EDGE = 20;
+
+export function inSwipeEdge(x, rect, edge = SWIPE_EDGE) {
+  if (!rect || !Number.isFinite(x)) return false;
+  const left = Number.isFinite(rect.left) ? rect.left : 0;
+  const right = Number.isFinite(rect.right)
+    ? rect.right
+    : left + (globalThis.innerWidth || 0);
+  return x <= left + edge || x >= right - edge;
+}
+
 const PHONE_NAV_KEY = "spitifo.phoneNav";
 const PHONE_NAV_VALUES = new Set(["tabs", "swipe"]);
 
 /* localStorage puede no existir (SSR, tests) o lanzar (modo privado con
-   almacenamiento bloqueado). Un fallo nunca puede impedir arrancar la app. */
+   almacenamiento bloqueado). Un fallo nunca puede impedir arrancar la app.
+   Por defecto manda el swipe en el telefono (Decision 1); «Pestañas» sigue
+   disponible en Ajustes exactamente como antes. */
 export function readPhoneNav() {
   try {
     const value = globalThis.localStorage?.getItem(PHONE_NAV_KEY);
-    return PHONE_NAV_VALUES.has(value) ? value : "tabs";
+    return PHONE_NAV_VALUES.has(value) ? value : "swipe";
   } catch (e) {
-    return "tabs";
+    return "swipe";
   }
 }
 
@@ -215,5 +318,25 @@ export function writePhoneNav(value) {
     globalThis.localStorage?.setItem(PHONE_NAV_KEY, value);
   } catch (e) {
     /* Se queda en memoria; la proxima sesion vuelve a preguntar. */
+  }
+}
+
+/* La pista del gesto se muestra una sola vez, la primera vez que se elige
+   «Páginas deslizables». Un fallo de almacenamiento no la hace repetirse. */
+const SWIPE_HINT_KEY = "spitifo.swipeHint";
+
+export function readSwipeHint() {
+  try {
+    return globalThis.localStorage?.getItem(SWIPE_HINT_KEY) !== "seen";
+  } catch (e) {
+    return true;
+  }
+}
+
+export function writeSwipeHint() {
+  try {
+    globalThis.localStorage?.setItem(SWIPE_HINT_KEY, "seen");
+  } catch (e) {
+    /* Sin almacenamiento se olvida al recargar, igual que la preferencia. */
   }
 }

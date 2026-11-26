@@ -28,6 +28,8 @@ import { panel, usePanel } from "./panel.js";
 import { playStateText } from "./playState.js";
 import { artTint, toneTint } from "./tint.js";
 import { resistedDy, scrimOpacity, shouldDismiss, shouldSkip } from "./npGestures.js";
+import { THEME_COLOR } from "../shared/theme.js";
+import { motion, motionAfter } from "../shared/motion.js";
 import "./nowplaying.css";
 
 /* ---------------------------------------------------------------------------
@@ -55,8 +57,8 @@ const TABS = ["Ahora suena", "Cola", "Ficha"];
 /* Movimiento minimo antes de decidir si el arrastre es hacia abajo. */
 const SLOP = 8;
 
-const prefersReducedMotion = () =>
-  typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* La duracion la decide el helper compartido (shared/motion.js), tambien en
+   el arrastre de esta vista (§7: nada espera 500ms con movimiento reducido). */
 
 /* Portada de un vecino en el carrusel de deslizar: decorativa (aria-hidden),
    con la misma receta de imagen/inicial que la portada principal pero sin el
@@ -151,6 +153,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const gesture = useRef(null);
   /* Lo que hay que hacer cuando termina la transicion de salida del arrastre. */
   const afterSlide = useRef(null);
+  const slideTimer = useRef(null);
+  const coverTimer = useRef(null);
   /* Deslizamiento lateral del cuerpo: { x, y, t }. */
   const swipe = useRef(null);
   /* Scrim detras del arrastre de cierre: vive fuera de .np (ver mas abajo), asi
@@ -179,8 +183,23 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     const el = rootRef.current;
     const first = pc ? el.querySelector('[role="tab"][aria-selected="true"]') : el.querySelector(".np__close");
     first?.focus({ preventScroll: true });
+    return () => {
+      slideTimer.current?.();
+      coverTimer.current?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* La barra de estado acompaña a la pantalla oscura del reproductor aunque el
+     tema sea claro (§1). El bridge ya existe: theme.js lo usa al cambiar tema. */
+  useEffect(() => {
+    if (pc) return undefined;
+    window.SpitifoAndroid?.setBars?.("#0e0e18", false);
+    return () => {
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      window.SpitifoAndroid?.setBars?.(THEME_COLOR[dark ? "dark" : "light"], !dark);
+    };
+  }, [pc]);
 
   /* Cambiar de pestana vuelve arriba. */
   useLayoutEffect(() => {
@@ -222,6 +241,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const onPointerDown = (e) => {
     /* El raton no arrastra (seleccionaria texto). */
     if (e.pointerType === "mouse" || !e.isPrimary) return;
+    slideTimer.current?.();
+    slideTimer.current = null;
     gesture.current = {
       id: e.pointerId,
       x: e.clientX,
@@ -267,6 +288,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   };
 
   const runAfterSlide = () => {
+    slideTimer.current?.();
+    slideTimer.current = null;
     const f = afterSlide.current;
     afterSlide.current = null;
     f?.();
@@ -289,8 +312,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
       if (leave) onClose(false);
       else el.style.transition = "";
     };
-    /* Por si la transicion no llega a emitir su evento. */
-    setTimeout(runAfterSlide, 500);
+    /* Por si la transicion no llega a emitir su evento; con movimiento
+       reducido corre en el mismo tick, sin dejar la vista bloqueada 500ms. */
+    slideTimer.current = motionAfter(runAfterSlide, 500);
   };
 
   /* --- Deslizar la portada para saltar de cancion (solo telefono) ----------- */
@@ -346,14 +370,13 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     const dir = dx < 0 ? 1 : -1; // izquierda => siguiente
     const neighbor = dir > 0 ? nextNeighbor : prevNeighbor;
     const commit = Boolean(neighbor) && !cancelled && shouldSkip(dx, v, g.width);
-    const reduced = prefersReducedMotion();
-    const dur = reduced ? 0 : 320;
+    const dur = motion(320);
     trackEl.style.transition = dur ? `transform ${dur}ms var(--drawer)` : "none";
     if (commit) {
       trackEl.style.transform = `translateX(${-dir * g.width}px)`;
       const go = () => (dir > 0 ? engine.next() : engine.prev());
-      if (dur) setTimeout(go, dur);
-      else go();
+      coverTimer.current?.();
+      coverTimer.current = motionAfter(go, dur);
     } else {
       trackEl.style.transform = "translateX(0px)";
     }
@@ -405,7 +428,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
      y tokens que el resto de la app. */
   const stateText = playStateText({ kind: track.kind, saved: savedStream });
   const stateChip = stateText && (
-    <span className="np__state">
+    <span className={cx("np__state", track.kind === "preview" && "np__state--preview")}>
       {library && <Icon name="Check" size="sm" className="np__state-check" />}
       {stateText}
     </span>

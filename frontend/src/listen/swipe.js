@@ -13,7 +13,7 @@ const DISMISS_FRACTION = 1 / 3;
 /* px/ms, la velocidad media del gesto entero: un golpe corto pero decidido. */
 const FLICK_SPEED = 0.11;
 const FLICK_MIN_PX = 16;
-const OUT_MS = 180; // --t-quick
+const OUT_MS = 180; // --t-quick, pasado por shared/motion.js
 
 /* Pura para poder probarla: con lo arrastrado, lo que tardo y el ancho. */
 export function swipeOutcome(dx, ms, width) {
@@ -23,8 +23,7 @@ export function swipeOutcome(dx, ms, width) {
   return "back";
 }
 
-const reducedMotion = () =>
-  typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+import { motion, motionAfter } from "../shared/motion.js";
 
 /* Engancha el gesto al nodo del aviso. Devuelve la limpieza. */
 export function bindSwipe(el, onDismiss) {
@@ -34,6 +33,7 @@ export function bindSwipe(el, onDismiss) {
   let y0 = 0;
   let t0 = 0;
   let dx = 0;
+  let dismissTimer = null;
 
   const follow = (x) => {
     el.style.transform = `translateX(${x}px)`;
@@ -43,6 +43,8 @@ export function bindSwipe(el, onDismiss) {
   const down = (e) => {
     /* Un segundo dedo no toma el gesto: el aviso saltaria. */
     if (id !== null || e.button > 0) return;
+    dismissTimer?.();
+    dismissTimer = null;
     id = e.pointerId;
     x0 = e.clientX;
     y0 = e.clientY;
@@ -84,9 +86,11 @@ export function bindSwipe(el, onDismiss) {
       return;
     }
     /* Sale por donde iba. Con movimiento reducido solo se desvanece. */
-    if (!reducedMotion()) el.style.transform = `translateX(${Math.sign(dx) * el.offsetWidth * 1.2}px)`;
+    if (motion(1)) el.style.transform = `translateX(${Math.sign(dx) * el.offsetWidth * 1.2}px)`;
     el.style.opacity = "0";
-    setTimeout(onDismiss, OUT_MS);
+    /* Con movimiento reducido el aviso ya es invisible: se da por cerrado en
+       el mismo tick en vez de bloquear el siguiente toque 180ms (§7). */
+    dismissTimer = motionAfter(onDismiss, OUT_MS);
   };
 
   el.addEventListener("pointerdown", down);
@@ -94,6 +98,7 @@ export function bindSwipe(el, onDismiss) {
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
   return () => {
+    dismissTimer?.();
     el.removeEventListener("pointerdown", down);
     el.removeEventListener("pointermove", move);
     el.removeEventListener("pointerup", up);

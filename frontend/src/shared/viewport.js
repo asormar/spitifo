@@ -11,8 +11,11 @@ import { useSyncExternalStore } from "react";
 
 export const PC_MIN = 960;
 const PC_QUERY = `(min-width: ${PC_MIN}px)`;
+/* Un solo MediaQueryList: las filas lo consultan cada vez que pintan y crear
+   uno nuevo por fila con 300 canciones no era gratis. */
+const PC_MQ = typeof window !== "undefined" && window.matchMedia ? window.matchMedia(PC_QUERY) : null;
 
-export const isPc = () => window.matchMedia(PC_QUERY).matches;
+export const isPc = () => Boolean(PC_MQ?.matches);
 
 const watch = (cb) => {
   const mq = window.matchMedia(PC_QUERY);

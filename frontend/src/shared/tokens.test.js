@@ -100,20 +100,22 @@ describe.each([
     expect(ratio(color(theme, "--pink"), color(theme, "--s1"))).toBeGreaterThanOrEqual(3);
   });
 
-  /* La fila elegida de Para ti: tinte rosa al 14 % sobre la tarjeta. */
+  /* La fila elegida de Para ti es una seleccion: tinte cobalto al 14 % sobre la
+     tarjeta. El rosa queda solo para reproducir. */
   it.each(["ink", "mut"])("%s on the selected-row tint reaches 4.5:1", (fg) => {
-    const pink = color(theme, "--pink");
-    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    const acc = color(theme, "--acc");
+    const tint = over([acc[0], acc[1], acc[2], 0.14], color(theme, "--s1"));
     expect(ratio(color(theme, `--${fg}`), tint)).toBeGreaterThanOrEqual(4.5);
   });
 
-  /* El glifo de reproducir de la fila elegida: rosa al 80 % hacia la tinta (el
-     rosa puro sobre el tinte da 2.6 en claro) sobre ese mismo tinte, 3:1. */
+  /* El glifo de reproducir sigue siendo rosa; sobre el tinte de seleccion se
+     oscurece hacia la tinta para llegar a 3:1 como grafico. */
   it("play glyph on the selected-row tint reaches 3:1", () => {
     const pink = color(theme, "--pink");
     const ink = color(theme, "--ink");
-    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
-    const glyph = [0, 1, 2].map((i) => pink[i] * 0.8 + ink[i] * 0.2);
+    const acc = color(theme, "--acc");
+    const tint = over([acc[0], acc[1], acc[2], 0.14], color(theme, "--s1"));
+    const glyph = [0, 1, 2].map((i) => pink[i] * 0.7 + ink[i] * 0.3);
     expect(ratio(glyph, tint)).toBeGreaterThanOrEqual(3);
   });
 

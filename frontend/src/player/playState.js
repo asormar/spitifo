@@ -7,7 +7,7 @@
    ------------------------------------------------------------------------- */
 
 export function playStateText({ kind = null, saved = false } = {}) {
-  if (kind === "preview") return "Vista previa de 30 s";
+  if (kind === "preview") return "Avance de 30 s";
   if (kind === "library") return "Descargada · sin conexión";
   if (kind === "stream") return saved ? "Guardada · en streaming" : "En streaming";
   return null;

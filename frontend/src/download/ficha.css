@@ -176,6 +176,13 @@
   padding: 16px 0 4px;
 }
 
+/* Boton de descarga fallido: ni cobalto (es una accion normal) ni el check de
+   exito. Se queda asi hasta un reintento con exito. */
+.fa [data-s="err"] {
+  background: var(--bad-bg);
+  color: var(--bad-t);
+}
+
 .fb > .note {
   padding-bottom: 4px;
 }

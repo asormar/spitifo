@@ -2,7 +2,7 @@
    CONTROLES COMPARTIDOS
    El boton secundario .vf (avisos de la biblioteca, cookies, el selector de
    listas, Buscar). Va en el arranque y ANTES de motion.css: sus reglas tactiles
-   (44 px) y de hover tienen la misma especificidad y ganan por orden.
+   (48 px en el telefono) y de hover tienen la misma especificidad y ganan por orden.
    --------------------------------------------------------------------------- */
 
 /* --- Boton secundario -------------------------------------------------------- */

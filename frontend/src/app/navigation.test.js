@@ -5,7 +5,12 @@ import {
   aboveNp,
   canStartSwipe,
   depthOf,
+  inSwipeEdge,
   isNpEntry,
+  parsePage,
+  pageToken,
+  readPage,
+  readRoute,
   isOverlay,
   modeDirection,
   nextGuess,
@@ -13,14 +18,21 @@ import {
   npState,
   pageOf,
   readPhoneNav,
+  readSwipeHint,
   readView,
   replaceTop,
   stackAfterPop,
+  stackAt,
   stackFor,
+  switchTab,
   swipeTarget,
   truncate,
   viewKey,
+  withStack,
+  writePage,
+  writeSwipeHint,
   writePhoneNav,
+  writeRoute,
   writeView,
 } from "./navigation.js";
 import { createLocationToken, createNpHistory } from "./npHistory.js";
@@ -114,6 +126,62 @@ describe("writeView", () => {
     });
     const out = writeView("?q=x", { tab: "home", settings: true });
     expect(readView(out)).toEqual({ tab: "home", settings: true });
+  });
+});
+
+describe("espejo de ruta: paginas con direccion", () => {
+  it("una pagina con id viaja como tipo:id y vuelve igual", () => {
+    for (const view of [
+      { type: "album", id: "168" },
+      { type: "artist", id: "r1" },
+      { type: "itunesartist", id: "77" },
+      { type: "list", id: "p4" },
+    ]) {
+      const token = pageToken(view);
+      expect(parsePage(token)).toEqual({ type: view.type, id: view.id });
+    }
+  });
+
+  it("«Ver todo» guarda su seccion y Todas tus canciones no necesita id", () => {
+    expect(pageToken({ type: "all", what: "albums" })).toBe("all:albums");
+    expect(parsePage("all:albums")).toEqual({ type: "all", what: "albums" });
+    expect(pageToken({ type: "library", sort: "recent" })).toBe("library");
+    expect(parsePage("library")).toEqual({ type: "library" });
+  });
+
+  it("las hojas y los menus no tienen direccion propia", () => {
+    for (const type of ["menu", "picker", "ficha", "settings", "descargas", "npmenu"]) {
+      expect(pageToken({ type, id: "x" })).toBeNull();
+      expect(parsePage(`${type}:x`)).toBeNull();
+    }
+    expect(parsePage("")).toBeNull();
+    expect(parsePage("album:")).toBeNull();
+  });
+
+  it("writePage solo toca page y deja view, q y mode intactos", () => {
+    const url = writePage("?view=library&q=rosalia&mode=itunes", { type: "album", id: "168" });
+    expect(params(url).get("page")).toBe("album:168");
+    expect(params(url).get("view")).toBe("library");
+    expect(params(url).get("q")).toBe("rosalia");
+    expect(params(url).get("mode")).toBe("itunes");
+    expect(params(writePage(url, null)).has("page")).toBe(false);
+  });
+
+  it("writeRoute y readRoute hacen round-trip en cada pestana, con y sin pagina", () => {
+    for (const tab of TABS) {
+      const root = writeRoute("", { tab });
+      expect(readRoute(root)).toEqual({ tab, settings: false, page: null });
+      const withPage = writeRoute("?q=chopin", { tab, page: { type: "album", id: "168" } });
+      expect(readRoute(withPage)).toEqual({ tab, settings: false, page: { type: "album", id: "168" } });
+      expect(params(withPage).get("q")).toBe("chopin");
+    }
+  });
+
+  it("Ajustes conserva su ruta y una version antigua sigue leyendo la pestana", () => {
+    const url = writeRoute("?view=library", { tab: "library", settings: true, page: { type: "album", id: "1" } });
+    expect(params(url).get("view")).toBe("settings");
+    expect(readView(url)).toEqual({ tab: "home", settings: true });
+    expect(readPage(url)).toEqual({ type: "album", id: "1" });
   });
 });
 
@@ -231,6 +299,44 @@ describe("stackFor", () => {
     const stack = [album];
     expect(stackFor("library", "library", stack)).toBe(stack);
     expect(stackFor("home", "library", stack)).toEqual([]);
+  });
+});
+
+describe("pilas por pestana", () => {
+  const state = () => {
+    const stacks = new Map(TABS.map((t) => [t, []]));
+    stacks.set("library", [album]);
+    return { tab: "library", stack: [album], stacks, visited: new Set(["library"]) };
+  };
+
+  it("switchTab conserva la pila de la pestana que dejas", () => {
+    const before = state();
+    const after = switchTab(before, "home");
+    expect(after.tab).toBe("home");
+    expect(after.stack).toEqual([]);
+    expect(stackAt(after, "library")).toEqual([album]);
+    expect(stackAt(before, "library")).toEqual([album]);
+    expect(before.stack).toEqual([album]);
+  });
+
+  it("volver a una pestana recupera su pila, sin borrar la otra", () => {
+    const home = withStack(switchTab(state(), "home"), [artist]);
+    const back = switchTab(home, "library");
+    expect(back.stack).toEqual([album]);
+    expect(stackAt(back, "home")).toEqual([artist]);
+  });
+
+  it("switchTab no inventa una pestana desconocida", () => {
+    const before = state();
+    expect(switchTab(before, "radio")).toBe(before);
+  });
+
+  it("withStack mantiene el Map sync con la pila activa", () => {
+    const before = state();
+    const after = withStack(before, [album, artist]);
+    expect(after.stack).toEqual([album, artist]);
+    expect(after.stacks.get("library")).toEqual([album, artist]);
+    expect(before.stacks.get("library")).toEqual([album]);
   });
 });
 
@@ -723,10 +829,32 @@ describe("canStartSwipe", () => {
   });
 });
 
+describe("inSwipeEdge", () => {
+  const rect = { left: 0, right: 400 };
+
+  it("yields the 20dp edges to Android back", () => {
+    expect(inSwipeEdge(0, rect)).toBe(true);
+    expect(inSwipeEdge(20, rect)).toBe(true);
+    expect(inSwipeEdge(400, rect)).toBe(true);
+    expect(inSwipeEdge(380, rect)).toBe(true);
+  });
+
+  it("lets the swipe start in the central 90%", () => {
+    expect(inSwipeEdge(21, rect)).toBe(false);
+    expect(inSwipeEdge(200, rect)).toBe(false);
+    expect(inSwipeEdge(379, rect)).toBe(false);
+  });
+
+  it("accepts an adjustable edge and ignores a missing rect", () => {
+    expect(inSwipeEdge(30, rect, 40)).toBe(true);
+    expect(inSwipeEdge(100, null)).toBe(false);
+  });
+});
+
 describe("phone navigation preference", () => {
-  it("defaults to tabs when storage is missing", () => {
+  it("defaults to swipe when storage is missing", () => {
     vi.stubGlobal("localStorage", undefined);
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
   });
 
   it("reads and writes the stored value", () => {
@@ -739,7 +867,7 @@ describe("phone navigation preference", () => {
     expect(store.get("spitifo.phoneNav")).toBe("swipe");
     expect(readPhoneNav()).toBe("swipe");
     store.set("spitifo.phoneNav", "otra-cosa");
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
   });
 
   it("survives storage that throws", () => {
@@ -751,7 +879,18 @@ describe("phone navigation preference", () => {
         throw new Error("blocked");
       },
     });
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
     expect(() => writePhoneNav("swipe")).not.toThrow();
+  });
+
+  it("la pista del swipe se muestra una sola vez", () => {
+    const store = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key) => store.get(key) ?? null,
+      setItem: (key, value) => store.set(key, value),
+    });
+    expect(readSwipeHint()).toBe(true);
+    writeSwipeHint();
+    expect(readSwipeHint()).toBe(false);
   });
 });

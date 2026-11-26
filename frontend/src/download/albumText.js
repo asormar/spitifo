@@ -14,7 +14,7 @@ export function missingSentence(titles = []) {
   if (n === 1) list = shown[0];
   else if (n === 2) list = `${shown[0]} y ${shown[1]}`;
   else if (n === 3) list = `${shown[0]}, ${shown[1]} y ${shown[2]}`;
-  else list = `${shown[0]}, ${shown[1]} y ${shown[2]} y ${n - 3} más`;
+  else list = `${shown[0]}, ${shown[1]}, ${shown[2]} y ${n - 3} más`;
   return `${list} ${n === 1 ? "no tiene" : "no tienen"} versión completa: solo se pued${
     n === 1 ? "e" : "en"
   } escuchar 30 s.`;
@@ -46,10 +46,12 @@ export const resumingText = (pct) => `Retomando desde ${Math.round(pct)} %`;
 /* La forma de item que espera POST /api/downloads. La usan la ficha del album
    y la lista de discografia: una sola definicion, sin copias. `downloadable`
    lo decide el servidor, asi que no se envia. */
-export function trackSpec(track, query) {
+export function trackSpec(track, query, fmt = "original") {
   const copy = { ...track };
   delete copy.downloadable;
-  return { source: copy.source, track: copy, fmt: "m4a", media: "audio", query };
+  /* "original" por defecto: conserva el contenedor de la fuente y NO paga una
+     recodificacion. mp3 solo se envia cuando el usuario lo eligio. */
+  return { source: copy.source, track: copy, fmt, media: "audio", query };
 }
 
 /* El hueco de una pista en su disco: «1-9». Una pista de iTunes trae

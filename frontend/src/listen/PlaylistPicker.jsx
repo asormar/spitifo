@@ -112,7 +112,7 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice, anch
   const pick = async (apply, message) => {
     if (savedRecord) {
       if (!(await saved.save(savedRecord))) {
-        onNotice("No se pudo guardar la cancion. No se anadio a la lista.");
+        onNotice(`No se pudo guardar «${title}». No se añadió a la lista. Inténtalo de nuevo.`);
         return;
       }
       maybeAutoDownload(savedRecord, null, {

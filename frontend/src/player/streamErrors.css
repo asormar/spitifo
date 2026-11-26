@@ -1,0 +1,64 @@
+/* ---------------------------------------------------------------------------
+   AVISO DE UN STREAM (StreamErrors.jsx)
+
+   Mismo sitio que .lnotice (fijo, sobre la barra inferior y el mini-reproductor
+   si lo hay) pero con su propia duracion: "red lenta" no se retira a los pocos
+   segundos como un toast, y el panel de fallo se queda hasta un reintento con
+   exito o a que vuelva la red.
+   ------------------------------------------------------------------------- */
+
+.stream-note {
+  position: fixed;
+  z-index: 49;
+  left: 16px;
+  right: 16px;
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + 8px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+body.has-mini .stream-note {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + var(--mini-h) + 20px);
+}
+
+.stream-note__card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  padding: 12px 14px;
+  border-radius: var(--r-cover);
+  background: var(--ink);
+  color: var(--on);
+  font: 700 13.5px / 1.3 var(--font-body);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  --rise: 12px;
+  animation: var(--rise-both);
+}
+
+.stream-note__card svg {
+  flex: none;
+}
+
+.stream-note__card.is-err {
+  background: var(--bad-bg);
+  color: var(--bad-t);
+}
+
+.stream-note__act {
+  margin: 0 -8px 0 4px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: inherit;
+  font: 800 13.5px var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.stream-note__act:active {
+  transform: scale(0.96);
+}

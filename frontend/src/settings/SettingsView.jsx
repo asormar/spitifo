@@ -1,12 +1,20 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
+import { backToLabel } from "../app/crossMode.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
+import { useHaptics } from "../shared/haptics.js";
+import { APP_VERSION } from "../shared/appVersion.js";
 import { useAutoDownload } from "./autoDownload.js";
 import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js";
-import { useDownloadFormat, useDownloadMedia } from "./downloadPrefs.js";
+import {
+  QUALITY_OPTIONS, formatForQuality, qualityHint, useDownloadFormat,
+  useDownloadMedia, useDownloadQuality, useDownloadRoaming, useDownloadWifiOnly,
+} from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
+import { collapsedSetting, titleBarSetting } from "../app/desktop.js";
+import { installedLabel, newerLabel, useReleaseCheck } from "./releaseCheck.js";
 import StorageSettings from "./StorageSettings.jsx";
 import PlaybackSettings from "./PlaybackSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -26,6 +34,17 @@ const NAV_OPTIONS = [
   { id: "swipe", label: "Páginas deslizables" },
 ];
 
+const YES_NO = [
+  { id: "no", label: "No" },
+  { id: "yes", label: "Sí" },
+];
+
+/* Solo confirmaciones discretas: se puede apagar entero (Decisión 3). */
+const ON_OFF = [
+  { id: true, label: "Activadas" },
+  { id: false, label: "Desactivadas" },
+];
+
 /* Las mismas opciones que habia en la cabecera de Buscar, ahora aqui. El valor
    que viaja al backend sigue siendo el `value` / `id`, sin traducir. */
 const FMT_OPTIONS = FORMATS.map((f) => ({ id: f.value, label: f.label, title: f.title }));
@@ -42,6 +61,30 @@ const DATA_SOURCES = [
 
 /* Un grupo de chips que funciona como radio: uno activo, y el tabindex entra
    solo por el elegido. */
+function SwitchRow({ label, note, checked, onChange }) {
+  return (
+    <div className="settings__row settings__switch-row">
+      <div>
+        <p className="settings__label">{label}</p>
+        <p className="settings__note">{note}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        className={`settings__switch ${checked ? "is-on" : ""}`}
+        onClick={() => {
+          onChange(!checked);
+          window.dispatchEvent(new Event("spitifo-network"));
+        }}
+      >
+        <span />
+      </button>
+    </div>
+  );
+}
+
 function ChipRadio({ label, options, value, onPick }) {
   return (
     <div className="chips" role="radiogroup" aria-label={label}>
@@ -71,15 +114,24 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const storageHeadRef = useRef(null);
   const cookiesRef = useRef(null);
   const cookiesHeadRef = useRef(null);
+  const guideRef = useRef(null);
+  const guideHeadRef = useRef(null);
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
+  const [hapticsOn, setHaptics] = useHaptics();
   const [autoDownload, setAutoDownload] = useAutoDownload();
   const [fmt, setFmt] = useDownloadFormat();
   const [media, setMedia] = useDownloadMedia();
+  const [quality, setQuality] = useDownloadQuality();
+  const [wifiOnly, setWifiOnly] = useDownloadWifiOnly();
+  const [roaming, setRoaming] = useDownloadRoaming();
   const nav = useNav();
   const pc = usePc();
+  const railCollapsed = useSyncExternalStore(collapsedSetting.subscribe, collapsedSetting.get);
+  const customTitleBar = useSyncExternalStore(titleBarSetting.subscribe, titleBarSetting.get);
   const [finder, setFinder] = useState(false);
   const coversSaved = useRef(false);
+  const release = useReleaseCheck();
 
   /* Al salir de "Buscar portadas" (por su boton o porque se dejo Ajustes) la
      biblioteca se vuelve a pedir si se guardo algo, para ver las portadas. */
@@ -109,7 +161,9 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     const target =
       focus === "cookies"
         ? { box: cookiesRef, head: cookiesHeadRef }
-        : { box: storageRef, head: storageHeadRef };
+        : focus === "guide"
+          ? { box: guideRef, head: guideHeadRef }
+          : { box: storageRef, head: storageHeadRef };
     if (!target.box.current) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     target.box.current.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
@@ -127,7 +181,13 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   return (
     <div className="settings">
       <header className="settings__head">
-        <button type="button" className="settings__back cbtn cbtn--soft cbtn--l" aria-label="Volver" onClick={onClose}>
+        <button
+          type="button"
+          className="settings__back cbtn cbtn--soft cbtn--l"
+          aria-label={backToLabel(nav)}
+          title={backToLabel(nav)}
+          onClick={onClose}
+        >
           <Icon name="CaretLeft" size="md" />
         </button>
         <h1 className="settings__title">Ajustes</h1>
@@ -146,7 +206,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </h2>
         <div className="settings__card">
           <p className="settings__note settings__note--lead">
-            Los temas que bajaste antes de que Spitifo guardara portadas no tienen una. Puedes
+            Los temas que bajaste antes de que spitifo guardara portadas no tienen una. Puedes
             buscarlas en iTunes y elegir cuál va en cada tema. Nada se guarda sin tu confirmación.
           </p>
           <div className="settings__ckacts">
@@ -201,11 +261,31 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </h2>
         <div className="settings__card">
           <div className="settings__row">
+            <p className="settings__label">Calidad</p>
+            <ChipRadio
+              label="Calidad de descarga"
+              options={QUALITY_OPTIONS}
+              value={quality}
+              onPick={(q) => {
+                setQuality(q);
+                setFmt(formatForQuality(q));
+              }}
+            />
+            <p className="settings__note">
+              {qualityHint(quality, { video: media !== "audio" })}. El tamaño real depende del tema.
+            </p>
+          </div>
+          <div className="settings__row">
             <p className="settings__label">Formato</p>
             <ChipRadio label="Formato de descarga" options={FMT_OPTIONS} value={fmt} onPick={setFmt} />
             <p className="settings__note">
               Cómo se guarda el audio al bajar una canción. También puedes cambiarlo al descargar desde el menú ⋯.
             </p>
+            {fmt === "mp3" && (
+              <p className="settings__note" role="note">
+                MP3 recodifica en el teléfono: un álbum de 15 tarda varios minutos más que «original».
+              </p>
+            )}
             {fmt === "original" && media === "audio" && <p className="settings__note">{ORIGINAL_HINT}</p>}
           </div>
           <div className="settings__row">
@@ -215,6 +295,21 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               Qué se baja cuando buscas en YouTube: solo el audio, solo el vídeo o las dos cosas.
             </p>
           </div>
+          <SwitchRow
+            label="Descargar solo con Wi-Fi"
+            note="En datos móviles la descarga espera y dice «Esperando Wi-Fi»."
+            checked={wifiOnly}
+            onChange={setWifiOnly}
+          />
+          <SwitchRow
+            label="Permitir descargas en roaming"
+            note="Si lo apagas, no se descarga con datos del exterior."
+            checked={roaming}
+            onChange={setRoaming}
+          />
+          <p className="settings__note">
+            Los cambios del índice se agrupan: una versión antigua puede ver la biblioteca hasta 5 minutos atrasada.
+          </p>
         </div>
       </section>
 
@@ -236,6 +331,39 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             <p className="settings__label">Tema</p>
             <ChipRadio label="Tema" options={THEME_OPTIONS} value={theme} onPick={chooseTheme} />
           </div>
+          {/* Solas en el escritorio: son preferencias de la persona, no
+              detalles de implementación, y se guardan como el tema. */}
+          {pc && (
+            <>
+              <div className="settings__row">
+                <p className="settings__label">Riel colapsado</p>
+                <ChipRadio
+                  label="Riel colapsado"
+                  options={YES_NO}
+                  value={railCollapsed ? "yes" : "no"}
+                  onPick={(v) => collapsedSetting.set(v === "yes")}
+                />
+                <p className="settings__note">Solo iconos. También se cambia con Ctrl+\.</p>
+              </div>
+              <div className="settings__row">
+                <p className="settings__label">Barra de título propia</p>
+                <ChipRadio
+                  label="Barra de título propia"
+                  options={YES_NO}
+                  value={customTitleBar ? "yes" : "no"}
+                  onPick={(v) => titleBarSetting.set(v === "yes")}
+                />
+                <p className="settings__note">Solo Windows. Requiere reiniciar la ventana.</p>
+              </div>
+            </>
+          )}
+          {/* Solo vibraciones de confirmacion: corazon, hoja o fila que encaja,
+              descarga terminada y el detente del progreso. Se apaga entero. */}
+          <div className="settings__row">
+            <p className="settings__label">Vibraciones</p>
+            <ChipRadio label="Vibraciones" options={ON_OFF} value={hapticsOn} onPick={setHaptics} />
+            <p className="settings__note">Solo confirmaciones, en el teléfono.</p>
+          </div>
           {/* Solo en el telefono: en el escritorio la navegacion es el menu
               lateral y la barra de arriba. El ajuste se guarda igual. */}
           {!pc && (
@@ -253,8 +381,8 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </div>
       </section>
 
-      <section className="settings__sec" aria-labelledby="settings-guide">
-        <h2 id="settings-guide" className="settings__h">
+      <section className="settings__sec" ref={guideRef} aria-labelledby="settings-guide">
+        <h2 id="settings-guide" ref={guideHeadRef} tabIndex={-1} className="settings__h">
           Guía
         </h2>
         <div className="settings__card">
@@ -266,7 +394,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
               nav.goTab("home");
             }}
           >
-            Ver cómo funciona Spitifo
+            Ver cómo funciona spitifo
           </button>
         </div>
       </section>
@@ -285,6 +413,52 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           Las recomendaciones se calculan en este dispositivo. Solo los nombres de los artistas se
           envían a MusicBrainz y ListenBrainz; tu historial de escucha no sale de aquí.
         </p>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-about">
+        <h2 id="settings-about" className="settings__h">
+          Acerca de la app
+        </h2>
+        <div className="settings__card">
+          <div className="settings__about">
+            <Icon name="GearSix" size="md" />
+            <div className="settings__aboutinfo">
+              <p className="settings__label">{installedLabel(APP_VERSION)}</p>
+              {release.state === "current" && (
+                <p className="settings__aboutok">
+                  <Icon name="CheckCircle" size="sm" />
+                  Tienes la última versión
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="settings__btn settings__btn--ghost"
+              onClick={() => release.check(true)}
+              disabled={release.checking}
+            >
+              {release.checking ? "Buscando…" : "Buscar actualizaciones"}
+            </button>
+          </div>
+          {release.state === "newer" && (
+            <div className="settings__update">
+              <Icon name="ArrowCircleUp" size="md" />
+              <div className="settings__updateinfo">
+                <p className="settings__updatetitle">{newerLabel(release.latest)}</p>
+                <p className="settings__updatesub">{installedLabel(APP_VERSION)} instalada</p>
+              </div>
+              <a
+                className="settings__btn settings__btn--ghost"
+                href={release.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="ArrowSquareOut" size="sm" />
+                Ver
+              </a>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

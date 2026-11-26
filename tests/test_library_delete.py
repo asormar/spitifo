@@ -147,6 +147,37 @@ def test_las_listas_pierden_la_clave_y_se_quedan(api):
     assert listas["sola"]["keys"] == []
 
 
+def test_borrar_la_portada_no_deja_la_referencia_colgada(api):
+    c, root = api
+    _plantar(root, "A/a.mp3")
+    _plantar(root, "A/a.jpg")
+    assert c.put("/api/playlists/viaje", json={
+        "name": "Viaje", "keys": ["A/a.mp3"],
+        "cover_key": "A/a.jpg"}).status_code == 200
+    assert c.put("/api/playlists/otra", json={
+        "name": "Otra", "keys": ["A/b.mp3"]}).status_code == 200
+
+    assert _borrar(c, ["A/a.mp3"]).status_code == 200
+
+    listas = {p["id"]: p for p in c.get("/api/playlists").json()["playlists"]}
+    assert "cover_key" not in listas["viaje"]  # se limpio solo esa
+    assert listas["otra"]["keys"] == ["A/b.mp3"]
+
+
+def test_borrar_no_reescribe_las_listas_que_no_tienen_la_clave(api):
+    c, root = api
+    _plantar(root, "A/a.mp3")
+    assert c.put("/api/playlists/viaje", json={
+        "name": "Viaje", "keys": ["A/a.mp3"]}).status_code == 200
+    sin = c.put("/api/playlists/otra", json={
+        "name": "Otra", "keys": ["A/z.mp3"]}).json()
+
+    _borrar(c, ["A/a.mp3"])
+
+    otra = {p["id"]: p for p in c.get("/api/playlists").json()["playlists"]}["otra"]
+    assert otra == sin  # el indice no la toco
+
+
 # --------------------------------------------------------------- validacion
 @pytest.mark.parametrize("keys", [
     ["../secreto.mp3"],
