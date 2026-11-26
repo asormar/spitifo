@@ -202,16 +202,16 @@ describe("avisos de la descarga", () => {
     expect(plain.sub).toBeUndefined();
   });
 
-  it("mismatch avisa con el titulo real y las comillas nuevas", () => {
+  it("mismatch avisa con el titulo real y una accion", () => {
     const n = noticeFromSuccess({ filename: "a.mp3", match: "mismatch", real_title: "Otra" }, "creep");
     expect(n.tone).toBe("warn");
-    expect(n.text).toBe("Ojo: en el archivo dice «Otra» y tú buscaste «creep».");
+    expect(n.text).toBe("El archivo no coincide con lo que buscaste: dice «Otra». Revisa la ficha antes de guardarlo.");
   });
 
   it("unknown avisa que no se pudo verificar, nunca da un visto bueno", () => {
     const n = noticeFromSuccess({ filename: "a.mp3", match: "unknown" }, "creep");
     expect(n.tone).toBe("warn");
-    expect(n.text).toBe("Ojo: no se pudo verificar de dónde viene el audio y tú buscaste «creep».");
+    expect(n.text).toBe("No pudimos comprobar de dónde viene este audio. Revisa la ficha antes de guardarlo.");
   });
 
   it("partial no avisa: es un ok sin la linea Verificado", () => {
@@ -235,6 +235,19 @@ describe("avisos de la descarga", () => {
     });
     expect(noticeFromJob({ status: "error" })).toEqual({ tone: "err", text: "la descarga falló", cookies: false });
     expect(noticeFromError("x")).toEqual({ tone: "err", text: "x", cookies: false });
+  });
+
+  it("nunca muestra el texto crudo de yt-dlp: usa la frase fija de su error_code", () => {
+    expect(noticeFromJob({ status: "error", error: "HTTPError 429: too many requests", error_code: "transient" })).toEqual({
+      tone: "err",
+      text: "Problema de red. Puede resolverse solo.",
+      cookies: false,
+    });
+    expect(noticeFromJob({ status: "error", error: "ERROR: [youtube] abc: Video unavailable", error_code: "permanent" })).toEqual({
+      tone: "err",
+      text: "Este archivo no está disponible.",
+      cookies: false,
+    });
   });
 });
 
@@ -294,10 +307,15 @@ describe("dlState", () => {
     expect(dlState({ busy: true, downloaded: true }).id).toBe("direct");
   });
 
-  it("un job en error se ve como reposo con su texto", () => {
+  it("un job en error se queda fallido, con un motivo (nunca el texto crudo)", () => {
     const s = dlState({ job: { status: "error" } });
     expect(s.id).toBe("err");
-    expect(dlText(s)).toBe("Falló la descarga");
+    expect(dlText(s)).toBe("Falló: no se pudo completar");
+  });
+
+  it("el motivo viene del error_code, nunca del mensaje de yt-dlp", () => {
+    const s = dlState({ job: { status: "error", error_code: "transient", error: "HTTPError 429: too many requests" } });
+    expect(dlText(s)).toBe("Falló: problema de red");
   });
 
   it("los textos del boton", () => {

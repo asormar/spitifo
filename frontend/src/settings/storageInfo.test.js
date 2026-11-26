@@ -44,7 +44,7 @@ describe("quotaView", () => {
   it("sin limite: una sola leyenda, sin barra", () => {
     const v = quotaView({ limit: 0, usage: 3 * GB, app: 2 * GB });
     expect(v.unlimited).toBe(true);
-    expect(v.legend).toBe("Espacio sin límite · Spitifo ocupa 2 GB");
+    expect(v.legend).toBe("Espacio sin límite · spitifo ocupa 2 GB");
     expect(v.app).toBeUndefined();
   });
 
@@ -53,8 +53,8 @@ describe("quotaView", () => {
     expect(v.unlimited).toBe(false);
     expect(v.app).toBe("40%");
     expect(v.others).toBe("20%");
-    expect(v.legend).toEqual(["Spitifo 4 GB", "Otros 2 GB", "Libre 4 GB"]);
-    expect(v.aria).toBe("Spitifo 4 GB, otros archivos 2 GB, libres 4 GB de 10 GB");
+    expect(v.legend).toEqual(["spitifo 4 GB", "Otros 2 GB", "Libre 4 GB"]);
+    expect(v.aria).toBe("spitifo 4 GB, otros archivos 2 GB, libres 4 GB de 10 GB");
   });
 
   it("recorta los anchos al 100 % y nunca deja 'otros' negativo", () => {

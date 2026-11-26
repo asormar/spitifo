@@ -24,6 +24,10 @@ import MissingRow from "./MissingRow.jsx";
 import { Thead } from "./rows.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
+import { queueStore } from "../download/queueStore.js";
+import { trackSpec } from "../download/albumText.js";
+import { resultOf } from "../player/savedTrack.js";
+import { formatForQuality, readDownloadQuality } from "../settings/downloadPrefs.js";
 import "../shared/sheet.css";
 /* La ficha de Escuchar ya es un chunk perezoso: el top y sus filas se piden
    aparte al pintar, sin meter nada en el chunk de arranque. */
@@ -82,9 +86,21 @@ function Gone({ d, backRef, ctx, nav, pc }) {
               </>
             )
           ) : kind === "list" ? (
-            "Esta lista ya no existe."
+            <>
+              Esta lista ya no existe.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("home")}>
+                Vuelve a Inicio
+              </button>
+            </>
           ) : (
-            "Ya no está en tu biblioteca."
+            <>
+              Ya no está en tu biblioteca.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("search")}>
+                Búscala de nuevo
+              </button>
+            </>
           )}
         </p>
       )}
@@ -177,15 +193,22 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
      de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
-     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. La
+     promesa se guarda en un ref para que «Más de» la reuse en vez de pedir lo
+     mismo otra vez: una sola llamada a /api/artists/search por artista y
+     visita, aunque se pulse el boton antes de que esta termine. */
+  const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
+      linkPromiseRef.current = null;
       setArtistLinkId(null);
       return undefined;
     }
     let vivo = true;
-    resolveArtistLink(d.name, d.rows).then((vista) => {
+    const promise = resolveArtistLink(d.name, d.rows);
+    linkPromiseRef.current = promise;
+    promise.then((vista) => {
       if (vivo) setArtistLinkId(vista?.id ?? null);
     });
     return () => {
@@ -210,6 +233,23 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const from = `${kind}:${name}`;
   const play = () => ctx.playGroup(rows, false, from);
   const shuffle = () => ctx.playGroup(rows, true, from);
+  /* Un tap baja TODA la lista que todavia no tenes, como un solo grupo. Las
+     filas con `song` son las que no tienen archivo propio. */
+  const downloadList = () => {
+    const fmt = formatForQuality(readDownloadQuality());
+    const items = rows.filter((r) => r.song && !r.song.file_key).map((r) => {
+      const s = r.song;
+      return trackSpec(resultOf(s), `${s.title || ""} ${s.artist || ""}`.trim(), fmt);
+    });
+    if (!items.length) {
+      ctx.show("Todas las canciones de esta lista ya están descargadas");
+      return;
+    }
+    queueStore.enqueue({
+      items,
+      group: { id: `playlist:${pl.id}`, title: pl.name, artwork_url: null },
+    });
+  };
 
   /* El menu de la lista es lo de arriba de la pila: atras lo cierra. Borrar es
      inmediato y se puede deshacer unos segundos (la lista vuelve con el mismo
@@ -258,6 +298,12 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         <Icon name="Shuffle" size="md" />
         Aleatorio
       </button>
+      {isList && (
+        <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
+          <Icon name="DownloadSimple" size="md" />
+          Descargar lista
+        </button>
+      )}
       {artist && (
         <button
           type="button"
@@ -296,7 +342,13 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           </>
         )
       ) : (
-        "No hay canciones."
+        <>
+          No hay canciones.
+          <br />
+          <button type="button" className="vf" onClick={() => nav.goTab("search")}>
+            Añade alguna desde Buscar
+          </button>
+        </>
       )}
     </p>
   ) : (
@@ -423,7 +475,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     const seq = ++linkSeq.current;
     loadArtistChunk();
     setLinking(true);
-    const view = await resolveArtistLink(name, rows);
+    const view = await (linkPromiseRef.current || resolveArtistLink(name, rows));
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;

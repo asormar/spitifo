@@ -193,7 +193,7 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 36px;
+  min-height: var(--hit);
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: var(--r-pill);
@@ -211,8 +211,8 @@ body.has-mini .vhost[data-mode="mini"] .vhost__card {
 }
 
 .vhb--over {
-  min-width: 34px;
-  min-height: 34px;
+  min-width: var(--hit);
+  min-height: var(--hit);
   padding: 0 8px;
   border-color: rgba(255, 255, 255, 0.22);
   background: rgba(14, 14, 24, 0.6);

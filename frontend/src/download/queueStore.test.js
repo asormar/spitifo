@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activeGroup, backoffDelay, createQueueStore, groupItems, groupSummary } from "./queueStore.js";
+import { activeGroup, backoffDelay, createQueueStore, groupItems, groupSummary, jobPatch, pollDelay, POLL_ACTIVE_MS, POLL_IDLE_MS, POLL_QUEUED_MS } from "./queueStore.js";
 import { jobsStore } from "./jobsStore.js";
 import { verdictStore } from "./verdict.js";
 import { __setScreenOff } from "../shared/screenState.js";
@@ -34,6 +34,32 @@ afterEach(() => {
 describe("cola: espera ante un corte de red", () => {
   it("la espera crece hasta 15 s", () => {
     expect([0, 1, 2, 3, 4, 5, 8].map(backoffDelay)).toEqual([1000, 2000, 4000, 8000, 15000, 15000, 15000]);
+  });
+});
+
+describe("cola: sondeo adaptativo (P-downloads-pipeline-7)", () => {
+  it("rapido con trabajo activo, lento en cola, parado al estar quieto", () => {
+    expect(pollDelay({ active: true, busy: true })).toBe(POLL_ACTIVE_MS);
+    expect(pollDelay({ busy: true })).toBe(POLL_QUEUED_MS);
+    expect(pollDelay({ sheetOpen: true, items: 3 })).toBe(POLL_IDLE_MS);
+    expect(pollDelay({})).toBe(null);
+    expect(pollDelay({ offline: true, busy: true, retryDelay: 4000 })).toBe(4000);
+    expect(pollDelay({ offline: true, capHits: 2 })).toBe(null);
+  });
+});
+
+describe("cola: fases de red y subida (R2 / P-downloads-pipeline-3)", () => {
+  it("publica la fase de espera de Wi-Fi", () => {
+    expect(jobPatch(item(40, "queued", { phase: "waiting_wifi" }))).toMatchObject({
+      status: "queued", phase: "waiting_wifi", progress: 0,
+    });
+  });
+
+  it("la subida lleva su propio porcentaje en vez de un 100 falso", () => {
+    expect(jobPatch(item(41, "saving", { phase: "uploading", progress: 37 }))).toMatchObject({
+      status: "processing", phase: "uploading", progress: 37,
+    });
+    expect(jobPatch(item(42, "saving")).progress).toBe(100);
   });
 });
 
@@ -93,6 +119,41 @@ describe("cola: espejo de GET /api/downloads", () => {
     expect(onLibrary).toHaveBeenCalledTimes(1);
     expect(onToast).toHaveBeenCalledTimes(1);
     expect(onToast).toHaveBeenCalledWith("Dynamo: 1 descargada");
+    s.dispose();
+  });
+
+  it("un album de 15 pistas refresca la biblioteca UNA vez, al terminar la ultima (P-downloads-pipeline-2)", () => {
+    const s = createQueueStore();
+    const onLibrary = vi.fn();
+    s.setHooks({ onLibrary });
+    const group = { id: "album:big", title: "Un album grande" };
+    const ids = Array.from({ length: 15 }, (_, i) => String(i + 100));
+
+    // Encolado: las 15 en "queued", ninguna termino todavia.
+    s.applyPayload({ items: ids.map((id) => item(id, "queued", { group })) });
+    expect(onLibrary).not.toHaveBeenCalled();
+
+    // Van terminando de a una, en cualquier orden, menos la ultima.
+    for (const id of ids.slice(0, -1)) {
+      s.applyPayload({
+        items: ids.map((i) => item(i, i === id || ids.indexOf(i) < ids.indexOf(id) ? "done" : "queued", { group })),
+      });
+    }
+    expect(onLibrary).not.toHaveBeenCalled();
+
+    // La ultima pista del grupo termina: el grupo esta "ended" recien ahora.
+    s.applyPayload({ items: ids.map((id) => item(id, "done", { group })) });
+    expect(onLibrary).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+
+  it("una descarga suelta (sin grupo) sigue refrescando apenas termina", () => {
+    const s = createQueueStore();
+    const onLibrary = vi.fn();
+    s.setHooks({ onLibrary });
+    s.applyPayload({ items: [item(50, "queued")] });
+    s.applyPayload({ items: [item(50, "done")] });
+    expect(onLibrary).toHaveBeenCalledTimes(1);
     s.dispose();
   });
 
@@ -164,6 +225,26 @@ describe("cola: red y reenganche", () => {
     await s.pollNow();
     expect(s.getOffline()).toBe(true);
     expect(s.getState().items[0]).toMatchObject({ status: "downloading", progress: 44 });
+    s.dispose();
+  });
+
+  it("resumed se poda cuando el item desaparece: no queda colgado para siempre", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]));
+    const s = createQueueStore(fetchImpl);
+    await s.pollNow(); // en marcha al 40 %
+    await s.pollNow(); // corte de red: el 40 % sigue siendo el ultimo conocido
+    await s.pollNow(); // vuelve: markResumed guarda el 40 % antes de leer la respuesta
+    expect(s.getState().items[0]).toMatchObject({ resumedFrom: 40 });
+    await s.pollNow(); // el item desaparece del todo
+    await s.pollNow(); // "reaparece" (mismo id): sin poda arrastraria el 40 % de antes
+    expect(s.getState().items[0].resumedFrom).toBeUndefined();
     s.dispose();
   });
 
@@ -323,12 +404,12 @@ describe("cola: pantalla apagada (no solo pestaña tapada)", () => {
     s.dispose();
   });
 
-  it("con la pantalla encendida sigue al sondeo rapido de 1 s de siempre", async () => {
+  it("con la pantalla encendida sigue al sondeo rapido de siempre", async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn().mockResolvedValue(ok([item(71, "downloading")]));
     const s = createQueueStore(fetchImpl);
     await s.hydrate({ items: [item(71, "downloading")], running: 1, queued: 0 });
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(POLL_ACTIVE_MS - 1);
     expect(fetchImpl).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(fetchImpl).toHaveBeenCalledTimes(1);

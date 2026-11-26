@@ -221,6 +221,13 @@
   color: var(--mut);
 }
 
+/* El reconocimiento del toque: visible en el mismo fotograma, en cobalto
+   (es una accion, no sonido). */
+.res__wait--now {
+  color: var(--action);
+  font-weight: 700;
+}
+
 /* Punto verde de «descargada», el mismo que usa la biblioteca. */
 .res__dl {
   flex: none;
@@ -363,6 +370,13 @@
 .dlr[data-s="done"] {
   background: color-mix(in oklab, var(--ok) 16%, var(--s1));
   color: var(--ok-t);
+}
+
+/* Fallida, persistente: no se parece ni a reposo ni a "en curso". El click
+   reintenta, como cualquier otro estado de este boton. */
+.dlr[data-s="err"] {
+  background: var(--bad-bg);
+  color: var(--bad-t);
 }
 
 /* El anillo lleva el progreso en --p (el sondeo lo cambia, no se anima). */
