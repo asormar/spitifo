@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -38,6 +39,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
+from .executors import run_prefetch, run_storage
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -332,20 +334,41 @@ PREWARM_DELAY_S = 4.0
 async def _prewarm_search() -> None:
     try:
         await asyncio.sleep(PREWARM_DELAY_S)
+        from .executors import run_ytdlp
         from .ytdlp_source import prewarm_search
-        await asyncio.to_thread(prewarm_search)
+        await run_ytdlp(prewarm_search)
     except Exception as e:
         log.info("ytdlp: preparacion de la busqueda fallo: %s", e)
+
+
+async def _recover_queue_and_cleanup() -> None:
+    """Recupera la cola y limpia temporales viejos, SIN demorar `SPITIFO_READY`.
+
+    Las dos cosas son disco (leer+parsear el JSON de la cola, recorrer
+    TEMP_DIR y borrar carpetas viejas): antes corrian sincronicas en el
+    lifespan, asi que un server con muchas carpetas parciales abandonadas (o
+    una cola grande) tardaba ese rato extra en imprimir el READY que el shell
+    nativo (Tauri/Chaquopy) espera para considerar la app usable. Ninguna de
+    las dos es parte del camino critico de arranque: la UI puede pintar la
+    biblioteca mientras esto termina atras.
+    """
+    try:
+        await downloads.load_async()
+    except Exception as e:
+        log.warning("no se pudo recuperar la cola de descargas: %s", e)
+    from .ytdlp_source import cleanup_partials
+    try:
+        await asyncio.to_thread(cleanup_partials)
+    except Exception as e:
+        log.warning("no se pudieron limpiar las carpetas parciales viejas: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
-    # Recuperar la cola ANTES de servir: lo que estaba en curso vuelve a la
-    # cola (con continuedl reanuda su .part) y se limpian temporales viejos.
-    downloads.load()
-    from .ytdlp_source import cleanup_partials
-    cleanup_partials()
+    tarea = asyncio.create_task(_recover_queue_and_cleanup())
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
     # El zip de yt-dlp actualizado se prueba ya servido, no antes: importarlo
     # tarda alrededor de un segundo.
     start_ytdlp_zip_check()
@@ -394,6 +417,9 @@ async def lifespan(app: Starlette):
         await s.aclose()
     from . import stream as stream_mod
     await stream_mod.aclose()
+    from . import covers, identify
+    await identify.aclose()
+    await covers.aclose()
     # Cualquier cambio del indice que haya quedado diferido (dentro de un
     # `batch_index_writes` que no llego a cerrar su bloque) se sube ahora.
     flush_all = getattr(storage, "flush_all", None)
@@ -2105,7 +2131,14 @@ async def download(request: Request):
         job_id = encolados[0]["id"]
 
         if wait:
-            await downloads.wait_item(job_id)
+            termino = await downloads.wait_item(job_id)
+            if not termino:
+                # Vencio el plazo de espera: el job SIGUE corriendo, no es un
+                # error. Mismo contrato que sin wait=1: la UI sigue el
+                # progreso por job_id en vez de colgarse esperando esta
+                # respuesta para siempre.
+                return JSONResponse({"ok": True, "source": "ytdlp",
+                                     "job_id": job_id, **ident})
             item = downloads.get_item(job_id) or {}
             if item.get("error_code") == "youtube_bot_check":
                 # Codigo propio: la UI ofrece importar un cookies.txt en vez de
@@ -2205,7 +2238,7 @@ async def setlist(request: Request):
 async def _fileinfo_records(storage) -> dict:
     """Veredictos guardados. Si no se pueden leer, la lista sale sin ellos."""
     try:
-        return await asyncio.to_thread(storage.load_fileinfo)
+        return await run_storage(storage.load_fileinfo)
     except Exception as e:
         log.warning("no se pudieron leer los veredictos: %s", e)
         return {}
@@ -2273,7 +2306,7 @@ async def library(request: Request):
     storage = get_storage()
     compact = request.query_params.get("shape") == "compact"
     files, records = await asyncio.gather(
-        asyncio.to_thread(library_scan), _fileinfo_records(storage))
+        run_storage(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
     body, etag = await asyncio.to_thread(_library_body, storage.describe(),
                                          files, compact)
@@ -3541,9 +3574,11 @@ async def audio(request: Request):
         raise HTTPException(404, "no encontrado")
     storage = get_storage()
     try:
-        # A un thread: en un adapter remoto stat es una llamada de red, y en
-        # el local un acceso a disco que no debe frenar el event loop.
-        size = (await asyncio.to_thread(storage.stat, key)).size
+        # Al pool de storage (no al default): en un adapter remoto stat es una
+        # llamada de red, y en el local un acceso a disco; ninguno debe frenar
+        # el event loop NI esperar detras de una extraccion de yt-dlp (pool
+        # separado, ver executors.py).
+        size = (await run_storage(storage.stat, key)).size
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
 
@@ -3570,11 +3605,11 @@ async def audio(request: Request):
         }
         # open_range a un thread: en un adapter remoto abre la descarga (y
         # falla con 503/502 si hace falta) antes de mandar los headers.
-        body = await asyncio.to_thread(storage.open_range, key, start, end)
+        body = await run_storage(storage.open_range, key, start, end)
         return StreamingResponse(body, status_code=206, media_type=ctype,
                                  headers=headers)
 
-    body = await asyncio.to_thread(storage.open_range, key)
+    body = await run_storage(storage.open_range, key)
     return StreamingResponse(
         body, media_type=ctype,
         headers={"Accept-Ranges": _UNIT, "Content-Length": str(size), **cache})
@@ -3588,12 +3623,30 @@ def _prefetch_bg(fn, key: str) -> None:
         log.warning("prefetch de %s fallo: %s: %s", key, type(exc).__name__, exc)
 
 
+#: Referencia al ultimo prefetch encolado (solo para diagnostico/tests): lo
+#: que REEMPLAZA no es el trabajo en curso (`Storage.prefetch` no tiene
+#: cancelacion: la descarga que ya arranco en Drive sigue aunque el usuario
+#: saltee de nuevo, igual que antes), sino la garantia de que un tap repetido
+#: de "siguiente" (saltar varias veces rapido) ya NO abre un hilo de SO por
+#: tap: se encola en `PREFETCH_EXECUTOR`, un pool chico y PROPIO (ver
+#: executors.py) que nunca compite por hilos con `/api/audio`, la biblioteca
+#: o el guardado de la cola (eso sí pasaria si compartiera `STORAGE_EXECUTOR`:
+#: una racha de saltos llenaria ese pool de descargas de Drive y haria
+#: esperar a una lectura de audio real).
+_prefetch_future: "asyncio.Future | None" = None
+
+
+def _prefetch_submit(fn, key: str) -> None:
+    global _prefetch_future
+    _prefetch_future = run_prefetch(_prefetch_bg, fn, key)
+
+
 async def prefetch(request: Request):
     """Adelanta la descarga del proximo tema (auto-advance de la biblioteca).
 
     La UI lo dispara al empezar un tema, con la clave del SIGUIENTE. La respuesta
-    no espera la descarga: arranca en un thread y vuelve ya. Un almacenamiento sin
-    cache (disco local) contesta 204: no hay nada que adelantar.
+    no espera la descarga: se encola y vuelve ya. Un almacenamiento sin cache
+    (disco local) contesta 204: no hay nada que adelantar.
     """
     body = await _json_body(request)
     key = body.get("key")
@@ -3602,13 +3655,13 @@ async def prefetch(request: Request):
     storage = get_storage()
     try:
         # Igual que /api/audio: `stat` confirma que existe antes de encolar nada.
-        await asyncio.to_thread(storage.stat, key)
+        await run_storage(storage.stat, key)
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
     fn = getattr(storage, "prefetch", None)
     if fn is None:
         return Response(status_code=204)
-    threading.Thread(target=_prefetch_bg, args=(fn, key), daemon=True).start()
+    _prefetch_submit(fn, key)
     return JSONResponse({"key": key}, status_code=202)
 
 

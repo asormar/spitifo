@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from .config import USER_AGENT
+from .executors import run_ytdlp
 
 log = logging.getLogger("spitifo.stream")
 
@@ -138,7 +139,7 @@ async def warm_visitor() -> None:
         visitor = await ensure_visitor()
         if visitor:
             await asyncio.sleep(PREWARM_DELAY_S)
-            await asyncio.to_thread(_prewarm_sync, visitor)
+            await run_ytdlp(_prewarm_sync, visitor)
         # El cliente del proxy carga sus certificados al crearse: mejor ahora
         # que en el primer play.
         await asyncio.to_thread(client)
@@ -189,7 +190,7 @@ async def fast_raw(url: str) -> dict | None:
     try:
         with _pooled(visitor) as ydl:
             raw = await asyncio.wait_for(
-                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                run_ytdlp(ydl.extract_info, url, download=False, process=False),
                 FAST_TIMEOUT_S)
     except Exception as e:
         log.info("stream: extraccion rapida para descargar fallo (%s)", type(e).__name__)
@@ -421,7 +422,7 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
             raise RuntimeError("sin visitor_data")
         with _pooled(visitor) as ydl:
             info = await asyncio.wait_for(
-                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                run_ytdlp(ydl.extract_info, url, download=False, process=False),
                 FAST_TIMEOUT_S)
         salida = _from_info(pick_audio(info), "fast")
     except Exception as e:

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from . import activity
+from .executors import run_storage
 
 log = logging.getLogger("spitifo.downloads")
 
@@ -124,39 +125,75 @@ def _purge_finished_locked(now: float) -> None:
         _QUEUE.pop(i, None)
 
 
-def _save() -> None:
-    """Escribe atomico (temporal + replace) y purga terminados viejos.
+#: Serializa el guardado EN SI (el temp+replace de `_save_sync`), no el dict:
+#: para eso ya esta `_LOCK`. Sin esto, dos guardados concurrentes (p. ej. un
+#: tick de progreso y un cancel llegando juntos) escriben cada uno su PROPIO
+#: temporal y hacen su PROPIO `os.replace`; el que gana la carrera del
+#: replace puede ser el que tenia la foto mas vieja, y la actualizacion del
+#: otro se pierde del archivo (aunque siga viva en memoria). Con el lock,
+#: el guardado que efectivamente escribe ultimo es el que tomo la foto mas
+#: reciente de `_QUEUE` (la foto se saca RECIEN adentro del lock, no antes de
+#: pedirlo), asi que ninguna actualizacion se pierde aunque los guardados se
+#: disparen fuera de orden.
+_SAVE_LOCK = threading.Lock()
+
+
+def _save_sync() -> None:
+    """El guardado real: atomico (temporal + replace) y purga terminados viejos.
 
     Sin `fsync`: este JSON es un espejo reconstruible de la cola, no un dato
     cuya durabilidad haya que garantizar. `os.replace` ya deja el archivo
-    siempre en un estado completo (o el viejo o el nuevo), y en un telefono el
+    siempre en un estado completo (o el viejo o el nuevo: nunca a medias ni
+    vacio aunque el proceso muera a mitad de escritura), y en un telefono el
     fsync de cada tick de progreso es bateria y E/S regalados.
     """
     path = queue_path()
+    with _SAVE_LOCK:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _LOCK:
+                _purge_finished_locked(time.time())
+                payload = {"items": [dict(it) for it in _QUEUE.values()]}
+            tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+                f.flush()
+            os.replace(tmp, path)
+        except OSError as e:
+            log.warning("no se pudo guardar la cola de descargas: %s", e)
+
+
+def _save() -> None:
+    """Dispara `_save_sync`, sin bloquear el event loop con disco.
+
+    `_update`/`enqueue`/`cancel`/`retry`/`cancel_group` son funciones
+    SINCRONAS que se llaman tanto desde rutas async (una request, el worker de
+    la cola) como desde el hilo del progress hook de yt-dlp (`_progress_cb`,
+    que ya corre FUERA del loop, en el pool de yt-dlp). Con un loop corriendo
+    en este hilo, el guardado real se manda al pool de storage; sin loop (ya
+    estamos en un hilo de executor) se escribe de una, que no cuesta nada
+    extra: ese hilo ya iba a tocar disco de todos modos.
+    """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _LOCK:
-            _purge_finished_locked(time.time())
-            payload = {"items": [dict(it) for it in _QUEUE.values()]}
-        tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False)
-            f.flush()
-        os.replace(tmp, path)
-    except OSError as e:
-        log.warning("no se pudo guardar la cola de descargas: %s", e)
+        asyncio.get_running_loop()
+    except RuntimeError:
+        _save_sync()
+        return
+    run_storage(_save_sync)
 
 
-def load() -> None:
-    """Recupera la cola al arrancar. Los que estaban en curso vuelven a `queued`."""
+def _load_sync() -> list[str]:
+    """Lee y parsea el JSON de la cola (bloqueante: disco). Devuelve los ids a
+    reanudar; NO los agenda (`_schedule` necesita el loop de asyncio, que este
+    cuerpo puede correr fuera de el -- ver `load`/`load_async`)."""
     path = queue_path()
     if not path.is_file():
-        return
+        return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         log.warning("no se pudo leer la cola de descargas: %s", e)
-        return
+        return []
 
     now = time.time()
     reanudar: list[str] = []
@@ -186,6 +223,31 @@ def load() -> None:
     if reanudar:
         log.info("cola recuperada: %d descarga(s) vuelven a la cola", len(reanudar))
     _activity_update()
+    return reanudar
+
+
+def load() -> None:
+    """Recupera la cola al arrancar. Los que estaban en curso vuelven a `queued`.
+
+    Sincrona de punta a punta (disco + agendado): la usan los tests, que la
+    llaman sin un loop de asyncio corriendo (`_schedule` no hace nada sin
+    loop, como siempre). Para arrancar el server de verdad sin bloquear el
+    event loop con la lectura del JSON, usar `load_async`.
+    """
+    reanudar = _load_sync()
+    for jid in reanudar:
+        _ensure_job(jid)
+        _schedule(jid)
+
+
+async def load_async() -> None:
+    """Igual que `load`, pero la lectura/parseo del JSON corre en el pool de
+    storage: el lifespan la usa para no demorar `SPITIFO_READY` con un
+    `read_text`+`json.loads` sincronos en el arranque. El agendado de los
+    reanudados (`_schedule`) se hace de vuelta en el loop: necesita un loop
+    corriendo en el hilo que lo llama.
+    """
+    reanudar = await run_storage(_load_sync)
     for jid in reanudar:
         _ensure_job(jid)
         _schedule(jid)
@@ -393,11 +455,35 @@ def _finish_task(item_id: str) -> None:
         ev.set()
 
 
-async def wait_item(item_id: str) -> None:
-    """Espera a que el item termine (para `POST /api/download?wait=1`)."""
+#: Plazo de `wait_item`: sin esto, un job atascado en una llamada de red de
+#: yt-dlp sin su propio timeout dejaba la conexion HTTP (y el navegador que
+#: la espera) colgada para siempre. Mismo valor que el deadline del lado del
+#: cliente que ya usan los jobs sueltos via progress-polling.
+WAIT_ITEM_TIMEOUT_S = 60.0
+
+
+async def wait_item(item_id: str, timeout: float | None = None) -> bool:
+    """Espera a que el item termine (para `POST /api/download?wait=1`).
+
+    Devuelve `True` si termino dentro del plazo. `False` significa que el job
+    SIGUE corriendo (no es un error): el caller debe tratarlo como si nunca
+    hubiera pedido `wait=1`, dejando que la UI siga por polling de progreso,
+    nunca inventando un resultado o un error.
+
+    `timeout=None` (el default real) lee `WAIT_ITEM_TIMEOUT_S` en el momento
+    de la llamada, no al definir la funcion: asi un test puede monkeypatchear
+    la constante del modulo sin tener que pasar el valor a mano.
+    """
     ev = _DONE.get(item_id)
-    if ev is not None:
-        await ev.wait()
+    if ev is None:
+        return True
+    if timeout is None:
+        timeout = WAIT_ITEM_TIMEOUT_S
+    try:
+        await asyncio.wait_for(ev.wait(), timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
 
 
 # ------------------------------------------------------------------- comandos
