@@ -43,6 +43,23 @@ const tierOf = (w) => (w >= 66 ? 2 : w >= 33 ? 1 : 0);
 const FLY_ZOOM = 7;
 const NO_HIGHLIGHT = new Set();
 
+/* La leyenda de colores: por cada cluster, el genero con mas peso lo nombra.
+   Se ordenan por ese peso y el resto se resume en "+N más", para que los 16
+   colores tengan explicacion sin llenar la pantalla. */
+export function clusterLegend(data, limit = 7) {
+  if (!data?.names?.length) return { shown: [], more: 0 };
+  const best = new Array(CLUSTERS).fill(-1);
+  for (const i of data.order || []) {
+    const c = data.c[i];
+    if (best[c] < 0) best[c] = i;
+  }
+  const rows = best
+    .map((i, c) => (i >= 0 ? { c, i, name: data.names[i], w: data.w[i] || 0 } : null))
+    .filter(Boolean)
+    .sort((a, b) => b.w - a.w || a.c - b.c);
+  return { shown: rows.slice(0, Math.max(0, limit)), more: Math.max(0, rows.length - limit) };
+}
+
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* Colores, fuente y duración del movimiento salen de los tokens de la app. Se

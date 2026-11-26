@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
 import { listDrag, panelDecision, pickSnap, resist, sheetGeometry, snapName, tabDecision } from "./gestures.js";
-import { PANEL_ROOM, PANEL_W, startsCollapsed } from "./frame.js";
+import { initialSnap, PANEL_ROOM, PANEL_W, rememberSnap, startsCollapsed } from "./frame.js";
 import { Icon } from "./icons.jsx";
 import { PanelTitle, panelHead } from "./ForYouSlot.jsx";
 import { normalize } from "./map.js";
@@ -63,7 +63,7 @@ export default function ForYou({
   const [menu, setMenu] = useState(null);
   const [leaving, setLeaving] = useState(NONE);
   const [busy, setBusy] = useState(null);
-  const [snap, setSnap] = useState("peek");
+  const [snap, setSnap] = useState(initialSnap);
   /* El hueco (ForYouSlot) ya decidio si el panel lateral nace recogido. */
   const [collapsed, setCollapsed] = useState(initialCollapsed);
 
@@ -90,6 +90,8 @@ export default function ForYou({
   );
   const kind = emptyKind({ rec, hiddenCount: rec.hidden.length });
   const head = panelHead(rec);
+  const artistCount = artists.length;
+  const artistLabel = `${artistCount} ${artistCount === 1 ? "artista" : "artistas"}`;
 
   /* --- Fila elegida: anillo fuerte en el mapa y vuelo al primer genero ------ */
 
@@ -233,6 +235,7 @@ export default function ForYou({
        viven abajo y no caben a la vez. */
     if (name !== "peek" && genreOpen) ctx.closeGenre();
     setSnap(name);
+    rememberSnap(name);
   };
 
   /* La tarjeta de un genero manda: la hoja se recoge a la barra. */
@@ -485,6 +488,10 @@ export default function ForYou({
 
   const body = (
     <>
+      {/* Lo que diferencia el producto va arriba, no tras toda la lista. */}
+      <p className="fy-privacy">
+        Privado: calculado en tu dispositivo con MusicBrainz y ListenBrainz. Tu historial no sale de aquí.
+      </p>
       {tab === "art" ? (
         rows.length === 0 ? (
           stateBlock(kind)
@@ -530,9 +537,6 @@ export default function ForYou({
           onPlay={(name) => play(`g:${name}`, name, onPlayGenre)}
         />
       )}
-      <p className="fy-foot">
-        Calculado en tu dispositivo con MusicBrainz y ListenBrainz. Tu historial no sale de aquí.
-      </p>
     </>
   );
 
@@ -626,12 +630,15 @@ export default function ForYou({
           ref={pillRef}
           type="button"
           className="fy__pill"
-          aria-label="Mostrar el panel Para ti"
+          aria-label={`Mostrar el panel Para ti, ${artistLabel}`}
           aria-expanded="false"
           onClick={() => fold(false, true)}
           {...tabDrag}
         >
           <Icon name="Sparkle" weight="fill" size="sm" />
+          <span className="fy__pill-badge" aria-hidden="true">
+            {artistCount}
+          </span>
           <span>Para ti</span>
         </button>
       )}

@@ -270,6 +270,16 @@
   font-size: 1.15em;
 }
 
+/* Portada sin imagen: dos tonos del genero y un disco, en vez de una letra que
+   se parecia al esqueleto de carga. Sobre el color de la trama cv-p*. */
+.cv > span.cv__gen {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, #fff) 0 16%, transparent 16.5%),
+    linear-gradient(135deg, var(--c) 0 50%, color-mix(in srgb, var(--c) 60%, #11111c) 50%);
+}
+
 .cv-p0 {
   background-image: radial-gradient(circle at 78% 78%, color-mix(in oklab, var(--c) 44%, #fff) 0 18%, transparent 18.5% 34%, color-mix(in oklab, var(--c) 72%, #fff) 34.5% 36%, transparent 36.5%);
 }

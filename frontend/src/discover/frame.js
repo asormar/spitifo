@@ -15,11 +15,31 @@ export const PANEL_ROOM = PANEL_W + 12;
 /* Bajo este ancho de mapa el panel empieza recogido: casi no dejaria mapa. */
 export const PANEL_MIN_MAP = 820;
 
+/* Los mismos ratios de sheetGeometry (gestures.js), sin importarlos: este
+   modulo lo lee el mapa antes de que llegue el chunk de los gestos. */
+const HALF_RATIO = 0.45;
+const FULL_RATIO = 0.85;
+const heightOf = (snap, h) => {
+  const map = h || 600;
+  const full = Math.max(PEEK + 120, Math.round(map * FULL_RATIO));
+  if (snap === "full") return full;
+  if (snap === "half") return Math.min(full - 40, Math.max(PEEK + 80, Math.round(map * HALF_RATIO)));
+  return PEEK;
+};
+
+/* Primera visita de la sesión: la hoja nace a medias, no en una barra ciega.
+   Despues se recuerda la ultima parada que eligio la persona. */
+let lastSnap = null;
+export const initialSnap = () => lastSnap || "half";
+export const rememberSnap = (name) => {
+  lastSnap = name;
+};
+
 /* Panel lateral recogido al nacer: solo en ancho (no telefono) y mapa estrecho. */
 export const startsCollapsed = (w, narrow) => !narrow && w < PANEL_MIN_MAP;
 
 /* Lo que el panel tapa nada mas nacer, en el formato de setObstacle del mapa. */
-export function startingObstacle({ w, narrow }) {
-  if (narrow) return { bottom: PEEK + 8 };
+export function startingObstacle({ w, h, narrow }) {
+  if (narrow) return { bottom: heightOf(initialSnap(), h) + 8 };
   return { right: startsCollapsed(w, false) ? 0 : PANEL_ROOM };
 }

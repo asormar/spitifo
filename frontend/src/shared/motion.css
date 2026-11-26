@@ -192,7 +192,7 @@ html[data-bg] *::after {
   .eq i,
   .logo__o,
   .pbtn::after,
-  .rec__spin,
+  .mz__spin,
   .sfield.is-scanning .sfield__icon {
     animation: none !important;
   }
