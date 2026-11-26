@@ -1067,6 +1067,64 @@ On the Pixel_3a emulator (ARM code translated on x86, so far slower than a
 phone) a prepared result starts in about 1 s from the tap. The first two full
 search results and the next queued stream are prepared ahead.
 
+## Android battery and background cost (2026-11-25)
+
+Reproduced from the code, not from a device profile: no Pixel or
+`dumpsys batterystats`/Battery Historian session was available in this round
+either, so the numbers below are architectural estimates, not measurements.
+Treat every ✅-shaped claim in this section the same way the budgets table
+above treats a Pixel-only row: good reasoning, unverified on the target
+hardware.
+
+**What changed this round** (screen off while a track plays, no pause of the
+WebView itself — the `<audio>` element lives there and must keep playing):
+
+- The playback and download wake locks (`PlaybackService.kt`,
+  `DownloadService.kt`) now take an explicit 10-minute timeout instead of
+  holding the CPU awake indefinitely, and renew themselves well inside that
+  window (`refresh()` for playback, a repeating self-renew for downloads). A
+  future code path that sets "playing" without a matching "stopped" self-heals
+  in minutes instead of draining the battery for the rest of the session.
+- `MainActivity` now mirrors the real screen state (`ACTION_SCREEN_OFF`/`_ON`,
+  which `document.visibilityState` cannot see on its own — it only reflects
+  this Activity being covered) to the page as a `spitifo-screen` event
+  (`frontend/src/shared/screenState.js`). The page uses it to: fall the
+  download poller back from its 1 Hz "someone is watching the ring" cadence to
+  the same 10 s cadence it already uses when the sheet is closed
+  (`download/queueStore.js`), and pause the CSS "infinite" animations that are
+  tied to active playback — the equaliser bars, the Mezcla record's highlight
+  and the header logo's spin (`listen.css`, `home.css`, `nav.css`) — the same
+  way they already pause when scrolled out of view.
+- None of this pauses the WebView, the renderer, or the embedded CPython
+  interpreter: by design (see below), only the page's own timers, rAF loops
+  and pollers back off.
+
+**What is still an open cost, unmeasured.** Audio playback stays architecturally
+tied to a full WebView (Chromium renderer, JS heap, DOM) plus an embedded
+CPython interpreter (Chaquopy) that boots once and stays resident for the
+whole process lifetime. Even with every timer above stopped, that renderer and
+interpreter remain scheduled and held in memory by the same partial wake lock
+that legitimately keeps audio alive — a materially heavier baseline than a
+native decoder, independent of any one bug. Getting an actual number needs a
+real low/mid Android device and a `dumpsys batterystats` (or Battery Historian)
+pass across a one-hour screen-off local-file session, compared against the
+same session on Spotify; that pass has not happened in this repository yet.
+
+**What a native player service would change, and what it would cost.** Moving
+decode off the WebView — a native `MediaPlayer`/`ExoPlayer` fed the resolved
+stream URL, running in its own service — would let the WebView itself be
+fully paused (`onPause()`/`onResume()`) whenever the Activity is backgrounded,
+including screen-off, because the renderer would no longer be the thing
+producing sound. It would also remove CPython from the screen-off hot path
+entirely for local playback. That is not a small fix: it means a second
+playback implementation (queue, seek, crossfade/gapless if any, format
+negotiation) that has to stay in sync with the web engine (`player/engine.js`)
+instead of being the same code, a new native/JS bridge for every transport
+action the UI already dispatches as DOM events, and ongoing maintenance of two
+playback paths instead of one. Worth doing if the measurement above shows a
+real gap against the 3-5 %/h baseline; out of scope for this round, which only
+cuts what the current architecture allows.
+
 ## How to measure
 
 Everything below lives in `scripts/perf/`. Measure the **release** builds:

@@ -4,6 +4,7 @@ import { setJobFor } from "./jobsStore.js";
 import { verdictStore } from "./verdict.js";
 import { groupToast, reattachText } from "./albumText.js";
 import { markQueueReady } from "./queueBoot.js";
+import { isScreenOff } from "../shared/screenState.js";
 
 /* ---------------------------------------------------------------------------
    COLA DE DESCARGAS (espejo del servidor)
@@ -29,9 +30,14 @@ export const POLL_TIMEOUT_MS = 10000;
 
 /* Pura, para probar los tres regimenes sin temporizadores. `null` = no sondear. */
 export function pollDelay({ offline = false, busy = false, active = false,
-  sheetOpen = false, items = 0, retryDelay = 1000, capHits = 0 } = {}) {
+  sheetOpen = false, items = 0, retryDelay = 1000, capHits = 0, screenOff = false } = {}) {
   if (offline && !busy && !sheetOpen && capHits >= 2) return null;
   if (offline) return retryDelay;
+  /* Con la pantalla de verdad apagada (no solo la pestana tapada: ver
+     shared/screenState.js) una descarga activa no necesita el sondeo rapido
+     de "alguien mira el anillo": con el lento alcanza para que no se note al
+     volver. */
+  if (screenOff && busy) return POLL_IDLE_MS;
   if (active) return POLL_ACTIVE_MS;
   if (busy) return POLL_QUEUED_MS;
   if (sheetOpen && items) return POLL_IDLE_MS;
@@ -332,7 +338,7 @@ export function createQueueStore(fetchImpl = defaultFetch) {
     clearTimeout(timer);
     timer = null;
     if (disposed) return;
-    /* Con la pantalla apagada no sondeamos: en el telefono ahorra bateria.
+    /* Con la pestana tapada no sondeamos: en el telefono ahorra bateria.
        visibilitychange ya llama a wake() en cuanto vuelve a ser visible. */
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     const busy = state.items.some((i) => BUSY_STATES.has(i.status));
@@ -345,6 +351,7 @@ export function createQueueStore(fetchImpl = defaultFetch) {
       items: state.items.length,
       retryDelay,
       capHits,
+      screenOff: isScreenOff(),
     });
     /* Sin trabajo y con la hoja cerrada NO queda sondeando: el siguiente
        online/visible o una accion del usuario lo despierta. */
