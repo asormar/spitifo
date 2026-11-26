@@ -5,7 +5,7 @@ import { ExtLink } from "../shared/ui.jsx";
 import { provenance, trackState } from "./constants.js";
 import { warmDownload } from "./api.js";
 import { useDl } from "./DlRing.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import PreviewButton from "./PreviewButton.jsx";
 import StreamButton from "./StreamButton.jsx";
 import ArchiveListenButton from "./ArchiveListenButton.jsx";
@@ -46,7 +46,7 @@ function Verify({ t, query }) {
     return (
       <div className="ver" aria-live="polite">
         <button type="button" className={wait ? "vbtn vbtn--wait" : "vbtn"} aria-disabled={wait || undefined} onClick={() => !wait && run()}>
-          {wait ? <span className="sp" aria-hidden="true" /> : <Ico n={fail ? "retry" : "spark"} size={16} />}
+          {wait ? <span className="sp" aria-hidden="true" /> : <Icon name={fail ? "ArrowClockwise" : "Sparkle"} size="sm" />}
           {wait
             ? "Leyendo las etiquetas del audio"
             : fail
@@ -78,7 +78,7 @@ function Verify({ t, query }) {
         <p className="note">El archivo no trae etiquetas: el título viene de la ficha del item.</p>
       )}
       <ExtLink className="fl__a" url={x.item_url}>
-        ver en Internet Archive <Ico n="ext" size={12} />
+        ver en Internet Archive <Icon name="ArrowSquareOut" size="sm" />
       </ExtLink>
     </section>
   );
@@ -112,7 +112,7 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
           {sub && <span>{sub}</span>}
         </span>
         <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar la ficha" onClick={onClose}>
-          <Ico n="x" size={18} />
+          <Icon name="X" size="md" />
         </button>
       </div>
       <div className="fb">
@@ -139,10 +139,10 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
         {t.source === "archive" && <Verify t={t} query={query} />}
         <p className="fl">
           <ExtLink className="fl__a" url={t.extra?.webpage_url}>
-            vídeo <Ico n="ext" size={12} />
+            vídeo <Icon name="ArrowSquareOut" size="sm" />
           </ExtLink>
           <ExtLink className="fl__a" url={t.extra?.item_url}>
-            procedencia <Ico n="ext" size={12} />
+            procedencia <Icon name="ArrowSquareOut" size="sm" />
           </ExtLink>
         </p>
         <div className="fa">
@@ -163,7 +163,7 @@ export default function Ficha({ t, query, busy, downloaded, onDl, onClose, ancho
               aria-disabled={wait || undefined}
               onClick={(e) => !wait && onDl(t, e.currentTarget)}
             >
-              {wait ? <span className="sp" aria-hidden="true" /> : <Ico n={dls.id === "done" ? "check" : "dl"} size={18} />}
+              {wait ? <span className="sp" aria-hidden="true" /> : <Icon name={dls.id === "done" ? "Check" : "DownloadSimple"} size="md" />}
               {dlText(dls)}
             </button>
           )}

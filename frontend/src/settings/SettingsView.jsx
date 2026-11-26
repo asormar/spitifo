@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
@@ -157,7 +157,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     <div className="settings">
       <header className="settings__head">
         <button type="button" className="settings__back cbtn cbtn--soft cbtn--l" aria-label="Volver" onClick={onClose}>
-          <Ico n="back" size={20} sw={2.2} />
+          <Icon name="CaretLeft" size="md" />
         </button>
         <h1 className="settings__title">Ajustes</h1>
       </header>

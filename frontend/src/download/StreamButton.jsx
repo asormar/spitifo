@@ -1,5 +1,4 @@
-import { Icon } from "../shared/icons.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { streamKey, streamQueue } from "./streamTrack.js";
@@ -43,9 +42,9 @@ export default function StreamButton({ t, queue, source = null, text = false }) 
       onClick={toggle}
     >
       {loading ? (
-        <Icon name="CircleNotch" size={20} weight="bold" className="spin" />
+        <Icon name="CircleNotch" size="md" weight="bold" className="spin" />
       ) : (
-        playing ? <Ico n="pause" size={20} /> : <Icon name="Play" size={18} weight="fill" />
+        playing ? <Icon name="Pause" size="md" weight="fill" /> : <Icon name="Play" size="md" weight="fill" />
       )}
       {text && (playing ? "Pausar" : "Escuchar")}
     </button>

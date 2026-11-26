@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import deque
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -37,7 +38,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .executors import run_prefetch, run_storage
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
@@ -77,6 +78,7 @@ from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
+from .suggest import suggestions_from_raw
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -472,6 +474,31 @@ def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> i
     return n
 
 
+def _query_int_or_none(request: Request, name: str, *, ge: int, le: int) -> int | None:
+    v = request.query_params.get(name)
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_list(request: Request, name: str, *, max_items: int,
+                max_length: int) -> list[str]:
+    items = request.query_params.getlist(name)
+    if len(items) > max_items:
+        raise _invalid(["query", name], f"At most {max_items} items")
+    for v in items:
+        if len(v) > max_length:
+            raise _invalid(["query", name],
+                           f"String should have at most {max_length} characters")
+    return items
+
+
 def _query_bool(request: Request, name: str, default: bool) -> bool:
     v = request.query_params.get(name)
     if v is None:
@@ -720,6 +747,42 @@ async def search(request: Request):
     })
 
 
+#: iTunes acepta unas 20 busquedas por minuto por IP: las sugerencias (una por
+#: pausa al escribir) no pueden gastarse ese cupo y dejar sin resultados a la
+#: busqueda de verdad. Pasado el tope, la respuesta va vacia y el frontend
+#: sigue con las sugerencias de la biblioteca.
+_SUGGEST_MAX_PER_MIN = 8
+_SUGGEST_CALLS: deque = deque()
+
+
+def _suggest_allowed() -> bool:
+    ahora = time.monotonic()
+    while _SUGGEST_CALLS and ahora - _SUGGEST_CALLS[0] > 60:
+        _SUGGEST_CALLS.popleft()
+    if len(_SUGGEST_CALLS) >= _SUGGEST_MAX_PER_MIN:
+        return False
+    _SUGGEST_CALLS.append(ahora)
+    return True
+
+
+async def search_suggest(request: Request):
+    """GET /api/search/suggest: sugerencias baratas mientras se escribe.
+
+    Una sola llamada a iTunes, sin YouTube y sin el stream de Buscar. Un fallo
+    de iTunes deja la lista vacia: escribir nunca debe convertirse en un error.
+    """
+    q = _query_str(request, "q", required=True, min_length=2, max_length=200)
+    limit = _query_int(request, "limit", 6, 1, 12)
+    if not _suggest_allowed():
+        return JSONResponse({"query": q, "suggestions": [], "throttled": True})
+    try:
+        raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
+    except Exception as e:
+        log.warning("suggest search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "suggestions": suggestions_from_raw(raws, limit)})
+
+
 async def search_match(request: Request):
     """GET /api/search/match/{track_id}: match suelto de una fila `lazy`.
 
@@ -761,6 +824,26 @@ async def search_match(request: Request):
     track.extra["match_state"] = (
         "full" if (match or {}).get("video") else "none")
     return JSONResponse({"track": track.to_dict()})
+
+
+async def lyrics_route(request: Request):
+    """GET /api/lyrics -> letra sincronizada via LRCLIB, nunca rompe la pagina.
+
+    200 con nulls si LRCLIB no tiene la cancion, y 200 con nulls mas
+    `error: "unavailable"` si la red fallo: la UI decide cuando mostrar
+    "Letra no disponible ahora", nunca un error HTTP.
+    """
+    title = _query_str(request, "title", required=True, min_length=1, max_length=200)
+    artist = _query_str(request, "artist", required=True, min_length=1, max_length=200)
+    album = _query_str(request, "album", default=None, max_length=200)
+    duration = _query_int_or_none(request, "duration", ge=0, le=36000)
+    alt_titles = _query_list(request, "alt_title", max_items=5, max_length=200)
+    alt_artists = _query_list(request, "alt_artist", max_items=5, max_length=200)
+
+    resultado = await lyrics.get_lyrics(
+        title=title, artist=artist, album=album, duration=duration,
+        alt_titles=alt_titles, alt_artists=alt_artists)
+    return JSONResponse(resultado)
 
 
 # ------------------------------------------------------------------- albumes
@@ -2234,11 +2317,36 @@ async def _json_response_threaded(content: Any, *, status_code: int = 200) -> Re
     return Response(body, status_code=status_code, media_type="application/json")
 
 
-def _library_body(describe, files: list) -> tuple[bytes, str]:
+#: Columnas de la forma compacta de `/api/library` (P-large-library-scale-1,
+#: P-large-library-scale-8). El array de objetos repite cada nombre de campo
+#: en cada fila; a 20k pistas eso es la mayor parte de los ~7.7 MB del cuerpo.
+#: En columnas el nombre de cada campo sale UNA vez y las filas son arrays sin
+#: etiqueta. `size_mb` no viaja: se recalcula de `bytes` al expandir, es
+#: redundante. El orden importa (lo usa el frontend para expandir) y el
+#: frontend lo espera tal cual: cambiarlo es un cambio de contrato.
+COMPACT_FIELDS = (
+    "key", "filename", "folder", "bytes", "duration_s", "title", "artist",
+    "album", "track_no", "disc_no", "album_id", "modified", "kind",
+    "thumb_key", "has_audio", "thumb_s", "verdict", "meta_src", "file_src",
+    "real",
+)
+
+
+def _compact_rows(files: list[dict]) -> list[list]:
+    """Las mismas filas de `library_scan`/`with_checks`, en columnas."""
+    return [[f.get(name) for name in COMPACT_FIELDS] for f in files]
+
+
+def _library_body(describe, files: list, compact: bool) -> tuple[bytes, str]:
     """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
     pistas son cerca de un megabyte que no se serializa en el loop."""
-    body = json.dumps({"library": describe, "count": len(files),
-                       "files": files}, ensure_ascii=False,
+    payload = {"library": describe, "count": len(files)}
+    if compact:
+        payload["fields"] = COMPACT_FIELDS
+        payload["rows"] = _compact_rows(files)
+    else:
+        payload["files"] = files
+    body = json.dumps(payload, ensure_ascii=False,
                       separators=(",", ":")).encode("utf-8")
     return body, _library_etag(body)
 
@@ -2260,14 +2368,23 @@ async def library(request: Request):
     """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
     mandar (y que el navegador vuelva a parsear) el JSON entero cuando nada
     cambio desde el ultimo pedido (P-large-library-scale-8, P-network-caching-6).
+
+    `?shape=compact` pide las filas en columnas en vez de un objeto por
+    archivo (ver COMPACT_FIELDS): un frontend viejo nunca manda el parametro y
+    sigue recibiendo `files` como siempre; uno nuevo contra un backend viejo
+    (que ignora el parametro desconocido) tambien sigue andando, solo que sin
+    la columna. Las dos formas quedan bajo URLs distintas, asi que el cache
+    HTTP (ETag) de cada una es independiente.
     """
     storage = get_storage()
+    compact = request.query_params.get("shape") == "compact"
     files, records = await asyncio.gather(
         run_storage(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
     # Serializar en el pool de storage (no en el loop) y, ademas, responder 304
     # si el cliente ya tiene el mismo cuerpo (ETag debil).
-    body, etag = await run_storage(_library_body, storage.describe(), files)
+    body, etag = await run_storage(_library_body, storage.describe(), files,
+                                   compact)
     headers = {**_LIBRARY_CACHE, "ETag": etag}
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
@@ -3714,7 +3831,9 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/search/suggest", search_suggest),
     Route("/api/search/match/{track_id}", search_match),
+    Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
@@ -3771,9 +3890,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 

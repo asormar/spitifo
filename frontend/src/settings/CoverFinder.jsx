@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 import { candidateMeta, finderReducer, initialFinder, previewUrl } from "./coverFinder.js";
 import "./coverFinder.css";
@@ -39,7 +39,7 @@ function Candidate({ c, on, onPick }) {
           />
         )}
         <span className="cf__chk" aria-hidden="true">
-          <Ico n="check" size={14} sw={3} />
+          <Icon name="Check" size="sm" />
         </span>
       </span>
       <span className="cf__ct">{c.title}</span>
@@ -201,7 +201,7 @@ export default function CoverFinder({ onClose, onSaved }) {
           aria-label="Volver a Ajustes"
           onClick={close}
         >
-          <Ico n="back" size={20} sw={2.2} />
+          <Icon name="CaretLeft" size="md" />
         </button>
         <h1 className="settings__title cf__title" ref={headRef} tabIndex={-1}>
           Buscar portadas
@@ -242,7 +242,7 @@ export default function CoverFinder({ onClose, onSaved }) {
 
           <div className="cf__file">
             <span className="cf__noart" aria-hidden="true">
-              <Ico n="music" size={22} />
+              <Icon name="MusicNotes" size="lg" />
             </span>
             <span className="cf__fi">
               <b>{title}</b>

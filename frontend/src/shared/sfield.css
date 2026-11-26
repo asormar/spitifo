@@ -91,3 +91,94 @@
 .sfield__go:active {
   transform: scale(0.96);
 }
+
+/* --- Combobox de sugerencias ------------------------------------------------ */
+
+.sfwrap {
+  position: relative;
+}
+
+.sfwrap > .sfield {
+  width: 100%;
+}
+
+/* El boton se queda, pero en segundo plano (Decisión 2). */
+.sfield__go--ghost {
+  background: transparent;
+  color: var(--mut);
+  box-shadow: inset 0 0 0 1.5px var(--s3);
+}
+
+.sfcombo {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  left: 0;
+  max-height: calc(var(--hit) * 6);
+  overflow-y: auto;
+  border-radius: var(--r-inner);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  animation: var(--rise-enter);
+}
+
+.sfcombo__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--hit);
+  padding: 0 var(--sp-4);
+  cursor: pointer;
+  transition: background-color var(--t-quick) var(--ease);
+}
+
+.sfcombo__row.is-active {
+  background: var(--hover);
+}
+
+.sfcombo__cv {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  color: var(--mut);
+  font: 800 var(--fs-caption) var(--font-display);
+}
+
+.sfcombo__tx {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.sfcombo__tx b,
+.sfcombo__tx span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sfcombo__tx b {
+  font: 700 var(--fs-caption) var(--font-body);
+}
+
+.sfcombo__tx span {
+  color: var(--mut);
+  font-size: var(--fs-micro);
+}
+
+.sfcombo__kind {
+  flex: none;
+  color: var(--dim);
+  font: 700 var(--fs-micro) var(--font-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sfcombo {
+    animation: none;
+  }
+}

@@ -51,13 +51,13 @@ describe("grupos del menu ⋯ de un stream suelto", () => {
       "Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Reproductor",
     ]);
     expect(groups[0].items.map((i) => i.kind)).toEqual(["next", "end"]);
-    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "dl", text: "Descargar", sub: "flac" });
+    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "flac" });
     expect(groups[2].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",
     ]);
     expect(groups[3].items[0].kind).toBe("ficha");
-    expect(groups[4].items).toEqual([{ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" }]);
+    expect(groups[4].items).toEqual([{ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" }]);
   });
 
   it("«Ir al álbum» solo sale cuando se puede abrir la ficha del disco", () => {

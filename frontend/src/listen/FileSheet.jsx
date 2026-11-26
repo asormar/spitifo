@@ -1,4 +1,4 @@
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import Sheet from "../shared/Sheet.jsx";
 import { VerdictPill } from "../shared/Verdict.jsx";
 import { keyUrl } from "../shared/api.js";
@@ -32,7 +32,7 @@ export default function FileSheet({ entry, storage, anchor, onClose }) {
           <span className="mhead__s">{sub}</span>
         </span>
         <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" title="Cerrar" onClick={onClose}>
-          <Ico n="x" size={18} />
+          <Icon name="X" size="md" />
         </button>
       </div>
       <div className="fsheet__b">

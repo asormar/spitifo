@@ -3,8 +3,7 @@ import { loadAlbumChunk } from "../download/albumChunk.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
-import Ico from "../shared/ico.jsx";
-import { Icon } from "../shared/icons.jsx";
+import { Icon } from "./icons.jsx";
 import { toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -182,15 +181,22 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
      de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
-     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. La
+     promesa se guarda en un ref para que «Más de» la reuse en vez de pedir lo
+     mismo otra vez: una sola llamada a /api/artists/search por artista y
+     visita, aunque se pulse el boton antes de que esta termine. */
+  const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
+      linkPromiseRef.current = null;
       setArtistLinkId(null);
       return undefined;
     }
     let vivo = true;
-    resolveArtistLink(d.name, d.rows).then((vista) => {
+    const promise = resolveArtistLink(d.name, d.rows);
+    linkPromiseRef.current = promise;
+    promise.then((vista) => {
       if (vivo) setArtistLinkId(vista?.id ?? null);
     });
     return () => {
@@ -266,23 +272,23 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       aria-haspopup="menu"
       onClick={(e) => ctx.openMenu(pl.id, e.currentTarget, "lmenu")}
     >
-      <Ico n="dots" size={22} />
+      <Icon name="DotsThree" size="lg" />
     </button>
   );
 
   const acts = (
     <div className="dacts">
       <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
-        <Icon name="Play" size={18} weight="fill" />
+        <Icon name="Play" size="md" weight="fill" />
         Reproducir
       </button>
       <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={shuffle}>
-        <Icon name="Shuffle" size={18} />
+        <Icon name="Shuffle" size="md" />
         Aleatorio
       </button>
       {isList && (
         <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
-          <Ico n="dl" size={18} />
+          <Icon name="DownloadSimple" size="md" />
           Descargar lista
         </button>
       )}
@@ -292,7 +298,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           className="btn btn--ghost"
           onClick={(e) => ctx.openArt(view.id, "artist", name, e.currentTarget)}
         >
-          <Ico n="upload" size={18} />
+          <Icon name="UploadSimple" size="md" />
           Cambiar foto
         </button>
       )}
@@ -305,7 +311,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           aria-haspopup="menu"
           onClick={(e) => ctx.openMenu(view.id, e.currentTarget, "almenu")}
         >
-          <Ico n="dots" size={20} />
+          <Icon name="DotsThree" size="md" />
         </button>
       )}
     </div>
@@ -320,7 +326,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         ) : (
           <>
             Esta lista está vacía. Añade canciones desde el menú{" "}
-            <Ico n="dots" size={18} /> de cualquier canción.
+            <Icon name="DotsThree" size="md" /> de cualquier canción.
           </>
         )
       ) : (
@@ -451,7 +457,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     const seq = ++linkSeq.current;
     loadArtistChunk();
     setLinking(true);
-    const view = await resolveArtistLink(name, rows);
+    const view = await (linkPromiseRef.current || resolveArtistLink(name, rows));
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;
@@ -481,7 +487,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
               <div className="ahero__in">
                 <h1>{name}</h1>
                 <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
-                  <Icon name="Play" size={28} weight="fill" />
+                  <Icon name="Play" size="xl" weight="fill" />
                 </button>
               </div>
             </>

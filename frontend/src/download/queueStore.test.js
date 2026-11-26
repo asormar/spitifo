@@ -120,17 +120,37 @@ describe("cola: espejo de GET /api/downloads", () => {
     s.dispose();
   });
 
-  it("un album refresca la biblioteca UNA vez, al terminar el grupo", () => {
+  it("un album de 15 pistas refresca la biblioteca UNA vez, al terminar la ultima (P-downloads-pipeline-2)", () => {
     const s = createQueueStore();
     const onLibrary = vi.fn();
     s.setHooks({ onLibrary });
-    vi.spyOn(verdictStore, "setFromDownload").mockImplementation(() => {});
-    const a = item(60, "downloading", { group: { id: "album:9", title: "D" } });
-    const b = item(61, "queued", { group: { id: "album:9", title: "D" } });
-    s.applyPayload({ items: [a, b] });
-    s.applyPayload({ items: [{ ...a, status: "done" }, b] });
-    expect(onLibrary).not.toHaveBeenCalled(), "el grupo sigue vivo";
-    s.applyPayload({ items: [{ ...a, status: "done" }, { ...b, status: "done" }] });
+    const group = { id: "album:big", title: "Un album grande" };
+    const ids = Array.from({ length: 15 }, (_, i) => String(i + 100));
+
+    // Encolado: las 15 en "queued", ninguna termino todavia.
+    s.applyPayload({ items: ids.map((id) => item(id, "queued", { group })) });
+    expect(onLibrary).not.toHaveBeenCalled();
+
+    // Van terminando de a una, en cualquier orden, menos la ultima.
+    for (const id of ids.slice(0, -1)) {
+      s.applyPayload({
+        items: ids.map((i) => item(i, i === id || ids.indexOf(i) < ids.indexOf(id) ? "done" : "queued", { group })),
+      });
+    }
+    expect(onLibrary).not.toHaveBeenCalled();
+
+    // La ultima pista del grupo termina: el grupo esta "ended" recien ahora.
+    s.applyPayload({ items: ids.map((id) => item(id, "done", { group })) });
+    expect(onLibrary).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+
+  it("una descarga suelta (sin grupo) sigue refrescando apenas termina", () => {
+    const s = createQueueStore();
+    const onLibrary = vi.fn();
+    s.setHooks({ onLibrary });
+    s.applyPayload({ items: [item(50, "queued")] });
+    s.applyPayload({ items: [item(50, "done")] });
     expect(onLibrary).toHaveBeenCalledTimes(1);
     s.dispose();
   });
@@ -203,6 +223,26 @@ describe("cola: red y reenganche", () => {
     await s.pollNow();
     expect(s.getOffline()).toBe(true);
     expect(s.getState().items[0]).toMatchObject({ status: "downloading", progress: 44 });
+    s.dispose();
+  });
+
+  it("resumed se poda cuando el item desaparece: no queda colgado para siempre", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]));
+    const s = createQueueStore(fetchImpl);
+    await s.pollNow(); // en marcha al 40 %
+    await s.pollNow(); // corte de red: el 40 % sigue siendo el ultimo conocido
+    await s.pollNow(); // vuelve: markResumed guarda el 40 % antes de leer la respuesta
+    expect(s.getState().items[0]).toMatchObject({ resumedFrom: 40 });
+    await s.pollNow(); // el item desaparece del todo
+    await s.pollNow(); // "reaparece" (mismo id): sin poda arrastraria el 40 % de antes
+    expect(s.getState().items[0].resumedFrom).toBeUndefined();
     s.dispose();
   });
 

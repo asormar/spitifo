@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import Sheet, { Popover, SheetBar } from "../shared/Sheet.jsx";
-import Ico from "../shared/ico.jsx";
 import { usePc } from "../shared/viewport.js";
+import { Icon } from "./icons.jsx";
 import { menuKeys } from "./menuKeys.js";
 
 /* ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ export function MenuBody({ groups, title, onPick }) {
               onClick={() => onPick(it.kind)}
             >
               <span className="rm__h">
-                <Ico n={it.icon} size={18} />
+                <Icon name={it.icon} size="md" />
                 {it.text}
               </span>
               {it.sub && <span className="rm__d num">{it.sub}</span>}

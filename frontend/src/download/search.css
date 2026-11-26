@@ -355,3 +355,224 @@
   color: var(--mut);
   font-size: 13.5px;
 }
+
+/* --- Explicacion de los chips de modo y leyenda de fuentes ------------------- */
+
+.tbar__sub {
+  margin: 0;
+  min-height: var(--fs-caption);
+  color: var(--mut);
+  font-size: var(--fs-caption);
+}
+
+.legend {
+  position: relative;
+}
+
+.legend__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--mut);
+  font: 700 var(--fs-label) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.legend__pop {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 230px;
+  padding: var(--sp-3);
+  border-radius: var(--r-inner);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  animation: var(--rise-enter);
+}
+
+.legend__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--mut);
+  font-size: var(--fs-caption);
+}
+
+.legend__row b {
+  flex: none;
+  min-width: var(--sp-8);
+  padding: 2px 0;
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  color: var(--mut);
+  font: 800 var(--fs-micro) var(--font-body);
+  text-align: center;
+}
+
+/* --- Busquedas recientes ----------------------------------------------------- */
+
+.rsch {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.rsch__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.rsch__head .sh2 {
+  margin: 0;
+}
+
+.rsch__clear {
+  min-height: 36px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  background: none;
+  color: var(--mut);
+  font: 700 var(--fs-caption) var(--font-body);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rsch__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rsch__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 220px;
+  min-height: 36px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  font: 700 var(--fs-caption) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.rsch__chip span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rsch__chip:active {
+  transform: scale(var(--press));
+}
+
+/* --- Filtros por tipo y fuente, avance y «quizas querias» -------------------- */
+
+.rfilters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.rhead__progress {
+  margin: 0;
+  color: var(--action);
+  font: 700 var(--fs-caption) var(--font-body);
+}
+
+.typerow {
+  list-style: none;
+}
+
+.typerow__main {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-inner);
+  background: var(--s1);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.typerow__main:active {
+  transform: scale(var(--press-row));
+}
+
+.typerow__kind {
+  flex: none;
+  color: var(--action);
+  font: 700 var(--fs-micro) var(--font-body);
+  text-transform: uppercase;
+}
+
+.typerow__main b {
+  font: 700 var(--fs-body) var(--font-body);
+}
+
+.typerow__main > span:last-child {
+  overflow: hidden;
+  color: var(--mut);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.maybe {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  font: 700 var(--fs-caption) var(--font-body);
+  color: var(--mut);
+}
+
+.maybe__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.maybe__chip {
+  min-height: 36px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--action) 12%, transparent);
+  color: var(--action);
+  font: 700 var(--fs-label) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.maybe__chip:active {
+  transform: scale(var(--press));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legend__pop {
+    animation: none;
+  }
+}

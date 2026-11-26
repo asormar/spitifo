@@ -427,3 +427,46 @@ def test_library_etag_cambia_si_la_biblioteca_cambia(api):
     r2 = client.get("/api/library", headers={"If-None-Match": etag1})
     assert r2.status_code == 200
     assert r2.headers.get("etag") != etag1
+
+
+def test_library_shape_compact_trae_columnas_no_un_objeto_por_archivo(api):
+    """P-large-library-scale-1 / P-large-library-scale-8: `?shape=compact`
+    manda `fields`+`rows` (sin repetir el nombre de cada campo por fila) en
+    vez de `files`; el contrato clasico sigue andando sin el parametro."""
+    from backend.app.main import COMPACT_FIELDS
+
+    client, root = api
+    (root / "A").mkdir()
+    (root / "A" / "A - x.mp3").write_bytes(b"0123456789")
+
+    clasico = client.get("/api/library").json()
+    assert "files" in clasico and "rows" not in clasico
+    assert clasico["files"][0]["key"] == "A/A - x.mp3"
+
+    compacto = client.get("/api/library?shape=compact").json()
+    assert "rows" in compacto and "files" not in compacto
+    assert list(compacto["fields"]) == list(COMPACT_FIELDS)
+    assert compacto["count"] == clasico["count"] == 1
+
+    fila = dict(zip(compacto["fields"], compacto["rows"][0]))
+    for campo in COMPACT_FIELDS:
+        assert fila[campo] == clasico["files"][0].get(campo)
+
+    # Es una URL distinta: su propio ETag, sin pisar la cache del contrato clasico.
+    clasico_etag = client.get("/api/library").headers.get("etag")
+    compacto_etag = client.get("/api/library?shape=compact").headers.get("etag")
+    assert clasico_etag and compacto_etag and clasico_etag != compacto_etag
+
+
+def test_library_shape_compact_payload_es_mucho_mas_chico(api):
+    """La ganancia de tamano es real: sin repetir ~20 nombres de campo por
+    fila, varias pistas deberian pesar bastante menos en columnas."""
+    client, root = api
+    for i in range(30):
+        carpeta = root / f"Artista {i}"
+        carpeta.mkdir()
+        (carpeta / f"Artista {i} - Tema.mp3").write_bytes(b"0" * 1000)
+
+    clasico = client.get("/api/library").content
+    compacto = client.get("/api/library?shape=compact").content
+    assert len(compacto) < len(clasico) * 0.75
