@@ -47,11 +47,24 @@ describe("art store", () => {
 
     ok = true;
     expect(await store.upload("song:a", "BIG", "SMALL", { url: "blob:big" })).toBe(true);
-    expect(store.getState().byTarget.get("song:a")).toEqual({ ...record("upload"), url: "blob:big" });
+    /* Sin `url`: el data: URL de la subida (unos 2.7 MB en la app real) no se
+       queda en memoria para siempre, solo el registro confirmado. */
+    expect(store.getState().byTarget.get("song:a")).toEqual(record("upload"));
     expect(JSON.parse(fetchFn.mock.calls.at(-1)[1].body)).toEqual({
       target: "song:a",
       image: "BIG",
       small: "SMALL",
+    });
+  });
+
+  it("from-url SI conserva la URL confirmada (la usa la hoja para la marca Actual)", async () => {
+    const fetchFn = vi.fn(async () => json({ target: "artist:x", ...record("youtube") }));
+    const store = createArt({ fetchFn });
+    const ok = await store.fromUrl("artist:x", "https://i.ytimg.com/vi/x/hqdefault.jpg", "youtube");
+    expect(ok).toBe(true);
+    expect(store.getState().byTarget.get("artist:x")).toEqual({
+      ...record("youtube"),
+      url: "https://i.ytimg.com/vi/x/hqdefault.jpg",
     });
   });
 

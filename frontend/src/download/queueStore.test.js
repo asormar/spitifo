@@ -165,6 +165,26 @@ describe("cola: red y reenganche", () => {
     s.dispose();
   });
 
+  it("resumed se poda cuando el item desaparece: no queda colgado para siempre", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]))
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([item(70, "downloading", { progress: 40 })]));
+    const s = createQueueStore(fetchImpl);
+    await s.pollNow(); // en marcha al 40 %
+    await s.pollNow(); // corte de red: el 40 % sigue siendo el ultimo conocido
+    await s.pollNow(); // vuelve: markResumed guarda el 40 % antes de leer la respuesta
+    expect(s.getState().items[0]).toMatchObject({ resumedFrom: 40 });
+    await s.pollNow(); // el item desaparece del todo
+    await s.pollNow(); // "reaparece" (mismo id): sin poda arrastraria el 40 % de antes
+    expect(s.getState().items[0].resumedFrom).toBeUndefined();
+    s.dispose();
+  });
+
   it("al abrir avisa una sola vez con las descargas que venian andando", async () => {
     vi.useFakeTimers();
     const onToast = vi.fn();

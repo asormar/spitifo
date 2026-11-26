@@ -67,7 +67,11 @@ export function createArt({ fetchFn = (...a) => fetch(...a) } = {}) {
         fresh.clear();
         Object.entries(d.art).forEach(([t, rec]) => fresh.set(t, rec));
       } else if (d.key) {
-        const keepUrl = state.byTarget.get(target)?.url || null;
+        /* La URL solo se conserva para una foto elegida de una busqueda (una
+           https chica, para la marca "Actual" de la hoja): una subida trae un
+           data: URL de ~2.7 MB que ninguna miniatura de la hoja va a igualar
+           nunca, asi que guardarla para siempre seria solo memoria tirada. */
+        const keepUrl = record && record.source !== "upload" ? record.url || null : null;
         fresh.set(target, {
           key: d.key,
           small_key: d.small_key,

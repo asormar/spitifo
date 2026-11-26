@@ -36,7 +36,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
@@ -367,6 +367,31 @@ def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> i
     return n
 
 
+def _query_int_or_none(request: Request, name: str, *, ge: int, le: int) -> int | None:
+    v = request.query_params.get(name)
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_list(request: Request, name: str, *, max_items: int,
+                max_length: int) -> list[str]:
+    items = request.query_params.getlist(name)
+    if len(items) > max_items:
+        raise _invalid(["query", name], f"At most {max_items} items")
+    for v in items:
+        if len(v) > max_length:
+            raise _invalid(["query", name],
+                           f"String should have at most {max_length} characters")
+    return items
+
+
 def _query_bool(request: Request, name: str, default: bool) -> bool:
     v = request.query_params.get(name)
     if v is None:
@@ -656,6 +681,26 @@ async def search_match(request: Request):
     track.extra["match_state"] = (
         "full" if (match or {}).get("video") else "none")
     return JSONResponse({"track": track.to_dict()})
+
+
+async def lyrics_route(request: Request):
+    """GET /api/lyrics -> letra sincronizada via LRCLIB, nunca rompe la pagina.
+
+    200 con nulls si LRCLIB no tiene la cancion, y 200 con nulls mas
+    `error: "unavailable"` si la red fallo: la UI decide cuando mostrar
+    "Letra no disponible ahora", nunca un error HTTP.
+    """
+    title = _query_str(request, "title", required=True, min_length=1, max_length=200)
+    artist = _query_str(request, "artist", required=True, min_length=1, max_length=200)
+    album = _query_str(request, "album", default=None, max_length=200)
+    duration = _query_int_or_none(request, "duration", ge=0, le=36000)
+    alt_titles = _query_list(request, "alt_title", max_items=5, max_length=200)
+    alt_artists = _query_list(request, "alt_artist", max_items=5, max_length=200)
+
+    resultado = await lyrics.get_lyrics(
+        title=title, artist=artist, album=album, duration=duration,
+        alt_titles=alt_titles, alt_artists=alt_artists)
+    return JSONResponse(resultado)
 
 
 # ------------------------------------------------------------------- albumes
@@ -3515,6 +3560,7 @@ routes = [
     Route("/api/health", health),
     Route("/api/search", search),
     Route("/api/search/match/{track_id}", search_match),
+    Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
@@ -3570,9 +3616,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 
