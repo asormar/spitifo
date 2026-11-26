@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import logging
 import os
 import re
 import sys
@@ -24,6 +25,15 @@ from typing import Callable, Protocol
 import httpx
 
 from .oauth import InvalidGrant, Provider, TokenSet, refresh
+
+log = logging.getLogger(__name__)
+
+#: Cuanto antes de vencer se dispara el refresh de FONDO (sin bloquear al
+#: llamador: el token todavia es valido). `TokenSet.expired` ya da un margen
+#: de 60 s para el camino sincronico de respaldo; este es mas generoso para
+#: que, en el uso normal, `access_token()` casi nunca tenga que esperar un
+#: refresh en el camino caliente (P-drive-io-9).
+PROACTIVE_REFRESH_MARGIN = 300.0
 
 
 class Protector(Protocol):
@@ -244,6 +254,8 @@ class StoredTokenSource:
         self._lock = threading.Lock()
         self._tokens: TokenSet | None = None
         self._force = False
+        # Evita dos refresh de fondo a la vez (uno alcanza).
+        self._refreshing_bg = False
 
     def _load(self) -> TokenSet:
         if self._tokens is None:
@@ -258,7 +270,49 @@ class StoredTokenSource:
             tokens = self._load()
             if self._force or tokens.expired(self._clock()):
                 tokens = self._refresh(tokens)
+            elif (not self._refreshing_bg
+                  and tokens.expires_at - self._clock() < PROACTIVE_REFRESH_MARGIN):
+                # Todavia vale: se devuelve YA y el refresh corre de fondo, asi
+                # que el proximo pedido (el que SI estaria contra el vencimiento)
+                # casi siempre encuentra un token nuevo sin esperar nada.
+                self._refreshing_bg = True
+                threading.Thread(target=self._refresh_bg, daemon=True,
+                                 name="token-refresh").start()
             return tokens.access_token
+
+    def _refresh_bg(self) -> None:
+        """El refresh de fondo NUNCA mantiene `self._lock` durante la llamada
+        de red: si lo hiciera, cualquier `access_token()` concurrente (que
+        todavia tiene un token vigente para leer) quedaria esperando la
+        vuelta de red igual que en el camino sincronico, exactamente lo que
+        esto existe para evitar.
+        """
+        with self._lock:
+            tokens = self._tokens
+            if tokens is None or self._force or tokens.expired(self._clock()):
+                self._refreshing_bg = False
+                return  # el camino sincronico ya se esta haciendo cargo
+        try:
+            new = refresh(self.client, self.provider, tokens,
+                          now=self._clock())
+        except InvalidGrant:
+            with self._lock:
+                self.store.delete(self.name)
+                self._tokens = None
+                self._refreshing_bg = False
+            return
+        except Exception as exc:
+            # Sin red u otro error pasajero: el proximo `access_token`, ya
+            # contra el vencimiento de verdad, lo reintenta por el camino
+            # sincronico de siempre.
+            log.info("refresh de token de fondo fallo: %s", exc)
+            with self._lock:
+                self._refreshing_bg = False
+            return
+        with self._lock:
+            self.store.save(self.name, new)
+            self._tokens = new
+            self._refreshing_bg = False
 
     def _refresh(self, tokens: TokenSet) -> TokenSet:
         try:

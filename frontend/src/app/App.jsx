@@ -1,6 +1,7 @@
 import React, { Suspense, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { API, keyUrl } from "../shared/api.js";
+import { COMPACT_FIELDS, compactLibraryRows, expandCompactLibrary } from "./libraryCompact.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
@@ -48,19 +49,36 @@ import { closeDock, registerClosePlayer } from "../player/useDock.js";
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
    Inicio y Tu biblioteca pintan la de la vez anterior y la real la reemplaza
-   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella. */
-const LIB_CACHE = "spitifo:library";
+   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella.
+
+   Se guarda en columnas (ver libraryCompact.js), no un objeto por archivo: a
+   20k pistas el espejo clasico pesaba ~7.7 MB, el doble contando el
+   `JSON.stringify` de cada escritura, y se acercaba a la cuota tipica de
+   localStorage (P-large-library-scale-1). "v2" en la clave es la migracion:
+   un espejo de la version anterior (un array de objetos) no calza con esta
+   forma y se descarta solo, sin romper nada; la red trae la lista de nuevo,
+   como si no hubiera cache. */
+const LIB_CACHE = "spitifo:library:v2";
+const LIB_CACHE_OLD = "spitifo:library";
 const readLibCache = () => {
   try {
-    const files = JSON.parse(localStorage.getItem(LIB_CACHE));
-    return Array.isArray(files) ? files : null;
+    const raw = JSON.parse(localStorage.getItem(LIB_CACHE));
+    if (raw && Array.isArray(raw.rows)) {
+      return expandCompactLibrary(raw.fields, raw.rows);
+    }
   } catch {
-    return null;
+    /* cache corrupta: se sigue sin ella, como si no existiera */
   }
-};
-const writeLibCache = (files) => {
   try {
-    localStorage.setItem(LIB_CACHE, JSON.stringify(files));
+    localStorage.removeItem(LIB_CACHE_OLD);
+  } catch {
+    /* no se puede limpiar: no es grave, solo queda un espejo viejo sin uso */
+  }
+  return null;
+};
+const writeLibCache = (fields, rows) => {
+  try {
+    localStorage.setItem(LIB_CACHE, JSON.stringify({ fields, rows }));
   } catch {
     /* lleno o bloqueado: la proxima apertura espera a la red, como antes */
   }
@@ -380,7 +398,10 @@ export default function App() {
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
     try {
-      const r = await fetch(`${API}/library`);
+      /* `shape=compact` pide las filas en columnas (libraryCompact.js): un
+         backend viejo ignora el parametro desconocido y sigue mandando
+         `files` como siempre (P-large-library-scale-1, -8). */
+      const r = await fetch(`${API}/library?shape=compact`);
       if (!r.ok) {
         /* El 503 del token de la nube se distingue del resto: ahi lo que hay
            que hacer es reconectar, no reintentar (ADR 0002, seccion 8). */
@@ -390,12 +411,17 @@ export default function App() {
         return;
       }
       const d = await r.json();
-      setLib(pendingDeletes.current.filter(d.files || []));
-      writeLibCache(d.files || []);
+      const fields = Array.isArray(d.fields) && d.fields.length ? d.fields : COMPACT_FIELDS;
+      const files = Array.isArray(d.rows) ? expandCompactLibrary(fields, d.rows) : d.files || [];
+      setLib(pendingDeletes.current.filter(files));
+      /* Siempre se guarda compacto, aunque el backend haya mandado `files`
+         (uno viejo que no entiende `shape=compact`): el espejo de
+         localStorage no depende de la version del servidor. */
+      writeLibCache(fields, Array.isArray(d.rows) ? d.rows : compactLibraryRows(files, fields));
       setLibErr(false);
       setLibErrCode(null);
       /* El borrado mira esta lista, sin filtrar, para saber que se fue de verdad. */
-      return d.files || [];
+      return files;
     } catch (e) {
       setLibErr(true);
       setLibErrCode(null);

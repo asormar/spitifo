@@ -210,7 +210,12 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
     def _save_media_cache(self, seen: set[str]) -> None:
         """Olvida las claves que ya no existen y escribe si algo cambio.
 
-        Falla en silencio: sin cache la biblioteca solo es mas lenta.
+        Falla en silencio: sin cache la biblioteca solo es mas lenta. El
+        `json.dumps` de una biblioteca grande (miles de pistas) es lo mas caro
+        de esta funcion: se copia el dict bajo el lock (barato, son punteros)
+        y se serializa AFUERA, asi un listado concurrente que solo necesita
+        leer una ficha (`_media`) no espera a que termine de escribirse el
+        archivo entero (P-large-library-scale-7).
         """
         with self._media_lock:
             cache = self._media_cache
@@ -222,8 +227,9 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
             if not gone and not self._media_dirty:
                 return
             self._media_dirty = False
-            body = json.dumps({"version": MEDIA_CACHE_VERSION, "files": cache},
-                              ensure_ascii=False, sort_keys=True).encode("utf-8")
+            snapshot = dict(cache)
+        body = json.dumps({"version": MEDIA_CACHE_VERSION, "files": snapshot},
+                          ensure_ascii=False, sort_keys=True).encode("utf-8")
         path = self._media_cache_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,7 +324,8 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         # Solo con el listado completo se sabe que claves ya no estan.
         self._save_media_cache(seen)
 
-    def stat(self, key: str) -> StoredFile:
+    def stat(self, key: str, *, allow_force: bool = True) -> StoredFile:
+        """`allow_force` no aplica aca (sin nube no hay nada que forzar)."""
         p = self._path(key)
         if not p.is_file():
             raise FileNotFoundError(key)

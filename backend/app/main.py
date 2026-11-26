@@ -37,7 +37,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .executors import run_prefetch, run_storage
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
@@ -391,9 +391,27 @@ async def lifespan(app: Starlette):
             tarea = asyncio.create_task(coro)
             BG_TASKS.add(tarea)
             tarea.add_done_callback(BG_TASKS.discard)
-    log.info("biblioteca: %s", get_storage().describe())
+    storage = get_storage()
+    log.info("biblioteca: %s", storage.describe())
     log.info("fuentes activas: %s",
              [s.name for s in ALL_SOURCES if s.available()])
+    # Un solo `files.list` para TODOS los registros chicos (indice, playlists,
+    # guardadas, imagenes, escuchas, artistinfo, descartes, fileinfo) en vez
+    # de uno por cada uno al primer pedido de cada pantalla (P-drive-io-4).
+    # Sin red (disco local, o la nube caida) no es grave: cada registro cae
+    # a listar el suyo, como siempre.
+    # En segundo plano: el arranque nunca espera a la red (sin conexion, el
+    # listado podria tardar el timeout entero antes de SPITIFO_READY).
+    warm = getattr(storage, "warm_small_files", None)
+    if warm is not None:
+        async def _warm_small_files() -> None:
+            try:
+                await asyncio.to_thread(warm)
+            except Exception as exc:
+                log.info("no se pudo precalentar los archivos chicos: %s", exc)
+        tarea = asyncio.create_task(_warm_small_files())
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
     yield
     for s in ALL_SOURCES:
         await s.aclose()
@@ -402,6 +420,15 @@ async def lifespan(app: Starlette):
     from . import covers, identify
     await identify.aclose()
     await covers.aclose()
+    # Cualquier cambio del indice que haya quedado diferido (dentro de un
+    # `batch_index_writes` que no llego a cerrar su bloque) se sube ahora.
+    flush_all = getattr(storage, "flush_all", None)
+    if flush_all is not None:
+        try:
+            await asyncio.to_thread(flush_all)
+        except Exception as exc:
+            log.warning("no se pudo terminar de subir el indice al cerrar: %s",
+                       exc)
 
 
 # --------------------------------------------------------------- validacion
@@ -443,6 +470,31 @@ def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> i
     if n < ge or n > le:
         raise _invalid(["query", name], f"Input should be between {ge} and {le}")
     return n
+
+
+def _query_int_or_none(request: Request, name: str, *, ge: int, le: int) -> int | None:
+    v = request.query_params.get(name)
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_list(request: Request, name: str, *, max_items: int,
+                max_length: int) -> list[str]:
+    items = request.query_params.getlist(name)
+    if len(items) > max_items:
+        raise _invalid(["query", name], f"At most {max_items} items")
+    for v in items:
+        if len(v) > max_length:
+            raise _invalid(["query", name],
+                           f"String should have at most {max_length} characters")
+    return items
 
 
 def _query_bool(request: Request, name: str, default: bool) -> bool:
@@ -734,6 +786,26 @@ async def search_match(request: Request):
     track.extra["match_state"] = (
         "full" if (match or {}).get("video") else "none")
     return JSONResponse({"track": track.to_dict()})
+
+
+async def lyrics_route(request: Request):
+    """GET /api/lyrics -> letra sincronizada via LRCLIB, nunca rompe la pagina.
+
+    200 con nulls si LRCLIB no tiene la cancion, y 200 con nulls mas
+    `error: "unavailable"` si la red fallo: la UI decide cuando mostrar
+    "Letra no disponible ahora", nunca un error HTTP.
+    """
+    title = _query_str(request, "title", required=True, min_length=1, max_length=200)
+    artist = _query_str(request, "artist", required=True, min_length=1, max_length=200)
+    album = _query_str(request, "album", default=None, max_length=200)
+    duration = _query_int_or_none(request, "duration", ge=0, le=36000)
+    alt_titles = _query_list(request, "alt_title", max_items=5, max_length=200)
+    alt_artists = _query_list(request, "alt_artist", max_items=5, max_length=200)
+
+    resultado = await lyrics.get_lyrics(
+        title=title, artist=artist, album=album, duration=duration,
+        alt_titles=alt_titles, alt_artists=alt_artists)
+    return JSONResponse(resultado)
 
 
 # ------------------------------------------------------------------- albumes
@@ -2172,30 +2244,77 @@ async def _fileinfo_records(storage) -> dict:
         return {}
 
 
-def _dumps_json(content: Any) -> bytes:
-    """Mismos parametros que `JSONResponse.render` (Starlette), para que un
-    payload serializado en un thread sea byte-por-byte lo mismo que uno hecho
-    en el loop."""
-    return json.dumps(content, ensure_ascii=False, allow_nan=False, indent=None,
+#: Columnas de la forma compacta de `/api/library` (P-large-library-scale-1,
+#: P-large-library-scale-8). El array de objetos repite cada nombre de campo
+#: en cada fila; a 20k pistas eso es la mayor parte de los ~7.7 MB del cuerpo.
+#: En columnas el nombre de cada campo sale UNA vez y las filas son arrays sin
+#: etiqueta. `size_mb` no viaja: se recalcula de `bytes` al expandir, es
+#: redundante. El orden importa (lo usa el frontend para expandir) y el
+#: frontend lo espera tal cual: cambiarlo es un cambio de contrato.
+COMPACT_FIELDS = (
+    "key", "filename", "folder", "bytes", "duration_s", "title", "artist",
+    "album", "track_no", "disc_no", "album_id", "modified", "kind",
+    "thumb_key", "has_audio", "thumb_s", "verdict", "meta_src", "file_src",
+    "real",
+)
+
+
+def _compact_rows(files: list[dict]) -> list[list]:
+    """Las mismas filas de `library_scan`/`with_checks`, en columnas."""
+    return [[f.get(name) for name in COMPACT_FIELDS] for f in files]
+
+
+def _library_body(describe, files: list, compact: bool) -> tuple[bytes, str]:
+    """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
+    pistas son cerca de un megabyte que no se serializa en el loop."""
+    payload = {"library": describe, "count": len(files)}
+    if compact:
+        payload["fields"] = COMPACT_FIELDS
+        payload["rows"] = _compact_rows(files)
+    else:
+        payload["files"] = files
+    body = json.dumps(payload, ensure_ascii=False,
                       separators=(",", ":")).encode("utf-8")
+    return body, _library_etag(body)
 
 
-async def _json_response_threaded(content: Any, *, status_code: int = 200) -> Response:
-    """Como `JSONResponse(content)`, pero el `json.dumps` corre en el pool de
-    storage: docs/performance.md midio 1,15 MB para 3000 pistas, que en el
-    telefono son decenas de ms bloqueando el loop si se serializa inline.
-    """
-    body = await run_storage(_dumps_json, content)
-    return Response(body, status_code=status_code, media_type="application/json")
+def _library_etag(body: bytes) -> str:
+    """ETag debil del cuerpo de `/api/library`: mismos bytes, mismo ETag."""
+    return f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+
+
+#: `no-cache` NO es "no cachear": le dice al navegador que SI guarde la
+#: respuesta pero revalide siempre con el server antes de usarla. Con eso,
+#: `fetch()` (modo "default", el que ya usa el frontend) manda `If-None-Match`
+#: solo porque el navegador ya tiene una copia, y un 304 se lo sirve de la
+#: cache local sin que el codigo de la UI note la diferencia.
+_LIBRARY_CACHE = {"Cache-Control": "private, no-cache"}
 
 
 async def library(request: Request):
+    """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
+    mandar (y que el navegador vuelva a parsear) el JSON entero cuando nada
+    cambio desde el ultimo pedido (P-large-library-scale-8, P-network-caching-6).
+
+    `?shape=compact` pide las filas en columnas en vez de un objeto por
+    archivo (ver COMPACT_FIELDS): un frontend viejo nunca manda el parametro y
+    sigue recibiendo `files` como siempre; uno nuevo contra un backend viejo
+    (que ignora el parametro desconocido) tambien sigue andando, solo que sin
+    la columna. Las dos formas quedan bajo URLs distintas, asi que el cache
+    HTTP (ETag) de cada una es independiente.
+    """
     storage = get_storage()
+    compact = request.query_params.get("shape") == "compact"
     files, records = await asyncio.gather(
         run_storage(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
-    return await _json_response_threaded(
-        {"library": storage.describe(), "count": len(files), "files": files})
+    body, etag = await asyncio.to_thread(_library_body, storage.describe(),
+                                         files, compact)
+    headers = {**_LIBRARY_CACHE, "ETag": etag}
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="application/json", headers=headers)
 
 
 # ------------------------------------------------------------ borrado en libro
@@ -2744,8 +2863,15 @@ def _store_art(storage, target: str, big: bytes, small: bytes,
     """
     big_key, small_key = art_keys(hashlib.sha256(big).hexdigest())
     try:
-        storage.stat(big_key)
-        storage.stat(small_key)
+        # `allow_force=False`: el hash del contenido es casi siempre NUEVO
+        # (dos imagenes iguales byte a byte son raras), asi que forzar una
+        # relectura completa del indice por cada subida de imagen es puro
+        # desperdicio (P-drive-io-8). Si otro dispositivo subio la MISMA
+        # imagen hace instantes y la vista en memoria todavia no lo sabe, en
+        # el peor caso se vuelve a subir el mismo contenido: no se pierde ni
+        # se corrompe nada.
+        storage.stat(big_key, allow_force=False)
+        storage.stat(small_key, allow_force=False)
         exists = True
     except (FileNotFoundError, OSError):
         exists = False
@@ -2846,8 +2972,14 @@ async def listens_append(request: Request):
 
 
 async def listens_summary(request: Request):
-    """GET /api/listens/summary: merge de todos los dispositivos."""
-    data = await asyncio.to_thread(get_storage().load_listens_summary)
+    """GET /api/listens/summary: merge de todos los dispositivos.
+
+    Por la misma cache de 30 s que ya usa Discover (`_cached_summary`): sin
+    esto, esta ruta releia todo de nuevo en cada apertura de la pestana de
+    historial aunque Discover ya lo tuviera fresco (P-drive-io-7).
+    """
+    storage = get_storage()
+    data = await asyncio.to_thread(_cached_summary, storage)
     return JSONResponse(data)
 
 
@@ -3620,6 +3752,7 @@ routes = [
     Route("/api/health", health),
     Route("/api/search", search),
     Route("/api/search/match/{track_id}", search_match),
+    Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
@@ -3675,9 +3808,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 
