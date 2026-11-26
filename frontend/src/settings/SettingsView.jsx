@@ -3,6 +3,7 @@ import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
+import { APP_VERSION } from "../shared/appVersion.js";
 import { useAutoDownload } from "./autoDownload.js";
 import { FORMATS, MEDIA_OPTIONS, ORIGINAL_HINT } from "../download/constants.js";
 import {
@@ -10,6 +11,7 @@ import {
   useDownloadMedia, useDownloadQuality, useDownloadRoaming, useDownloadWifiOnly,
 } from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
+import { installedLabel, newerLabel, useReleaseCheck } from "./releaseCheck.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./settings.css";
@@ -109,6 +111,7 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const pc = usePc();
   const [finder, setFinder] = useState(false);
   const coversSaved = useRef(false);
+  const release = useReleaseCheck();
 
   /* Al salir de "Buscar portadas" (por su boton o porque se dejo Ajustes) la
      biblioteca se vuelve a pedir si se guardo algo, para ver las portadas. */
@@ -340,6 +343,52 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           Las recomendaciones se calculan en este dispositivo. Solo los nombres de los artistas se
           envían a MusicBrainz y ListenBrainz; tu historial de escucha no sale de aquí.
         </p>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-about">
+        <h2 id="settings-about" className="settings__h">
+          Acerca de la app
+        </h2>
+        <div className="settings__card">
+          <div className="settings__about">
+            <Icon name="GearSix" size="md" />
+            <div className="settings__aboutinfo">
+              <p className="settings__label">{installedLabel(APP_VERSION)}</p>
+              {release.state === "current" && (
+                <p className="settings__aboutok">
+                  <Icon name="CheckCircle" size="sm" />
+                  Tienes la última versión
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="settings__btn settings__btn--ghost"
+              onClick={() => release.check(true)}
+              disabled={release.checking}
+            >
+              {release.checking ? "Buscando…" : "Buscar actualizaciones"}
+            </button>
+          </div>
+          {release.state === "newer" && (
+            <div className="settings__update">
+              <Icon name="ArrowCircleUp" size="md" />
+              <div className="settings__updateinfo">
+                <p className="settings__updatetitle">{newerLabel(release.latest)}</p>
+                <p className="settings__updatesub">{installedLabel(APP_VERSION)} instalada</p>
+              </div>
+              <a
+                className="settings__btn settings__btn--ghost"
+                href={release.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="ArrowSquareOut" size="sm" />
+                Ver
+              </a>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

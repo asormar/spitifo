@@ -1,6 +1,7 @@
 package dev.spitifo
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -494,6 +495,12 @@ class MainActivity : ComponentActivity() {
 
     private fun isYouTube(url: String): Boolean = YOUTUBE_PATTERN.matches(url)
 
+    /**
+     * R2-install-g: ya habia pedido estos permisos en onCreate sin avisar. Con
+     * algo pendiente, una tarjeta explica el porque antes del dialogo del
+     * sistema, con salida ("Ahora no"); con todo ya concedido no cambia nada
+     * (ni tarjeta ni dialogo).
+     */
     private fun requestOptionalPermissions() {
         val wanted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             listOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_AUDIO)
@@ -503,10 +510,30 @@ class MainActivity : ComponentActivity() {
         val missing = wanted.filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
+        if (missing.isEmpty()) return
+        // "Ahora no" se respeta una semana: no se insiste en cada arranque.
+        val prefs = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
+        val declinedAt = prefs.getLong(PERMISSION_DECLINED_AT, 0L)
+        if (System.currentTimeMillis() - declinedAt < PERMISSION_RETRY_MS) return
+        AlertDialog.Builder(this)
+            .setMessage(
+                "spitifo necesita ver tu carpeta de música para mostrar lo que " +
+                    "descargas, y avisarte mientras una descarga está en curso.",
+            )
+            .setNegativeButton("Ahora no") { _, _ ->
+                prefs.edit().putLong(PERMISSION_DECLINED_AT, System.currentTimeMillis()).apply()
+            }
+            .setPositiveButton("Continuar") { _, _ ->
+                requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private companion object {
+        const val PERMISSION_PREFS = "spitifo_permissions"
+        const val PERMISSION_DECLINED_AT = "declined_at"
+        const val PERMISSION_RETRY_MS = 7L * 24 * 60 * 60 * 1000
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
 
