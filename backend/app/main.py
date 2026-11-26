@@ -748,6 +748,11 @@ def _itunes_track(raw: dict, match: dict | None = None,
     vid = m.get("video")
     extra = dict(_itunes_album_fields(raw))
     extra["item_url"] = raw.get("trackViewUrl")
+    # Alias del storefront jp que encontro el matcher: el veredicto de
+    # identidad los usa para que "Mesmerizer" y "メズマライザー" sean el mismo
+    # titulo. Las fichas que no los tienen siguen igual (ver `identity_reference`).
+    if isinstance(raw.get("aliases"), dict):
+        extra["aliases"] = dict(raw["aliases"])
     if checked:
         extra.update({
             "match_score": m.get("score"),
@@ -2446,12 +2451,43 @@ def _saved_list_payload(book: SavedBook) -> dict:
     return {"songs": [_saved_payload(s) for s in book.live()]}
 
 
+#: Ids de iTunes que puede traer el track de una descarga en `extra`. La
+#: cancion guardada a veces se creo desde YouTube (sin ellos) o antes de que
+#: existiera el match: al bajarla se completan los que falten.
+_SAVED_ITUNES_FIELDS = {
+    "track_id": ("track_id", "trackId"),
+    "collection_id": ("collection_id", "collectionId"),
+    "artist_id": ("artist_id", "artistId"),
+    "track_no": ("track_no", "track_number", "trackNumber"),
+    "disc_no": ("disc_no", "disc_number", "discNumber"),
+    "track_count": ("track_count", "trackCount"),
+}
+
+
+def _saved_itunes_ids(track: dict) -> dict:
+    """Los ids enteros de iTunes del track de una descarga, si los trae."""
+    extra = track.get("extra")
+    if not isinstance(extra, dict):
+        return {}
+    out = {}
+    for clave, nombres in _SAVED_ITUNES_FIELDS.items():
+        for nombre in nombres:
+            valor = extra.get(nombre)
+            if isinstance(valor, int) and not isinstance(valor, bool):
+                out[clave] = valor
+                break
+    return out
+
+
 def link_saved_download(track: dict, key: str | None) -> bool:
     """Enlaza una descarga terminada con su cancion guardada, si la hay.
 
     Sincrono y con el storage pegado: lo llama la cola desde un hilo. Una sola
     escritura del registro, solo si la cancion sigue viva y no apuntaba ya a
-    esta clave. Un fallo aqui no invalida la descarga.
+    esta clave. Aprovecha para completar los ids de iTunes que falten (con
+    `artist_id` el nombre del artista abre su pagina en vez de buscarlo).
+    Los registros viejos sin ids siguen funcionando igual. Un fallo aqui no
+    invalida la descarga.
     """
     if not isinstance(key, str) or not key:
         return False
@@ -2467,12 +2503,16 @@ def link_saved_download(track: dict, key: str | None) -> bool:
         return False
     if old is None or old.deleted or old.file_key == key:
         return False
+    itunes_ids = _saved_itunes_ids(track)
 
     def change(book: SavedBook) -> None:
         current = book.songs.get(sid)
         if current is None or current.deleted or current.file_key == key:
             return
-        book.upsert(replace(current, file_key=key,
+        # Solo lo que falta: un id ya guardado no se sobrescribe.
+        falta = {k: v for k, v in itunes_ids.items() if k not in current.itunes}
+        itunes = {**current.itunes, **falta} if falta else current.itunes
+        book.upsert(replace(current, file_key=key, itunes=itunes,
                             updated_at=_next_saved_updated_at(current, now)))
 
     try:

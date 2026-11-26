@@ -36,7 +36,7 @@ import httpx
 
 from .identify import fold, similarity, version_conflict, version_markers
 from .models import Track
-from .sources import ITunesSource
+from .sources import BY_NAME, ITunesSource
 
 log = logging.getLogger("spitifo.matched")
 
@@ -45,6 +45,9 @@ DUR_TOL = 12.0       # segundos
 DUR_REJECT = 90.0   # mas que esto = live vs studio / remix
 #: Similitud minima del titulo: el de la ficha tiene que estar entero.
 TITLE_MIN = 0.8
+#: Cuanto espera el match a los alias japoneses. Son un extra best effort:
+#: pasar este tiempo NO es un fallo, se sigue con la ficha que ya tenemos.
+JP_ALIAS_TIMEOUT_S = 2.0
 
 #: Separadores de artistas en un credito de iTunes ("ROSALÍA & Rauw Alejandro",
 #: "Bad Bunny feat. Chencho", "Karol G, Shakira").
@@ -157,13 +160,42 @@ def core_title(title: str) -> str:
 
 
 def score_pair(it_title: str, it_artist: str, it_dur: float,
-               v_title: str, v_upl: str, v_dur: float) -> tuple[float, str]:
-    """0..1 + motivo. 0 = sin confianza (no se empareja)."""
-    # La puerta de artista incluye a los invitados del titulo de la ficha:
-    # "Refrain (feat. Kasane Teto)" de "HAL@修羅場P" bien puede estar en el
-    # canal de Teto. El resto de las reglas no se toca.
-    credit = it_artist or ""
+               v_title: str, v_upl: str, v_dur: float,
+               aliases: dict | None = None) -> tuple[float, str]:
+    """0..1 + motivo. 0 = sin confianza (no se empareja).
+
+    `aliases` trae los nombres en otra escritura que iTunes da para la MISMA
+    pista (storefront jp): "Mesmerizer"/"Satsuki" y "メズマライザー"/"サツキ".
+    Cualquiera de las dos escrituras vale; se queda la mejor pareja. Sin alias,
+    es exactamente la regla de siempre.
+    """
+    a = aliases or {}
+    titles = [it_title]
+    if a.get("title") and fold(a["title"]) != fold(it_title):
+        titles.append(a["title"])
+    artists = [it_artist]
+    if a.get("artist") and fold(a["artist"]) != fold(it_artist):
+        artists.append(a["artist"])
+    # Los invitados vienen del titulo original: el alias no los repite.
     invitados = _feat_artists(it_title)
+    mejor: tuple[float, str] | None = None
+    for titulo in titles:
+        for artista in artists:
+            s, w = _score_pair_one(titulo, artista, it_dur, v_title, v_upl,
+                                   v_dur, invitados)
+            if mejor is None or s > mejor[0]:
+                mejor = (s, w)
+    return mejor or (0.0, "sin-señal")
+
+
+def _score_pair_one(it_title: str, it_artist: str, it_dur: float,
+                    v_title: str, v_upl: str, v_dur: float,
+                    invitados: tuple[str, ...]) -> tuple[float, str]:
+    """Una combinacion titulo/artista. La puerta de artista incluye a los
+    invitados del titulo de la ficha: "Refrain (feat. Kasane Teto)" de
+    "HAL@修羅場P" bien puede estar en el canal de Teto. El resto no se toca.
+    """
+    credit = it_artist or ""
     if invitados:
         credit = (f"{credit} & " if credit else "") + " & ".join(invitados)
     chan = channel_matches(credit, v_upl)
@@ -193,6 +225,33 @@ def score_pair(it_title: str, it_artist: str, it_dur: float,
         score -= 0.1
     why = ("canal" if chan else "titulo") + ("+dur" if dur_ok else "") + ("+letra" if soft else "")
     return round(max(0.0, min(1.0, score)), 4), why
+
+
+#: Kana y kanji (incluidos los de ancho completo): si nada de la busqueda los
+#: trae, no hay escritura japonesa que reconciliar y no se gasta ningun lookup.
+_JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")
+
+
+def _japanese_in_play(query: str, videos: list[dict], itunes_tracks: list[dict]) -> bool:
+    textos = [query or ""]
+    textos += [f"{v.get('title') or ''} {v.get('uploader') or v.get('channel') or ''}"
+               for v in videos]
+    textos += [f"{it.get('trackName') or ''} {it.get('artistName') or ''}"
+               for it in itunes_tracks]
+    return any(_JAPANESE.search(t) for t in textos)
+
+
+async def _aliases_for(raw: dict) -> dict:
+    """Nombres en japones de una ficha de iTunes. Best effort de verdad:
+    ni un fallo de red ni un timeout pueden tumbar la busqueda. La cache vive
+    en `sources`, igual que la del resto de iTunes.
+    """
+    try:
+        return await asyncio.wait_for(
+            BY_NAME["itunes"].lookup_aliases(raw), timeout=JP_ALIAS_TIMEOUT_S)
+    except Exception as e:
+        log.warning("matcher: alias jp fallo para %s: %s", raw.get("trackId"), e)
+        return {}
 
 
 async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
@@ -227,7 +286,8 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
             for it in itunes_tracks]
     pairs: list[tuple[float, int, int, str]] = []
     best_miss: dict[str, tuple[float, str]] = {}
-    for ti, it in enumerate(itunes_tracks):
+
+    def puntuar(ti: int, it: dict) -> None:
         title = it.get("trackName", "")
         artist = it.get("artistName", "")
         dur = (it.get("trackTimeMillis") or 0) / 1000
@@ -235,11 +295,31 @@ async def enrich_with_ytdlp(itunes_tracks: list[dict], query: str,
             s, w = score_pair(title, artist, dur,
                               v.get("title") or "",
                               v.get("uploader") or v.get("channel") or "",
-                              v.get("duration") or 0)
+                              v.get("duration") or 0,
+                              aliases=it.get("aliases"))
             if s >= MIN_SCORE:
                 pairs.append((s, ti, vi, w))
             elif s > best_miss.get(keys[ti], (-1.0, ""))[0]:
                 best_miss[keys[ti]] = (s, w)
+
+    for ti, it in enumerate(itunes_tracks):
+        puntuar(ti, it)
+
+    # Alias japoneses: la ficha suele venir en latin y el video en japones (o
+    # al reves). Cuestan un lookup a iTunes por pista, asi que solo se piden
+    # cuando hay japones en juego y solo para las pistas que se quedaron sin
+    # pareja; se guardan en la ficha cruda para que el llamador los tenga
+    # tambien al armar el Track del veredicto.
+    if _japanese_in_play(query, videos, itunes_tracks):
+        con_pareja = {p[1] for p in pairs}
+        sueltas = [ti for ti in range(len(itunes_tracks)) if ti not in con_pareja]
+        alias_list = await asyncio.gather(
+            *(_aliases_for(itunes_tracks[ti]) for ti in sueltas),
+            return_exceptions=True)
+        for ti, alias in zip(sueltas, alias_list):
+            if isinstance(alias, dict) and alias:
+                itunes_tracks[ti]["aliases"] = alias
+                puntuar(ti, itunes_tracks[ti])
     # orden estable: a igual puntaje, la pista que iTunes puso antes y el video
     # que YouTube puso antes
     pairs.sort(key=lambda p: (-p[0], p[1], p[2]))
