@@ -7,12 +7,15 @@ import { Icon } from "./icons.jsx";
 import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import VirtualList from "./VirtualList.jsx";
-import { Thead } from "./rows.jsx";
+import { SortableHead } from "./PlaylistTools.jsx";
+import { cycleSort, sortRows } from "./libraryView.js";
+import { openNewList } from "./newList.js";
 import { AllSongs, Cards, DownloadChips } from "./cards.jsx";
 import { emptyFilterNote, filterByDownload } from "./library.js";
 import {
   SORTS,
   TOP_ALL,
+  continueItems,
   plural,
   sortEntries,
   topItems,
@@ -39,8 +42,8 @@ export function useFocusBack(ref, on = true) {
   }, [ref, on]);
 }
 
-export const Back = ({ bref, onClick, className = "hback" }) => (
-  <button ref={bref} type="button" className={className} aria-label="Volver" onClick={onClick}>
+export const Back = ({ bref, onClick, className = "hback", label = "Volver" }) => (
+  <button ref={bref} type="button" className={className} aria-label={label} title={label} onClick={onClick}>
     <Icon name="CaretLeft" size="lg" />
   </button>
 );
@@ -48,6 +51,7 @@ export const Back = ({ bref, onClick, className = "hback" }) => (
 /* --- Ver todo ------------------------------------------------------------------------ */
 
 const TITLES = {
+  continue: "Seguir escuchando",
   recent: "Añadido hace poco",
   top: "Lo que más escuchas",
   artists: "Artistas",
@@ -67,13 +71,22 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   const newRef = useRef(null);
   const [naming, setNaming] = useState(Boolean(view.naming));
   const [download, setDownload] = useState("all");
+  const [colSort, setColSort] = useState(null);
   useFocusBack(backRef);
+
+  /* El «+» de esta pagina llama a la misma funcion que el riel y la casilla:
+     sustituye la entrada por la pagina de listas con el nombre abierto. */
+  useEffect(() => {
+    if (view.naming) setNaming(true);
+  }, [view.naming]);
 
   /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
      repetirse por eso. El historial solo cuenta en "top": las demas no se
      reordenan con cada escucha. */
   const items = useMemo(() => {
     switch (what) {
+      case "continue":
+        return continueItems(hist, byKey, TOP_ALL).map((i) => i.entry);
       case "recent":
         return sortEntries(index.entries, "recent");
       case "r-songs":
@@ -93,23 +106,26 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
       default:
         return r.lists;
     }
-  }, [what, index, byKey, lists, r, what === "top" ? hist : null]);
+  }, [what, index, byKey, lists, r, hist]);
   /* Artistas, albumes o listas: una tarjeta cada uno. */
   const kind = what.replace("r-", "").slice(0, -1);
   const cards = useMemo(() => items.map((item) => ({ kind, item })), [items, kind]);
 
   const isTop = what === "top";
-  const isSongs = isTop || what === "recent" || what === "r-songs";
+  const isContinue = what === "continue";
+  const isSongs = isTop || isContinue || what === "recent" || what === "r-songs";
   const shown = useMemo(
-    () => (isSongs ? filterByDownload(items, download) : items),
-    [isSongs, items, download]
+    () => sortRows(isSongs ? filterByDownload(items, download) : items, isSongs ? colSort : null),
+    [isSongs, items, download, colSort]
   );
   /* Origen de la cola: la etiqueta de la lista o lo que se busco. */
   const from = isTop
     ? "library:Lo que más escuchas"
-    : what === "recent"
-      ? "library:Añadido hace poco"
-      : `search:${view.q ?? ""}`;
+    : isContinue
+      ? "library:Seguir escuchando"
+      : what === "recent"
+        ? "library:Añadido hace poco"
+        : `search:${view.q ?? ""}`;
   const row = (i, enter) =>
     isTop
       ? ctx.song(shown[i].entry, shown.map((t) => t.entry), {
@@ -130,7 +146,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   return (
     <div className="lpage">
       <div className="phead">
-        <Back bref={backRef} onClick={ctx.back} />
+        <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} />
         <h1 className="phead__h">{TITLES[what]}</h1>
         <span className="count">{isSongs ? shown.length : items.length}</span>
       </div>
@@ -149,7 +165,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
               onCancel={endNaming}
             />
           ) : (
-            <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming(true)}>
+            <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => openNewList(null, ctx)}>
               <Icon name="Plus" size="sm" />
               Nueva lista
             </button>
@@ -166,7 +182,8 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
         <p className="lnote">{emptyFilterNote(download)}</p>
       ) : isSongs ? (
         <>
-          {pc && <Thead lib={!isTop} sticky />}
+          {pc && <SortableHead kind={isTop ? "trk" : "lib"} sort={colSort}
+            onSort={(key) => setColSort((cur) => cycleSort(cur, key))} sticky />}
           <VirtualList
             active={active}
             count={shown.length}
@@ -216,9 +233,10 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
   const listRef = useRef(null);
   const [sort, setSort] = useState(view.sort ?? "recent");
   const [download, setDownload] = useState("all");
+  const [colSort, setColSort] = useState(null);
   useFocusBack(backRef);
   const rows = useMemo(() => sortEntries(index.entries, sort), [index, sort]);
-  const shown = useMemo(() => filterByDownload(rows, download), [rows, download]);
+  const shown = useMemo(() => sortRows(filterByDownload(rows, download), colSort), [rows, download, colSort]);
   useReveal(shown, active, listRef);
 
   const play = () => ctx.playGroup(shown, false, "library:");
@@ -253,7 +271,7 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
       ) : (
         <>
           <div className="phead">
-            <Back bref={backRef} onClick={ctx.back} />
+            <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} />
             <h1 className="sr-only">Todas tus canciones</h1>
           </div>
           <AllSongs n={shown.length} storage={storage} check={check} onPlay={play} onShuffle={shuffle} />
@@ -278,7 +296,8 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
       <DownloadChips filter={download} onChange={setDownload} />
       {shown.length ? (
         <>
-          {pc && <Thead lib sticky />}
+          {pc && <SortableHead kind="lib" sort={colSort}
+            onSort={(key) => setColSort((cur) => cycleSort(cur, key))} sticky />}
           <VirtualList
             key={`${sort}:${download}`}
             ref={listRef}

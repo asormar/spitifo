@@ -100,20 +100,22 @@ describe.each([
     expect(ratio(color(theme, "--pink"), color(theme, "--s1"))).toBeGreaterThanOrEqual(3);
   });
 
-  /* La fila elegida de Para ti: tinte rosa al 14 % sobre la tarjeta. */
+  /* La fila elegida de Para ti es una seleccion: tinte cobalto al 14 % sobre la
+     tarjeta. El rosa queda solo para reproducir. */
   it.each(["ink", "mut"])("%s on the selected-row tint reaches 4.5:1", (fg) => {
-    const pink = color(theme, "--pink");
-    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
+    const acc = color(theme, "--acc");
+    const tint = over([acc[0], acc[1], acc[2], 0.14], color(theme, "--s1"));
     expect(ratio(color(theme, `--${fg}`), tint)).toBeGreaterThanOrEqual(4.5);
   });
 
-  /* El glifo de reproducir de la fila elegida: rosa al 80 % hacia la tinta (el
-     rosa puro sobre el tinte da 2.6 en claro) sobre ese mismo tinte, 3:1. */
+  /* El glifo de reproducir sigue siendo rosa; sobre el tinte de seleccion se
+     oscurece hacia la tinta para llegar a 3:1 como grafico. */
   it("play glyph on the selected-row tint reaches 3:1", () => {
     const pink = color(theme, "--pink");
     const ink = color(theme, "--ink");
-    const tint = over([pink[0], pink[1], pink[2], 0.14], color(theme, "--s1"));
-    const glyph = [0, 1, 2].map((i) => pink[i] * 0.8 + ink[i] * 0.2);
+    const acc = color(theme, "--acc");
+    const tint = over([acc[0], acc[1], acc[2], 0.14], color(theme, "--s1"));
+    const glyph = [0, 1, 2].map((i) => pink[i] * 0.7 + ink[i] * 0.3);
     expect(ratio(glyph, tint)).toBeGreaterThanOrEqual(3);
   });
 
@@ -182,5 +184,20 @@ describe("verdict chip on the Ahora suena pane", () => {
     ["mute", over([255, 255, 255, 0.7], chip)],
   ])("the %s status dot reaches 3:1 on the chip", (_name, dot) => {
     expect(ratio(dot, chip)).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/* Texto grande: las nueve medidas viven en rem para que la escala del sistema
+   (textZoom en Android) pueda subirlas a 130% y 160% sin recortes. */
+describe("typographic scale follows the system font size", () => {
+  const PASOS = [
+    ["micro", 11], ["label", 12], ["caption", 13], ["ui", 14], ["body", 15],
+    ["title", 18], ["headline", 22], ["display", 28], ["display-xl", 44],
+  ];
+  it.each(PASOS)("%s is px/16 rem at 100%", (name, px) => {
+    expect(light[`--fs-${name}`]).toBe(`${px / 16}rem`);
+  });
+  it("dark inherits the same scale", () => {
+    for (const [name] of PASOS) expect(dark[`--fs-${name}`]).toBe(light[`--fs-${name}`]);
   });
 });

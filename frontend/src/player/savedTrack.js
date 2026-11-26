@@ -1,4 +1,5 @@
 import { API, keyUrl } from "../shared/api.js";
+import { withStreamQuality } from "../settings/playbackSettings.js";
 import { fold, toTrack } from "../listen/library.js";
 import { auditionKey, streamKey } from "../download/streamTrack.js";
 
@@ -33,6 +34,7 @@ export function savedEntry(song) {
     thumbKey: null,
     downloaded: false,
     search: fold(`${title} ${artist} ${song.album || ""}`),
+    titleKey: fold(title),
   };
 }
 
@@ -106,7 +108,7 @@ export function savedTrack(song, byKey = null) {
     const url = WATCH(sourceId);
     return {
       key: streamKey(url),
-      src: `${API}/stream?url=${encodeURIComponent(url)}`,
+      src: withStreamQuality(`${API}/stream?url=${encodeURIComponent(url)}`),
       title,
       label: title,
       meta,

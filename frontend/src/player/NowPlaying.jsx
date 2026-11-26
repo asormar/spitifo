@@ -20,6 +20,7 @@ import { useVideoHost } from "./videoStore.js";
 import { Controls } from "./controls.jsx";
 import Scrub from "./Scrub.jsx";
 import NowCards, { FichaCard } from "./NowCards.jsx";
+import LyricsView, { LyricsCard } from "../lyrics/LyricsView.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { npLinks } from "./npLinks.js";
 import { npMenuKey, npMenuKind } from "./npMenu.js";
@@ -27,6 +28,8 @@ import { panel, usePanel } from "./panel.js";
 import { playStateText } from "./playState.js";
 import { artTint, toneTint } from "./tint.js";
 import { resistedDy, scrimOpacity, shouldDismiss, shouldSkip } from "./npGestures.js";
+import { THEME_COLOR } from "../shared/theme.js";
+import { motion, motionAfter } from "../shared/motion.js";
 import "./nowplaying.css";
 
 /* ---------------------------------------------------------------------------
@@ -54,8 +57,8 @@ const TABS = ["Ahora suena", "Cola", "Ficha"];
 /* Movimiento minimo antes de decidir si el arrastre es hacia abajo. */
 const SLOP = 8;
 
-const prefersReducedMotion = () =>
-  typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* La duracion la decide el helper compartido (shared/motion.js), tambien en
+   el arrastre de esta vista (§7: nada espera 500ms con movimiento reducido). */
 
 /* Portada de un vecino en el carrusel de deslizar: decorativa (aria-hidden),
    con la misma receta de imagen/inicial que la portada principal pero sin el
@@ -120,6 +123,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const track = useEngine((s) => s.track);
   const playing = useEngine((s) => s.playing);
   const engineDuration = useEngine((s) => s.duration);
+  const time = useEngine((s) => s.time);
   const source = useEngine((s) => s.source);
   /* Para el carrusel de deslizar la portada (vecinos que asoman) y la insignia
      de la cola. */
@@ -130,6 +134,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   /* Solo se anima el cambio de pestana, no la primera pintura. */
   const [seen, setSeen] = useState({ tab, wide, moved: false });
   if (seen.tab !== tab || seen.wide !== wide) setSeen({ tab, wide, moved: true });
+  /* La letra se abre desde la tarjeta de «Ahora suena» y no añade pestaña. */
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  useEffect(() => setLyricsOpen(false), [track?.key]);
   const vhost = useVideoHost();
   /* Dentro del proveedor de la biblioteca: de ahi sale el menu ⋯ de la pista
      y, en escritorio, el aviso. */
@@ -146,6 +153,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const gesture = useRef(null);
   /* Lo que hay que hacer cuando termina la transicion de salida del arrastre. */
   const afterSlide = useRef(null);
+  const slideTimer = useRef(null);
+  const coverTimer = useRef(null);
   /* Deslizamiento lateral del cuerpo: { x, y, t }. */
   const swipe = useRef(null);
   /* Scrim detras del arrastre de cierre: vive fuera de .np (ver mas abajo), asi
@@ -174,8 +183,23 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     const el = rootRef.current;
     const first = pc ? el.querySelector('[role="tab"][aria-selected="true"]') : el.querySelector(".np__close");
     first?.focus({ preventScroll: true });
+    return () => {
+      slideTimer.current?.();
+      coverTimer.current?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* La barra de estado acompaña a la pantalla oscura del reproductor aunque el
+     tema sea claro (§1). El bridge ya existe: theme.js lo usa al cambiar tema. */
+  useEffect(() => {
+    if (pc) return undefined;
+    window.SpitifoAndroid?.setBars?.("#0e0e18", false);
+    return () => {
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      window.SpitifoAndroid?.setBars?.(THEME_COLOR[dark ? "dark" : "light"], !dark);
+    };
+  }, [pc]);
 
   /* Cambiar de pestana vuelve arriba. */
   useLayoutEffect(() => {
@@ -217,6 +241,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const onPointerDown = (e) => {
     /* El raton no arrastra (seleccionaria texto). */
     if (e.pointerType === "mouse" || !e.isPrimary) return;
+    slideTimer.current?.();
+    slideTimer.current = null;
     gesture.current = {
       id: e.pointerId,
       x: e.clientX,
@@ -262,6 +288,8 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   };
 
   const runAfterSlide = () => {
+    slideTimer.current?.();
+    slideTimer.current = null;
     const f = afterSlide.current;
     afterSlide.current = null;
     f?.();
@@ -284,8 +312,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
       if (leave) onClose(false);
       else el.style.transition = "";
     };
-    /* Por si la transicion no llega a emitir su evento. */
-    setTimeout(runAfterSlide, 500);
+    /* Por si la transicion no llega a emitir su evento; con movimiento
+       reducido corre en el mismo tick, sin dejar la vista bloqueada 500ms. */
+    slideTimer.current = motionAfter(runAfterSlide, 500);
   };
 
   /* --- Deslizar la portada para saltar de cancion (solo telefono) ----------- */
@@ -341,14 +370,13 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     const dir = dx < 0 ? 1 : -1; // izquierda => siguiente
     const neighbor = dir > 0 ? nextNeighbor : prevNeighbor;
     const commit = Boolean(neighbor) && !cancelled && shouldSkip(dx, v, g.width);
-    const reduced = prefersReducedMotion();
-    const dur = reduced ? 0 : 320;
+    const dur = motion(320);
     trackEl.style.transition = dur ? `transform ${dur}ms var(--drawer)` : "none";
     if (commit) {
       trackEl.style.transform = `translateX(${-dir * g.width}px)`;
       const go = () => (dir > 0 ? engine.next() : engine.prev());
-      if (dur) setTimeout(go, dur);
-      else go();
+      coverTimer.current?.();
+      coverTimer.current = motionAfter(go, dur);
     } else {
       trackEl.style.transform = "translateX(0px)";
     }
@@ -400,7 +428,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
      y tokens que el resto de la app. */
   const stateText = playStateText({ kind: track.kind, saved: savedStream });
   const stateChip = stateText && (
-    <span className="np__state">
+    <span className={cx("np__state", track.kind === "preview" && "np__state--preview")}>
       {library && <Icon name="Check" size="sm" className="np__state-check" />}
       {stateText}
     </span>
@@ -448,8 +476,12 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     );
   const caption = sourceCaption(source, track);
 
-  /* Salir de la pestana 0 suelta el ampliado: con su misma transicion. */
-  const go = (i) => panel.show(i);
+  /* Salir de la pestana 0 suelta el ampliado y cierra la letra: con su misma
+     transicion, y sin dejar la vista colgada al volver. */
+  const go = (i) => {
+    if (i !== 0) setLyricsOpen(false);
+    panel.show(i);
+  };
 
   const onTabKey = (e) => {
     const to = { ArrowRight: Math.min(tab + 1, 2), ArrowLeft: Math.max(tab - 1, 0), Home: 0, End: 2 }[e.key];
@@ -527,7 +559,18 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   );
 
   let panelBody;
-  if (tab === 1) {
+  if (lyricsOpen && tab === 0) {
+    panelBody = (
+      <LyricsView
+        track={track}
+        time={time}
+        duration={duration}
+        pc={pc}
+        onClose={() => setLyricsOpen(false)}
+        onSeek={(at) => engine.seek(at)}
+      />
+    );
+  } else if (tab === 1) {
     panelBody = (
       <div className="np__q">
         <QueueList active scroller={bodyRef} />
@@ -620,11 +663,10 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
             </div>
           )}
         </div>
-        {library && (
-          <div className="np__cards">
-            <NowCards artist={artist} trackKey={track.key} />
-          </div>
-        )}
+        <div className="np__cards">
+          <LyricsCard track={track} time={time} onOpen={() => setLyricsOpen(true)} />
+          {library && <NowCards artist={artist} trackKey={track.key} />}
+        </div>
       </div>
     );
   }
@@ -747,7 +789,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
         <div
           ref={bodyRef}
-          className="np__body"
+          className={cx("np__body", lyricsOpen && tab === 0 && "np__body--lyr")}
           onPointerDown={onBodyDown}
           onPointerUp={onBodyUp}
           onPointerCancel={() => {

@@ -46,10 +46,12 @@ export const resumingText = (pct) => `Retomando desde ${Math.round(pct)} %`;
 /* La forma de item que espera POST /api/downloads. La usan la ficha del album
    y la lista de discografia: una sola definicion, sin copias. `downloadable`
    lo decide el servidor, asi que no se envia. */
-export function trackSpec(track, query) {
+export function trackSpec(track, query, fmt = "original") {
   const copy = { ...track };
   delete copy.downloadable;
-  return { source: copy.source, track: copy, fmt: "m4a", media: "audio", query };
+  /* "original" por defecto: conserva el contenedor de la fuente y NO paga una
+     recodificacion. mp3 solo se envia cuando el usuario lo eligio. */
+  return { source: copy.source, track: copy, fmt, media: "audio", query };
 }
 
 /* El hueco de una pista en su disco: «1-9». Una pista de iTunes trae

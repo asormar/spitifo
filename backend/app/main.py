@@ -16,17 +16,19 @@ import mimetypes
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
+from collections import deque
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin
 
-import httpx
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -36,8 +38,10 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, lyrics, release_check, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
+from .executors import run_prefetch, run_storage
+from .library_snapshot import SnapshotStore
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -69,12 +73,13 @@ from .downloader import (
 from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
-from .playlists import Playlist, validate_playlist
+from .playlists import Playlist, validate_playlist, validate_playlist_meta
 from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
                     validate_saved_payload, validate_song_id)
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
+from .suggest import suggestions_from_raw
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -90,6 +95,11 @@ FRONTEND_DIST = Path(os.getenv(
 # tasks asyncio en vuelo (descargas ytdlp en background), para que Python
 # no las recolecte a mitad de camino
 BG_TASKS: set = set()
+
+#: Se abre en cuanto `/api/library` contesta por primera vez. El import de
+#: yt-dlp y la peticion a youtube.com no deben competir con el primer pintado
+#: (P-cold-start-4): antes corrian apenas empezaba el lifespan.
+FIRST_LIBRARY_SERVED = asyncio.Event()
 
 # Cache del match de albumes: {album_id: (timestamp, respuesta)}. Media hora y
 # ~50 albumes: abrir el mismo album dos veces no vuelve a buscar en YouTube.
@@ -128,6 +138,50 @@ _TRACK_MATCH_MAX = 2000
 _TRACK_RAW_CACHE: dict = {}
 _TRACK_RAW_TTL_S = 30 * 60
 _TRACK_RAW_MAX = 1000
+
+# Candidatos crudos de YouTube por consulta+limite normalizados. La busqueda
+# grupal de modo Musica es el paso mas caro (un ytsearch40); una consulta
+# repetida no vuelve a pedirla. TTL mas corto que el de los matches: los resultados de
+# YouTube cambian mas seguido que "hay o no hay version entera".
+_YT_CANDIDATES_CACHE: dict = {}
+_YT_CANDIDATES_TTL_S = 5 * 60
+_YT_CANDIDATES_MAX = 32
+#: Candidatos de la busqueda grupal de modo Musica (mismo numero de siempre).
+_GROUP_SEARCH_LIMIT = 40
+
+
+def _candidates_cache_key(q: str, limit: int) -> str:
+    return f"{' '.join((q or '').split()).casefold()}::{limit}"
+
+
+def _candidates_cache_get(q: str, limit: int) -> list[dict] | None:
+    clave = _candidates_cache_key(q, limit)
+    hit = _YT_CANDIDATES_CACHE.get(clave)
+    if not hit:
+        return None
+    guardado, candidatos = hit
+    if _breaker_clock() - guardado >= _YT_CANDIDATES_TTL_S:
+        _YT_CANDIDATES_CACHE.pop(clave, None)
+        return None
+    return candidatos
+
+
+def _candidates_cache_put(q: str, limit: int, candidatos: list[dict]) -> None:
+    clave = _candidates_cache_key(q, limit)
+    _YT_CANDIDATES_CACHE[clave] = (_breaker_clock(), candidatos)
+    if len(_YT_CANDIDATES_CACHE) > _YT_CANDIDATES_MAX:
+        vieja = min(_YT_CANDIDATES_CACHE, key=lambda k: _YT_CANDIDATES_CACHE[k][0])
+        _YT_CANDIDATES_CACHE.pop(vieja, None)
+
+
+async def _search_candidates_cached(ysrc, q: str, limit: int) -> list[dict]:
+    """`ysrc.search_candidates` con una cache acotada por consulta+limite."""
+    cached = _candidates_cache_get(q, limit)
+    if cached is not None:
+        return cached
+    candidatos = await ysrc.search_candidates(q, limit=limit)
+    _candidates_cache_put(q, limit, candidatos)
+    return candidatos
 
 # Circuito de YouTube: un muro de verificacion o un 429 pausa las busquedas
 # sueltas cinco minutos. Reloj inyectable para poder moverlo en los tests.
@@ -288,42 +342,133 @@ PREWARM_DELAY_S = 4.0
 async def _prewarm_search() -> None:
     try:
         await asyncio.sleep(PREWARM_DELAY_S)
+        from .executors import run_ytdlp
         from .ytdlp_source import prewarm_search
-        await asyncio.to_thread(prewarm_search)
+        await run_ytdlp(prewarm_search)
     except Exception as e:
         log.info("ytdlp: preparacion de la busqueda fallo: %s", e)
 
 
+async def _warm_after_first_library() -> None:
+    """Calienta yt-dlp y el visitor SOLO despues de la primera biblioteca.
+
+    Antes el import y la peticion a youtube.com arrancaban con el lifespan: en
+    un telefono competian con el parseo del entry y con el escaneo justo cuando
+    se decide si la pantalla es usable. Esperar a la primera respuesta de
+    `/api/library` los deja fuera del camino critico (P-cold-start-4).
+    """
+    await FIRST_LIBRARY_SERVED.wait()
+    if not any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
+        return
+    from .ytdlp_source import ensure_yt_dlp_imported
+    from . import stream as stream_mod
+    for coro in (ensure_yt_dlp_imported(), stream_mod.warm_visitor(),
+                 _prewarm_search()):
+        tarea = asyncio.create_task(coro)
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
+
+
+async def _recover_queue_and_cleanup() -> None:
+    """Recupera la cola y limpia temporales viejos, SIN demorar `SPITIFO_READY`.
+
+    Las dos cosas son disco (leer+parsear el JSON de la cola, recorrer
+    TEMP_DIR y borrar carpetas viejas): antes corrian sincronicas en el
+    lifespan, asi que un server con muchas carpetas parciales abandonadas (o
+    una cola grande) tardaba ese rato extra en imprimir el READY que el shell
+    nativo (Tauri/Chaquopy) espera para considerar la app usable. Ninguna de
+    las dos es parte del camino critico de arranque: la UI puede pintar la
+    biblioteca mientras esto termina atras.
+    """
+    try:
+        await downloads.load_async()
+    except Exception as e:
+        log.warning("no se pudo recuperar la cola de descargas: %s", e)
+    from .ytdlp_source import cleanup_partials
+    try:
+        await asyncio.to_thread(cleanup_partials)
+    except Exception as e:
+        log.warning("no se pudieron limpiar las carpetas parciales viejas: %s", e)
+
+
+async def _warm_storage_after_ready(storage) -> None:
+    """Precalienta los archivos chicos del storage, tras READY.
+
+    El adapter ya esta resuelto al arrancar (los tests lo cambian en caliente,
+    asi que las tareas de fondo no deben volver a `get_storage()`). Lo que se
+    mueve fuera del camino de READY es el trabajo de disco/red, no la eleccion
+    del adapter (P-cold-start-5).
+    """
+    log.info("biblioteca: %s", storage.describe())
+    log.info("fuentes activas: %s",
+             [s.name for s in ALL_SOURCES if s.available()])
+    warm = getattr(storage, "warm_small_files", None)
+    if warm is not None:
+        try:
+            await asyncio.to_thread(warm)
+        except Exception as exc:
+            log.info("no se pudo precalentar los archivos chicos: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: Starlette):
+    # La instantanea de /api/library se lee y se refresca FUERA del camino de
+    # READY: el primer GET no debe esperar a que el escaneo termine (el primer
+    # analisis del antivirus puede tardar minutos en una biblioteca grande).
+    storage = get_storage()
+    root = getattr(storage, "root", None)
+    if root is not None:
+        data_dir = Path(root) / ".spitifo"
+    else:
+        from .cloud.tokens import default_data_dir
+        data_dir = default_data_dir()
+    state = _LibraryState(data_dir, storage)
+    app.state.library_state = state
+    await asyncio.to_thread(state.load)
+    state.trigger()
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
-    # Recuperar la cola ANTES de servir: lo que estaba en curso vuelve a la
-    # cola (con continuedl reanuda su .part) y se limpian temporales viejos.
-    downloads.load()
-    from .ytdlp_source import cleanup_partials
-    cleanup_partials()
+    tarea = asyncio.create_task(_recover_queue_and_cleanup())
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
     # El zip de yt-dlp actualizado se prueba ya servido, no antes: importarlo
     # tarda alrededor de un segundo.
     start_ytdlp_zip_check()
     # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
     # la deja lista para el proximo arranque (no reemplaza la ya importada).
     ytdlp_update.start_background_check()
-    # El visitor_data del streaming se busca al arrancar, nunca en el primer
-    # play: si falla, el camino rapido cae al completo y el usuario no lo nota.
-    if any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
-        from . import stream as stream_mod
-        for coro in (stream_mod.warm_visitor(), _prewarm_search()):
-            tarea = asyncio.create_task(coro)
-            BG_TASKS.add(tarea)
-            tarea.add_done_callback(BG_TASKS.discard)
-    log.info("biblioteca: %s", get_storage().describe())
-    log.info("fuentes activas: %s",
-             [s.name for s in ALL_SOURCES if s.available()])
+    # El visitor_data del streaming y el import de yt-dlp se calientan en
+    # segundo plano, pero solo DESPUES de la primera biblioteca: durante el
+    # primer pintado no deben robar CPU ni radio (P-cold-start-4).
+    tarea = asyncio.create_task(_warm_after_first_library())
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
+    # Un solo `files.list` para TODOS los registros chicos (indice, playlists,
+    # guardadas, imagenes, escuchas, artistinfo, descartes, fileinfo) en vez
+    # de uno por cada uno al primer pedido de cada pantalla (P-drive-io-4).
+    # Sin red (disco local, o la nube caida) no es grave: cada registro cae
+    # a listar el suyo, como siempre. Tras READY y en segundo plano: el arranque
+    # nunca espera a la red (P-cold-start-5).
+    tarea = asyncio.create_task(_warm_storage_after_ready(storage))
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
     yield
     for s in ALL_SOURCES:
         await s.aclose()
     from . import stream as stream_mod
     await stream_mod.aclose()
+    from . import covers, identify
+    await identify.aclose()
+    await covers.aclose()
+    # Cualquier cambio del indice que haya quedado diferido (dentro de un
+    # `batch_index_writes` que no llego a cerrar su bloque) se sube ahora.
+    storage = await asyncio.to_thread(get_storage)
+    flush_all = getattr(storage, "flush_all", None)
+    if flush_all is not None:
+        try:
+            await asyncio.to_thread(flush_all)
+        except Exception as exc:
+            log.warning("no se pudo terminar de subir el indice al cerrar: %s",
+                       exc)
 
 
 # --------------------------------------------------------------- validacion
@@ -365,6 +510,31 @@ def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> i
     if n < ge or n > le:
         raise _invalid(["query", name], f"Input should be between {ge} and {le}")
     return n
+
+
+def _query_int_or_none(request: Request, name: str, *, ge: int, le: int) -> int | None:
+    v = request.query_params.get(name)
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_list(request: Request, name: str, *, max_items: int,
+                max_length: int) -> list[str]:
+    items = request.query_params.getlist(name)
+    if len(items) > max_items:
+        raise _invalid(["query", name], f"At most {max_items} items")
+    for v in items:
+        if len(v) > max_length:
+            raise _invalid(["query", name],
+                           f"String should have at most {max_length} characters")
+    return items
 
 
 def _query_bool(request: Request, name: str, default: bool) -> bool:
@@ -552,6 +722,18 @@ class TrackPayload:
 
 
 # -------------------------------------------------------------------- rutas
+def _health_ytdlp_version() -> str | None:
+    """Version para health SIN importar yt-dlp durante el primer pintado.
+
+    Si el modulo ya esta cargado se dice la version real; si no, se lee la
+    del paquete empaquetado del disco, queno cuesta un import (P-cold-start-4).
+    """
+    if "yt_dlp" in sys.modules:
+        return ytdlp_version()
+    from .runtime import bundled_ytdlp_version
+    return bundled_ytdlp_version()
+
+
 async def health(request: Request):
     _register_ytdlp()  # mostrar yt-dlp en health si esta habilitada
     # Runtime de JS de yt-dlp: "quickjs" solo si SPITIFO_QJS apunta a un
@@ -567,11 +749,23 @@ async def health(request: Request):
         "library": get_storage().describe(),
         # None si yt-dlp no se puede importar. El primer import es lento: va a
         # un thread para no frenar el event loop.
-        "ytdlp_version": await asyncio.to_thread(ytdlp_version),
+        "ytdlp_version": await asyncio.to_thread(_health_ytdlp_version),
         # Version ya bajada que todavia no es la cargada (se aplica al reiniciar).
         "ytdlp_pending": await asyncio.to_thread(ytdlp_update.pending_version),
         "js_runtime": configured_js_runtime(),
     })
+
+
+async def release_latest(request: Request):
+    """GET /api/release/latest -> {"version", "url"} de la ultima release.
+
+    `?force=1` ignora la cache de 24 h (el boton "Buscar actualizaciones" de
+    Ajustes). Sin internet devuelve los dos en None: nunca un error HTTP, para
+    que Ajustes lo trate como un estado tranquilo.
+    """
+    force = _query_bool(request, "force", False)
+    payload = await asyncio.to_thread(release_check.latest_release, force=force)
+    return JSONResponse(payload)
 
 
 async def search(request: Request):
@@ -615,6 +809,42 @@ async def search(request: Request):
     })
 
 
+#: iTunes acepta unas 20 busquedas por minuto por IP: las sugerencias (una por
+#: pausa al escribir) no pueden gastarse ese cupo y dejar sin resultados a la
+#: busqueda de verdad. Pasado el tope, la respuesta va vacia y el frontend
+#: sigue con las sugerencias de la biblioteca.
+_SUGGEST_MAX_PER_MIN = 8
+_SUGGEST_CALLS: deque = deque()
+
+
+def _suggest_allowed() -> bool:
+    ahora = time.monotonic()
+    while _SUGGEST_CALLS and ahora - _SUGGEST_CALLS[0] > 60:
+        _SUGGEST_CALLS.popleft()
+    if len(_SUGGEST_CALLS) >= _SUGGEST_MAX_PER_MIN:
+        return False
+    _SUGGEST_CALLS.append(ahora)
+    return True
+
+
+async def search_suggest(request: Request):
+    """GET /api/search/suggest: sugerencias baratas mientras se escribe.
+
+    Una sola llamada a iTunes, sin YouTube y sin el stream de Buscar. Un fallo
+    de iTunes deja la lista vacia: escribir nunca debe convertirse en un error.
+    """
+    q = _query_str(request, "q", required=True, min_length=2, max_length=200)
+    limit = _query_int(request, "limit", 6, 1, 12)
+    if not _suggest_allowed():
+        return JSONResponse({"query": q, "suggestions": [], "throttled": True})
+    try:
+        raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
+    except Exception as e:
+        log.warning("suggest search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "suggestions": suggestions_from_raw(raws, limit)})
+
+
 async def search_match(request: Request):
     """GET /api/search/match/{track_id}: match suelto de una fila `lazy`.
 
@@ -656,6 +886,26 @@ async def search_match(request: Request):
     track.extra["match_state"] = (
         "full" if (match or {}).get("video") else "none")
     return JSONResponse({"track": track.to_dict()})
+
+
+async def lyrics_route(request: Request):
+    """GET /api/lyrics -> letra sincronizada via LRCLIB, nunca rompe la pagina.
+
+    200 con nulls si LRCLIB no tiene la cancion, y 200 con nulls mas
+    `error: "unavailable"` si la red fallo: la UI decide cuando mostrar
+    "Letra no disponible ahora", nunca un error HTTP.
+    """
+    title = _query_str(request, "title", required=True, min_length=1, max_length=200)
+    artist = _query_str(request, "artist", required=True, min_length=1, max_length=200)
+    album = _query_str(request, "album", default=None, max_length=200)
+    duration = _query_int_or_none(request, "duration", ge=0, le=36000)
+    alt_titles = _query_list(request, "alt_title", max_items=5, max_length=200)
+    alt_artists = _query_list(request, "alt_artist", max_items=5, max_length=200)
+
+    resultado = await lyrics.get_lyrics(
+        title=title, artist=artist, album=album, duration=duration,
+        alt_titles=alt_titles, alt_artists=alt_artists)
+    return JSONResponse(resultado)
 
 
 # ------------------------------------------------------------------- albumes
@@ -703,6 +953,11 @@ def _itunes_track(raw: dict, match: dict | None = None,
     vid = m.get("video")
     extra = dict(_itunes_album_fields(raw))
     extra["item_url"] = raw.get("trackViewUrl")
+    # Alias del storefront jp que encontro el matcher: el veredicto de
+    # identidad los usa para que "Mesmerizer" y "メズマライザー" sean el mismo
+    # titulo. Las fichas que no los tienen siguen igual (ver `identity_reference`).
+    if isinstance(raw.get("aliases"), dict):
+        extra["aliases"] = dict(raw["aliases"])
     if checked:
         extra.update({
             "match_score": m.get("score"),
@@ -1057,8 +1312,15 @@ async def _buscar_pista_suelta(raw: dict, ysrc, *,
     async def _buscar() -> dict:
         track_artist = raw.get("artistName") or artista
         query = f"{track_artist} {raw.get('trackName', '')}".strip()
-        res = await enrich_with_ytdlp([raw], query, _YtConCircuito(ysrc),
-                                      limit=_ALBUM_TRACK_LIMIT)
+        yt = _YtConCircuito(ysrc)
+        # Corrutina sin await: la cubre el try/except de enrich_with_ytdlp, asi
+        # un muro o un fallo de red siguen cayendo a "sin video" en vez de
+        # tumbar la ruta (igual que la busqueda grupal en _search_songs_eventos).
+        # Solo se crea si se va a esperar: sin YouTube quedaria sin await.
+        videos = (_search_candidates_cached(yt, query, _ALBUM_TRACK_LIMIT)
+                  if yt.available() else None)
+        res = await enrich_with_ytdlp(
+            [raw], query, yt, limit=_ALBUM_TRACK_LIMIT, videos=videos)
         # Sin la clave la busqueda fallo (red, muro): no es un "no hay video"
         # y no se guarda, o la pista quedaria diez minutos en 30 s.
         if clave in res:
@@ -1431,21 +1693,31 @@ async def _search_songs_eventos(q: str, limit: int, *,
     """Modo Musica con eventos progresivos.
 
     `catalog` se emite apenas contesta iTunes, antes de que termine el match de
-    YouTube. Con `stream=True` las pistas del top 10 que el grupo no emparejo
-    se buscan sueltas y se anuncian una a una (las demas quedan `lazy`). Sin
-    stream se conserva la respuesta de siempre: una sola busqueda grupal,
-    orden full-first y ninguna busqueda suelta.
+    YouTube. Con `stream=True` lo que el grupo no emparejo queda `lazy`: se
+    busca suelto recien al hacerse visible (o al tocar la fila), nunca aca
+    adentro, asi `done` no espera ningun ytsearch por pista. Sin stream se
+    conserva la respuesta de siempre: una sola busqueda grupal, orden
+    full-first y ninguna busqueda suelta.
     """
-    import yt_dlp  # noqa: F401  (importa yt_dlp, igual que la version FastAPI)
+    from .ytdlp_source import ensure_yt_dlp_imported
+    await ensure_yt_dlp_imported()
     from .matcher import catalog_status, enrich_with_ytdlp
     _register_ytdlp()
     ysrc = BY_NAME.get("ytdlp")
     yt_on = bool(ysrc and ysrc.available())
 
     # 1) catalogo de iTunes y busqueda grupal de YouTube en paralelo: la de
-    # YouTube solo depende de la consulta, no de lo que encuentre iTunes.
+    # YouTube solo depende de la consulta y es el paso mas lento. Una consulta
+    # repetida la sirve la cache de candidatos sin pedirle nada a YouTube.
     isrc = BY_NAME["itunes"]
-    videos = asyncio.ensure_future(ysrc.search_candidates(q, limit=40)) if yt_on else None
+    videos = None
+    if yt_on:
+        videos = asyncio.ensure_future(_search_candidates_cached(
+            _YtConCircuito(ysrc), q, _GROUP_SEARCH_LIMIT))
+        # Si nadie llega a esperarla (sin resultados, todo cacheado), que su
+        # error no quede como "exception was never retrieved".
+        videos.add_done_callback(
+            lambda f: None if f.cancelled() else f.exception())
     try:
         it_items = await isrc._raw_search(q, limit=min(limit, 30))
     except BaseException:
@@ -1486,16 +1758,31 @@ async def _search_songs_eventos(q: str, limit: int, *,
                 estado[clave] = "full"
     enviado = dict(estado)
 
-    yield "catalog", {"query": q, "mode": "matched", "ytdlp": yt_on,
-                      "catalog": catalog, "count": len(it_items),
-                      "results": [_fila(it, estado[_track_key(it)])
-                                  for it in it_items]}
+    try:
+        yield "catalog", {"query": q, "mode": "matched", "ytdlp": yt_on,
+                          "catalog": catalog, "count": len(it_items),
+                          "results": [_fila(it, estado[_track_key(it)])
+                                      for it in it_items]}
+    except BaseException:
+        # Cliente desconectado recien mostrado el catalogo: la busqueda de
+        # candidatos ya estaba en vuelo y nadie la va a esperar.
+        if videos:
+            videos.cancel()
+        raise
 
-    # 2) un solo match grupal reparte los 40 videos entre todas las pistas.
-    # Lo ya cacheado queda fuera: sus videos no le quitan sitio a las demas.
+    # 2) un solo match grupal reparte los candidatos entre las que faltan. Lo
+    # ya cacheado queda fuera (sus videos no le quitan sitio a las demas) y,
+    # si no falta nada, la busqueda en YouTube se cancela.
     faltan = [it for it in it_items if estado[_track_key(it)] != "full"]
     if yt_on and faltan:
-        res = await enrich_with_ytdlp(faltan, q, ysrc, videos=videos)
+        try:
+            res = await enrich_with_ytdlp(faltan, q, ysrc,
+                                          limit=_GROUP_SEARCH_LIMIT, videos=videos)
+        finally:
+            # Cliente desconectado (o iTunes/matcher tiro): no dejar la
+            # busqueda de candidatos volando sin nadie que la espere.
+            if not videos.done():
+                videos.cancel()
         _track_match_cache_put_muchos(res)
         for clave, m in res.items():
             if (m or {}).get("video") and clave in estado:
@@ -1504,11 +1791,11 @@ async def _search_songs_eventos(q: str, limit: int, *,
     elif videos:
         videos.cancel()
 
-    # Fuera del top 10 nadie busca en este momento: se busca al hacer visible.
+    # Nadie busca mas en este momento: lo que sigue sin video se resuelve al
+    # hacerse visible (scroll) o al tocar la fila, con su propio pedido.
     if stream:
-        for idx, it in enumerate(it_items):
-            clave = _track_key(it)
-            if idx >= 10 and estado[clave] == "pending":
+        for clave in estado:
+            if estado[clave] == "pending":
                 estado[clave] = "lazy"
 
     cambiadas = [it for it in it_items
@@ -1517,48 +1804,7 @@ async def _search_songs_eventos(q: str, limit: int, *,
         yield "tracks", {"tracks": [_fila(it, estado[_track_key(it)])
                                     for it in cambiadas]}
 
-    # 3) las del top 10 que siguen pendientes se buscan sueltas, de a 6 y en
-    # cuanto termina cada una se anuncia. El circuito abierto las deja en none.
-    if stream and yt_on and any(estado[_track_key(it)] == "pending"
-                                for it in it_items[:10]):
-        sem = _search_single_sem()
-        por_clave = {_track_key(it): it for it in it_items}
-
-        async def _una(clave):
-            res = await _buscar_pista_suelta(por_clave[clave], ysrc, sem=sem)
-            return clave, res
-
-        tareas = [asyncio.create_task(_una(_track_key(it)))
-                  for it in it_items[:10]
-                  if estado[_track_key(it)] == "pending"]
-        try:
-            for lista in asyncio.as_completed(tareas):
-                try:
-                    clave, res = await lista
-                except Exception as e:
-                    log.warning("search match suelto fallo: %s", e)
-                    continue
-                m = res.get(clave, {})
-                estado[clave] = "full" if (m or {}).get("video") else "none"
-                if estado[clave] == "full":
-                    matches[clave] = m
-                yield "tracks", {"tracks": [_fila(por_clave[clave],
-                                                  estado[clave])]}
-        finally:
-            # Cliente desconectado: no dejar busquedas huerfanas.
-            for t in tareas:
-                if not t.done():
-                    t.cancel()
-            await asyncio.gather(*tareas, return_exceptions=True)
-
-        rezagadas = [it for it in it_items[:10]
-                     if estado[_track_key(it)] == "pending"]
-        if rezagadas:
-            for it in rezagadas:
-                estado[_track_key(it)] = "none"
-            yield "tracks", {"tracks": [_fila(it, "none") for it in rezagadas]}
-
-    # 4) payload final; la ruta JSON lo devuelve entero y el stream solo saca
+    # 3) payload final; la ruta JSON lo devuelve entero y el stream solo saca
     # `full` y `count` (el frontend ya tiene las filas de los lotes).
     out = []
     for it in it_items:
@@ -1627,26 +1873,18 @@ async def resolve(request: Request):
     t = payload.to_track()
     try:
         if t.source == "ytdlp":
-            # resolver via yt-dlp al endpoint de audio
-            import yt_dlp
+            # resolver via el mismo cache/camino rapido que /api/stream: antes
+            # esta ruta hacia su PROPIA extraccion completa (youtube_opts, sin
+            # visitor_data) y /api/stream volvia a resolver el mismo video
+            # para reproducirlo. Con esto queda una sola extraccion por toque.
             url = t.extra.get("webpage_url")
             if not url:
                 raise ValueError("falta webpage_url")
-            from .ytdlp_source import youtube_opts
-            opts = youtube_opts({"quiet": True, "skip_download": True,
-                                 "no_warnings": True})
-            loop = asyncio.get_running_loop()
-
-            def _run():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    fmts = info.get("formats", [])
-                    audio = [f for f in fmts if f.get("acodec") != "none"
-                             and f.get("vcodec") == "none"]
-                    pick = max(audio, key=lambda f: f.get("abr") or 0) if audio else info
-                    return pick.get("url") or info.get("url")
-
-            t.audio_url = await loop.run_in_executor(None, _run)
+            from . import stream as stream_mod
+            from .ytdlp_source import ensure_yt_dlp_imported
+            await ensure_yt_dlp_imported()
+            info = await stream_mod.resolve(url)
+            t.audio_url = info.url
             t.license = "ToS de la plataforma (uso personal)"
             from .identify import similarity, verdict
             from .ytdlp_source import identity_query
@@ -1761,6 +1999,24 @@ async def downloads_enqueue(request: Request):
     return JSONResponse({"items": downloads.enqueue(specs, group)})
 
 
+async def downloads_network(request: Request):
+    """POST /api/downloads/network: informa la conexion y las preferencias.
+
+    La UI (Bridge de Android o `navigator.connection`) dice si hay red, si es
+    Wi-Fi y si el usuario exige Wi-Fi / prohibe roaming. Con eso la cola decide
+    si un item puede empezar o debe esperar con fase «Esperando Wi-Fi».
+    """
+    body = await _json_body(request)
+    tipo = body.get("type")
+    if tipo is not None and not isinstance(tipo, str):
+        raise _invalid(["body", "type"], "Input should be a valid string")
+    return JSONResponse(downloads.set_network(
+        type=tipo,
+        online=body.get("online"),
+        wifi_only=body.get("wifi_only"),
+        roaming_allowed=body.get("roaming_allowed")))
+
+
 async def downloads_cancel(request: Request):
     """POST /api/downloads/{id}/cancel: cancela un item en cola o en curso."""
     item_id = request.path_params["id"]
@@ -1861,9 +2117,15 @@ async def stream_audio(request: Request):
     ysrc = BY_NAME.get("ytdlp")
     if not ysrc or not ysrc.available():
         return Response(status_code=204)
+    # La calidad elegida en Ajustes llega como query. Un valor desconocido (un
+    # cliente viejo, una URL escrita a mano) cae a `auto`: nunca un error HTTP.
+    calidad = _query_str(request, "quality", default=None, max_length=16)
+    if calidad not in stream_mod.QUALITIES:
+        calidad = None
+    opciones = {"quality": calidad} if calidad else {}
     vid = stream_mod.video_id(canon) or canon
     try:
-        info = await stream_mod.resolve(canon)
+        info = await stream_mod.resolve(canon, **opciones)
     except BotCheckError as e:
         # Mismo codigo y mensaje que la descarga: la UI ofrece importar cookies.
         return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
@@ -1888,12 +2150,11 @@ async def stream_audio(request: Request):
         # background ya dejo una mas nueva, se usa SIN volver a extraer; solo
         # como ultimo recurso se fuerza aqui una resolucion nueva. Despues del
         # primer byte ya no se reintenta.
-        info_nueva = stream_mod.fresh_for(vid, info.expires_at)
+        info_nueva = stream_mod.fresh_for(vid, info.expires_at, **opciones)
         if info_nueva is None:
-            stream_mod.drop(vid)
-        if info_nueva is None:
+            stream_mod.drop(vid, **opciones)
             try:
-                info = await stream_mod.resolve(canon, force=True)
+                info = await stream_mod.resolve(canon, force=True, **opciones)
             except BotCheckError as e:
                 return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
             except Exception as e:
@@ -2003,7 +2264,14 @@ async def download(request: Request):
         job_id = encolados[0]["id"]
 
         if wait:
-            await downloads.wait_item(job_id)
+            termino = await downloads.wait_item(job_id)
+            if not termino:
+                # Vencio el plazo de espera: el job SIGUE corriendo, no es un
+                # error. Mismo contrato que sin wait=1: la UI sigue el
+                # progreso por job_id en vez de colgarse esperando esta
+                # respuesta para siempre.
+                return JSONResponse({"ok": True, "source": "ytdlp",
+                                     "job_id": job_id, **ident})
             item = downloads.get_item(job_id) or {}
             if item.get("error_code") == "youtube_bot_check":
                 # Codigo propio: la UI ofrece importar un cookies.txt en vez de
@@ -2103,19 +2371,229 @@ async def setlist(request: Request):
 async def _fileinfo_records(storage) -> dict:
     """Veredictos guardados. Si no se pueden leer, la lista sale sin ellos."""
     try:
-        return await asyncio.to_thread(storage.load_fileinfo)
+        return await run_storage(storage.load_fileinfo)
     except Exception as e:
         log.warning("no se pudieron leer los veredictos: %s", e)
         return {}
 
 
+def _dumps_json(content: Any) -> bytes:
+    """Mismos parametros que `JSONResponse.render` (Starlette), para que un
+    payload serializado en un thread sea byte-por-byte lo mismo que uno hecho
+    en el loop."""
+    return json.dumps(content, ensure_ascii=False, allow_nan=False, indent=None,
+                      separators=(",", ":")).encode("utf-8")
+
+
+async def _json_response_threaded(content: Any, *, status_code: int = 200) -> Response:
+    """Como `JSONResponse(content)`, pero el `json.dumps` corre en el pool de
+    storage: docs/performance.md midio 1,15 MB para 3000 pistas, que en el
+    telefono son decenas de ms bloqueando el loop si se serializa inline.
+    """
+    body = await run_storage(_dumps_json, content)
+    return Response(body, status_code=status_code, media_type="application/json")
+
+
+#: Columnas de la forma compacta de `/api/library` (P-large-library-scale-1,
+#: P-large-library-scale-8). El array de objetos repite cada nombre de campo
+#: en cada fila; a 20k pistas eso es la mayor parte de los ~7.7 MB del cuerpo.
+#: En columnas el nombre de cada campo sale UNA vez y las filas son arrays sin
+#: etiqueta. `size_mb` no viaja: se recalcula de `bytes` al expandir, es
+#: redundante. El orden importa (lo usa el frontend para expandir) y el
+#: frontend lo espera tal cual: cambiarlo es un cambio de contrato.
+COMPACT_FIELDS = (
+    "key", "filename", "folder", "bytes", "duration_s", "title", "artist",
+    "album", "track_no", "disc_no", "album_id", "modified", "kind",
+    "thumb_key", "has_audio", "thumb_s", "verdict", "meta_src", "file_src",
+    "real",
+)
+
+
+def _compact_rows(files: list[dict]) -> list[list]:
+    """Las mismas filas de `library_scan`/`with_checks`, en columnas."""
+    return [[f.get(name) for name in COMPACT_FIELDS] for f in files]
+
+
+def _library_body(describe, files: list, compact: bool) -> tuple[bytes, str]:
+    """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
+    pistas son cerca de un megabyte que no se serializa en el loop."""
+    payload = {"library": describe, "count": len(files)}
+    if compact:
+        payload["fields"] = COMPACT_FIELDS
+        payload["rows"] = _compact_rows(files)
+    else:
+        payload["files"] = files
+    body = json.dumps(payload, ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+    return body, _library_etag(body)
+
+
+def _library_etag(body: bytes) -> str:
+    """ETag debil del cuerpo de `/api/library`: mismos bytes, mismo ETag."""
+    return f'W/"{hashlib.sha256(body).hexdigest()[:32]}"'
+
+
+#: `no-cache` NO es "no cachear": le dice al navegador que SI guarde la
+#: respuesta pero revalide siempre con el server antes de usarla. Con eso,
+#: `fetch()` (modo "default", el que ya usa el frontend) manda `If-None-Match`
+#: solo porque el navegador ya tiene una copia, y un 304 se lo sirve de la
+#: cache local sin que el codigo de la UI note la diferencia.
+_LIBRARY_CACHE = {"Cache-Control": "private, no-cache"}
+
+#: Cuanto espera la primera request a que termine el escaneo de fondo antes de
+#: servir la instantanea. Un escaneo normal tarda decenas de ms y entra aqui;
+#: un escaneo frenado por el primer analisis del antivirus no: la UI ve la
+#: biblioteca anterior (o el esqueleto) y sigue usable (P-cold-start-1).
+LIBRARY_SNAPSHOT_WAIT_S = 0.25
+
+#: Header con el que se marca una respuesta servida de la instantanea mientras
+#: el escaneo real sigue corriendo. El frontend pide de nuevo al rato.
+LIBRARY_PENDING_HEADER = "x-spitifo-library-pending"
+
+
+def _fast_signature(storage) -> str | None:
+    """Firma barata del contenido, o None si el storage no la ofrece."""
+    firma = getattr(storage, "fast_signature", None)
+    if firma is None:
+        return None
+    try:
+        return firma()
+    except Exception as exc:
+        log.info("no se pudo firmar la biblioteca: %s", exc)
+        return None
+
+
+class _LibraryState:
+    """Instantanea servida por `/api/library` y su refresco en segundo plano."""
+
+    def __init__(self, data_dir: Path, storage) -> None:
+        self.store = SnapshotStore(data_dir)
+        self.storage = storage
+        self.signature: str | None = None
+        self.describe = ""
+        self.body_files, self.etag_files = _library_body("", [], False)
+        self.body_compact, self.etag_compact = _library_body("", [], True)
+        self.refreshed = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    def load(self) -> None:
+        guardado = self.store.load()
+        if not guardado:
+            return
+        self.signature = guardado["signature"]
+        self.describe = guardado["describe"]
+        self.body_files = guardado["body_files"]
+        self.etag_files = guardado["etag_files"]
+        self.body_compact = guardado["body_compact"]
+        self.etag_compact = guardado["etag_compact"]
+
+    def body(self, compact: bool) -> tuple[bytes, str]:
+        if compact:
+            return self.body_compact, self.etag_compact
+        return self.body_files, self.etag_files
+
+    def trigger(self) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self.refreshed.clear()
+        self._task = asyncio.create_task(self._refresh())
+        BG_TASKS.add(self._task)
+        self._task.add_done_callback(BG_TASKS.discard)
+
+    async def _refresh(self) -> None:
+        storage = self.storage
+        # Solo el adapter local ofrece una firma barata. Los demas (Drive) no
+        # tienen instantanea y siguen usando el camino sincronico de siempre.
+        if _fast_signature(storage) is None:
+            self.refreshed.set()
+            return
+        try:
+            # Si la biblioteca cambia MIENTRAS se escanea (un test que planta
+            # archivos, una descarga que termina), se repite: la instantanea
+            # tiene que corresponder al estado que ve el que la pide.
+            for _intentos in range(3):
+                antes = await asyncio.to_thread(storage.fast_signature)
+                files, records = await asyncio.gather(
+                    run_storage(library_scan, storage),
+                    _fileinfo_records(storage))
+                files = with_checks(files, records)
+                describe = await asyncio.to_thread(storage.describe)
+                signature = await asyncio.to_thread(storage.fast_signature)
+                if signature == antes:
+                    break
+            body_files, etag_files = await asyncio.to_thread(
+                _library_body, describe, files, False)
+            body_compact, etag_compact = await asyncio.to_thread(
+                _library_body, describe, files, True)
+            self.signature = signature
+            self.describe = describe
+            self.body_files = body_files
+            self.etag_files = etag_files
+            self.body_compact = body_compact
+            self.etag_compact = etag_compact
+            await asyncio.to_thread(self.store.save, {
+                "signature": signature, "describe": describe,
+                "body_files": body_files, "etag_files": etag_files,
+                "body_compact": body_compact, "etag_compact": etag_compact,
+            })
+        except Exception as exc:
+            log.info("no se pudo refrescar la instantanea de la biblioteca: %s",
+                     exc)
+        finally:
+            self.refreshed.set()
+
+
 async def library(request: Request):
-    storage = get_storage()
-    files, records = await asyncio.gather(
-        asyncio.to_thread(library_scan), _fileinfo_records(storage))
-    files = with_checks(files, records)
-    return JSONResponse({"library": storage.describe(), "count": len(files),
-                         "files": files})
+    """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
+    mandar (y que el navegador vuelva a parsear) el JSON entero cuando nada
+    cambio desde el ultimo pedido (P-large-library-scale-8, P-network-caching-6).
+
+    `?shape=compact` pide las filas en columnas en vez de un objeto por
+    archivo (ver COMPACT_FIELDS): un frontend viejo nunca manda el parametro y
+    sigue recibiendo `files` como siempre; uno nuevo contra un backend viejo
+    (que ignora el parametro desconocido) tambien sigue andando, solo que sin
+    la columna. Las dos formas quedan bajo URLs distintas, asi que el cache
+    HTTP (ETag) de cada una es independiente.
+    """
+    # Si el storage es Drive, construirlo aqui (en un hilo) en vez de en el
+    # lifespan: el shell ya navego y el primer GET manda (P-cold-start-5).
+    storage = await asyncio.to_thread(get_storage)
+    compact = request.query_params.get("shape") == "compact"
+    state: _LibraryState | None = getattr(request.app.state, "library_state", None)
+    signature = await asyncio.to_thread(_fast_signature, storage) if state else None
+
+    pending = False
+    if signature is None:
+        # Drive (u otro storage sin firma barata): se mantiene el camino de
+        # siempre, que ya corre en el pool de storage.
+        files, records = await asyncio.gather(
+            run_storage(library_scan, storage), _fileinfo_records(storage))
+        files = with_checks(files, records)
+        body, etag = await run_storage(_library_body, storage.describe(),
+                                       files, compact)
+    else:
+        if signature != state.signature:
+            state.trigger()
+            try:
+                await asyncio.wait_for(state.refreshed.wait(),
+                                       timeout=LIBRARY_SNAPSHOT_WAIT_S)
+            except asyncio.TimeoutError:
+                pass
+        body, etag = state.body(compact)
+        # El escaneo de fondo no alcanzo: se sirve la instantanea y se avisa
+        # al frontend para que pida de nuevo cuando la biblioteca este lista.
+        pending = signature != state.signature
+
+    # La primera biblioteca ya esta servida: a partir de aqui pueden arrancar
+    # el import de yt-dlp y la peticion a youtube.com (P-cold-start-4).
+    FIRST_LIBRARY_SERVED.set()
+    headers = {**_LIBRARY_CACHE, "ETag": etag}
+    if pending:
+        headers[LIBRARY_PENDING_HEADER] = "1"
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(body, media_type="application/json", headers=headers)
 
 
 # ------------------------------------------------------------ borrado en libro
@@ -2155,35 +2633,42 @@ def _validate_delete_keys(body: dict) -> list[str]:
 
 
 def _playlists_hold(storage, keys: set[str]) -> bool:
-    """True si alguna lista viva tiene alguna de las claves (o no se sabe)."""
+    """True si alguna lista viva tiene alguna de las claves (o no se sabe).
+
+    El indice `clave -> ids` del libro evita recorrer todas las listas: solo
+    mira las claves que se borran.
+    """
     try:
         book = storage.load_playlists()
     except Exception:
         return True  # que lo intente save_playlist, como antes
-    return any(not p.deleted and keys & set(p.keys)
-               for p in book.playlists.values())
+    return bool(book.owners(keys))
 
 
 def _drop_playlist_keys(storage, keys: set[str], now: float,
-                        rewrite: dict[str, str] | None = None) -> None:
+                        rewrite: dict[str, str] | None = None,
+                        covers: set[str] | None = None) -> None:
     """Saca claves o ids borrados de las listas vivas que los tengan.
 
     `rewrite` son claves de archivo que siguen vivas como canciones guardadas:
     se cambian por su id en vez de sacarlas. Todo lo que suena desde una lista
     esta en la biblioteca: si se borra el archivo o se quita la cancion, la
-    entrada no puede quedar colgada. Reescribir cuesta una subida en la nube,
-    solo se hace si alguna lista tenia algo. Un fallo aqui no invalida el
-    borrado principal.
+    entrada no puede quedar colgada. El indice del libro dice que listas
+    tocar, sin escanearlas todas. Una portada borrada se limpia tambien.
+    Reescribir cuesta una subida en la nube, solo se hace si alguna lista
+    tenia algo. Un fallo aqui no invalida el borrado principal.
     """
     rewrite = rewrite or {}
-    touched = set(keys) | set(rewrite)
+    covers = covers or set()
+    touched = set(keys) | set(rewrite) | covers
     if not touched or not _playlists_hold(storage, touched):
         return
 
     def change(book) -> None:
-        # Las listas quedan, aunque se queden sin ninguna cancion.
-        for pid, playlist in list(book.playlists.items()):
-            if playlist.deleted or not (touched & set(playlist.keys)):
+        # `owners` usa el indice; el libro lo reconstruye al cambiar.
+        for pid in book.owners(touched):
+            playlist = book.playlists.get(pid)
+            if playlist is None or playlist.deleted:
                 continue
             kept: list[str] = []
             for key in playlist.keys:
@@ -2196,9 +2681,14 @@ def _drop_playlist_keys(storage, keys: set[str], now: float,
             if rewrite:
                 # La lista ya podia tener el id y la clave del archivo.
                 kept = list(dict.fromkeys(kept))
+            cover = ("" if playlist.cover_key in keys or playlist.cover_key in covers
+                     else playlist.cover_key)
+            if kept == playlist.keys and cover == playlist.cover_key:
+                continue
             book.upsert(replace(
                 playlist,
                 keys=kept,
+                cover_key=cover,
                 updated_at=_next_updated_at(playlist, now),
             ))
 
@@ -2289,7 +2779,12 @@ def _delete_library_files(storage, keys: list[str],
                     log.warning("no se pudo desvincular guardadas tras borrar: %s", exc)
                     clears.clear()
                     rewrite.clear()
-    _drop_playlist_keys(storage, borradas, time.time(), rewrite)
+    # Las portadas que desaparecieron con su tema tambien pueden ser la
+    # portada elegida de una lista: se limpia esa referencia en el mismo
+    # reindexado, sin buscarla en todas las listas.
+    gone_sides = {side for key in keys for side in sides_of.get(key, ())
+                  if errors.get(side) is None}
+    _drop_playlist_keys(storage, borradas, time.time(), rewrite, gone_sides)
     if deleted:
         # El adapter local guarda duraciones y etiquetas por clave: sacarlas
         # evita que un listado posterior "recuerde" un archivo ya borrado.
@@ -2325,9 +2820,23 @@ async def library_delete(request: Request):
 
 # ---------------------------------------------------------------- playlists
 def _playlist_payload(playlist: Playlist) -> dict:
-    """Forma JSON de una playlist (la que consume el frontend)."""
-    return {"id": playlist.id, "name": playlist.name,
-            "keys": list(playlist.keys), "updated_at": playlist.updated_at}
+    """Forma JSON de una playlist (la que consume el frontend).
+
+    Los campos nuevos son aditivos: una playlist que no los usa devuelve
+    exactamente el JSON de siempre, para que un cliente viejo no tenga que
+    entenderlos.
+    """
+    out = {"id": playlist.id, "name": playlist.name,
+           "keys": list(playlist.keys), "updated_at": playlist.updated_at}
+    if playlist.description:
+        out["description"] = playlist.description
+    if playlist.cover_key:
+        out["cover_key"] = playlist.cover_key
+    if playlist.folder_id:
+        out["folder_id"] = playlist.folder_id
+    if playlist.is_folder:
+        out["is_folder"] = True
+    return out
 
 
 def _next_updated_at(old: Playlist | None, now: float) -> float:
@@ -2355,8 +2864,13 @@ async def playlist_save(request: Request):
     playlist_id = request.path_params["id"]
     body = await _json_body(request)
     try:
+        description, cover_key, folder_id, is_folder = validate_playlist_meta(
+            body.get("description"), body.get("cover_key"),
+            body.get("folder_id"), body.get("is_folder", False))
         name, keys = validate_playlist(playlist_id, body.get("name"),
-                                       body.get("keys"))
+                                       body.get("keys"), is_folder=is_folder)
+        if is_folder and (playlist_id in keys or folder_id == playlist_id):
+            raise ValueError("una carpeta no puede contenerse a si misma")
     except ValueError as exc:
         raise _invalid(["body"], str(exc))
 
@@ -2366,7 +2880,10 @@ async def playlist_save(request: Request):
         book = storage.load_playlists()
         old = book.playlists.get(playlist_id)
         playlist = Playlist(id=playlist_id, name=name, keys=keys,
-                            updated_at=_next_updated_at(old, time.time()))
+                            updated_at=_next_updated_at(old, time.time()),
+                            description=description, cover_key=cover_key,
+                            folder_id=folder_id, is_folder=is_folder,
+                            extra=dict(old.extra) if old else {})
         storage.save_playlist(lambda b: b.upsert(playlist))
         return playlist
 
@@ -2411,12 +2928,43 @@ def _saved_list_payload(book: SavedBook) -> dict:
     return {"songs": [_saved_payload(s) for s in book.live()]}
 
 
+#: Ids de iTunes que puede traer el track de una descarga en `extra`. La
+#: cancion guardada a veces se creo desde YouTube (sin ellos) o antes de que
+#: existiera el match: al bajarla se completan los que falten.
+_SAVED_ITUNES_FIELDS = {
+    "track_id": ("track_id", "trackId"),
+    "collection_id": ("collection_id", "collectionId"),
+    "artist_id": ("artist_id", "artistId"),
+    "track_no": ("track_no", "track_number", "trackNumber"),
+    "disc_no": ("disc_no", "disc_number", "discNumber"),
+    "track_count": ("track_count", "trackCount"),
+}
+
+
+def _saved_itunes_ids(track: dict) -> dict:
+    """Los ids enteros de iTunes del track de una descarga, si los trae."""
+    extra = track.get("extra")
+    if not isinstance(extra, dict):
+        return {}
+    out = {}
+    for clave, nombres in _SAVED_ITUNES_FIELDS.items():
+        for nombre in nombres:
+            valor = extra.get(nombre)
+            if isinstance(valor, int) and not isinstance(valor, bool):
+                out[clave] = valor
+                break
+    return out
+
+
 def link_saved_download(track: dict, key: str | None) -> bool:
     """Enlaza una descarga terminada con su cancion guardada, si la hay.
 
     Sincrono y con el storage pegado: lo llama la cola desde un hilo. Una sola
     escritura del registro, solo si la cancion sigue viva y no apuntaba ya a
-    esta clave. Un fallo aqui no invalida la descarga.
+    esta clave. Aprovecha para completar los ids de iTunes que falten (con
+    `artist_id` el nombre del artista abre su pagina en vez de buscarlo).
+    Los registros viejos sin ids siguen funcionando igual. Un fallo aqui no
+    invalida la descarga.
     """
     if not isinstance(key, str) or not key:
         return False
@@ -2432,12 +2980,16 @@ def link_saved_download(track: dict, key: str | None) -> bool:
         return False
     if old is None or old.deleted or old.file_key == key:
         return False
+    itunes_ids = _saved_itunes_ids(track)
 
     def change(book: SavedBook) -> None:
         current = book.songs.get(sid)
         if current is None or current.deleted or current.file_key == key:
             return
-        book.upsert(replace(current, file_key=key,
+        # Solo lo que falta: un id ya guardado no se sobrescribe.
+        falta = {k: v for k, v in itunes_ids.items() if k not in current.itunes}
+        itunes = {**current.itunes, **falta} if falta else current.itunes
+        book.upsert(replace(current, file_key=key, itunes=itunes,
                             updated_at=_next_saved_updated_at(current, now)))
 
     try:
@@ -2534,6 +3086,7 @@ class ArtFetchError(Exception):
 
 def _art_client() -> httpx.AsyncClient:
     """Cliente HTTP de las imagenes. Los tests lo cambian por un MockTransport."""
+    import httpx  # perezoso: las imagenes no estan en el primer pintado
     return httpx.AsyncClient(timeout=httpx.Timeout(ART_TIMEOUT_S),
                              follow_redirects=False,
                              headers={"User-Agent": USER_AGENT})
@@ -2541,6 +3094,7 @@ def _art_client() -> httpx.AsyncClient:
 
 async def _art_get(client: httpx.AsyncClient, url: str, source: str) -> bytes:
     """Baja un JPG de la lista, sin seguir redirecciones fuera de ella."""
+    import httpx  # perezoso: solo hace falta si hay una imagen que bajar
     for _ in range(ART_MAX_HOPS + 1):
         try:
             resp = await client.get(url)
@@ -2629,8 +3183,15 @@ def _store_art(storage, target: str, big: bytes, small: bytes,
     """
     big_key, small_key = art_keys(hashlib.sha256(big).hexdigest())
     try:
-        storage.stat(big_key)
-        storage.stat(small_key)
+        # `allow_force=False`: el hash del contenido es casi siempre NUEVO
+        # (dos imagenes iguales byte a byte son raras), asi que forzar una
+        # relectura completa del indice por cada subida de imagen es puro
+        # desperdicio (P-drive-io-8). Si otro dispositivo subio la MISMA
+        # imagen hace instantes y la vista en memoria todavia no lo sabe, en
+        # el peor caso se vuelve a subir el mismo contenido: no se pierde ni
+        # se corrompe nada.
+        storage.stat(big_key, allow_force=False)
+        storage.stat(small_key, allow_force=False)
         exists = True
     except (FileNotFoundError, OSError):
         exists = False
@@ -2731,8 +3292,14 @@ async def listens_append(request: Request):
 
 
 async def listens_summary(request: Request):
-    """GET /api/listens/summary: merge de todos los dispositivos."""
-    data = await asyncio.to_thread(get_storage().load_listens_summary)
+    """GET /api/listens/summary: merge de todos los dispositivos.
+
+    Por la misma cache de 30 s que ya usa Discover (`_cached_summary`): sin
+    esto, esta ruta releia todo de nuevo en cada apertura de la pestana de
+    historial aunque Discover ya lo tuviera fresco (P-drive-io-7).
+    """
+    storage = get_storage()
+    data = await asyncio.to_thread(_cached_summary, storage)
     return JSONResponse(data)
 
 
@@ -3187,6 +3754,11 @@ def _storage_payload(flow) -> dict:
         "quota": quota,
         # Como se firma el sign-in en este dispositivo: la UI decide con esto si
         # abre un link o si le pide el token al shell nativo.
+        # Cuanto pode estar atrasada una version antigua que solo lee el
+        # indice: los cambios del journal se funden en el al cerrar un grupo,
+        # al quedar idle o al apagar. Se muestra en Ajustes.
+        "index_journal": (storage.journal_stats()
+                          if hasattr(storage, "journal_stats") else None),
         "connect_via": "android" if android else "browser",
         "providers": [{
             "id": "google",
@@ -3327,9 +3899,11 @@ async def audio(request: Request):
         raise HTTPException(404, "no encontrado")
     storage = get_storage()
     try:
-        # A un thread: en un adapter remoto stat es una llamada de red, y en
-        # el local un acceso a disco que no debe frenar el event loop.
-        stat = await asyncio.to_thread(storage.stat, key)
+        # Al pool de storage (no al default): en un adapter remoto stat es una
+        # llamada de red, y en el local un acceso a disco; ninguno debe frenar
+        # el event loop NI esperar detras de una extraccion de yt-dlp (pool
+        # separado, ver executors.py).
+        stat = await run_storage(storage.stat, key)
         size = stat.size
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
@@ -3375,11 +3949,11 @@ async def audio(request: Request):
         }
         # open_range a un thread: en un adapter remoto abre la descarga (y
         # falla con 503/502 si hace falta) antes de mandar los headers.
-        body = await asyncio.to_thread(storage.open_range, key, start, end)
+        body = await run_storage(storage.open_range, key, start, end)
         return StreamingResponse(body, status_code=206, media_type=ctype,
                                  headers=headers)
 
-    body = await asyncio.to_thread(storage.open_range, key)
+    body = await run_storage(storage.open_range, key)
     return StreamingResponse(
         body, media_type=ctype,
         headers={"Accept-Ranges": _UNIT, "Content-Length": str(size), **cache})
@@ -3393,12 +3967,30 @@ def _prefetch_bg(fn, key: str) -> None:
         log.warning("prefetch de %s fallo: %s: %s", key, type(exc).__name__, exc)
 
 
+#: Referencia al ultimo prefetch encolado (solo para diagnostico/tests): lo
+#: que REEMPLAZA no es el trabajo en curso (`Storage.prefetch` no tiene
+#: cancelacion: la descarga que ya arranco en Drive sigue aunque el usuario
+#: saltee de nuevo, igual que antes), sino la garantia de que un tap repetido
+#: de "siguiente" (saltar varias veces rapido) ya NO abre un hilo de SO por
+#: tap: se encola en `PREFETCH_EXECUTOR`, un pool chico y PROPIO (ver
+#: executors.py) que nunca compite por hilos con `/api/audio`, la biblioteca
+#: o el guardado de la cola (eso sí pasaria si compartiera `STORAGE_EXECUTOR`:
+#: una racha de saltos llenaria ese pool de descargas de Drive y haria
+#: esperar a una lectura de audio real).
+_prefetch_future: "asyncio.Future | None" = None
+
+
+def _prefetch_submit(fn, key: str) -> None:
+    global _prefetch_future
+    _prefetch_future = run_prefetch(_prefetch_bg, fn, key)
+
+
 async def prefetch(request: Request):
     """Adelanta la descarga del proximo tema (auto-advance de la biblioteca).
 
     La UI lo dispara al empezar un tema, con la clave del SIGUIENTE. La respuesta
-    no espera la descarga: arranca en un thread y vuelve ya. Un almacenamiento sin
-    cache (disco local) contesta 204: no hay nada que adelantar.
+    no espera la descarga: se encola y vuelve ya. Un almacenamiento sin cache
+    (disco local) contesta 204: no hay nada que adelantar.
     """
     body = await _json_body(request)
     key = body.get("key")
@@ -3407,13 +3999,13 @@ async def prefetch(request: Request):
     storage = get_storage()
     try:
         # Igual que /api/audio: `stat` confirma que existe antes de encolar nada.
-        await asyncio.to_thread(storage.stat, key)
+        await run_storage(storage.stat, key)
     except (InvalidKey, FileNotFoundError, OSError):
         raise HTTPException(404, "no encontrado")
     fn = getattr(storage, "prefetch", None)
     if fn is None:
         return Response(status_code=204)
-    threading.Thread(target=_prefetch_bg, args=(fn, key), daemon=True).start()
+    _prefetch_submit(fn, key)
     return JSONResponse({"key": key}, status_code=202)
 
 
@@ -3502,8 +4094,11 @@ def _exception_handlers() -> dict:
 # ---------------------------------------------------------------- aplicacion
 routes = [
     Route("/api/health", health),
+    Route("/api/release/latest", release_latest),
     Route("/api/search", search),
+    Route("/api/search/suggest", search_suggest),
     Route("/api/search/match/{track_id}", search_match),
+    Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
@@ -3517,6 +4112,7 @@ routes = [
     Route("/api/downloads", downloads_list, methods=["GET"]),
     Route("/api/downloads", downloads_enqueue, methods=["POST"]),
     Route("/api/downloads/cancel", downloads_cancel_group, methods=["POST"]),
+    Route("/api/downloads/network", downloads_network, methods=["POST"]),
     Route("/api/downloads/{id}/cancel", downloads_cancel, methods=["POST"]),
     Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),
@@ -3559,9 +4155,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 

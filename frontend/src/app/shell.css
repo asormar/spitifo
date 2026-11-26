@@ -19,11 +19,14 @@
   /* Borde izquierdo del reproductor flotante y de los avisos: pegado al menu
      lateral en escritorio. */
   --dock-l: 0px;
-  /* Recorrido del cambio de pantalla: en el telefono se desliza en X; en
-     escritorio, en Y. Las variables llegan a los pseudo-elementos de la
-     View Transition por herencia desde <html>. */
-  --vt-dx: 24px;
+  /* Un solo movimiento de modo (§9): la que entra viene de 36px, la que sale
+     va a 24px con escala 0.98. En escritorio el recorrido es vertical. Las
+     variables llegan a los pseudo-elementos de la View Transition por herencia
+     desde <html>. */
+  --vt-dx: 36px;
   --vt-dy: 0px;
+  --vt-out-x: 24px;
+  --vt-out-y: 0px;
 }
 
 @media (max-width: 959.98px) {
@@ -32,7 +35,7 @@
   }
 
   body.nav-swipe {
-    --nav-h: calc(44px + env(safe-area-inset-bottom, 0px));
+    --nav-h: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -42,7 +45,9 @@
 @media (min-width: 960px) {
   :root {
     --vt-dx: 0px;
-    --vt-dy: 16px;
+    --vt-dy: 12px;
+    --vt-out-x: 0px;
+    --vt-out-y: -12px;
     --top-h: 64px;
     --dock-l: calc(var(--nav-w) + 12px);
     /* Alto de .dock (88px, DESIGN.md > decision 3) mas su aire: 12px abajo
@@ -61,8 +66,10 @@
     padding-left: calc(var(--nav-w) + var(--gutter));
   }
 
+  /* Sin tope: en una ventana maximizada el contenido usa todo el ancho y las
+     grillas deciden cuantas columnas caben (DESIGN.md > Layout). */
   .screens {
-    max-width: 1280px;
+    max-width: none;
     margin: 0 auto;
   }
 
@@ -164,15 +171,15 @@ html[data-vt="mode"]::view-transition-old(*) {
 html[data-vt="mode"]::view-transition-old(screen) {
   display: block;
   translate: 0 var(--vt-shift, 0px);
-  animation: screen-out var(--t-quick) var(--ease) both;
+  animation: screen-out var(--t-swipe) var(--drawer) both;
 }
 
 html[data-vt="mode"]::view-transition-new(screen) {
-  animation: screen-in var(--t-enter) var(--ease) both;
+  animation: screen-in var(--t-swipe) var(--drawer) both;
 }
 
-/* La vieja sale hacia el lado contrario al avance y la nueva entra desde el
-   lado del avance. --vt-dir vale -1, 0 o 1 (0 solo funde). */
+/* Una sola duracion y curva para las dos: la que entra desde 36px con
+   fundido, la que sale a 24px con escala. --vt-dir vale -1, 0 o 1. */
 @keyframes screen-in {
   from {
     opacity: 0;
@@ -187,9 +194,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
   to {
     opacity: 0;
     transform: translate(
-      calc(var(--vt-dir, 0) * var(--vt-dx) * -1),
-      calc(var(--vt-dir, 0) * var(--vt-dy) * -1)
-    );
+      calc(var(--vt-dir, 0) * var(--vt-out-x) * -1),
+      calc(var(--vt-dir, 0) * var(--vt-out-y) * -1)
+    ) scale(0.98);
   }
 }
 
@@ -246,7 +253,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   justify-items: center;
   width: calc((100% - 12px) / 4);
   transform: translateX(calc(var(--i, 0) * 100%));
-  transition: transform var(--t-enter) var(--ease);
+  transition: transform var(--t-ind) var(--ease);
 }
 
 .tabbar__ind::before {
@@ -302,7 +309,14 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .dots {
   align-items: center;
   justify-content: center;
-  height: calc(44px + env(safe-area-inset-bottom, 0px));
+  gap: var(--sp-1);
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+
+.dots__item {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
 }
 
 @media (max-width: 959.98px) {
@@ -314,8 +328,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .dots__btn {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: var(--hit);
+  height: var(--hit);
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -338,9 +352,32 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .dots__name {
-  min-width: 84px;
-  font-size: 12.5px;
-  font-weight: 800;
+  overflow: hidden;
+  color: var(--mut);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dots__btn[aria-current="page"] + .dots__name {
+  color: var(--acc);
+}
+
+/* Pista del gesto, una sola vez. Va sobre la barra, sin tapar la pagina. */
+.swipe-hint {
+  position: fixed;
+  z-index: 45;
+  right: 0;
+  bottom: calc(var(--nav-h) + var(--sp-2));
+  left: 0;
+  margin: 0;
+  padding: var(--sp-2) var(--gutter);
+  background: color-mix(in srgb, var(--acc) 13%, var(--s1));
+  color: var(--acc);
+  font: 700 var(--fs-micro) var(--font-body);
   text-align: center;
 }
 
@@ -366,7 +403,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .cbtn:active {
-  transform: scale(0.92);
+  transform: scale(0.96);
 }
 
 .cbtn:disabled {
@@ -397,6 +434,31 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .cbtn--l {
   width: 44px;
   height: 44px;
+}
+
+/* Dedo: 48px de area real para todo boton redondo, con ::after cuando el
+   glifo visible debe seguir midiendo menos (como ya hacia la X de las hojas). */
+@media (pointer: coarse) {
+  .cbtn {
+    width: var(--hit);
+    height: var(--hit);
+  }
+
+  .cbtn--sm {
+    position: relative;
+    width: 34px;
+    height: 34px;
+  }
+
+  .cbtn--sm::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--hit);
+    height: var(--hit);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* --- Menu lateral (escritorio) -------------------------------------------- */
@@ -633,8 +695,24 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .apphead__gear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   margin-right: -8px;
   color: var(--ink);
+}
+
+/* Guia y Ajustes juntos, en la cabecera de cualquier pestana del telefono. */
+.chrome-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.lhead__acts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 
@@ -649,19 +727,18 @@ html[data-vt="mode"]::view-transition-new(screen) {
 
 /* --- Columna de "Ahora suena" (escritorio) --------------------------------- */
 
-/* App pone html[data-rp] = docked | wide | over (ver App.jsx). Por debajo de
-   1200 px la columna se pone ENCIMA de las paginas (no queda sitio para las dos
-   y el menu): solo se aparta lo fijo. Desde 1200 px las paginas se estrechan
-   (340 de columna + 12 de aire a cada lado): eso vive en base.css, junto al
-   padding de .app (este archivo solo usa el umbral de 960). */
+/* App pone html[data-rp] = docked | wide | over (ver App.jsx). Desde 960 px la
+   columna comparte la pagina: lo fijo (barra y avisos) se aparta lo mismo que
+   el contenido en base.css, así que nada queda tapado. En Descubrir sigue
+   flotando ("over") porque allí no hay sitio para las dos. */
 @media (min-width: 960px) {
   html[data-rp="docked"] .topbar,
   html[data-rp="over"] .topbar {
-    right: 364px;
+    right: calc(var(--np-w, 340px) + 24px);
   }
 
   html[data-rp="docked"] .lnotice {
-    right: 364px;
+    right: calc(var(--np-w, 340px) + 24px);
   }
 }
 
@@ -671,7 +748,7 @@ html[data-rp="wide"] .screens {
   visibility: hidden;
 }
 
-html[data-rp="wide"] .mezcla .rec__spin,
+html[data-rp="wide"] .mezcla .mz__spin,
 html[data-rp="wide"] .screens .eq i {
   animation-play-state: paused;
 }
@@ -693,4 +770,21 @@ html[data-rp="wide"] .screens .eq i {
 
 .skip-link:focus {
   transform: none;
+}
+/* Aviso de refresco de la biblioteca: aparece sobre la pantalla mientras el
+   escaneo de fondo termina, sin tapar ni bloquear la lista del espejo. */
+.lib-sync {
+  position: fixed;
+  z-index: 60;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--mut);
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
 }

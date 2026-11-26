@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { Icon } from "./icons.jsx";
 import { clamp, cx } from "./ui.jsx";
 import { usePc } from "./viewport.js";
+import { pushSample, resistedDy, scrimOpacity, shouldDismiss, velocity, SLOP } from "./gestures.js";
+import { HAPTIC, haptic } from "./haptics.js";
+import { motion, motionAfter } from "./motion.js";
 import "./sheet.css";
 
 /* ---------------------------------------------------------------------------
@@ -14,13 +17,23 @@ import "./sheet.css";
    en la pila de navegacion, asi que Escape y el atras del navegador/Android la
    cierran sin teclas propias.
 
-   Foco: entra en `[data-autofocus]` o, si no hay, en el primer control; Tab no
+   Foco: entra en `[data-autofocus]` o, si no hay, en el primer control, cuando
+   ya termino la entrada (con movimiento reducido, en el mismo tick); Tab no
    sale de la hoja; al desmontarse vuelve a `anchor` (el boton que la abrio: el
-   toque no siempre lo enfoca) o, sin el, a quien lo tenia. Sin animacion de
-   salida: se desmonta al instante.
+   toque no siempre lo enfoca) o, sin el, a quien lo tenia.
+
+   Salida: el asa y la cabecera arrastran con la MISMA aritmetica del
+   reproductor (gestures.js). El cuerpo sigue al dedo, el scrim se desvanece con
+   el mismo progreso y soltar decide por 35 % o 0,5 px/ms. `closing` aplaza el
+   desmontaje y el desbloqueo del scroll hasta que termina la animacion; abrir
+   otra hoja mientras esta cierra cancela ese cierre pendiente.
    ------------------------------------------------------------------------- */
 
 const FOCUSABLE = 'button:not(:disabled), a[href], input, [tabindex]:not([tabindex="-1"])';
+const CLOSE_MS = 280;
+const ENTER_MS = 240;
+/* Solo una hoja puede cerrarse a la vez: una nueva gana y la anterior se queda. */
+let latestSheet = 0;
 
 /* Cabecera de las hojas de menu: titulo y cierre. La comparten el menu de
    resultados y el de resoluciones, asi que el texto y el boton no se repiten. */
@@ -51,19 +64,153 @@ export function lockScroll() {
 export default function Sheet({ title, onClose, anchor, sm, children }) {
   const pc = usePc();
   const box = useRef(null);
+  const scrim = useRef(null);
+  const drag = useRef(null);
+  const closeTimer = useRef(null);
+  const focusTimer = useRef(null);
+  const token = useRef(0);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
+    token.current = ++latestSheet;
     const opener = document.activeElement;
-    const el = box.current;
-    (el.querySelector("[data-autofocus]") || el.querySelector(FOCUSABLE))?.focus({ preventScroll: true });
+    /* El teclado no puede subir con la animacion de entrada todavia en curso:
+       enfocar antes deja la hoja a media altura cuando el teclado redimensiona. */
+    focusTimer.current = motionAfter(() => {
+      const el = box.current;
+      (el?.querySelector("[data-autofocus]") || el?.querySelector(FOCUSABLE))?.focus({ preventScroll: true });
+    }, ENTER_MS);
     const unlock = pc ? null : lockScroll();
     return () => {
+      focusTimer.current?.();
+      closeTimer.current?.();
       unlock?.();
       const back = anchor?.isConnected ? anchor : opener;
       if (back?.isConnected) back.focus({ preventScroll: true });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Con adjustResize, el teclado cambia el alto REAL de la ventana. `translate`
+     es independiente del `transform` del arrastre: los dos se componen. */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || pc) return undefined;
+    const apply = () => {
+      const shift = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (box.current) box.current.style.translate = `0 -${shift}px`;
+    };
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    apply();
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+      if (box.current) box.current.style.translate = "";
+    };
+  }, [pc]);
+
+  /* Toda salida pasa por aqui: scrim, X y arrastre. La animacion corre y el
+     desmontaje se aplaza; una hoja nueva que se abre cancela el cierre viejo. */
+  const requestClose = useCallback(
+    () => {
+      if (closing || !box.current) return;
+      setClosing(true);
+      const el = box.current;
+      const dur = motion(CLOSE_MS);
+      /* Salida reversa de `sh-up`: la hoja baja y el scrim se funde, venga el
+         cierre del asa, de la X, del fondo o del arrastre. */
+      el.style.transition = `transform ${dur ? `${dur}ms` : "0ms"} var(--drawer)`;
+      el.style.transform = "translateY(100%)";
+      if (scrim.current) {
+        scrim.current.style.transition = `opacity ${dur ? `${dur}ms` : "0ms"} var(--drawer)`;
+        scrim.current.style.opacity = "0";
+      }
+      haptic(HAPTIC.CONFIRM);
+      closeTimer.current = motionAfter(() => {
+        if (token.current === latestSheet) onClose();
+      }, CLOSE_MS);
+    },
+    [closing, onClose]
+  );
+
+  /* --- Arrastre del asa y la cabecera (telefono) --------------------------- */
+
+  const onPointerDown = (e) => {
+    if (pc || closing || !e.isPrimary || e.pointerType === "mouse") return;
+    if (e.target.closest("button, a, input")) return;
+    if (!e.target.closest(".sh__grab, .sh__bar, .als__top, .qsh__top, .dsh__top, .fy__top, .fy__grab")) return;
+    /* Interrumpe la entrada: una animacion CSS con `both` ganaria al transform
+       en linea y el dedo no veria seguir al cuerpo. */
+    if (box.current) box.current.style.animation = "none";
+    if (scrim.current) scrim.current.style.animation = "none";
+    drag.current = {
+      id: e.pointerId,
+      y: e.clientY,
+      dy: 0,
+      started: false,
+      samples: [[e.clientY, e.timeStamp]],
+    };
+  };
+
+  const onPointerMove = (e) => {
+    const g = drag.current;
+    if (!g || e.pointerId !== g.id) return;
+    const raw = e.clientY - g.y;
+    if (!g.started) {
+      if (Math.abs(raw) < SLOP) return;
+      if (raw <= 0) {
+        drag.current = null;
+        return;
+      }
+      g.started = true;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* sin captura, el arrastre sigue por los eventos normales */
+      }
+    }
+    const h = box.current?.clientHeight || 1;
+    g.dy = resistedDy(raw, h);
+    if (box.current) {
+      box.current.style.transition = "none";
+      box.current.style.transform = `translateY(${g.dy}px)`;
+    }
+    if (scrim.current) {
+      scrim.current.style.transition = "none";
+      scrim.current.style.opacity = String(scrimOpacity(g.dy, h));
+    }
+    pushSample(g.samples, e.clientY, e.timeStamp);
+  };
+
+  const onPointerUp = (e) => {
+    const g = drag.current;
+    drag.current = null;
+    if (!g || !g.started) return;
+    if (e.type === "pointercancel" || !shouldDismiss(g.dy, velocity(g.samples), box.current?.clientHeight || 1)) {
+      const dur = motion(CLOSE_MS);
+      if (box.current) {
+        box.current.style.transition = `transform ${dur ? `${dur}ms` : "0ms"} var(--ease-spring)`;
+        box.current.style.transform = "";
+      }
+      if (scrim.current) {
+        scrim.current.style.transition = `opacity ${dur ? `${dur}ms` : "0ms"} var(--ease)`;
+        scrim.current.style.opacity = "1";
+      }
+      return;
+    }
+    /* Ya esta desplazada: la salida continua desde donde la dejo el dedo. */
+    requestClose();
+  };
+
+  /* Las X de las hojas compartidas cierran con la misma salida: se interceptan
+     aqui, sin tocar los call sites ni cambiar el contrato de `onClose`. */
+  const onCloseClick = (e) => {
+    if (!e.target.closest('button[aria-label^="Cerrar"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    requestClose();
+  };
 
   /* El foco no sale de la hoja con Tab. */
   const onKeyDown = (e) => {
@@ -77,9 +224,21 @@ export default function Sheet({ title, onClose, anchor, sm, children }) {
   };
 
   return createPortal(
-    <div className="sh" data-no-swipe="">
-      <div className="sh__scrim" aria-hidden="true" onClick={onClose} />
-      <div ref={box} className={sm ? "sh__box sh__box--sm" : "sh__box"} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown}>
+    <div className={cx("sh", closing && "is-closing")} data-no-swipe="">
+      <div ref={scrim} className="sh__scrim" aria-hidden="true" onClick={() => requestClose()} />
+      <div
+        ref={box}
+        className={sm ? "sh__box sh__box--sm" : "sh__box"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onKeyDown={onKeyDown}
+        onClickCapture={onCloseClick}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
         <div className="sh__grab" aria-hidden="true" />
         {children}
       </div>
@@ -119,29 +278,33 @@ export function placePop({ anchor, vw, vh, natural, width = 300 }) {
   };
 }
 
-export function Popover({ anchor, onClose, rev, width = 300, children }) {
+export function Popover({ anchor, point, onClose, rev, width = 300, children }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
   const place = useCallback(() => {
     const box = ref.current;
-    if (!box || !anchor?.isConnected) return;
+    if (!box || (!anchor?.isConnected && !point)) return;
     /* La altura NATURAL: sin el tope de la colocacion anterior, que la mediria
        ya recortada. El estilo se devuelve tal cual. */
     const prev = box.style.maxHeight;
     box.style.maxHeight = "none";
     const natural = box.offsetHeight || 0;
     box.style.maxHeight = prev;
+    /* El clic derecho no tiene boton: un punto del puntero vale de ancla. */
+    const rect = point
+      ? { top: point.y, bottom: point.y, left: point.x, right: point.x + width, width, height: 0 }
+      : anchor.getBoundingClientRect();
     setPos(
       placePop({
-        anchor: anchor.getBoundingClientRect(),
+        anchor: rect,
         vw: window.innerWidth,
         vh: window.innerHeight,
         natural,
         width,
       })
     );
-  }, [anchor, width]);
+  }, [anchor, point, width]);
 
   /* Vuelve a colocarse cuando llega la lista (cambia la altura). */
   useLayoutEffect(() => {

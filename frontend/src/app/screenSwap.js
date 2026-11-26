@@ -1,4 +1,5 @@
 import { flushSync } from "react-dom";
+import { motion, reducedMotion } from "../shared/motion.js";
 
 /* ---------------------------------------------------------------------------
    CAMBIO DE PANTALLA
@@ -18,8 +19,6 @@ import { flushSync } from "react-dom";
 /* La transicion en curso, para interrumpirla si el usuario cambia de pantalla
    otra vez antes de que termine. */
 let running = null;
-
-const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* Arranca una View Transition con data-vt = `kind`. `setup` corre antes de
    congelar la foto vieja y puede devolver una funcion que corre justo despues
@@ -78,8 +77,8 @@ export function swapScreens(update, dir = 0) {
   document
     .querySelector(".screen:not([hidden])")
     ?.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 240,
-      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+      duration: motion(280),
+      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
     });
 }
 

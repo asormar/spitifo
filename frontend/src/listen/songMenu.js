@@ -22,6 +22,7 @@ export function songMenuGroups(entry, { fmt = "m4a", closePlayer = false, pc = f
   } else if (saved && downloaded) {
     library.push({ kind: "undownload", icon: "Prohibit", text: "Quitar descarga" });
   }
+  library.push({ kind: "share", icon: "Share", text: "Compartir" });
   groups.push({ label: "Tu biblioteca", items: library });
 
   const go = [];

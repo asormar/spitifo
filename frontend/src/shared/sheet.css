@@ -35,13 +35,36 @@
   animation: sh-up 320ms var(--drawer) both;
 }
 
+/* El asa arrastra: el glifo sigue de 5px, el area real de toque llega a 48. */
 .sh__grab {
+  position: relative;
   flex: none;
   width: 40px;
   height: 5px;
   margin: 0 auto 10px;
   border-radius: 3px;
   background: var(--s3);
+  touch-action: none;
+}
+
+.sh__grab::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--row-h-phone);
+  height: var(--hit);
+  transform: translate(-50%, -50%);
+}
+
+/* La cabecera tambien arrastra (Sheet.jsx), sin robar el scroll del cuerpo. */
+:is(.sh__bar, .als__top, .qsh__top, .dsh__top, .fy__top, .fy__grab) {
+  touch-action: none;
+}
+
+/* Cerrando: una sola salida, sin toques que la interrumpan. */
+.sh.is-closing {
+  pointer-events: none;
 }
 
 /* Barra de titulo de una hoja: texto y cerrar. */

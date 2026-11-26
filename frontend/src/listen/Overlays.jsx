@@ -12,6 +12,7 @@ import { albumId, artistId, rowArt } from "./library.js";
 import { useSaved } from "./saved.js";
 import { deferredDelete } from "./deleteSong.js";
 import { songMenuGroups } from "./songMenu.js";
+import { share } from "../shared/share.js";
 import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
@@ -49,8 +50,15 @@ const ALBUM_ITEMS = [
   ["remove", "Trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
+const ARTIST_ITEMS = [
+  ["photo", "UploadSimple", "Cambiar foto"],
+];
+
 const LIST_ITEMS = [
   ["rename", "PencilSimple", "Renombrar"],
+  ["description", "Note", "Editar descripción"],
+  ["cover", "Image", "Cambiar portada"],
+  ["import", "FileCsv", "Importar canciones"],
   ["delete", "Trash", "Borrar lista", "bad"],
 ];
 
@@ -99,6 +107,16 @@ export function AlbumMenu({ name, anchor, onClose, onPick, onPhoto }) {
   );
 }
 
+/* El artista solo necesita «Cambiar foto»: el play va en la fila, no aquí. */
+export function ArtistMenu({ name, anchor, onClose, onPhoto }) {
+  return (
+    <Popover anchor={anchor} onClose={onClose} width={232}>
+      <MenuItems items={ARTIST_ITEMS} label={`Opciones de ${name}`}
+        onPick={(kind) => (kind === "photo" ? onPhoto?.() : null)} />
+    </Popover>
+  );
+}
+
 /* Confirmacion de borrado de un album. Hoja de la app (no window.confirm), con
    el dialogo etiquetado por el titulo y el foco en la accion destructiva. */
 export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
@@ -133,7 +151,7 @@ export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
   );
 }
 
-export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false }) {
+export function TrackMenu({ entry, anchor, point, onClose, onPick, closePlayer = false }) {
   const pc = usePc();
   const { title, artist, album } = entry;
   /* El estado de la entrada decide que grupos salen y el formato de descarga
@@ -153,6 +171,7 @@ export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false 
       groups={groups}
       title={title}
       anchor={anchor}
+      point={point}
       onPick={onPick}
       onClose={onClose}
       head={head}
@@ -161,9 +180,9 @@ export function TrackMenu({ entry, anchor, onClose, onPick, closePlayer = false 
   );
 }
 
-export function ListMenu({ name, anchor, onClose, onPick }) {
+export function ListMenu({ name, anchor, point, onClose, onPick }) {
   return (
-    <Popover anchor={anchor} onClose={onClose} width={232}>
+    <Popover anchor={anchor} point={point} onClose={onClose} width={232}>
       <MenuItems items={LIST_ITEMS} label={`Opciones de ${name}`} onPick={onPick} />
     </Popover>
   );
@@ -179,6 +198,11 @@ function NpResultMenu({ top, back, show, goTo, replace, locationToken }) {
   const pick = (kind) => {
     if (kind === "closePlayer") {
       closePlayer();
+      return;
+    }
+    if (kind === "share") {
+      share({ kind: "song", title: top.t?.title, artist: top.t?.artist, result: top.t }, show);
+      back();
       return;
     }
     if (kind === "ficha") {
@@ -301,6 +325,16 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, locati
   const pick = (kind) => {
     if (kind === "closePlayer") {
       closePlayer();
+      return;
+    }
+    if (kind === "share") {
+      share({
+        kind: "song",
+        title: entry.title,
+        artist: entry.artist,
+        result: entry.song ? resultOf(entry.song) : null,
+      }, show);
+      back();
       return;
     }
     if (kind === "photo") {

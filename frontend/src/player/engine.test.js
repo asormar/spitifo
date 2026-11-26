@@ -969,3 +969,30 @@ describe("retomar la sesion (R2-robustez-f): carga pausada, sin autoplay", () =>
     expect(audio().currentTime).toBe(10);
   });
 });
+
+
+describe("setArtwork", () => {
+  it("restores the original artwork of the current track", () => {
+    const { engine } = setup();
+    engine.play({ ...A, artwork: "orig-a" });
+    engine.setArtwork("custom-a");
+    expect(engine.getState().track.artwork).toBe("custom-a");
+    engine.setArtwork(null);
+    expect(engine.getState().track.artwork).toBe("orig-a");
+  });
+
+  it("baseArt is bounded: playing many tracks never breaks the current one's artwork", () => {
+    const { engine } = setup();
+    /* Mas de 50 pistas distintas (el tope interno): el cache de portadas
+       originales se acota, pero la pista que esta sonando siempre es la
+       ultima en entrar y nunca es la que se desaloja. */
+    for (let i = 0; i < 60; i += 1) {
+      engine.play({ ...track(`t${i}`), artwork: `art-${i}` });
+    }
+    expect(engine.getState().track.key).toBe("t59");
+    engine.setArtwork("custom");
+    expect(engine.getState().track.artwork).toBe("custom");
+    engine.setArtwork(null);
+    expect(engine.getState().track.artwork).toBe("art-59");
+  });
+});

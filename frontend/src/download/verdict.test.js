@@ -135,4 +135,13 @@ describe("verdictStore", () => {
     store.setFromDownload(archive, "c", { match: "match" });
     expect(spy).toHaveBeenCalledTimes(2);
   });
+
+  it("se acota a 200 consultas: la mas vieja se olvida, no crece sin limite", () => {
+    const store = createVerdictStore(reply({}));
+    for (let i = 0; i < 201; i += 1) {
+      store.setFromDownload(archive, `q${i}`, { match: "match" });
+    }
+    expect(store.get(verdictKey(archive, "q0"))).toBeUndefined();
+    expect(store.get(verdictKey(archive, "q200"))).toMatchObject({ match: "match" });
+  });
 });

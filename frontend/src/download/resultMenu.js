@@ -26,7 +26,7 @@ export const CLOSE_PLAYER_GROUP = {
   items: [{ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" }],
 };
 
-export function resultMenuGroups(t, { downloaded = false, fmt = "m4a" } = {}) {
+export function resultMenuGroups(t, { downloaded = false } = {}) {
   const groups = [{ label: "Escuchar", items: PLAY_ITEMS }];
 
   if (downloaded) {
@@ -37,9 +37,14 @@ export function resultMenuGroups(t, { downloaded = false, fmt = "m4a" } = {}) {
   } else if (canDownload(t)) {
     groups.push({
       label: "Tu biblioteca",
-      items: [{ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: fmt }],
+      items: [{ kind: "download", icon: "DownloadSimple", text: "Descargar" }],
     });
   }
+
+  groups.push({
+    label: "Compartir",
+    items: [{ kind: "share", icon: "Share", text: "Compartir" }],
+  });
 
   const go = [];
   if (canOpenAlbumSheet(t)) go.push({ kind: "album", icon: "VinylRecord", text: `Ir al álbum «${t.album}»` });

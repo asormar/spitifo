@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { isOverlay } from "../app/navigation.js";
+import { backToLabel, crossGo } from "../app/crossMode.js";
+import { requestSearch } from "../download/searchRequest.js";
+import { albumView, artistView } from "./entityLinks.js";
 import { keyUrl } from "../shared/api.js";
+import { afterIdle } from "../shared/raf.js";
 import { engine, prefetchKey } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
@@ -58,7 +62,11 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
   const savedById = useSaved((s) => s.byId);
-  const hist = useHistory();
+  /* Selector sobre el Map estable (ver playsOf en history.js): un play/skip
+     deja de re-renderizar siquiera ESTE componente, no solo de invalidar el
+     memo de mas abajo (useSyncExternalStore compara por referencia y el Map
+     no cambia de identidad entre eventos). */
+  const plays = useHistory((s) => s.plays);
   const online = useOnline();
 
   /* Archivos y guardadas se juntan en UN useMemo: ni una segunda pasada por
@@ -66,22 +74,25 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const merged = useMemo(() => mergeLibrary(files, savedById), [files, savedById]);
   const { entries, byKey } = merged;
   const index = useMemo(() => buildIndex(entries), [entries]);
-  const plays = useMemo(
-    () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
-    [hist.tracks]
-  );
   const check = useMemo(() => checkedSummary(entries), [entries]);
   const model = useMemo(
     () => ({ entries, index, byKey, savedById, plays, lists, listsReady, storage, check }),
     [entries, index, byKey, savedById, plays, lists, listsReady, storage, check]
   );
 
-  /* Las listas y el historial se piden una vez al arrancar; los fallos de
-     escritura de las listas (que ya deshizo el almacen) se dicen en el aviso. */
+  /* Las listas y el historial no deciden el primer pintado: se van al ocio
+     para que no compitan con /api/library ni con el parseo del entry
+     (P-cold-start-3). Los fallos de escritura se dicen en el aviso. */
   useEffect(() => {
-    playlists.load();
-    history.load();
-    return playlists.onError(show);
+    const cancel = afterIdle(() => {
+      playlists.load();
+      history.load();
+    });
+    const off = playlists.onError(show);
+    return () => {
+      cancel();
+      off();
+    };
   }, [show]);
 
   const value = useMemo(() => {
@@ -192,9 +203,23 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
       );
     };
 
+    /* Un nombre de la fila abre siempre la misma pagina. Si el artista no
+       esta en la biblioteca se cae a la busqueda, que es lo unico honesto
+       mientras no haya un id de catalogo resuelto. */
+    const openEntity = (kind, name, entry) => {
+      const view = kind === "artista" ? artistView(name, model.entries) : albumView(entry.artist, name);
+      if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+      else {
+        requestSearch(name);
+        nav.goTab("search");
+      }
+    };
+
     const ctx = {
       openMenu,
       show,
+      /* «Volver a…»: el nombre de donde se cierra, no un generico. */
+      backLabel: () => backToLabel(nav),
       /* Token del sitio actual: las acciones que esperan la red lo guardan al
          empezar y solo actuan si sigue igual al resolverse. */
       locationToken,
@@ -231,7 +256,15 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
         }),
       back: navBack,
       song: (entry, list, extra) => (
-        <SongRow key={entry.key} entry={entry} list={list} onPlay={play} onMenu={openMenu} {...extra} />
+        <SongRow
+          key={entry.key}
+          entry={entry}
+          list={list}
+          onPlay={play}
+          onMenu={openMenu}
+          onEntity={(kind, name) => openEntity(kind, name, entry)}
+          {...extra}
+        />
       ),
     };
     return { ctx, model, show };

@@ -1,4 +1,8 @@
 import { lazy, Suspense } from "react";
+import { keyUrl } from "../shared/api.js";
+import { useShow } from "../listen/Notice.jsx";
+import { engine } from "./engine.js";
+import { savedTrack } from "./savedTrack.js";
 import { Icon } from "../shared/icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { VerdictChip } from "../shared/Verdict.jsx";
@@ -36,6 +40,8 @@ export default function PlayerBar({ onOpen, npOpen, tab }) {
   const panelOpen = usePanel((s) => s.open);
   const panelTab = usePanel((s) => s.tab);
   const activeTab = tab === undefined ? (panelOpen ? panelTab : -1) : tab;
+  const toast = useShow();
+  const DND = "application/x-spitifo-song";
   const d = useDock(npOpen);
   const { info, show, meta } = d;
   const pill = useTrackPill(info);
@@ -103,6 +109,34 @@ export default function PlayerBar({ onOpen, npOpen, tab }) {
             type="button"
             className={cx("cbtn cbtn--tab", activeTab === i && "is-open")}
             onClick={() => onOpen(i, true)}
+            onDragOver={
+              i === 1
+                ? (e) => {
+                    if (!e.dataTransfer?.types.includes(DND)) return;
+                    e.preventDefault();
+                    e.currentTarget.classList.add("is-over");
+                  }
+                : undefined
+            }
+            onDragLeave={i === 1 ? (e) => e.currentTarget.classList.remove("is-over") : undefined}
+            onDrop={
+              i === 1
+                ? (e) => {
+                    e.currentTarget.classList.remove("is-over");
+                    const raw = e.dataTransfer?.getData(DND);
+                    if (!raw) return;
+                    e.preventDefault();
+                    try {
+                      const s = JSON.parse(raw);
+                      if (!s.key) return;
+                      engine.enqueue(s.song ? savedTrack(s.song) : { ...s, src: keyUrl(s.key) });
+                      toast?.(`Añadida «${s.title}» a la cola`);
+                    } catch {
+                      /* Arrastre de fuera de la app. */
+                    }
+                  }
+                : undefined
+            }
             aria-pressed={activeTab === i}
             aria-label={label}
             title={label}

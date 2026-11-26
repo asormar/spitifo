@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canStream, previewKey, previewTrack, streamKey, streamQueue, streamTrack } from "./streamTrack.js";
+import { autoSaver, quality } from "../settings/playbackSettings.js";
 
 const WEB = "https://www.youtube.com/watch?v=abcdefghijk";
 const full = {
@@ -37,6 +38,16 @@ describe("streamTrack", () => {
     expect(t.artist).toBe("Artista");
     expect(t.result).toBe(full);
     expect(t.source).toBe("search:blues");
+  });
+
+  it("the chosen quality reaches the stream URL", () => {
+    quality.set("high");
+    autoSaver.set(false);
+    try {
+      expect(streamTrack(full).src).toBe(`/api/stream?url=${encodeURIComponent(WEB)}&quality=high`);
+    } finally {
+      quality.set("auto");
+    }
   });
 
   it("omits an album equal to the title and uses unknown artist", () => {

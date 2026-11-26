@@ -29,10 +29,66 @@
   transform: scale(0.96);
 }
 
-/* Dedo: los botones secundarios tambien llegan a 44px. */
+/* Una sola sensacion de presion: ida corta y seca, vuelta con rebote. La
+   escala la pone cada control; aqui solo el cur tiempo y el fondo que ve el
+   dedo (§9). `--tr-press` ya trae la curva de vuelta. */
+:is(button, [role="button"], .vf):not(:disabled):active {
+  transition: transform var(--press-in), background-color var(--press-in);
+}
+
+.vf:active {
+  background: var(--s3);
+}
+
+/* Guardia compartida de fotogramas (§10): el JS pone `is-hidden` con la
+   pestaña oculta y `is-offscreen` cuando el contenedor sale del viewport. */
+body.is-hidden :is(.eq i, .fy-btn.is-busy svg, .gmap__pulse, .breathe),
+:is(.fy-btn.is-busy svg, .gmap__pulse, .breathe).is-offscreen {
+  animation-play-state: paused;
+}
+
+/* Pull-to-refresh de Inicio y «Para ti» (§6). El indicador flota, no reserva
+   sitio; solo se ve mientras el dedo tira. */
+.pull-ind {
+  position: fixed;
+  z-index: 58;
+  top: var(--sp-2);
+  left: 50%;
+  display: grid;
+  width: var(--hit);
+  height: var(--hit);
+  margin-left: calc(var(--hit) / -2);
+  place-items: center;
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(-1 * var(--sp-2)));
+  transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
+}
+
+.pull-ind::after {
+  content: "";
+  width: var(--icon-md);
+  height: var(--icon-md);
+  border: 2px solid var(--s3);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+}
+
+.pull-ind.is-pulling {
+  transform: none;
+}
+
+.pull-ind.is-ready::after {
+  animation: spin 700ms linear infinite;
+}
+
+/* Dedo: los botones secundarios llegan a 48px en el telefono. */
 @media (pointer: coarse) {
   .vf {
-    min-height: 44px;
+    min-height: var(--hit);
   }
 
   .scrub {
@@ -165,6 +221,17 @@
   animation: spin 1.15s linear infinite;
 }
 
+/* Pestaña tapada o pantalla apagada (shared/screenState.js pone data-bg en
+   <html>): ninguna animacion necesita producir cuadros cuando nadie mira.
+   Cubre las quince animaciones infinitas y cualquier otra que se anada, sin
+   tocar el <audio>: la reproduccion sigue igual. */
+html[data-bg],
+html[data-bg] *,
+html[data-bg] *::before,
+html[data-bg] *::after {
+  animation-play-state: paused !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -181,7 +248,7 @@
   .eq i,
   .logo__o,
   .pbtn::after,
-  .rec__spin,
+  .mz__spin,
   .sfield.is-scanning .sfield__icon {
     animation: none !important;
   }

@@ -142,6 +142,7 @@
 
 .np__tabs {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
   padding: 2px 0 10px;
@@ -175,6 +176,17 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
+}
+
+/* La letra scrollea por dentro: el cuerpo no debe robarle el gesto ni dejar
+   que el autoscroll mueva toda la vista. */
+.np__body--lyr {
+  padding: 0;
+  overflow: hidden;
+}
+
+.np__body--lyr .np__panel {
+  height: 100%;
 }
 
 /* Cambiar de pestana entra con el fundido de la casa. La primera pintura no
@@ -317,6 +329,22 @@
   color: #fff;
   font-size: 12.5px;
   font-weight: 600;
+}
+
+/* El avance de 30 s no puede parecer la cancion completa: el mismo texto que
+   en la fila y un punto aviso, sin inventar un cuarto color de acento. */
+.np__state--preview {
+  background: color-mix(in srgb, var(--near) 40%, rgba(14, 14, 24, 0.34));
+  font-weight: 700;
+}
+
+.np__state--preview::before {
+  content: "";
+  flex: none;
+  width: var(--sp-1);
+  height: var(--sp-1);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--near) 60%, var(--on));
 }
 
 .np__state-check {
@@ -725,7 +753,7 @@
 .np--pane {
   inset: 12px 12px var(--mini-h) auto;
   z-index: 46;
-  width: 340px;
+  width: var(--np-w, 340px);
   border-radius: 28px;
   box-shadow: 0 14px 40px rgba(17, 17, 28, 0.22);
 }

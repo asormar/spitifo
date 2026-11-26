@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
-import { becauseText, initials, percent } from "../shared/format.js";
+import { becauseText, initials, percent, percentLabel } from "../shared/format.js";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { useDrag } from "./useDrag.js";
@@ -18,7 +18,7 @@ const genreColor = (data, i) => (i >= 0 ? `var(--genre-${data.c[i]})` : "var(--d
 /* --- Estados ---------------------------------------------------------------- */
 
 /* Lo que se ve cuando no hay filas de artistas (o de generos). */
-export function StateBlock({ kind, status, onRestore, onRetry }) {
+export function StateBlock({ kind, status, onRestore, onRetry, onStart, onExplore }) {
   if (kind === "warm") {
     const { done, total } = status;
     return (
@@ -41,7 +41,12 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
         >
           <div className="fy-bar__fill" style={{ transform: `scaleX(${total > 0 ? Math.min(1, done / total) : 0})` }} />
         </div>
-        <p className="fy-card__p">Mientras tanto, prueba el mapa.</p>
+        <p className="fy-card__p">Mientras tanto, escucha una muestra.</p>
+        {onStart && (
+          <button type="button" className="fy-ghost fy-ghost--act" onClick={onStart}>
+            Escuchar muestra
+          </button>
+        )}
       </div>
     );
   }
@@ -53,8 +58,8 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
     );
   }
   const copy = {
-    offline: "Sin conexión. Las recomendaciones volverán cuando vuelva la red.",
-    empty: "Descarga algo de música para recibir recomendaciones.",
+    offline: "Sin conexión: se completará cuando vuelva.",
+    empty: "Todavía no hay recomendaciones. Empieza por aquí.",
     hidden: "Has ocultado todos los artistas.",
     error: "No se pudieron cargar las recomendaciones.",
   }[kind];
@@ -62,10 +67,25 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
   return (
     <div className="fy-card fy-card--c">
       <p className="fy-card__t fy-card__t--s">{copy}</p>
-      {action && (
-        <button type="button" className="fy-ghost" onClick={action[1]}>
-          {action[0]}
-        </button>
+      {kind === "empty" ? (
+        <>
+          {onStart && (
+            <button type="button" className="fy-ghost fy-ghost--act" onClick={onStart}>
+              Escuchar muestra
+            </button>
+          )}
+          {onExplore && (
+            <button type="button" className="fy-ghost fy-ghost--act" onClick={onExplore}>
+              Explorar un género
+            </button>
+          )}
+        </>
+      ) : (
+        action && (
+          <button type="button" className="fy-ghost" onClick={action[1]}>
+            {action[0]}
+          </button>
+        )
       )}
     </div>
   );
@@ -245,6 +265,10 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
       {mine.length > 0 && (
         <>
           <h3 className="fy-h">Tus géneros</h3>
+          <div className="fy-gen__head" aria-hidden="true">
+            <span>Género</span>
+            <span>Cuota de tus escuchas</span>
+          </div>
           <ol className="fy-list">
             {mine.map((g, n) => {
               const body = (
@@ -272,7 +296,7 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
                     <button
                       type="button"
                       className="fy-gen"
-                      aria-label={`${g.name}, ${percent(g.share)}. Ver en el mapa`}
+                      aria-label={`${g.name}, ${percentLabel(g.share)}. Ver en el mapa`}
                       onClick={() => onOpen(g.i)}
                     >
                       {body}

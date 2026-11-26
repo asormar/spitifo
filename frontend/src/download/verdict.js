@@ -2,7 +2,12 @@ import { useSyncExternalStore } from "react";
 import { fold } from "../listen/library.js";
 import { API, errMsg, fetchErr, rowKey } from "../shared/api.js";
 import { V_EXPLAIN } from "../shared/Verdict.jsx";
+import { setBoundedMap } from "../shared/bounded.js";
 import { trackState } from "./constants.js";
+
+/* Una busqueda verificada por consulta: suficiente para una sesion larga sin
+   crecer sin tope. */
+const VERDICT_CAP = 200;
 
 /* ---------------------------------------------------------------------------
    VEREDICTOS
@@ -47,12 +52,15 @@ export const verdictKey = (t, query) => `${rowKey(t)}|${fold(query)}`;
 export const byVideo = (t) => t.source === "ytdlp" || !!t.extra?.webpage_url;
 
 export function createVerdictStore(fetchImpl = (...a) => fetch(...a)) {
-  let recs = new Map();
+  const recs = new Map();
   const listeners = new Set();
   const flight = new Map();
 
+  /* Antes copiaba el Map entero en cada put (O(n)): con muchas busquedas
+     verificadas en una sesion larga cada escritura se iba haciendo mas lenta.
+     Mutar en el sitio es seguro: nadie lee `recs` entero, solo `get(key)`. */
   const put = (key, rec) => {
-    recs = new Map(recs).set(key, rec);
+    setBoundedMap(recs, key, rec, VERDICT_CAP);
     listeners.forEach((fn) => fn());
   };
 

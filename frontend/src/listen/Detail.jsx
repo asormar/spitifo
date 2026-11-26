@@ -1,15 +1,20 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DetailHero from "./DetailHero.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { Icon } from "./icons.jsx";
-import { toneVars } from "../shared/cover.js";
+import { share } from "../shared/share.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
 import { useNav } from "../app/useNav.js";
-import { AlbumCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
+import { keyUrl } from "../shared/api.js";
+import { crossGo } from "../app/crossMode.js";
+import { artistView, relatedArtists } from "./entityLinks.js";
+import { useReco } from "../discover/reco.js";
+import { AlbumCard, Cover, ListCard, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
 import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
 import { mosaicTones, songs } from "./home.js";
@@ -19,12 +24,20 @@ import { AlbumMenu, DeleteAlbumSheet, ListMenu } from "./Overlays.jsx";
 import { deferredDelete } from "./deleteSong.js";
 import { Back, useFocusBack } from "./Pages.jsx";
 import { NameField } from "./PlaylistPicker.jsx";
+import { ArtistMenu } from "./Overlays.jsx";
+import { BulkBar, CoverSheet, DescriptionField, DuplicateSheet, ImportSheet, PickListSheet, PlaylistToolbar, SortableHead, coverCandidates } from "./PlaylistTools.jsx";
+import { cycleSort, filterRows, membersOf, mosaicSources, sortRows } from "./libraryView.js";
+import { duplicatesIn } from "./playlists.js";
 import PlaylistSongs from "./PlaylistSongs.jsx";
 import MissingRow from "./MissingRow.jsx";
-import { Thead } from "./rows.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
+import { queueStore } from "../download/queueStore.js";
+import { trackSpec } from "../download/albumText.js";
+import { resultOf } from "../player/savedTrack.js";
+import { formatForQuality, readDownloadQuality } from "../settings/downloadPrefs.js";
 import "../shared/sheet.css";
+import "./libraryTools.css";
 /* La ficha de Escuchar ya es un chunk perezoso: el top y sus filas se piden
    aparte al pintar, sin meter nada en el chunk de arranque. */
 import ArtistPopulares from "../download/ArtistPopulares.jsx";
@@ -53,7 +66,7 @@ function Gone({ d, backRef, ctx, nav, pc }) {
     <div className="lpage dpage">
       {!pc && (
         <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
         </div>
       )}
       {state === "loading" ? (
@@ -111,6 +124,34 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const backRef = useRef(null);
   const moreRef = useRef(null);
   const [naming, setNaming] = useState(false);
+  /* Herramientas de la ficha: la barra se pega al bajar, la tabla ordena,
+     la lista se busca y se filtra, y se pueden marcar canciones en bloque. */
+  const [scrolled, setScrolled] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState([]);
+  const [sort, setSort] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [sheet, setSheet] = useState(null);
+  const [dup, setDup] = useState(null);
+  const [descEdit, setDescEdit] = useState(false);
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    setQuery("");
+    setFilters([]);
+    setSort(null);
+    setPicked([]);
+    setSheet(null);
+    setDup(null);
+    setDescEdit(false);
+    setScrolled(false);
+  }, [view.id]);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 160);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   useFocusBack(backRef);
 
   /* Un album o un artista no dependen de las listas: no se recalcula con cada
@@ -189,15 +230,26 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
      de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
-     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. La
+     promesa se guarda en un ref para que «Más de» la reuse en vez de pedir lo
+     mismo otra vez: una sola llamada a /api/artists/search por artista y
+     visita, aunque se pulse el boton antes de que esta termine. */
+  const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
+  /* Artistas similares: se usan los datos que Descubrir ya dejo en el
+     dispositivo. La vista es estable (el selector devuelve la foto entera). */
+  const recoArtists = useReco((s) => s.artists);
+  const similar = useMemo(() => relatedArtists(name, recoArtists, 6), [name, recoArtists]);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
+      linkPromiseRef.current = null;
       setArtistLinkId(null);
       return undefined;
     }
     let vivo = true;
-    resolveArtistLink(d.name, d.rows).then((vista) => {
+    const promise = resolveArtistLink(d.name, d.rows);
+    linkPromiseRef.current = promise;
+    promise.then((vista) => {
       if (vivo) setArtistLinkId(vista?.id ?? null);
     });
     return () => {
@@ -220,8 +272,72 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* Origen de la cola: "Sonando desde" el album, el artista o la lista. */
   const from = `${kind}:${name}`;
-  const play = () => ctx.playGroup(rows, false, from);
-  const shuffle = () => ctx.playGroup(rows, true, from);
+  const play = () => ctx.playGroup(shownRows.length ? shownRows : rows, false, from);
+  const shuffle = () => ctx.playGroup(shownRows.length ? shownRows : rows, true, from);
+
+  /* Buscar, filtrar y ordenar dentro de la pagina. El orden personalizado no
+     ordena: deja las filas como las puso el usuario con el arrastre. */
+  const shownRows = useMemo(() => {
+    const base = album ? (albumRows || rows) : rows;
+    const filtered = isList ? filterRows(base, { query, filters }) : base;
+    return sortRows(filtered, sort);
+  }, [album, albumRows, rows, isList, query, filters, sort]);
+  const onSortColumn = (key) => setSort((cur) => cycleSort(cur, key));
+  const onSortMenu = (key) => setSort(key === "custom"
+    ? null
+    : { key, dir: 1 });
+
+  /* Selección múltiple: una sola escritura con el keys final. */
+  const selectedKeys = picked.filter((k) => pl?.keys.includes(k));
+  const togglePick = (key, on) =>
+    setPicked((cur) => (on ? [...new Set([...cur, key])] : cur.filter((k) => k !== key)));
+  const selectAll = (on) => setPicked(on ? shownRows.map((e) => e.key) : []);
+  const selectFor = (entry) => picked.length
+    ? { checked: picked.includes(entry.key), onChange: (on) => togglePick(entry.key, on) }
+    : undefined;
+
+  /* Un aviso ANTES de escribir cuando algo ya estaba en la lista de destino. */
+  const writeWithDuplicates = (target, keys, apply, message) => {
+    const dups = duplicatesIn(target, keys);
+    if (!dups.length) {
+      apply(keys.filter((k) => !duplicatesIn(target, [k]).length));
+      ctx.show(message);
+      return;
+    }
+    setDup({
+      duplicates: keys.filter((k) => dups.includes(k))
+        .map((k) => shownRows.find((e) => e.key === k) || { key: k, title: k }),
+      name: target?.name,
+      onSkip: () => {
+        apply(keys.filter((k) => !dups.includes(k)));
+        setDup(null);
+        ctx.show(message);
+      },
+      onAddAll: () => {
+        apply(keys);
+        setDup(null);
+        ctx.show(message);
+      },
+      });
+    };
+
+  /* Un tap baja TODA la lista que todavia no tenes, como un solo grupo. Las
+     filas con `song` son las que no tienen archivo propio. */
+  const downloadList = () => {
+    const fmt = formatForQuality(readDownloadQuality());
+    const items = rows.filter((r) => r.song && !r.song.file_key).map((r) => {
+      const s = r.song;
+      return trackSpec(resultOf(s), `${s.title || ""} ${s.artist || ""}`.trim(), fmt);
+    });
+    if (!items.length) {
+      ctx.show("Todas las canciones de esta lista ya están descargadas");
+      return;
+    }
+    queueStore.enqueue({
+      items,
+      group: { id: `playlist:${pl.id}`, title: pl.name, artwork_url: null },
+    });
+  };
 
   /* El menu de la lista es lo de arriba de la pila: atras lo cierra. Borrar es
      inmediato y se puede deshacer unos segundos (la lista vuelve con el mismo
@@ -260,6 +376,19 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     </button>
   );
 
+  /* Compartir vive en la cabecera: un álbum y un artista mandan un enlace de
+     búsqueda, una lista manda su tracklist porque no tiene equivalente público.
+     El aviso de PC sale por el mismo toast que el resto de la app. */
+  const doShare = () => {
+    if (isList) {
+      share({ kind: "list", title: pl.name, songs: rows.map((r) => ({ title: r.title, artist: r.artist })) }, ctx.show);
+    } else if (album) {
+      share({ kind: "album", title: name, artist: rows[0]?.artist }, ctx.show);
+    } else {
+      share({ kind: "artist", title: name, artist: null }, ctx.show);
+    }
+  };
+
   const acts = (
     <div className="dacts">
       <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
@@ -270,14 +399,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         <Icon name="Shuffle" size="md" />
         Aleatorio
       </button>
-      {artist && (
-        <button
-          type="button"
-          className="btn btn--ghost"
-          onClick={(e) => ctx.openArt(view.id, "artist", name, e.currentTarget)}
-        >
-          <Icon name="UploadSimple" size="md" />
-          Cambiar foto
+      <button type="button" className="btn btn--ghost" aria-label={`Compartir ${name}`} onClick={doShare}>
+        <Icon name="Share" size="md" />
+        Compartir
+      </button>
+      {isList && (
+        <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
+          <Icon name="DownloadSimple" size="md" />
+          Descargar lista
         </button>
       )}
       {album && (
@@ -292,54 +421,89 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           <Icon name="DotsThree" size="md" />
         </button>
       )}
+      {/* U9: un solo play y «Cambiar foto» en el menú, no en la fila de acciones. */}
+      {artist && (
+        <button
+          type="button"
+          className="btn btn--ghost dacts__more"
+          aria-label={`Más opciones de ${name}`}
+          title="Más opciones"
+          aria-haspopup="menu"
+          onClick={(e) => ctx.openMenu(view.id, e.currentTarget, "artmenu")}
+        >
+          <Icon name="DotsThree" size="md" />
+        </button>
+      )}
     </div>
   );
 
   const kindOf = isList ? "lst" : "trk";
-  const tracks = empty ? (
-    <p className="lnote">
-      {isList ? (
-        d.gone ? (
-          "Ninguna canción de esta lista sigue en tu biblioteca."
-        ) : (
-          <>
-            Esta lista está vacía. Añade canciones desde el menú{" "}
-            <Icon name="DotsThree" size="md" /> de cualquier canción.
-          </>
-        )
-      ) : (
-        <>
-          No hay canciones.
-          <br />
-          <button type="button" className="vf" onClick={() => nav.goTab("search")}>
-            Añade alguna desde Buscar
-          </button>
-        </>
+  const folderMembers = isList && pl.is_folder ? membersOf(lists, pl) : [];
+  const searchSongs = () => nav.goTab("search");
+  const tracks = isList && (
+    <PlaylistToolbar
+      query={query} onQuery={setQuery}
+      filters={filters} onFilter={setFilters}
+      sort={sort} onSort={onSortMenu}
+      canDrag={!empty}
+    />
+  );
+  const bulkRemove = () => {
+    const before = [...pl.keys];
+    const n = playlists.removeKeys(pl.id, selectedKeys);
+    setPicked([]);
+    if (n) ctx.show(`${n} ${n === 1 ? "canción quitada" : "canciones quitadas"}`, {
+      label: "Deshacer", run: () => playlists.replaceKeys(pl.id, before),
+    });
+  };
+
+  const body = empty ? (
+    <div className="lnote">
+      <p>
+        {isList ? (
+          d.gone
+            ? "Ninguna canción de esta lista sigue en tu biblioteca."
+            : "Esta lista está vacía. Añade canciones desde el menú ⋯ de cualquier canción, o búscalas ahora mismo."
+        ) : "No hay canciones."}
+      </p>
+      {/* U11: el texto explica y ademas ofrece una salida real. */}
+      {isList && (
+        <button type="button" className="btn btn--acc" onClick={searchSongs}>
+          <Icon name="MagnifyingGlass" size="md" />
+          Buscar canciones
+        </button>
       )}
-    </p>
+    </div>
+  ) : !shownRows.length ? (
+    <p className="lnote">Ninguna canción coincide con la búsqueda o los filtros.</p>
   ) : (
     <>
-      {pc && <Thead kind={kindOf} sticky />}
+      {pc && isList && (
+        <SortableHead kind="lst" sort={sort} onSort={onSortColumn} sticky
+          bulk={picked.length > 0} onSelectAll={selectAll}
+          allSelected={picked.length > 0 && picked.length === shownRows.length} />
+      )}
+      {pc && !isList && <SortableHead kind="trk" sort={sort} onSort={onSortColumn} sticky />}
       <div className="tcard">
         {isList ? (
           <PlaylistSongs
             playlist={pl}
-            rows={rows}
+            rows={shownRows}
             active={active}
             ctx={ctx}
             from={from}
             table={pc ? kindOf : undefined}
             onRemove={removeSong}
+            selectFor={selectFor}
+            draggable={!sort?.key}
           />
         ) : album ? (
-          /* Las filas que faltan son otro tipo de fila de la misma lista
-             virtual; la cola de reproduccion sigue siendo solo `rows`. */
           <VirtualList
             active={active}
-            count={albumRows.length}
-            getKey={(i) => albumRows[i].key}
+            count={shownRows.length}
+            getKey={(i) => shownRows[i].key}
             renderRow={(i, enter) => {
-              const row = albumRows[i];
+              const row = shownRows[i];
               if (row.type === "missing") {
                 return (
                   <MissingRow
@@ -351,7 +515,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
                   />
                 );
               }
-              return ctx.song(row.entry, rows, {
+              return ctx.song(row.entry, shownRows, {
                 enter,
                 num: i + 1,
                 from,
@@ -363,20 +527,25 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         ) : (
           <VirtualList
             active={active}
-            count={rows.length}
-            getKey={(i) => rows[i].key}
+            count={shownRows.length}
+            getKey={(i) => shownRows[i].key}
             renderRow={(i, enter) =>
-              ctx.song(rows[i], rows, {
+              ctx.song(shownRows[i], shownRows, {
                 enter,
                 num: i + 1,
                 from,
                 table: pc ? kindOf : undefined,
-                sub: artist ? rows[i].album || "" : "",
+                sub: artist ? shownRows[i].album || "" : "",
               })
             }
           />
         )}
       </div>
+      {isList && (
+        <BulkBar count={picked.length} onAdd={() => setSheet("add")}
+          onFolder={() => setSheet("folder")} onRemove={bulkRemove}
+          onCancel={() => setPicked([])} />
+      )}
     </>
   );
 
@@ -385,7 +554,15 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={pl.name}
       anchor={top.anchor}
       onClose={nav.back}
-      onPick={(kindPicked) => (kindPicked === "rename" ? (nav.back(), setNaming(true)) : deleteList())}
+      onPick={(kindPicked) => {
+        if (kindPicked === "rename") { nav.back(); setNaming(true); }
+        else if (kindPicked === "delete") deleteList();
+        else {
+          nav.back();
+          if (kindPicked === "description") setDescEdit(true);
+          else setSheet(kindPicked);
+        }
+      }}
     />
   );
 
@@ -397,10 +574,21 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={name}
       anchor={stackTop.anchor}
       onClose={nav.back}
-      onPick={() => nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor })}
+      onPick={() => {
+        nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor });
+      }}
       onPhoto={() =>
         ctx.replaceArt(view.id, "album", name, stackTop.anchor, `${d.artist} ${name}`)
       }
+    />
+  );
+
+  const artistMenu = artist && stackTop?.type === "artmenu" && stackTop.key === view.id && (
+    <ArtistMenu
+      name={name}
+      anchor={stackTop.anchor}
+      onClose={nav.back}
+      onPhoto={() => ctx.replaceArt(view.id, "artist", name, stackTop.anchor, name)}
     />
   );
 
@@ -441,141 +629,240 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     const seq = ++linkSeq.current;
     loadArtistChunk();
     setLinking(true);
-    const view = await resolveArtistLink(name, rows);
+    const view = await (linkPromiseRef.current || resolveArtistLink(name, rows));
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;
-    if (view) nav.goTo("search", view);
+    /* El contenido local se abre aqui; el catalogo salta a Buscar dejando
+       la migaja con el album del que se salio. */
+    const origin = { tab: nav.tab, label: name };
+    if (view) crossGo(nav, view, origin);
     else {
       requestSearch(name);
       nav.goTab("search");
     }
   };
 
+  /* Hojas de la ficha de lista: importar, elegir portada, destino del bloque
+     y carpeta. Todas cierran con Escape/atras como el resto de la app. */
+  const doImport = (keys, info) => {
+    setSheet(null);
+    if (!keys.length) {
+      ctx.show(`${info.skipped} ${info.skipped === 1 ? "canción no encontrada" : "canciones no encontradas"}. No se añadió nada.`);
+      return;
+    }
+    writeWithDuplicates(pl, keys, (final) => playlists.addKeys(pl.id, final),
+      `Importadas ${keys.length} ${keys.length === 1 ? "canción" : "canciones"}`);
+  };
+  const addToTarget = (target) => {
+    setSheet(null);
+    writeWithDuplicates(target, selectedKeys,
+      (keys) => playlists.addKeys(target.id, keys),
+      `Añadidas a «${target.name}»`);
+    setPicked([]);
+  };
+  const moveToFolder = (folder) => {
+    playlists.addToFolder(folder.id, [pl.id]);
+    playlists.edit(pl.id, { folder_id: folder.id });
+    setSheet(null);
+    setPicked([]);
+    ctx.show(`«${pl.name}» movida a «${folder.name}»`);
+  };
+
   if (artist) {
-    const cover = (
-      <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} size={pc ? 156 : 340} round={pc} />
-    );
     return (
       <div className="lpage dpage dpage--artist">
-        <header className="ahero" style={toneVars(tone)}>
-          {cover}
-          {pc ? (
-            <div className="ahero__t">
-              <h1>{name}</h1>
-              <p>{meta}</p>
-            </div>
-          ) : (
-            <>
-              <Back bref={backRef} onClick={ctx.back} className="hback ahero__back" />
-              <div className="ahero__in">
-                <h1>{name}</h1>
-                <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
-                  <Icon name="Play" size="xl" weight="fill" />
-                </button>
-              </div>
-            </>
-          )}
-        </header>
-        {!pc && <p className="ghead">{meta}</p>}
-        {acts}
-        <button
-          type="button"
-          className="btn btn--ghost amore"
-          onPointerEnter={loadArtistChunk}
-          onFocus={loadArtistChunk}
-          onClick={moreArtist}
-          disabled={linking}
-          aria-busy={linking || undefined}
-        >
-          Más de {name}
-        </button>
-        {d.albums.length > 0 && (
-          <section className="sec dalb" aria-labelledby="h-dalb">
-            <SectionHead id="h-dalb" title="Álbumes" />
-            <Shelf grid={pc}>
-              {d.albums.map((g) => (
-                <AlbumCard key={g.id} g={g} ctx={ctx} sub={songs(g.entries.length)} />
-              ))}
-            </Shelf>
-          </section>
-        )}
-        {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
-            sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
-        <ArtistPopulares name={name} artistId={artistLinkId} />
-        {tracks}
+        <div className="dgrid">
+          <DetailHero
+            round
+            tone={tone}
+            art={<Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} round />}
+            title={<h1>{name}</h1>}
+            meta={meta}
+            acts={acts}
+            back={!pc && <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback" />}
+          />
+          <div className="dmain">
+            <button
+              type="button"
+              className="btn btn--ghost amore"
+              onPointerEnter={loadArtistChunk}
+              onFocus={loadArtistChunk}
+              onClick={moreArtist}
+              disabled={linking}
+              aria-busy={linking || undefined}
+            >
+              Más de {name}
+            </button>
+            {d.albums.length > 0 && (
+              <section className="sec dalb" aria-labelledby="h-dalb">
+                <SectionHead id="h-dalb" title="Álbumes"
+                  onAll={() => ctx.open({ type: "all", what: "albums" })}
+                  label="Ver todos los álbumes" />
+                <Shelf grid={pc}>
+                  {d.albums.map((g) => (
+                    <AlbumCard key={g.id} g={g} ctx={ctx} sub={songs(g.entries.length)} />
+                  ))}
+                </Shelf>
+              </section>
+            )}
+            {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
+                sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
+            <ArtistPopulares name={name} artistId={artistLinkId} />
+            {similar.length > 0 && (
+              <section className="sec" aria-labelledby="h-similares">
+                <SectionHead id="h-similares" title="Artistas similares" />
+                <div className="chips">
+                  {similar.map((a) => (
+                    <button
+                      key={a.name}
+                      type="button"
+                      className="chip"
+                      onClick={() => {
+                        const view = artistView(a.name, index.entries);
+                        if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+                        else {
+                          requestSearch(a.name);
+                          nav.goTab("search");
+                        }
+                      }}
+                    >
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+            {tracks}
+            {body}
+            {artistMenu}
+          </div>
+        </div>
       </div>
     );
   }
 
+  const coverSources = isList ? mosaicSources(pl.keys, byKey, savedById, keyUrl) : [];
   const art = isList ? (
-    <Mosaic tones={mosaicTones(pl.keys, byKey)} className="dcv" />
+    pl.is_folder ? (
+      <span className="dcv dcv--folder" aria-hidden="true"><Icon name="Folder" weight="fill" size="xl" /></span>
+    ) : pl.cover_key ? (
+      <span className="dcv dcv--cover"><img src={keyUrl(pl.cover_key)} alt="" /></span>
+    ) : (
+      <Mosaic tones={mosaicTones(pl.keys, byKey)} srcs={coverSources} className="dcv" />
+    )
   ) : (
-    <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} className="dcv" />
+    <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} />
+  );
+  const title = naming && isList ? (
+    <NameField
+      value={pl.name}
+      label="Nuevo nombre de la lista"
+      submit="Guardar"
+      onSubmit={(next) => {
+        playlists.rename(pl.id, next);
+        endNaming();
+      }}
+      onCancel={endNaming}
+    />
+  ) : (
+    <h1>{name}</h1>
+  );
+  const listInfo = isList && (
+    <>
+      {pl.folder_id && (
+        <p className="dfolder">
+          <Icon name="Folder" size="sm" />
+          {lists.find((p) => p.id === pl.folder_id)?.name || "En una carpeta"}
+        </p>
+      )}
+      {descEdit ? (
+        <DescriptionField value={pl.description} onSubmit={(text) => {
+          playlists.setDescription(pl.id, text);
+          setDescEdit(false);
+        }} onCancel={() => setDescEdit(false)} />
+      ) : pl.description ? (
+        <p className="ddesc">
+          {pl.description}
+          <button type="button" className="vf" aria-label="Editar descripción"
+            onClick={() => setDescEdit(true)}>
+            <Icon name="PencilSimple" size="sm" />
+          </button>
+        </p>
+      ) : null}
+    </>
+  );
+  const liner = album && (
+    <p className="liner">
+      <b>{shownLiner[0]}</b>
+      <br />
+      {shownLiner[1]}
+    </p>
   );
 
   return (
     <div className="lpage dpage">
       {!pc && (
-        <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+        <div className={cx("dbar", scrolled && "is-scrolled")}>
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
+          <span className="dbar__title">{name}</span>
           {more}
         </div>
       )}
       <div className="dgrid">
-        <div className="dside">
-          {art}
-          <div className="dtrow">
-            {naming && isList ? (
-              <NameField
-                value={pl.name}
-                label="Nuevo nombre de la lista"
-                submit="Guardar"
-                onSubmit={(next) => {
-                  playlists.rename(pl.id, next);
-                  endNaming();
-                }}
-                onCancel={endNaming}
-              />
-            ) : (
-              <h1 className="dtl">{name}</h1>
-            )}
-            {pc && more}
-          </div>
-          {album && (
-            <button
-              type="button"
-              className="dby"
-              aria-label={`Abrir artista ${d.artist}`}
-              onClick={() => ctx.open({ type: "artist", id: d.artistId })}
-            >
-              {d.artist}
-            </button>
-          )}
-          {meta && <p className="dmeta">{meta}</p>}
-          {acts}
-          {album && pc && (
-            <p className="liner">
-              <b>{shownLiner[0]}</b>
-              <br />
-              {shownLiner[1]}
-            </p>
-          )}
-        </div>
+        <DetailHero
+          art={art}
+          title={title}
+          meta={meta}
+          by={album && { name: d.artist, onClick: () => ctx.open({ type: "artist", id: d.artistId }) }}
+          acts={acts}
+          foot={<>{listInfo}{liner}</>}
+          more={pc && more}
+          tone={tone}
+        />
         <div className="dmain">
-          {tracks}
-          {album && !pc && (
-            <p className="liner">
-              <b>{shownLiner[0]}</b>
-              <br />
-              {shownLiner[1]}
-            </p>
+          {isList && pl.is_folder ? (
+            <div className="grid">
+              {folderMembers.length ? folderMembers.map((member) => (
+                <ListCard key={member.id} list={member} byKey={byKey} ctx={ctx} />
+              )) : <p className="lnote">Esta carpeta todavía no tiene listas.</p>}
+            </div>
+          ) : (
+            <>
+              {tracks}
+              {body}
+            </>
           )}
         </div>
       </div>
       {menu}
       {albumMenu}
+      {artistMenu}
       {deleteSheet}
+      {isList && sheet === "import" && (
+        <ImportSheet onClose={() => setSheet(null)} onImport={doImport}
+          entries={index.entries}
+          onFind={(track) => {
+            requestSearch(`${track.artist} ${track.title}`.trim());
+            nav.goTab("search");
+          }} />
+      )}
+      {isList && sheet === "cover" && (
+        <CoverSheet sources={coverCandidates(shownRows)} onClose={() => setSheet(null)}
+          onPick={(key) => { playlists.setCover(pl.id, key); setSheet(null); }} />
+      )}
+      {isList && sheet === "add" && (
+        <PickListSheet title={`Añadir ${selectedKeys.length} a una lista`} lists={lists}
+          onPick={addToTarget} onClose={() => setSheet(null)} />
+      )}
+      {isList && sheet === "folder" && (
+        <PickListSheet title="Mover la lista a una carpeta" lists={lists} onlyFolders
+          onPick={moveToFolder} onClose={() => setSheet(null)} />
+      )}
+      {isList && dup && (
+        <DuplicateSheet name={dup.name} duplicates={dup.duplicates}
+          onSkip={dup.onSkip} onAddAll={dup.onAddAll} onClose={() => setDup(null)} />
+      )}
     </div>
   );
 });

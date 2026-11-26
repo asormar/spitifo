@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 
 from .config import USER_AGENT
+from .executors import run_ytdlp
 
 log = logging.getLogger("spitifo.stream")
 
@@ -63,6 +64,16 @@ CACHE_MARGIN_S = 60.0
 #: del primer byte no obliga a re-resolver DENTRO de la peticion de audio.
 REFRESH_LEAD_S = 5 * 60
 CACHE_MAX = 64
+
+#: Calidad de transmision elegida en Ajustes. `auto` (o ausente) mantiene la
+#: eleccion de siempre (la mejor pista original); `saver` pide la mas ligera y
+#: `high` la de mas bitrate. El nombre viaja en la query del proxy, no se
+#: traduce: es el mismo valor que guarda el frontend.
+QUALITY_AUTO = "auto"
+QUALITY_SAVER = "saver"
+QUALITY_HIGH = "high"
+QUALITIES = (QUALITY_AUTO, QUALITY_SAVER, QUALITY_HIGH)
+_FORMAT_POR_CALIDAD = {QUALITY_SAVER: "worstaudio", QUALITY_HIGH: "bestaudio"}
 
 _VIDEO_RE = re.compile(r"(?:v=|/)([A-Za-z0-9_-]{11})(?:[?&#/]|$)")
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -145,7 +156,7 @@ async def warm_visitor() -> None:
         visitor = await ensure_visitor()
         if visitor:
             await asyncio.sleep(PREWARM_DELAY_S)
-            await asyncio.to_thread(_prewarm_sync, visitor)
+            await run_ytdlp(_prewarm_sync, visitor)
         # El cliente del proxy carga sus certificados al crearse: mejor ahora
         # que en el primer play.
         await asyncio.to_thread(client)
@@ -203,7 +214,7 @@ async def fast_raw(url: str) -> dict | None:
     try:
         with _pooled(visitor) as ydl:
             raw = await asyncio.wait_for(
-                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                run_ytdlp(ydl.extract_info, url, download=False, process=False),
                 FAST_TIMEOUT_S)
     except Exception as e:
         log.info("stream: extraccion rapida para descargar fallo (%s)", type(e).__name__)
@@ -336,14 +347,16 @@ def expires_of(url: str) -> float:
     return time.time() + 3600.0
 
 
-def pick_audio(info: dict) -> dict:
-    """El mejor formato de solo audio de un info SIN procesar (`process=False`).
+def pick_audio(info: dict, quality: str | None = None) -> dict:
+    """El formato de solo audio de un info SIN procesar (`process=False`).
 
     Procesar con yt-dlp es lo que mas CPU gasta: reconstruye la URL de los ~30
     formatos del video para elegir uno. En el telefono eso pesa mas que la red,
     asi que la eleccion es esta: solo audio, con URL, la pista original antes
-    que un doblaje y despues la de mas bitrate (251 opus o 140 m4a). Un info ya
-    procesado (camino completo) trae la URL arriba y se devuelve tal cual.
+    que un doblaje y, segun la calidad pedida, la de mas bitrate (`high`), la
+    mas ligera (`saver`) o la de mas calidad que trae el info (`auto`, la de
+    siempre: 251 opus o 140 m4a). Un info ya procesado (camino completo) trae
+    la URL arriba y se devuelve tal cual: ahi el formato lo eligio yt-dlp.
     """
     if info.get("url") or not info.get("formats"):
         return info
@@ -352,11 +365,23 @@ def pick_audio(info: dict) -> dict:
               and f.get("acodec") not in (None, "none")]
     if not audios:
         raise RuntimeError("el video no tiene formato de solo audio")
-    def orden(f):
-        lp = f.get("language_preference")
-        return (-1 if lp is None else lp, f.get("quality") or 0, f.get("tbr") or 0)
 
-    best = max(audios, key=orden)
+    def idioma(f):
+        lp = f.get("language_preference")
+        return -1 if lp is None else lp
+
+    if quality == QUALITY_SAVER:
+        # El doblaje puede ser mas ligero aun, pero no es la grabacion que se
+        # pidio: solo se considera si no hay ninguna pista original.
+        originales = [f for f in audios if idioma(f) >= 0] or audios
+        best = min(originales, key=lambda f: (f.get("tbr") or 0, f.get("quality") or 0))
+    elif quality == QUALITY_HIGH:
+        best = max(audios, key=lambda f: (idioma(f), f.get("tbr") or 0))
+    else:
+        def orden(f):
+            return (idioma(f), f.get("quality") or 0, f.get("tbr") or 0)
+
+        best = max(audios, key=orden)
     return {**best, "duration": info.get("duration"),
             "http_headers": best.get("http_headers") or info.get("http_headers")}
 
@@ -391,37 +416,44 @@ _refresh_tasks: set[asyncio.Task] = set()
 _lock = threading.Lock()
 
 
-def fresh_for(video_key: str, older_than: float) -> StreamInfo | None:
+def cache_key(video_key: str, quality: str | None = None) -> str:
+    """Dos calidades del mismo video son dos resoluciones: no se pisa una a
+    otra. `auto` comparte la clave sin calidad, que es la que siempre hubo."""
+    return video_key if quality in (None, QUALITY_AUTO) else f"{video_key}:{quality}"
+
+
+def fresh_for(video_key: str, older_than: float,
+              quality: str | None = None) -> StreamInfo | None:
     """Entrada cacheada mas reciente que la que acaba de fallar."""
     with _lock:
-        hit = _cache.get(video_key)
+        hit = _cache.get(cache_key(video_key, quality))
     return hit if hit and hit.expires_at > older_than else None
 
 
-def maybe_refresh(url: str) -> bool:
+def maybe_refresh(url: str, quality: str | None = None) -> bool:
     """Renueva en background una URL que vence pronto, sin bloquear el play.
 
     La entrada anterior NO se borra: sigue sirviendo hasta que la nueva este
     lista. Si el reintento falla, el cache pierde la entrada (como antes) y el
     proxy puede volver a intentarlo en la peticion siguiente.
     """
-    vid = video_id(url) or url
+    clave = cache_key(video_id(url) or url, quality)
     with _lock:
-        info = _cache.get(vid)
+        info = _cache.get(clave)
         if not info or info.expires_at - CACHE_MARGIN_S - REFRESH_LEAD_S > time.time():
             return False
-        if vid in _refreshing:
+        if clave in _refreshing:
             return False
-        _refreshing.add(vid)
+        _refreshing.add(clave)
 
     async def _bg() -> None:
         try:
-            await resolve(url, force=True)
+            await resolve(url, force=True, quality=quality)
         except Exception as e:
             log.info("stream: renovacion en background fallo: %s", e)
         finally:
             with _lock:
-                _refreshing.discard(vid)
+                _refreshing.discard(clave)
 
     task = asyncio.create_task(_bg())
     _refresh_tasks.add(task)
@@ -429,10 +461,10 @@ def maybe_refresh(url: str) -> bool:
     return True
 
 
-def drop(video_key: str) -> None:
+def drop(video_key: str, quality: str | None = None) -> None:
     """Saca una entrada vencida (o que el upstream ya no sirve)."""
     with _lock:
-        _cache.pop(video_key, None)
+        _cache.pop(cache_key(video_key, quality), None)
 
 
 def clear() -> None:
@@ -446,64 +478,72 @@ def clear() -> None:
     invalidate()
 
 
-async def resolve(url: str, *, force: bool = False) -> StreamInfo:
-    """Resuelve `url` con cache por id y una sola tarea por video concurrente."""
+async def resolve(url: str, *, force: bool = False,
+                  quality: str | None = None) -> StreamInfo:
+    """Resuelve `url` con cache por id y calidad, y una sola tarea por clave."""
     vid = video_id(url) or url
+    clave = cache_key(vid, quality)
     with _lock:
-        hit = _cache.get(vid)
+        hit = _cache.get(clave)
         usable = bool(not force and hit and hit.expires_at - CACHE_MARGIN_S > time.time())
-        task = _pending.get(vid) if not force else None
+        task = _pending.get(clave) if not force else None
         if not usable and task is None:
-            task = asyncio.create_task(_resolve_uncached(url, vid))
-            _pending[vid] = task
-            task.add_done_callback(lambda _t, v=vid: _pending.pop(v, None))
+            task = asyncio.create_task(_resolve_uncached(url, clave, quality))
+            _pending[clave] = task
+            task.add_done_callback(lambda _t, c=clave: _pending.pop(c, None))
     if usable:
         # Se renueva ANTES de que venza, en background, para que el siguiente
         # play (o un 403) encuentre una URL nueva ya resuelta. Fuera del lock:
         # maybe_refresh toma el mismo cerrojo.
         if hit.expires_at - CACHE_MARGIN_S - REFRESH_LEAD_S <= time.time():
-            maybe_refresh(url)
+            maybe_refresh(url, quality)
         return hit
     return await asyncio.shield(task)
 
 
-async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
+async def _resolve_uncached(url: str, clave: str,
+                            quality: str | None = None) -> StreamInfo:
     from . import ytdlp_source
     from .ytdlp_source import BotCheckError
 
     t0 = time.monotonic()
     try:
+        # Si el pool esta vacio (play antes de que termine el prewarm),
+        # `_pooled` construye un YoutubeDL nuevo EN EL LOOP: sin esto, esa
+        # primera construccion pagaria el import de yt_dlp ahi mismo.
+        await ytdlp_source.ensure_yt_dlp_imported()
         visitor = await ensure_visitor()
         if not visitor:
             # Sin visitor_data el camino rapido choca con el muro: ni se intenta.
             raise RuntimeError("sin visitor_data")
         with _pooled(visitor) as ydl:
             info = await asyncio.wait_for(
-                asyncio.to_thread(ydl.extract_info, url, download=False, process=False),
+                run_ytdlp(ydl.extract_info, url, download=False, process=False),
                 FAST_TIMEOUT_S)
-        salida = _from_info(pick_audio(info), "fast")
+        salida = _from_info(pick_audio(info, quality), "fast")
     except Exception as e:
         # Un visitor_data viejo es la causa mas comun: se descarta y se reintenta
         # con el camino completo, que es mas lento pero aguanta el muro.
         log.info("stream: camino rapido fallo (%s), probando el completo", type(e).__name__)
         invalidate()
         try:
+            formato = _FORMAT_POR_CALIDAD.get(quality, "bestaudio")
             info = await asyncio.wait_for(
-                ytdlp_source.probe_info(url, format="bestaudio"), FULL_TIMEOUT_S)
+                ytdlp_source.probe_info(url, format=formato), FULL_TIMEOUT_S)
             salida = _from_info(info, "full")
         except BotCheckError:
             raise
         except Exception as e2:
-            log.info("stream: resolve %s fallo: %s", vid, e2)
+            log.info("stream: resolve %s fallo: %s", clave, e2)
             raise
     with _lock:
-        _cache[vid] = salida
+        _cache[clave] = salida
         if len(_cache) > CACHE_MAX:
-            for clave in sorted(_cache, key=lambda k: _cache[k].expires_at)[:len(_cache) - CACHE_MAX]:
-                del _cache[clave]
+            for vieja in sorted(_cache, key=lambda k: _cache[k].expires_at)[:len(_cache) - CACHE_MAX]:
+                del _cache[vieja]
     pasado = time.monotonic() - t0
     log.log(logging.WARNING if pasado > SLOW_LOG_S else logging.INFO,
-            "stream resolve %s: %s %d ms", vid, salida.path, int(pasado * 1000))
+            "stream resolve %s: %s %d ms", clave, salida.path, int(pasado * 1000))
     return salida
 
 

@@ -1,5 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
+import ChromeButtons from "../app/ChromeButtons.jsx";
+import { openNewList } from "./newList.js";
 import { Icon } from "./icons.jsx";
 import SearchField from "../shared/SearchField.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -9,6 +11,7 @@ import LibraryHome from "./LibraryHome.jsx";
 import PageHost from "./pageLoader.jsx";
 import SearchResults from "./SearchResults.jsx";
 import { searchLibrary } from "./home.js";
+import { requestSearch } from "../download/searchRequest.js";
 import "./home.css";
 
 /* ---------------------------------------------------------------------------
@@ -60,31 +63,44 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
         <h1 className="lhead__h" id="library-title">
           Tu biblioteca
         </h1>
-        <button
-          type="button"
-          className={pc ? "lbtn lbtn--go" : "lhead__new"}
-          aria-label={pc ? undefined : "Nueva lista"}
-          title="Nueva lista"
-          onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
-        >
-          <Icon name="Plus" size={pc ? "sm" : "md"} />
-          {pc && "Nueva lista"}
-        </button>
+        <span className="lhead__acts">
+          <button
+            type="button"
+            className={pc ? "lbtn lbtn--go" : "lhead__new"}
+            aria-label={pc ? undefined : "Nueva lista"}
+            title="Nueva lista"
+            onClick={() => openNewList(nav, ctx)}
+          >
+            <Icon name="Plus" size={pc ? "sm" : "md"} />
+            {pc && "Nueva lista"}
+          </button>
+          {!pc && <ChromeButtons />}
+        </span>
       </header>
       <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry}>
-        {!pc && (
-          <div className="lstick">
-            <SearchField
-              big
-              inputRef={searchRef}
-              value={q}
-              onChange={onSearch}
-              placeholder="Buscar en tu biblioteca"
-              label="Buscar en tu biblioteca"
-              clearLabel="Borrar búsqueda"
-            />
-          </div>
-        )}
+        <div className={pc ? "lstick lstick--pc" : "lstick"}>
+          <SearchField
+            big={!pc}
+            inputRef={searchRef}
+            value={q}
+            onChange={onSearch}
+            placeholder="Buscar en tu biblioteca"
+            label="Buscar en tu biblioteca"
+            clearLabel="Borrar búsqueda"
+          />
+          {pc && (
+            <button
+              type="button"
+              className="lstick__cat"
+              onClick={() => {
+                requestSearch(q);
+                nav.goTab("search");
+              }}
+            >
+              Buscar en el catálogo →
+            </button>
+          )}
+        </div>
         {searching ? (
           <SearchResults r={results} query={dq} byKey={model.byKey} ctx={ctx} />
         ) : (

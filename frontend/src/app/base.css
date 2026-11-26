@@ -20,6 +20,15 @@ html {
   /* El resaltado azul de Android al tocar: se hereda, asi cubre tambien lo
      que no es <button> (la barra de tiempo es un div con role="slider"). */
   -webkit-tap-highlight-color: transparent;
+  /* El WebView lleva OVER_SCROLL_NEVER; aqui se apaga el encadenamiento para
+     que tirar del borde no muestre el brillo de Android (§6). */
+  overscroll-behavior-y: none;
+}
+
+/* Mantener presionada una portada no abre «Guardar imagen» de Chromium: el
+   gesto largo abre el menu propio (shared/longPress.js). */
+img {
+  -webkit-touch-callout: none;
 }
 
 body {
@@ -39,7 +48,7 @@ button {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--pink) 40%, transparent);
+  background: color-mix(in srgb, var(--action) 30%, transparent);
   color: var(--ink);
 }
 
@@ -59,14 +68,14 @@ button {
 .app {
   max-width: 1280px;
   margin: 0 auto;
-  /* Abajo cabe el toast de progreso (fijo, ~100px) sin tapar la ultima fila, y
-     la barra de navegacion del telefono cuando la hay (--nav-h). */
-  padding: calc(var(--top-h) + 12px) var(--gutter) calc(128px + var(--nav-h));
+  /* El toast de progreso flota (position:fixed) y ya no reserva ~128px: solo
+     el aire del final y la barra de navegacion del telefono (--nav-h). */
+  padding: calc(var(--top-h) + 12px) var(--gutter) calc(var(--nav-h) + var(--sp-4));
 }
 
 /* Con el mini-reproductor visible, el final de la lista no puede quedar debajo. */
 body.has-mini .app {
-  padding-bottom: calc(128px + var(--mini-h) + var(--nav-h));
+  padding-bottom: calc(var(--nav-h) + var(--mini-h) + var(--sp-4));
 }
 
 /* Cifras de ancho fijo: contadores, tiempos y pesos no bailan al cambiar. Los
@@ -84,11 +93,12 @@ body.has-mini .app {
 }
 
 /* Con la columna de "Ahora suena" al lado (App pone html[data-rp], ver
-   shell.css) las paginas dejan sitio a sus 340 px + 12 de aire por lado, en
-   lugar del margen de 56. Por debajo de 1200 px la columna tapa las paginas. */
-@media (min-width: 1200px) {
+   shell.css) las paginas dejan sitio a su ancho + 24 de aire, en lugar del
+   margen de 56. Desde 960 px, no solo desde 1200: la columna comparte la pagina
+   en vez de flotar sobre ella. En anchuras grandes crece, no se topa. */
+@media (min-width: 960px) {
   html[data-rp="docked"] .app {
-    padding-right: 364px;
+    padding-right: calc(var(--np-w, 340px) + 24px);
   }
 }
 

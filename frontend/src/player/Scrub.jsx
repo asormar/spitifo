@@ -3,7 +3,8 @@ import { cx, clamp } from "../shared/ui.jsx";
 import { clock } from "../shared/format.js";
 import { engine } from "./engine.js";
 import { useEngineTime } from "./useEngine.js";
-import { knobOffset, pctFromPointer } from "./scrubMath.js";
+import { knobOffset, minuteOf, pctFromPointer } from "./scrubMath.js";
+import { HAPTIC, haptic } from "../shared/haptics.js";
 
 /* ---------------------------------------------------------------------------
    BARRA DE PROGRESO
@@ -37,10 +38,18 @@ export default function Scrub({ duration, label, children }) {
      en ese caso se pinta `time / duration`. Vive en una ref porque pintarlo
      no pasa por React. */
   const dragRef = useRef(null);
+  const minuteRef = useRef(null);
   const disabled = !duration;
 
   const paint = (pct, dragging) => {
     const shown = pct * duration;
+    if (dragging) {
+      const minute = minuteOf(shown);
+      if (minuteRef.current !== null && minute !== minuteRef.current) haptic(HAPTIC.DETENT);
+      minuteRef.current = minute;
+    } else {
+      minuteRef.current = null;
+    }
     if (fillRef.current) fillRef.current.style.transform = `scaleX(${pct})`;
     if (knobRef.current) {
       const w = railRef.current?.clientWidth || 0;

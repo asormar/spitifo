@@ -123,6 +123,68 @@ def test_un_info_procesado_se_usa_tal_cual():
     assert stream.pick_audio(info) is info
 
 
+def test_la_calidad_elige_el_formato_de_audio():
+    base = "https://googlevideo.test/{}?expire=9999999999"
+    info = {"duration": 210, "formats": [
+        {"format_id": "139", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.5",
+         "quality": 2.0, "tbr": 48.0, "url": base.format(139)},
+        {"format_id": "251", "ext": "webm", "vcodec": "none", "acodec": "opus",
+         "quality": 3.0, "tbr": 136.0, "url": base.format(251)},
+        {"format_id": "141", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2",
+         "quality": 2.0, "tbr": 256.0, "url": base.format(141)},
+        {"format_id": "dub", "ext": "webm", "vcodec": "none", "acodec": "opus",
+         "quality": 3.0, "tbr": 300.0, "language_preference": -10, "url": base.format("dub")},
+        {"format_id": "video", "ext": "mp4", "vcodec": "avc1", "acodec": "mp4a.40.2",
+         "quality": 1.0, "tbr": 600.0, "url": base.format("video")},
+    ]}
+    assert stream.pick_audio(info)["format_id"] == "251"          # auto, la de siempre
+    assert stream.pick_audio(info, "auto")["format_id"] == "251"
+    assert stream.pick_audio(info, "saver")["format_id"] == "139" # la mas ligera
+    assert stream.pick_audio(info, "high")["format_id"] == "141"  # la de mas bitrate
+    # El doblaje no compite aunque tenga mas bitrate: no es la grabacion pedida.
+    assert stream.pick_audio(info, "high")["format_id"] != "dub"
+
+
+def test_dos_calidades_del_mismo_video_no_comparten_cache(monkeypatch):
+    base = "https://googlevideo.test/{}?expire=9999999999"
+    def info(id):
+        return {"formats": [
+            {"format_id": id, "ext": "webm", "vcodec": "none", "acodec": "opus",
+             "quality": 3.0, "tbr": 100.0, "url": base.format(id)},
+            {"format_id": "ligera", "ext": "webm", "vcodec": "none", "acodec": "opus",
+             "quality": 2.0, "tbr": 48.0, "url": base.format("ligera")},
+        ]}
+
+    vistos = []
+    @contextmanager
+    def pooled(visitor):
+        class Ydl:
+            def extract_info(self, url, download=False, process=False):
+                vistos.append(url)
+                # Primera extraccion: la pesada es la original; segunda: es la
+                # alternativa mas ligera, para que `saver` elija otra URL.
+                return info("original" if len(vistos) == 1 else "ligera-dup")
+        yield Ydl()
+
+    monkeypatch.setattr(stream, "_pooled", pooled)
+
+    async def visitor():
+        return "v"
+
+    monkeypatch.setattr(stream, "ensure_visitor", visitor)
+    auto = asyncio.run(stream.resolve(URL))
+    saver = asyncio.run(stream.resolve(URL, quality="saver"))
+    high = asyncio.run(stream.resolve(URL, quality="high"))
+    assert auto.url != saver.url
+    assert stream.cache_key(VID) in stream._cache
+    assert stream.cache_key(VID, "saver") in stream._cache
+    assert stream.cache_key(VID, "high") in stream._cache
+    assert len(vistos) == 3, "cada calidad resolvio su propio formato"
+    stream.drop(VID, "saver")
+    assert stream.cache_key(VID, "saver") not in stream._cache
+    assert stream.cache_key(VID, "high") in stream._cache
+
+
 
 def test_un_camino_rapido_colgado_cede_al_completo(monkeypatch):
     @contextmanager
@@ -337,7 +399,7 @@ def test_403_usa_la_url_ya_renovada_sin_re_resolver(api, monkeypatch):
         url=nueva, headers={}, ext="webm", mime="audio/webm",
         filesize=TOTAL, duration=180, expires_at=time.time() + 3600, path="fast",
     )
-    monkeypatch.setattr(stream, "fresh_for", lambda vid, antes: fresca)
+    monkeypatch.setattr(stream, "fresh_for", lambda vid, antes, **kw: fresca)
 
     r = api.get("/api/stream", params={"url": URL}, headers={"Range": "bytes=0-100"})
     assert r.status_code == 206
@@ -361,7 +423,7 @@ def test_fresh_for_solo_devuelve_una_entrada_mas_nueva():
 def test_maybe_refresh_no_bloquea_y_no_descarta_la_entrada_actual(monkeypatch):
     calls = []
 
-    async def resolve(url, force=False):
+    async def resolve(url, force=False, quality=None):
         calls.append(force)
 
     monkeypatch.setattr(stream, "resolve", resolve)
@@ -374,6 +436,26 @@ def test_maybe_refresh_no_bloquea_y_no_descarta_la_entrada_actual(monkeypatch):
         assert stream._cache[VID].expires_at == proxima
         await asyncio.sleep(0)
         assert calls == [True]
+
+    asyncio.run(escenario())
+
+
+def test_maybe_refresh_renueva_la_clave_de_su_calidad(monkeypatch):
+    calls = []
+
+    async def resolve(url, force=False, quality=None):
+        calls.append((force, quality))
+
+    monkeypatch.setattr(stream, "resolve", resolve)
+    proxima = time.time() + stream.CACHE_MARGIN_S + stream.REFRESH_LEAD_S - 1
+    stream._cache[stream.cache_key(VID, "saver")] = stream.StreamInfo(
+        "u", {}, "webm", "audio/webm", TOTAL, 180, proxima, "fast")
+
+    async def escenario():
+        assert stream.maybe_refresh(URL) is False, "la calidad auto no tiene entrada"
+        assert stream.maybe_refresh(URL, "saver") is True
+        await asyncio.sleep(0)
+        assert calls == [(True, "saver")]
 
     asyncio.run(escenario())
 
@@ -402,6 +484,48 @@ def test_el_ultimo_visitor_vale_durante_el_backoff(monkeypatch):
 def test_url_invalida_da_400(api):
     r = api.get("/api/stream", params={"url": "https://example.com/cancion"})
     assert r.status_code == 400
+
+
+def test_la_ruta_pasa_la_calidad_al_resolver(api, monkeypatch):
+    sembrar()
+    instalar_cliente(monkeypatch, transporte([]))
+    vistos = []
+
+    async def resolve(url, force=False, quality=None):
+        vistos.append(quality)
+        return stream.StreamInfo(
+            url=f"https://googlevideo.test/{quality or 'auto'}.webm?expire=9999999999",
+            headers={}, ext="webm", mime="audio/webm", filesize=TOTAL,
+            duration=180, expires_at=time.time() + 3600, path="fast",
+        )
+
+    monkeypatch.setattr(stream, "resolve", resolve)
+    assert api.get("/api/stream", params={"url": URL, "quality": "saver"}).status_code == 200
+    assert vistos == ["saver"]
+    # Un valor desconocido no rompe la ruta: cae a la resolucion de siempre.
+    assert api.get("/api/stream", params={"url": URL, "quality": "raro"}).status_code == 200
+    assert vistos[-1] is None
+
+
+def test_resolve_y_stream_comparten_la_misma_extraccion(api, monkeypatch):
+    """Finding #6 (time-to-audio): /api/resolve ya no hace su propia
+    extraccion completa; usa el mismo cache/camino rapido de stream.resolve,
+    asi el /api/stream que de verdad reproduce el toque no vuelve a extraer."""
+    calls = fake_pool(monkeypatch, result=format_info())
+    ranges = []
+    instalar_cliente(monkeypatch, transporte(ranges))
+
+    body = {"source": "ytdlp", "source_id": VID, "title": "Cancion",
+            "artist": "Artista", "extra": {"webpage_url": URL}}
+    r = api.post("/api/resolve", json=body)
+    assert r.status_code == 200
+    assert r.json()["audio_url"]
+
+    r2 = api.get("/api/stream", params={"url": URL})
+    assert r2.status_code == 200
+    assert r2.content == PAYLOAD
+
+    assert len(calls) == 1  # una sola extraccion para los dos toques
 
 
 def test_prepare_responde_202(api, monkeypatch):

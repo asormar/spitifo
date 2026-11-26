@@ -1,16 +1,26 @@
 package dev.spitifo
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -24,6 +34,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import com.chaquo.python.Python
@@ -74,15 +85,28 @@ class MainActivity : ComponentActivity() {
         dispatchMediaAction(action, time)
     }
 
+    /**
+     * Real screen-off, not just this Activity being covered: `document.
+     * visibilityState` alone cannot tell the two apart (ADR for
+     * battery-background round 4). The page gates timers, rAF loops and
+     * pollers on this, through `window.spitifo-screen`; audio keeps playing
+     * either way, this never touches the WebView itself.
+     */
+    private var screenReceiver: BroadcastReceiver? = null
+
     /** The element the page asked to show full screen, while there is one. */
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingShare: String? = null
+    /** True when the startup refresh was already started from onCreate. */
+    private var tokenRefreshStarted = false
 
     private val listener = object : Backend.Listener {
         override fun onReady(port: Int) {
             showUi(port)
-            refreshDriveTokenIfConnected()
+            // Fallback for an upgrade where the native flag is not set yet:
+            // normally onCreate already started the refresh (P-cold-start-2).
+            if (!tokenRefreshStarted) refreshDriveTokenIfConnected()
         }
 
         override fun onFailed(message: String) = showStatus(message)
@@ -91,6 +115,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
+        // Predictive back (Android 13+): the system draws the previous screen
+        // while the finger drags from the edge. The callback keeps today's
+        // decisions exactly: full screen first, then web history, then leave.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val view = web
+                when {
+                    fullscreenView != null -> hideFullscreen()
+                    view != null && view.canGoBack() -> view.goBack()
+                    else -> finish()
+                }
+            }
+        })
         // Until the page reports its theme (setBars), match the system mode so
         // the bars never flash the wallpaper colour while the backend starts.
         val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
@@ -104,8 +141,23 @@ class MainActivity : ComponentActivity() {
         pendingShare = shareUrl(intent)
         if (pendingShare != null) Log.i(TAG, "shared link: $pendingShare")
         showStatus("Starting…")
+        // Drive's silent refresh starts HERE, in parallel with Python boot,
+        // driven by the persisted flag read natively. The old path waited for
+        // onReady plus a Chaquopy round trip and could hand the first library
+        // request a 5 s token wait (P-cold-start-2).
+        val auth = driveAuth
+        if (DriveAuth.persistedConnected(applicationContext)) {
+            tokenRefreshStarted = true
+            Thread({
+                auth.pushCachedToken()
+                runOnUiThread { auth.refreshSilently() }
+            }, "spitifo-drive-startup").apply { isDaemon = true }.start()
+        } else {
+            DriveAuth.forgetCachedToken(applicationContext)
+        }
         backend.addListener(listener)
         MediaActionRelay.register(mediaReceiver)
+        registerScreenReceiver()
     }
 
     override fun onResume() {
@@ -137,20 +189,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Back goes through the web history first, then leaves the app. */
-    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
-    override fun onBackPressed() {
-        val view = web
-        when {
-            // Back leaves full screen before it does anything else.
-            fullscreenView != null -> hideFullscreen()
-            view != null && view.canGoBack() -> view.goBack()
-            else -> super.onBackPressed()
-        }
-    }
-
     override fun onDestroy() {
         hideFullscreen()
+        networkCallback?.let { callback ->
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                ?.unregisterNetworkCallback(callback)
+        }
+        networkCallback = null
         backend.removeListener(listener)
         driveAuth.onDestroy()
         val view = web
@@ -160,6 +205,8 @@ class MainActivity : ComponentActivity() {
             web = null
         }
         MediaActionRelay.unregister(mediaReceiver)
+        screenReceiver?.let { unregisterReceiver(it) }
+        screenReceiver = null
         // The audio dies with the WebView, so the notification must not outlive it.
         PlaybackService.clear(this)
         super.onDestroy()
@@ -179,6 +226,15 @@ class MainActivity : ComponentActivity() {
      * public classes and methods.
      */
     inner class AndroidBridge {
+        /**
+         * R2: the page needs to know whether the active link is Wi-Fi, mobile
+         * data or roaming before starting downloads. The native
+         * ConnectivityManager is the only reliable source for "roaming" on
+         * Android; navigator.connection cannot tell. `none` means offline.
+         */
+        @JavascriptInterface
+        fun connectionType(): String = this@MainActivity.connectionType()
+
         @JavascriptInterface
         fun connectDrive() {
             // JavascriptInterfaces are called on the WebView's own thread; the
@@ -210,6 +266,101 @@ class MainActivity : ComponentActivity() {
             val parsed = runCatching { Color.parseColor(color) }.getOrNull() ?: return
             runOnUiThread { applyBars(parsed, light) }
         }
+
+        /**
+         * The WebView has no navigator.share, so the page builds the final text
+         * and hands it over here. Android draws the chooser; the app draws
+         * nothing of it. Kept as plain text/plain so every share target that
+         * accepts text shows up.
+         */
+        @JavascriptInterface
+        fun share(text: String) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            runOnUiThread {
+                try {
+                    startActivity(Intent.createChooser(intent, "Compartir"))
+                } catch (e: ActivityNotFoundException) {
+                    Log.w(TAG, "no activity can share text", e)
+                }
+            }
+        }
+
+        /**
+         * Discrete confirmation only (shared/haptics.js): 0 = confirm (heart,
+         * a sheet or row settling, a finished download), 1 = detent (the
+         * scrubber crossing a whole minute). The system's own feedback is used
+         * so the user's accessibility settings are respected.
+         */
+        @JavascriptInterface
+        fun haptic(kind: Int) {
+            runOnUiThread {
+                val constant = if (kind == 1) {
+                    HapticFeedbackConstants.VIRTUAL_KEY
+                } else {
+                    HapticFeedbackConstants.CONFIRM
+                }
+                web?.performHapticFeedback(constant)
+            }
+        }
+    }
+
+    /** The active transport as a string the JS side understands. */
+    private fun connectionType(): String {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "none"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val net = cm.activeNetwork ?: return "none"
+            val caps = cm.getNetworkCapabilities(net) ?: return "none"
+            return when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                    if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING))
+                        "cellular" else "roaming"
+                else -> "other"
+            }
+        }
+        @Suppress("DEPRECATION")
+        val info = cm.activeNetworkInfo ?: return "none"
+        @Suppress("DEPRECATION")
+        return when (info.type) {
+            ConnectivityManager.TYPE_WIFI -> "wifi"
+            ConnectivityManager.TYPE_MOBILE ->
+                if (info.isRoaming) "roaming" else "cellular"
+            ConnectivityManager.TYPE_ETHERNET -> "ethernet"
+            else -> "other"
+        }
+    }
+
+    /** Tell the page when the link changes so the download queue can resume. */
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun watchNetwork() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = notifyNetwork()
+            override fun onLost(network: Network) = notifyNetwork()
+            override fun onCapabilitiesChanged(
+                network: Network, capabilities: NetworkCapabilities,
+            ) = notifyNetwork()
+        }
+        cm.registerDefaultNetworkCallback(cb)
+        networkCallback = cb
+    }
+
+    private fun notifyNetwork() {
+        val view = web ?: return
+        val type = connectionType()
+        val online = type != "none"
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('spitifo-network'," +
+                "{detail:{type:'$type',online:$online}}))", null,
+        )
     }
 
     /** Paints both system bars one colour and picks icons that read on it. */
@@ -239,13 +390,48 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * ACTION_SCREEN_OFF/ON cannot be declared in the manifest (protected,
+     * implicit-only broadcasts): a context-registered receiver is the only way
+     * to see them. Registered for as long as the Activity is alive, same as
+     * [mediaReceiver].
+     */
+    private fun registerScreenReceiver() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                dispatchScreenState(intent.action != Intent.ACTION_SCREEN_OFF)
+            }
+        }
+        registerReceiver(
+            receiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
+        )
+        screenReceiver = receiver
+    }
+
+    /**
+     * Tells the page whether the physical display is on, so it can stop
+     * timers, rAF loops and pollers while it is off without pausing the
+     * WebView itself (the `<audio>` element lives there and must keep
+     * playing). See `frontend/src/shared/screenState.js`.
+     */
+    private fun dispatchScreenState(on: Boolean) {
+        val view = web ?: return
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('spitifo-screen',{detail:{on:$on}}))", null,
+        )
+    }
+
+    /**
      * On startup the grant is usually already there, so this is the silent path
      * (ADR 0002, section 2: sign-in survives a restart with no user action).
      *
-     * Asks Python whether a Google account is connected — on Android that flag
-     * is persisted, while the token itself is memory-only and lost on restart —
-     * then refreshes in silence. Never on the main thread: Chaquopy can take a
-     * moment and the first frame must not wait for it.
+     * Fallback used when onCreate could not read the native flag (an upgrade
+     * from a build that did not write it). Asks Python whether a Google account
+     * is connected, then refreshes in silence. Never on the main thread:
+     * Chaquopy can take a moment and the first frame must not wait for it.
      */
     private fun refreshDriveTokenIfConnected() {
         Thread({
@@ -323,6 +509,14 @@ class MainActivity : ComponentActivity() {
             // blocks exactly that by default, so the next track would silently
             // never start.
             settings.mediaPlaybackRequiresUserGesture = false
+            // The typographic scale is in rem, so the system font size has to
+            // reach the WebView: textZoom is the only setting that does it.
+            // 100 is the default; 130/160 are the sizes we check the UI at.
+            settings.textZoom = (resources.configuration.fontScale * 100).toInt()
+                .coerceIn(MIN_TEXT_ZOOM, MAX_TEXT_ZOOM)
+            // No Material glow when a list reaches its end: the page handles
+            // over-scroll itself (and pull-to-refresh where it means something).
+            setOverScrollMode(View.OVER_SCROLL_NEVER)
             // The Drive sign-in needs a native Activity: the page asks for it
             // through this interface instead of a link (see DriveAuth).
             addJavascriptInterface(AndroidBridge(), "SpitifoAndroid")
@@ -381,6 +575,7 @@ class MainActivity : ComponentActivity() {
         }
         setContentView(view)
         web = view
+        watchNetwork()
         val share = pendingShare
         pendingShare = null
         // One load: the backend trades the token for the session cookie and
@@ -400,6 +595,12 @@ class MainActivity : ComponentActivity() {
 
     private fun isYouTube(url: String): Boolean = YOUTUBE_PATTERN.matches(url)
 
+    /**
+     * R2-install-g: ya habia pedido estos permisos en onCreate sin avisar. Con
+     * algo pendiente, una tarjeta explica el porque antes del dialogo del
+     * sistema, con salida ("Ahora no"); con todo ya concedido no cambia nada
+     * (ni tarjeta ni dialogo).
+     */
     private fun requestOptionalPermissions() {
         val wanted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             listOf(Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.READ_MEDIA_AUDIO)
@@ -409,12 +610,35 @@ class MainActivity : ComponentActivity() {
         val missing = wanted.filter {
             checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isNotEmpty()) requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
+        if (missing.isEmpty()) return
+        // "Ahora no" se respeta una semana: no se insiste en cada arranque.
+        val prefs = getSharedPreferences(PERMISSION_PREFS, MODE_PRIVATE)
+        val declinedAt = prefs.getLong(PERMISSION_DECLINED_AT, 0L)
+        if (System.currentTimeMillis() - declinedAt < PERMISSION_RETRY_MS) return
+        AlertDialog.Builder(this)
+            .setMessage(
+                "spitifo necesita ver tu carpeta de música para mostrar lo que " +
+                    "descargas, y avisarte mientras una descarga está en curso.",
+            )
+            .setNegativeButton("Ahora no") { _, _ ->
+                prefs.edit().putLong(PERMISSION_DECLINED_AT, System.currentTimeMillis()).apply()
+            }
+            .setPositiveButton("Continuar") { _, _ ->
+                requestPermissions(missing.toTypedArray(), PERMISSIONS_REQUEST)
+            }
+            .setCancelable(true)
+            .show()
     }
 
     private companion object {
+        const val PERMISSION_PREFS = "spitifo_permissions"
+        const val PERMISSION_DECLINED_AT = "declined_at"
+        const val PERMISSION_RETRY_MS = 7L * 24 * 60 * 60 * 1000
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
+        /** Bounds for the system font scale mirrored into WebView textZoom. */
+        const val MIN_TEXT_ZOOM = 50
+        const val MAX_TEXT_ZOOM = 200
 
         /** THEME_COLOR in frontend/src/shared/theme.js: the page grounds. */
         const val BAR_DARK = 0xFF0E0E18.toInt()

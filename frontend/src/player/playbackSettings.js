@@ -1,13 +1,15 @@
-import { localSetting } from "../shared/localSetting.js";
+import { CROSSFADE_KEY, crossfade, secondsToStep, stepToSeconds } from "../settings/playbackSettings.js";
 
 /* ---------------------------------------------------------------------------
    AJUSTE DE REPRODUCCION: CROSSFADE
 
-   Envoltorio del ajuste local de siempre: Ajustes usa get/set y el motor lee
-   el valor al cambiar de pista. Segundos, 0 = desactivado (default), 2-12 s.
+   La vista del motor sobre el MISMO ajuste que pinta Ajustes
+   (settings/playbackSettings.js): una sola instancia, asi un cambio en Ajustes
+   llega al motor sin recargar. Aqui se habla en segundos, 0 = desactivado
+   (default), 2-12 s; Ajustes guarda pasos del control.
    ------------------------------------------------------------------------- */
 
-export const CROSSFADE_KEY = "spitifo.playback.crossfade";
+export { CROSSFADE_KEY };
 export const CROSSFADE_MIN_S = 2;
 export const CROSSFADE_MAX_S = 12;
 
@@ -17,18 +19,13 @@ export function normalizeCrossfade(value) {
   return Math.min(CROSSFADE_MAX_S, Math.max(CROSSFADE_MIN_S, Math.round(n)));
 }
 
-const setting = localSetting(CROSSFADE_KEY, 0, {
-  read: () => localStorage.getItem(CROSSFADE_KEY),
-  write: (v) => String(v),
-  normalize: normalizeCrossfade,
-});
-
-export const getCrossfade = setting.get;
+export const getCrossfade = () => stepToSeconds(crossfade.get());
 export const setCrossfade = (seconds) => {
-  setting.set(seconds);
-  return normalizeCrossfade(seconds);
+  const next = normalizeCrossfade(seconds);
+  crossfade.set(secondsToStep(next));
+  return next;
 };
-export const subscribeCrossfade = (fn) => setting.subscribe(() => fn(getCrossfade()));
+export const subscribeCrossfade = (fn) => crossfade.subscribe(() => fn(getCrossfade()));
 
 export const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
