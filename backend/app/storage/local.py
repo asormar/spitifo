@@ -288,8 +288,22 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         `mutagen`, que es lo que tarda durante el primer escaneo (P-cold-start-1).
         """
         h = hashlib.sha256()
+        # La raiz entra en la firma: dos bibliotecas con los mismos archivos
+        # (y la misma mtime) no pueden compartir instantanea.
+        h.update(f"{self.root.resolve()}\n".encode("utf-8"))
         for key, size, mtime in self._scan_files():
             h.update(f"{key}\0{size}\0{mtime}\n".encode("utf-8"))
+        # Las fichas de verificacion (`fileinfo-*.json`) cambian lo que
+        # `with_checks` agrega a cada fila (veredicto, `file_src`): un
+        # veredicto nuevo tiene que invalidar la instantanea aunque ningun
+        # archivo de audio haya cambiado.
+        state = self.root / STATE_DIR
+        for name, _ref in sorted(self._state_files(FILEINFO_PREFIX)):
+            try:
+                st = os.stat(state / name)
+            except OSError:
+                continue
+            h.update(f"fi\0{name}\0{st.st_size}\0{st.st_mtime_ns}\n".encode("utf-8"))
         return h.hexdigest()
 
     def list(self) -> Iterable[StoredFile]:

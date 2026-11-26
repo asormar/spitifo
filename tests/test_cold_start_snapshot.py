@@ -7,6 +7,7 @@ respuesta es la de siempre, con su ETag.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -87,3 +88,34 @@ def test_un_cambio_en_disco_invalida_la_instantanea(library):
         assert c.get("/api/library").json()["count"] == 1
         (library / "A" / "b.mp3").write_bytes(b"y" * 8)
         assert c.get("/api/library").json()["count"] == 2
+
+
+def test_la_firma_cambia_con_un_veredicto_nuevo(tmp_path):
+    """Un veredicto guardado cambia lo que /api/library agrega a la fila: la
+    firma barata tiene que cambiar aunque el audio sea el mismo."""
+    from backend.app.storage.local import LocalStorage
+
+    root = tmp_path / "lib"
+    (root / "A").mkdir(parents=True)
+    (root / "A" / "a.mp3").write_bytes(b"x" * 10)
+    storage = LocalStorage(root)
+    antes = storage.fast_signature()
+    from backend.app.fileinfo import clean_record
+    storage.save_fileinfo("A/a.mp3", clean_record(
+        {"verdict": "match", "at": 1_760_000_000, "bytes": 10,
+         "meta": "itunes", "file": "youtube"}))
+    assert storage.fast_signature() != antes
+
+
+def test_la_firma_distingue_dos_raices_con_los_mismos_archivos(tmp_path):
+    from backend.app.storage.local import LocalStorage
+
+    firmas = []
+    for nombre in ("uno", "dos"):
+        root = tmp_path / nombre
+        (root / "A").mkdir(parents=True)
+        f = root / "A" / "a.mp3"
+        f.write_bytes(b"x" * 10)
+        os.utime(f, (1_000_000, 1_000_000))
+        firmas.append(LocalStorage(root).fast_signature())
+    assert firmas[0] != firmas[1]
