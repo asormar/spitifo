@@ -1,6 +1,8 @@
 import React, { Suspense, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { API, keyUrl } from "../shared/api.js";
+import { afterIdle } from "../shared/raf.js";
+import { COMPACT_FIELDS, compactLibraryRows, expandCompactLibrary } from "./libraryCompact.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
@@ -49,19 +51,36 @@ import { closeDock, registerClosePlayer } from "../player/useDock.js";
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
    Inicio y Tu biblioteca pintan la de la vez anterior y la real la reemplaza
-   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella. */
-const LIB_CACHE = "spitifo:library";
+   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella.
+
+   Se guarda en columnas (ver libraryCompact.js), no un objeto por archivo: a
+   20k pistas el espejo clasico pesaba ~7.7 MB, el doble contando el
+   `JSON.stringify` de cada escritura, y se acercaba a la cuota tipica de
+   localStorage (P-large-library-scale-1). "v2" en la clave es la migracion:
+   un espejo de la version anterior (un array de objetos) no calza con esta
+   forma y se descarta solo, sin romper nada; la red trae la lista de nuevo,
+   como si no hubiera cache. */
+const LIB_CACHE = "spitifo:library:v2";
+const LIB_CACHE_OLD = "spitifo:library";
 const readLibCache = () => {
   try {
-    const files = JSON.parse(localStorage.getItem(LIB_CACHE));
-    return Array.isArray(files) ? files : null;
+    const raw = JSON.parse(localStorage.getItem(LIB_CACHE));
+    if (raw && Array.isArray(raw.rows)) {
+      return expandCompactLibrary(raw.fields, raw.rows);
+    }
   } catch {
-    return null;
+    /* cache corrupta: se sigue sin ella, como si no existiera */
   }
-};
-const writeLibCache = (files) => {
   try {
-    localStorage.setItem(LIB_CACHE, JSON.stringify(files));
+    localStorage.removeItem(LIB_CACHE_OLD);
+  } catch {
+    /* no se puede limpiar: no es grave, solo queda un espejo viejo sin uso */
+  }
+  return null;
+};
+const writeLibCache = (fields, rows) => {
+  try {
+    localStorage.setItem(LIB_CACHE, JSON.stringify({ fields, rows }));
   } catch {
     /* lleno o bloqueado: la proxima apertura espera a la red, como antes */
   }
@@ -262,6 +281,21 @@ export default function App() {
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
+  /* El servidor sirvio la biblioteca de la instantanea mientras el escaneo
+     sigue corriendo: se avisa y se pide de nuevo en cuanto hay hueco. */
+  const [libPending, setLibPending] = useState(false);
+  const retryTimer = useRef(null);
+  const loadLibRef = useRef(null);
+  const pendingCache = useRef(null);
+  const cancelCacheIdle = useRef(null);
+  const flushLibCache = useCallback(() => {
+    cancelCacheIdle.current?.();
+    cancelCacheIdle.current = null;
+    const p = pendingCache.current;
+    if (!p) return;
+    pendingCache.current = null;
+    writeLibCache(p.fields, p.rows);
+  }, []);
   /* Espejo sincronico de `lib`: el borrado diferido necesita devolver EXACTAMENTE
      las filas que saco, aunque el deshacer llegue antes del siguiente render. */
   const libRef = useRef(lib);
@@ -318,7 +352,6 @@ export default function App() {
       .then(setHealth)
       .catch(() => setHealth(null));
   }, []);
-  useEffect(loadHealth, [loadHealth]);
 
   /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez:
      el motor avisa de cada cambio de pista o de estado y mediaSession solo
@@ -399,41 +432,85 @@ export default function App() {
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
   const loadLib = useCallback(async (opts) => {
-    /* El registro de guardadas se pide junto con la biblioteca, pero NO se
-       espera: una lista con Drive tarda y las filas de archivos tienen que
-       pintarse igual. Se pide en cada recarga: una descarga terminada enlaza
-       su archivo con la guardada en el servidor (el backend lo tiene en cache). */
-    saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
-    /* Las fotos propias se piden con la biblioteca y las guardadas. */
-    art.load(true);
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
     try {
-      const r = await fetch(`${API}/library`);
+      /* `shape=compact` pide las filas en columnas (libraryCompact.js): un
+         backend viejo ignora el parametro desconocido y sigue mandando
+         `files` como siempre (P-large-library-scale-1, -8). */
+      const r = await fetch(`${API}/library?shape=compact`);
       if (!r.ok) {
         /* El 503 del token de la nube se distingue del resto: ahi lo que hay
            que hacer es reconectar, no reintentar (ADR 0002, seccion 8). */
         const d = await r.json().catch(() => ({}));
+        setLibPending(false);
         setLibErr(true); // un 500 no puede pisar el contador
         setLibErrCode(d.code || null);
         return;
       }
+      const pending = r.headers.get("x-spitifo-library-pending") === "1";
       const d = await r.json();
-      setLib(pendingDeletes.current.filter(d.files || []));
-      writeLibCache(d.files || []);
+      const fields = Array.isArray(d.fields) && d.fields.length ? d.fields : COMPACT_FIELDS;
+      const files = Array.isArray(d.rows) ? expandCompactLibrary(fields, d.rows) : d.files || [];
+      setLib(pendingDeletes.current.filter(files));
+      /* Guardadas y portadas despues de la biblioteca: son las que hacen
+         competencia en el primer pintado, no la lista que necesita Inicio
+         (P-cold-start-3). Se piden en cada recarga: una descarga terminada
+         enlaza su archivo con la guardada en el servidor. */
+      saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
+      art.load(true);
+      setLibPending(pending);
+      clearTimeout(retryTimer.current);
+      if (pending) {
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          loadLibRef.current?.();
+        }, 1200);
+      }
+      /* Siempre se guarda compacto, aunque el backend haya mandado `files`
+         (uno viejo que no entiende `shape=compact`): el espejo de
+         localStorage no depende de la version del servidor. */
+      /* El espejo se escribe al ocio: un JSON.stringify de miles de filas
+         justo cuando Inicio pinta es un bloqueo de decenas de ms en el telefono
+         (P-cold-start-7). pagehide lo adelanta si la app se cierra antes. */
+      pendingCache.current = {
+        fields,
+        rows: Array.isArray(d.rows) ? d.rows : compactLibraryRows(files, fields),
+      };
+      cancelCacheIdle.current?.();
+      cancelCacheIdle.current = afterIdle(flushLibCache);
       setLibErr(false);
       setLibErrCode(null);
       /* El borrado mira esta lista, sin filtrar, para saber que se fue de verdad. */
-      return d.files || [];
+      return files;
     } catch (e) {
+      setLibPending(false);
       setLibErr(true);
       setLibErrCode(null);
       /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
-  }, []);
+  }, [flushLibCache]);
+  loadLibRef.current = loadLib;
+  useEffect(() => {
+    window.addEventListener("pagehide", flushLibCache);
+    return () => {
+      window.removeEventListener("pagehide", flushLibCache);
+      clearTimeout(retryTimer.current);
+      flushLibCache();
+    };
+  }, [flushLibCache]);
+
+  /* La biblioteca es la PRIMERA peticion del arranque: los efectos de los
+     hijos corren antes que los del padre, asi que pedirla aqui (y no en un
+     efecto mas abajo) es lo que la pone delante de listas y health. */
+  useEffect(() => {
+    loadLib();
+  }, [loadLib]);
+  /* Lo demas espera al ocio: ninguno de estos datos decide si Inicio pinta. */
+  useEffect(() => afterIdle(loadHealth), [loadHealth]);
 
   /* La notificacion (y Media Session) leen track.artwork del motor. Cuando
      cambia la foto de la pista que suena, o cambia de pista, se vuelve a
@@ -790,12 +867,6 @@ export default function App() {
     [leaveNp, nav.open, nav.goTo, nav.goTab]
   );
 
-  /* /api/library se pide al montar y no solo al abrir una pantalla: es una lista
-     de archivos locales (no toca red) y asi las pantallas ya la tienen. */
-  useEffect(() => {
-    loadLib();
-  }, [loadLib]);
-
   /* null = la consulta sigue en vuelo. Sin esta distincion Inicio mostraria
      "vacia" mientras todavia pregunta. */
   const libFiles = useMemo(() => lib || [], [lib]);
@@ -937,6 +1008,13 @@ export default function App() {
               <SwipeDots tab={nav.tab} onTab={nav.goTab} />
             ))}
         </main>
+        {/* Mientras el servidor escanea se ve la biblioteca del espejo y este
+            aviso: la primera pantalla nunca espera al escaneo. */}
+        {libPending && (
+          <div className="lib-sync" role="status" aria-live="polite">
+            Actualizando biblioteca…
+          </div>
+        )}
         {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
             completa. */}
         {np && NowPlaying && (

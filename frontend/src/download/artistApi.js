@@ -16,11 +16,29 @@ export async function searchArtists(q, limit = 3, signal) {
   return Array.isArray(d.results) ? d.results : [];
 }
 
+const artistCache = new Map();
+
+/* El detalle de un artista se pide una sola vez por sesion y se guarda en
+   memoria, igual que loadAlbumTracklist con el album: volver a abrir la misma
+   ficha no repite el pedido. Se guarda la promesa, no el resultado, asi dos
+   aperturas a la vez comparten el mismo pedido; por eso no lleva signal de
+   quien lo pidio (abortarlo dejaria sin ficha a la otra). Un fallo borra la
+   entrada para poder reintentar en otra visita. */
+
 /* GET /api/artist/{id} -> { id, name, genre, artwork_url, albums, live,
    compilations, singles }. 404 si no existe, 502 si falla iTunes. */
-export async function fetchArtist(id, signal) {
-  const r = await fetch(`${API}/artist/${encodeURIComponent(id)}`, { signal });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(errMsg(d, "no se pudo abrir el artista"));
-  return d;
+export function fetchArtist(id) {
+  if (artistCache.has(id)) return artistCache.get(id);
+  const pending = fetch(`${API}/artist/${encodeURIComponent(id)}`)
+    .then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errMsg(d, "no se pudo abrir el artista"));
+      return d;
+    })
+    .catch((e) => {
+      artistCache.delete(id);
+      throw e;
+    });
+  artistCache.set(id, pending);
+  return pending;
 }

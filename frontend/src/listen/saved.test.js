@@ -71,6 +71,27 @@ describe("saved store", () => {
     expect(failing.getState().byId.size).toBe(1);
   });
 
+  it("a forced reload with the same content keeps the old Map (P-render-main-thread-7)", async () => {
+    const fetchFn = vi.fn(async () => reply([record()]));
+    const store = createSaved({ fetchFn });
+    await store.load();
+    const before = store.getState().byId;
+    await store.load(true);
+    expect(store.getState().byId).toBe(before);
+  });
+
+  it("a forced reload with a real change produces a new Map", async () => {
+    let songs = [record()];
+    const fetchFn = vi.fn(async () => reply(songs));
+    const store = createSaved({ fetchFn });
+    await store.load();
+    const before = store.getState().byId;
+    songs = [record(), record("yt:bbbbbbbbbbb")];
+    await store.load(true);
+    expect(store.getState().byId).not.toBe(before);
+    expect(store.getState().byId.size).toBe(2);
+  });
+
   it("saveAll puts every song of an album in one request", async () => {
     const songs = [record("yt:aaaaaaaaaaa"), record("yt:bbbbbbbbbbb")];
     const fetchFn = vi.fn(async () => reply(songs));

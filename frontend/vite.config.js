@@ -1,5 +1,21 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import preact from "@preact/preset-vite";
+
+/* La version instalada que muestra Ajustes (R2-install-e). scripts/set_version.py
+   ya la deja en desktop/src-tauri/tauri.conf.json y en android/app/build.gradle.kts
+   antes de este build, en los dos shells: se lee de ahi en vez de duplicarla en
+   frontend/package.json, que set_version.py no toca. En `npm run dev` sin ese
+   paso queda la que haya comprometida en el archivo. */
+function appVersion() {
+  try {
+    const path = fileURLToPath(new URL("../desktop/src-tauri/tauri.conf.json", import.meta.url));
+    return JSON.parse(readFileSync(path, "utf8")).version;
+  } catch {
+    return "0.0.0";
+  }
+}
 
 /* El codigo usa la API de React y se empaqueta con Preact (preact/compat):
    react-dom pesaba ~130 KB del JavaScript que el telefono lee al arrancar.
@@ -7,6 +23,9 @@ import preact from "@preact/preset-vite";
 export default defineConfig({
   /* Los alias de React los pone esta config (abajo), no el preset. */
   plugins: [preact({ reactAliasesEnabled: false })],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion()),
+  },
   resolve: {
     alias: [
       { find: /^react$/, replacement: "preact/compat" },

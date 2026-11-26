@@ -17,6 +17,7 @@
    ------------------------------------------------------------------------- */
 
 import { API } from "../shared/api.js";
+import { setBoundedMap } from "../shared/bounded.js";
 import { pauseVideo } from "./videoStore.js";
 
 const DEFAULT_VOLUME = 0.8;
@@ -26,6 +27,9 @@ const DEFAULT_VOLUME = 0.8;
    que una URL caducada necesita una peticion nueva, no seguir pulsando play
    sobre la misma. */
 const STALL_MS = 8000;
+/* Portadas de sesiones larguisimas (horas, cientos de temas): basta con la
+   de las ultimas pistas para que volver atras siga teniendo su foto. */
+const BASE_ART_CAP = 50;
 
 /* `track`: { key, src, title, meta, duration, artwork, kind, label }
    - key identifica la pista en la cola (es lo que mueve prev/next).
@@ -276,7 +280,7 @@ export function createEngine({
     const i = index >= 0 && index < q.length ? index : 0;
     const a = ensureAudio();
     /* La cola nunca lleva la foto propia: siempre se guarda la de origen. */
-    baseArt.set(track.key, track.artwork || null);
+    setBoundedMap(baseArt, track.key, track.artwork || null, BASE_ART_CAP);
     /* Se avisa ANTES de reemplazar la foto: quien escucha (el historial)
        todavia puede leer la pista y la posicion que se estan cerrando. */
     if (state.track) {

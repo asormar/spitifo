@@ -14,15 +14,37 @@ import unicodedata
 from functools import lru_cache
 from typing import Any
 
-import httpx
-
 from .config import USER_AGENT
 
 log = logging.getLogger("spitifo.identify")
 
 # se leen solo los primeros KB: alcanza para los tags ID3 sin bajar 40MB
 HEAD_BYTES = 262_144
-TIMEOUT = httpx.Timeout(25.0, connect=10.0)
+TIMEOUT_S = 25.0
+
+# Un cliente por proceso: antes `identify()` abria uno nuevo (y pagaba un
+# handshake TLS) por CADA pista a verificar, y una pagina de resultados de
+# Internet Archive verifica varias a la vez. Mismo patron que `stream.client()`
+# y `Source.client` (sources.py).
+_client: httpx.AsyncClient | None = None
+
+
+def client() -> httpx.AsyncClient:
+    import httpx  # perezoso: verificar pistas no es parte del arranque
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            timeout=httpx.Timeout(TIMEOUT_S, connect=10.0),
+            follow_redirects=True, headers={"User-Agent": USER_AGENT})
+    return _client
+
+
+async def aclose() -> None:
+    """Cierra el cliente compartido al apagar la app."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
 
 def _clean(s: str | None) -> str | None:
@@ -73,16 +95,14 @@ def _derive_from_name(fname: str) -> dict[str, Any]:
 async def identify(url: str, fname: str) -> dict[str, Any]:
     """Devuelve los tags reales del audio en `url` (id3/flac/mp4)."""
     try:
-        timeout = TIMEOUT
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
-                                     headers={"User-Agent": USER_AGENT}) as c:
-            async with c.stream("GET", url) as r:
-                r.raise_for_status()
-                buf = bytearray()
-                async for chunk in r.aiter_bytes(32768):
-                    buf.extend(chunk)
-                    if len(buf) >= HEAD_BYTES:
-                        break
+        c = client()
+        async with c.stream("GET", url) as r:
+            r.raise_for_status()
+            buf = bytearray()
+            async for chunk in r.aiter_bytes(32768):
+                buf.extend(chunk)
+                if len(buf) >= HEAD_BYTES:
+                    break
         data = bytes(buf)
     except Exception as e:
         log.warning("no se pudo leer %s: %s", fname, e)

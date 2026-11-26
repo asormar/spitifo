@@ -182,14 +182,18 @@ export function ArtistPage({ view, active }) {
   const [populares, setPopulares] = useState([]);
 
   useEffect(() => {
-    const ac = new AbortController();
+    let vivo = true;
     setState({ status: "loading", data: null });
-    fetchArtist(view.id, ac.signal)
-      .then((data) => setState({ status: "ok", data }))
-      .catch((e) => {
-        if (e.name !== "AbortError") setState({ status: "error", data: null });
+    fetchArtist(view.id)
+      .then((data) => {
+        if (vivo) setState({ status: "ok", data });
+      })
+      .catch(() => {
+        if (vivo) setState({ status: "error", data: null });
       });
-    return () => ac.abort();
+    return () => {
+      vivo = false;
+    };
   }, [view.id, attempt]);
 
   /* Lo que tienes de cada disco recorre toda la biblioteca: se calcula una vez

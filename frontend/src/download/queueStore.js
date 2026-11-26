@@ -20,9 +20,23 @@ import { markQueueReady } from "./queueBoot.js";
 export const BUSY_STATES = new Set(["queued", "pending", "downloading", "processing", "saving"]);
 const ACTIVE_STATES = new Set(["pending", "downloading", "processing", "saving"]);
 const TERMINAL_STATES = new Set(["done", "error", "cancelled"]);
-const POLL_FAST_MS = 1000;
-const POLL_SLOW_MS = 10000;
-const POLL_TIMEOUT_MS = 10000;
+/* Sondeo ADAPTATIVO (P-downloads-pipeline-7): rapido mientras una pista baja o
+   sube, mas lento si solo hay items en cola, y parado cuando no hay trabajo. */
+export const POLL_ACTIVE_MS = 400;
+export const POLL_QUEUED_MS = 1500;
+export const POLL_IDLE_MS = 10000;
+export const POLL_TIMEOUT_MS = 10000;
+
+/* Pura, para probar los tres regimenes sin temporizadores. `null` = no sondear. */
+export function pollDelay({ offline = false, busy = false, active = false,
+  sheetOpen = false, items = 0, retryDelay = 1000, capHits = 0 } = {}) {
+  if (offline && !busy && !sheetOpen && capHits >= 2) return null;
+  if (offline) return retryDelay;
+  if (active) return POLL_ACTIVE_MS;
+  if (busy) return POLL_QUEUED_MS;
+  if (sheetOpen && items) return POLL_IDLE_MS;
+  return null;
+}
 
 /* Espera del reintento cuando no hay red: 1, 2, 4, 8 y tope de 15 s. Pura, para
    probarla sin temporizadores. */
@@ -108,15 +122,21 @@ export function jobPatch(it) {
   const title = it.title;
   switch (it.status) {
     case "queued":
-      return { status: "queued", phase: null, progress: 0, title };
+      return { status: "queued", phase: it.phase || null, progress: 0, title };
     case "pending":
-      return { status: "pending", phase: null, progress: 0, title };
+      return { status: "pending", phase: it.phase || null, progress: 0, title };
     case "downloading":
       return { status: "downloading", phase: it.phase || "downloading", progress: pct, title };
     case "processing":
-      return { status: "processing", phase: it.phase || "processing", progress: 100, title };
+      return { status: "processing", phase: it.phase || "processing", progress: pct, title };
     case "saving":
-      return { status: "processing", phase: "saving", progress: 100, title };
+      /* `uploading` trae su propio porcentaje de bytes; el resto sigue en 100. */
+      return {
+        status: "processing",
+        phase: it.phase || "saving",
+        progress: it.phase === "uploading" ? pct : 100,
+        title,
+      };
     case "done":
       /* `key` deja que la tarjeta de progreso ofrezca "Ver en biblioteca". */
       return { status: "done", phase: null, progress: 100, title, key: it.key };
@@ -129,7 +149,45 @@ export function jobPatch(it) {
   }
 }
 
-export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
+const defaultFetch = (...a) => fetch(...a);
+
+/* R2: el tipo de conexion lo da el Bridge nativo de Android (el unico que
+   distingue roaming) o `navigator.connection`. Sin dato, `unknown` no bloquea.
+   Las dos preferencias se leen del mismo localStorage que Ajustes escribe. */
+export function networkPayload() {
+  const win = typeof window === "undefined" ? null : window;
+  let type = "unknown";
+  try {
+    type = win?.SpitifoAndroid?.connectionType?.() || type;
+  } catch { /* bridge anterior sin este metodo */ }
+  const c = win?.navigator?.connection;
+  if (type === "unknown" && c?.type) type = c.type;
+  if (type === "unknown" && c?.effectiveType) type = "cellular";
+  const pref = (k, d) => {
+    try {
+      const v = win?.localStorage?.getItem(k);
+      return v == null ? d : v === "1";
+    } catch { return d; }
+  };
+  return {
+    type: String(type).toLowerCase(),
+    online: win?.navigator?.onLine !== false && type !== "none",
+    wifi_only: pref("spitifo:download-wifi-only", false),
+    roaming_allowed: pref("spitifo:download-roaming-allowed", true),
+  };
+}
+
+function reportNetwork(fetchImpl) {
+  try {
+    fetchImpl(`${API}/downloads/network`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(networkPayload()),
+    });
+  } catch { /* sin red, la cola sigue con el ultimo estado */ }
+}
+
+export function createQueueStore(fetchImpl = defaultFetch) {
   let state = { items: [], groups: [], running: 0, queued: 0, offline: false };
   const listeners = new Set();
   const waiters = new Map();
@@ -139,6 +197,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
   let timer = null;
   let sheetOpen = false;
   let bound = false;
+  let unbindNetwork = null;
   let disposed = false;
   let hydrated = false;
   let firstPayload = true;
@@ -211,6 +270,16 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     const alive = new Set(incoming.map((i) => i.id));
 
     for (const key of published.keys()) if (!alive.has(key)) published.delete(key);
+    for (const key of resumed.keys()) if (!alive.has(key)) resumed.delete(key);
+
+    /* ids de grupo (el mismo que arma groupItems: el del grupo, o
+       "single:<id>" sin uno) con al menos una pista recien terminada SIN fila
+       esperandola. Se refresca la biblioteca una vez por GRUPO cuando
+       termina, no una vez por pista: un album de 15 hacia 15 rescans
+       completos (P-downloads-pipeline-2, P-render-main-thread-1). Para una
+       descarga suelta su "grupo" es ella misma, asi que sigue refrescando en
+       el acto, como siempre. */
+    const needsLibraryRefresh = new Set();
 
     for (const it of incoming) {
       const prev = prevById.get(it.id);
@@ -219,10 +288,10 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
       if (it.status === "done" && prev?.status !== "done") {
         if (it.match) verdictStore.setFromDownload(it.track, it.query || "", { match: it.match, real_title: it.real_title });
         /* La fila que espera este item ya refresca la biblioteca al resolverse.
-           El grupo (y el reenganche sin fila) la refresca desde aca, una vez
-           por pista terminada. Al abrir no hay nada que refrescar: App ya pidio
-           /api/library. */
-        if (!firstPayload && !waiters.has(it.id)) hooks.onLibrary?.();
+           Al abrir no hay nada que refrescar: App ya pidio /api/library. */
+        if (!firstPayload && !waiters.has(it.id)) {
+          needsLibraryRefresh.add(it.group?.id || `single:${it.id}`);
+        }
         settleWaiter(it);
       } else if ((it.status === "error" || it.status === "cancelled") && prev?.status !== it.status) {
         settleWaiter(it);
@@ -244,8 +313,9 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
 
     const wasEnded = new Map(prevGroups.map((g) => [g.id, groupSummary(g).ended]));
     for (const g of groups) {
-      if (g.single) continue;
       const s = groupSummary(g);
+      if (needsLibraryRefresh.has(g.id) && s.ended) hooks.onLibrary?.();
+      if (g.single) continue;
       if (s.ended && wasEnded.get(g.id) === false) hooks.onToast?.(groupToast(g.title, s));
     }
 
@@ -266,15 +336,19 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
        visibilitychange ya llama a wake() en cuanto vuelve a ser visible. */
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
     const busy = state.items.some((i) => BUSY_STATES.has(i.status));
-    /* Sin trabajo que reanudar y con la hoja cerrada, dos esperas de 15 s son
-       suficientes: el siguiente online/visible o una accion del usuario vuelve
-       a sondear. Con trabajo pendiente se sigue intentando sin limite. */
-    if (state.offline && !busy && !sheetOpen && capHits >= 2) return;
-    let delay;
-    if (state.offline) delay = retryDelay;
-    else if (busy) delay = POLL_FAST_MS;
-    else if (sheetOpen && state.items.length) delay = POLL_SLOW_MS;
-    else return;
+    const active = state.items.some((i) => ACTIVE_STATES.has(i.status));
+    const delay = pollDelay({
+      offline: state.offline,
+      busy,
+      active,
+      sheetOpen,
+      items: state.items.length,
+      retryDelay,
+      capHits,
+    });
+    /* Sin trabajo y con la hoja cerrada NO queda sondeando: el siguiente
+       online/visible o una accion del usuario lo despierta. */
+    if (delay === null) return;
     timer = setTimeout(poll, delay);
   };
 
@@ -356,6 +430,19 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") wake();
     });
+    /* R2: la cola informa el tipo de conexion al backend y reacciona a los
+       cambios que reporta el Bridge de Android / navigator.connection. */
+    /* Solo el store real reporta: los tests inyectan su propio transporte. */
+    if (fetchImpl === defaultFetch) {
+      reportNetwork(fetchImpl);
+      const onChange = () => { reportNetwork(fetchImpl); poll(); };
+      window.addEventListener("online", onChange);
+      window.addEventListener("spitifo-network", onChange);
+      unbindNetwork = () => {
+        window.removeEventListener("online", onChange);
+        window.removeEventListener("spitifo-network", onChange);
+      };
+    }
   };
 
   /* Al abrir: con payload (el GET del sondeo de arranque) se aplica directo, sin
@@ -467,6 +554,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     has: (groupId, rk) => Boolean(itemFor(rk, groupId)),
     dispose: () => {
       disposed = true;
+      unbindNetwork?.();
       clearTimeout(timer);
       timer = null;
     },

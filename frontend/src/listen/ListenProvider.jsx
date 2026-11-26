@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import { isOverlay } from "../app/navigation.js";
 import { keyUrl } from "../shared/api.js";
+import { afterIdle } from "../shared/raf.js";
 import { engine } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
@@ -58,7 +59,11 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
   const savedById = useSaved((s) => s.byId);
-  const hist = useHistory();
+  /* Selector sobre el Map estable (ver playsOf en history.js): un play/skip
+     deja de re-renderizar siquiera ESTE componente, no solo de invalidar el
+     memo de mas abajo (useSyncExternalStore compara por referencia y el Map
+     no cambia de identidad entre eventos). */
+  const plays = useHistory((s) => s.plays);
   const online = useOnline();
 
   /* Archivos y guardadas se juntan en UN useMemo: ni una segunda pasada por
@@ -66,22 +71,25 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const merged = useMemo(() => mergeLibrary(files, savedById), [files, savedById]);
   const { entries, byKey } = merged;
   const index = useMemo(() => buildIndex(entries), [entries]);
-  const plays = useMemo(
-    () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
-    [hist.tracks]
-  );
   const check = useMemo(() => checkedSummary(entries), [entries]);
   const model = useMemo(
     () => ({ entries, index, byKey, savedById, plays, lists, listsReady, storage, check }),
     [entries, index, byKey, savedById, plays, lists, listsReady, storage, check]
   );
 
-  /* Las listas y el historial se piden una vez al arrancar; los fallos de
-     escritura de las listas (que ya deshizo el almacen) se dicen en el aviso. */
+  /* Las listas y el historial no deciden el primer pintado: se van al ocio
+     para que no compitan con /api/library ni con el parseo del entry
+     (P-cold-start-3). Los fallos de escritura se dicen en el aviso. */
   useEffect(() => {
-    playlists.load();
-    history.load();
-    return playlists.onError(show);
+    const cancel = afterIdle(() => {
+      playlists.load();
+      history.load();
+    });
+    const off = playlists.onError(show);
+    return () => {
+      cancel();
+      off();
+    };
   }, [show]);
 
   const value = useMemo(() => {

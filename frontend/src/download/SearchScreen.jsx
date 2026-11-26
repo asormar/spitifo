@@ -4,6 +4,7 @@ import { rowKey } from "../shared/api.js";
 import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
 import { listKey } from "../shared/keyNav.js";
+import { useOnline } from "../shared/online.js";
 import { usePc } from "../shared/viewport.js";
 import { MODES, PLACEHOLDER } from "./constants.js";
 import { useDownloadFormat, useDownloadMedia } from "../settings/downloadPrefs.js";
@@ -14,11 +15,21 @@ import AlbumShelf, { AlbumShelfSkeleton } from "./AlbumShelf.jsx";
 import BestResult, { BestResultSkeleton } from "./BestResult.jsx";
 import { loadAlbumChunk } from "./albumChunk.js";
 import { loadArtistChunk } from "./artistChunk.js";
-import { bestArtwork, bestMatch } from "./artistLogic.js";
+import { bestArtwork } from "./artistLogic.js";
+import { pickBest } from "./bestPick.js";
+import { didYouMean } from "./suggestions.js";
+import { entriesFor, TYPE_CHIPS, SOURCE_CHIPS, countKind, countSource, filterEntries } from "./resultTypes.js";
+import { needsProgress, progressOf } from "./searchProgress.js";
+import { offlineText, shelfErrorText, typoBody, typoHead } from "./searchNotices.js";
+import { rememberRecent } from "./recentSearches.js";
+import useLibraryHits from "./useLibraryHits.js";
+import useSuggestions from "./useSuggestions.js";
 import Choice from "./Choice.jsx";
 import Ficha from "./Ficha.jsx";
 import Idle from "./Idle.jsx";
 import LibraryHits from "./LibraryHits.jsx";
+import RecentSearches from "./RecentSearches.jsx";
+import SourceLegend from "./SourceLegend.jsx";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import { MenuSurface } from "./ResultMenu.jsx";
 import { pickResultAction, resultMenuGroups } from "./resultMenuActions.js";
@@ -48,6 +59,12 @@ const EXITS = [
   ["sources", "Buscar en todas las fuentes", "Incluye Internet Archive y Wikimedia"],
   ["link", "Pegar un enlace de YouTube", "Se descarga directamente"],
 ];
+/* Los chips antes elegian la fuente sin decir que hacia cada uno. */
+const MODE_SUB = {
+  matched: "Música · ficha y audio completo",
+  sources: "Todas las fuentes · iTunes, Archive, Jamendo, Wikimedia y YouTube",
+  ytdlp: "YouTube · solo audio completo, sin ficha del disco",
+};
 
 /* La ficha del album (y la hoja de Descargas) viven en un chunk aparte, que se
    adelanta al enfocar una tarjeta de album. */
@@ -75,7 +92,17 @@ export default function SearchScreen({
   const fine = () => window.matchMedia("(pointer: fine)").matches;
   const run = useSearchRun({ onRequest: () => (focusPending.current = fine()) });
   const { q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter, listRef } = run;
-  const { shelvesPending, streamDone } = run;
+  const { shelvesPending, shelfFailed, retryShelves, streamDone } = run;
+  const online = useOnline();
+  /* Filtros por tipo y fuente sobre lo que ya esta en pantalla. Se reinician
+     con cada busqueda nueva, igual que el filtro de completas. */
+  const [typeChip, setTypeChip] = useState("all");
+  const [sourceChip, setSourceChip] = useState("all");
+  const [linkHint, setLinkHint] = useState(false);
+  useEffect(() => {
+    setTypeChip("all");
+    setSourceChip("all");
+  }, [run.resultsRun]);
 
   /* Formato y contenido se eligen en Ajustes y se leen igual que antes: la
      descarga recibe exactamente estos valores. M4A por defecto (en YouTube es
@@ -153,26 +180,38 @@ export default function SearchScreen({
     [nav.open]
   );
 
-  /* «Mejor resultado»: solo si el texto nombra de verdad al primer artista.
-     La portada redonda sale del disco mas nuevo que haya entre los resultados
-     de albumes; sin el, la tarjeta cae a la inicial. */
-  const best = bestMatch(artistQuery, artists);
-  const bestArtist = best ? { ...best, artwork_url: bestArtwork(best, albums, results) } : null;
-  const onOpenArtist = useCallback(
-    (artist, anchor) => {
-      loadArtistChunk();
-      /* Los resultados viajan en la entrada: el artista abre Populares sin un
-         estado global nuevo ni otra peticion. */
-      nav.open({
-        type: "itunesartist",
-        id: artist.id,
-        name: artist.name,
-        genre: artist.genre,
-        songs: results,
-        anchor,
-      });
+  /* «Mejor resultado»: gana el tipo que de verdad coincidio (titulo exacto >
+     artista exacto > difuso) y se dibuja con su etiqueta. Las otras fuentes ya
+     no se quedan sin tarjeta. */
+  const bestRaw = pickBest({ artists, albums, results, query });
+  const best = bestRaw
+    ? {
+        ...bestRaw,
+        artwork_url: bestRaw.artwork_url ||
+          (bestRaw.kind === "artist" ? bestArtwork(bestRaw.item, albums, results) : null),
+      }
+    : null;
+  const onOpenBest = useCallback(
+    (item, anchor) => {
+      if (item.kind === "artist") {
+        loadArtistChunk();
+        /* Los resultados viajan en la entrada: el artista abre Populares sin un
+           estado global nuevo ni otra peticion. */
+        nav.open({
+          type: "itunesartist",
+          id: item.item.id,
+          name: item.item.name,
+          genre: item.item.genre,
+          songs: results,
+          anchor,
+        });
+      } else if (item.kind === "album") {
+        onOpenAlbum(item.item, anchor);
+      } else {
+        nav.open({ type: "ficha", key: rowKey(item.item), t: item.item, anchor });
+      }
     },
-    [nav.open, results]
+    [nav.open, results, onOpenAlbum]
   );
 
   /* Lo que Buscar hace distinto con el ⋯: adelanta el chunk del album, cae a
@@ -224,8 +263,10 @@ export default function SearchScreen({
     [resmoreT, resmoreAt, query, onDl, onAlbumFromResult, onArtistFromResult, show, listenCtx.locationToken, nav]
   );
 
-  /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. */
+  /* Un fallo de busqueda y uno de descarga son el mismo aviso: el ultimo. El
+     de busqueda lleva salida y reintento, como los demas avisos de la app. */
   const notice = dl.notice || (err ? noticeFromError(err) : null);
+  const searchRetry = useCallback(() => run.submit(), [run.submit]);
 
   /* Un fallo/exito de descarga desde una tarjeta lejana pintaba el aviso bajo
      el hero, fuera de vista. Solo se hace scroll si de verdad esta fuera. */
@@ -248,32 +289,52 @@ export default function SearchScreen({
          los resultados, como los ejemplos. En movil no: el input ya se suelta
          y mover el foco volveria a abrir el teclado. */
       focusPending.current = fine();
-      run.submit();
+      const ok = run.submit();
+      if (ok) record(q, mode);
       if (window.matchMedia("(pointer: coarse)").matches) inputRef.current?.blur();
     },
-    [run.submit]
+    [run.submit, record, q, mode]
   );
 
   const runExample = useCallback(
-    (text) => {
+    (text, m = mode) => {
       setQ(text);
+      setLinkHint(false);
       focusPending.current = true;
-      run.run(text, mode);
+      run.run(text, m);
+      record(text, m);
     },
-    [mode, run.run, setQ]
+    [mode, run.run, setQ, record]
+  );
+
+  /* Elegir una sugerencia busca ya, sin dar Enter: es la misma busqueda de
+     siempre, con el texto y el modo que traia la sugerencia. */
+  const pickSuggestion = useCallback(
+    (item) => runExample(item.title, mode),
+    [runExample, mode]
+  );
+
+  /* Pegar un enlace pasa por onPaste y por el estado de React, nunca por el DOM
+     directo: antes se escribia el placeholder a mano y se añadia un listener. */
+  const onPaste = useCallback(
+    (e) => {
+      const text = e.clipboardData?.getData("text") || "";
+      if (!/youtube\.com|youtu\.be/i.test(text)) return;
+      e.preventDefault();
+      setQ(text.trim());
+      setLinkHint(true);
+      inputRef.current?.focus({ preventScroll: true });
+    },
+    [setQ]
   );
 
   /* "Pegar un enlace": deja el campo vacio y abierto con la pista hasta que
-     escriba. El propio input recupera su placeholder al primer caracter; un
-     enlace de YouTube ya fuerza el modo en planSubmit. */
+     escriba. Un enlace de YouTube fuerza el modo en planSubmit. */
   const pasteLink = useCallback(() => {
     setQ("");
-    const f = inputRef.current || document.querySelector('.topbar [data-field="search"]');
-    if (!f) return;
-    f.focus({ preventScroll: true });
-    f.placeholder = LINK_HINT;
-    f.addEventListener("input", () => { f.placeholder = PLACEHOLDER[mode] || PLACEHOLDER.default; }, { once: true });
-  }, [mode, setQ]);
+    setLinkHint(true);
+    inputRef.current?.focus({ preventScroll: true });
+  }, [setQ]);
 
   /* Las mismas acciones en el bloque grande y en el aviso de resultados
      debiles; en este ultimo solo caben las dos primeras, en pequeno. */
@@ -306,6 +367,17 @@ export default function SearchScreen({
 
   const { full: fullCount, shown, filterEmpty } = useMemo(() => summarize(results, filter), [results, filter]);
 
+  /* Una sola lista de entradas para los contadores y los filtros: canciones,
+     albumes y artistas ya en pantalla. Las filas siguen siendo las de siempre. */
+  const entries = useMemo(
+    () => entriesFor({ results: shown, albums, artists }),
+    [shown, albums, artists]
+  );
+  const entriesShown = useMemo(
+    () => filterEntries(entries, { type: typeChip, source: sourceChip }),
+    [entries, typeChip, sourceChip]
+  );
+
   /* Las filas entran una tras otra SOLO con la primera lista de cada
      busqueda: los lotes que la completan no la repiten ni alargan el reloj, y
      volver a la pantalla (display:none -> block) tampoco. .screen[data-seen] no
@@ -323,6 +395,36 @@ export default function SearchScreen({
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const getQueue = useCallback(() => shownRef.current, []);
+
+  /* Escribir ya muestra sugerencias baratas: la biblioteca en memoria primero
+     y una peticion ligera a iTunes tras 160 ms. YouTube espera a elegir. */
+  const lib = useLibraryHits(active);
+  const librarySuggestions = useMemo(
+    () => (lib?.songs || []).slice(0, 4).map((e) => ({
+      kind: "song",
+      id: e.id ?? `${e.artist || ""}:${e.title || ""}`,
+      title: e.title,
+      sub: e.artist,
+      source: "library",
+    })),
+    [lib]
+  );
+  const { suggestions } = useSuggestions({ q, library: librarySuggestions, enabled: active });
+
+  /* El «¿Quizas querias…?» se calcula sobre la biblioteca que ya esta en
+     memoria: no cuesta red y funciona tambien sin conexion. */
+  const libraryNames = useMemo(
+    () => (Array.isArray(files) ? files : []).flatMap((e) => [e?.title, e?.artist]).filter(Boolean),
+    [files]
+  );
+  const maybe = useMemo(
+    () => (searched && !results.length ? didYouMean(query, libraryNames, 3) : []),
+    [searched, results.length, query, libraryNames]
+  );
+
+  const record = useCallback((text, m) => {
+    if (text?.trim()) rememberRecent(undefined, text.trim(), m);
+  }, []);
 
   /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
@@ -377,18 +479,31 @@ export default function SearchScreen({
           className="sscr__field"
           inputRef={inputRef}
           value={q}
-          onChange={setQ}
+          onChange={(text) => { setQ(text); setLinkHint(false); }}
           onSubmit={onSubmit}
+          onPaste={onPaste}
           go="Buscar"
+          ghost
           busy={loading}
-          placeholder={PLACEHOLDER[mode] || PLACEHOLDER.default}
+          listId="search-combo"
+          suggestions={suggestions}
+          onPickSuggestion={pickSuggestion}
+          onArrowDown={(e) => {
+            const row = document.querySelector('.rlist .res__main');
+            if (!row) return;
+            e.preventDefault();
+            row.focus({ preventScroll: true });
+          }}
+          placeholder={linkHint ? LINK_HINT : PLACEHOLDER[mode] || PLACEHOLDER.default}
           label="Qué quieres escuchar"
         />
       )}
 
       <div className="tbar" role="group" aria-label="Cómo buscar">
         <Choice options={modeOptions} value={mode} onChange={setMode} ariaLabel="Modo de búsqueda" />
+        <SourceLegend />
       </div>
+      <p className="tbar__sub" aria-live="polite">{MODE_SUB[mode] || MODE_SUB.matched}</p>
 
       {notice?.tone === "err" && (
         <Strip tone="err" innerRef={msgRef} onClose={dl.notice ? dl.clearNotice : run.clearErr}>
@@ -404,6 +519,18 @@ export default function SearchScreen({
               </button>
             )
           )}
+          {!dl.notice && (
+            <button type="button" className="vf vf--retry" onClick={searchRetry}>Reintentar</button>
+          )}
+        </Strip>
+      )}
+      {!online && (
+        <Strip tone="warn">{offlineText()}</Strip>
+      )}
+      {shelfFailed && (
+        <Strip tone="warn">
+          {shelfErrorText()}{" "}
+          <button type="button" className="vf vf--retry" onClick={retryShelves}>Reintentar</button>
         </Strip>
       )}
       {matchedDead && (
@@ -432,16 +559,19 @@ export default function SearchScreen({
       <LibraryHits active={active} />
 
       {!searched && (
-        <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
+        <>
+          <RecentSearches onPick={runExample} />
+          <Idle files={files} active={active} onExample={runExample} onOpenLibrary={onOpenLibrary} />
+        </>
       )}
 
       {/* Hasta el catalogo, los estantes viejos siguen (atenuados, como la
           lista) o, sin ellos, un hueco con su alto: llegar no empuja a las
           canciones. Un estante vacio se va en el mismo pintado que ellas. */}
-      {bestArtist ? (
+      {best ? (
         <section className={cx("bestsec", shelvesPending && "is-stale")} aria-labelledby="best-h">
           <h2 className="sh2" id="best-h">Mejor resultado</h2>
-          <BestResult artist={bestArtist} results={results} query={query} onOpen={onOpenArtist} />
+          <BestResult best={best} results={results} query={query} onOpen={onOpenBest} />
         </section>
       ) : (
         shelvesPending && <BestResultSkeleton />
@@ -476,6 +606,9 @@ export default function SearchScreen({
                 Canciones
               </h2>
               <p className="rhead__s">{resultsHead(results.length, fullCount, streamDone)}</p>
+              {needsProgress(results, streamDone) && (
+                <p className="rhead__progress">{progressOf(results, results.length).text}</p>
+              )}
             </div>
             <Choice
               kind="toggle"
@@ -488,12 +621,33 @@ export default function SearchScreen({
               ariaLabel="Filtrar resultados"
             />
           </div>
+
+          {/* Chips por lo que es (no por donde vive) y por la fuente, con
+              recuentos sobre lo que ya hay en pantalla. */}
+          <div className="rfilters">
+            <Choice
+              kind="toggle"
+              options={TYPE_CHIPS.map((c) => ({ ...c, n: countKind(entries, c.id) }))}
+              value={typeChip}
+              onChange={setTypeChip}
+              ariaLabel="Filtrar por tipo"
+            />
+            <Choice
+              kind="toggle"
+              options={SOURCE_CHIPS.map((c) => ({ ...c, n: countSource(entries, c.id) }))}
+              value={sourceChip}
+              onChange={setSourceChip}
+              ariaLabel="Filtrar por fuente"
+            />
+          </div>
+
           {!filterEmpty && (
             <div className="thead" aria-hidden="true">
               <span>#</span>
               <span>Título</span>
               <span>Fuente</span>
               <span>Detalles</span>
+              <span>Acciones</span>
             </div>
           )}
           <ul
@@ -504,30 +658,50 @@ export default function SearchScreen({
             inert={loading}
             onKeyDown={(e) => listKey(e, ".res__main")}
           >
-            {shown.map((t, i) =>
-              t.extra?.is_group && t.extra?.track_count > 1 ? (
-                <ShowGroup
-                  key={t.source + t.source_id}
-                  t={t}
-                  i={i}
-                  query={query}
-                  onDl={dl.onDownload}
-                  busyIds={dl.busyIds}
-                  downloadedIds={dl.downloadedIds}
-                />
+            {entriesShown.map((entry, i) =>
+              entry.kind === "song" || entry.kind === "live" ? (
+                entry.item.extra?.is_group && entry.item.extra?.track_count > 1 ? (
+                  <ShowGroup
+                    key={entry.item.source + entry.item.source_id}
+                    t={entry.item}
+                    i={i}
+                    query={query}
+                    onDl={dl.onDownload}
+                    busyIds={dl.busyIds}
+                    downloadedIds={dl.downloadedIds}
+                  />
+                ) : (
+                  <ResultRow
+                    key={entry.item.source + entry.item.source_id}
+                    t={entry.item}
+                    i={i}
+                    query={query}
+                    busy={dl.busyIds.has(rowKey(entry.item))}
+                    downloaded={dl.downloadedIds.has(rowKey(entry.item))}
+                    onDl={onDl}
+                    onMenu={openResultMenu}
+                    queue={getQueue}
+                    source={query ? `search:${query}` : null}
+                  />
+                )
               ) : (
-                <ResultRow
-                  key={t.source + t.source_id}
-                  t={t}
-                  i={i}
-                  query={query}
-                  busy={dl.busyIds.has(rowKey(t))}
-                  downloaded={dl.downloadedIds.has(rowKey(t))}
-                  onDl={onDl}
-                  onMenu={openResultMenu}
-                  queue={getQueue}
-                  source={query ? `search:${query}` : null}
-                />
+                <li key={`${entry.kind}:${entry.item.id ?? entry.item.title}`} className="typerow">
+                  <button
+                    type="button"
+                    className="typerow__main"
+                    onClick={(e) =>
+                      entry.kind === "album"
+                        ? onOpenAlbum(entry.item, e.currentTarget)
+                        : onOpenBest({ kind: "artist", item: entry.item }, e.currentTarget)
+                    }
+                  >
+                    <span className="typerow__kind">
+                      {entry.kind === "album" ? "Álbum" : "Artista"}
+                    </span>
+                    <b>{entry.item.title || entry.item.name}</b>
+                    <span>{entry.item.artist || entry.item.genre || ""}</span>
+                  </button>
+                </li>
               )
             )}
           </ul>
@@ -540,6 +714,12 @@ export default function SearchScreen({
               </p>
             </div>
           )}
+          {!filterEmpty && !entriesShown.length && (
+            <div className="empty">
+              <h3>Nada con estos filtros</h3>
+              <p>Prueba con «Todas» o con otra fuente.</p>
+            </div>
+          )}
         </section>
       )}
 
@@ -547,11 +727,20 @@ export default function SearchScreen({
 
       {!loading && !results.length && searched && !err && fallback !== "empty" && (
         <div className="empty" ref={resultsRef} tabIndex={-1}>
-          <h3>No encontré nada para «{query}»</h3>
-          <p>
-            Prueba con menos palabras, con el nombre del artista solo, o cambia a Todas las fuentes para
-            buscar en iTunes, Internet Archive, Wikimedia y YouTube.
-          </p>
+          <h3>{typoHead(query)}</h3>
+          <p>{typoBody()}</p>
+          {maybe.length > 0 && (
+            <div className="maybe">
+              <span>¿Quizás querías…?</span>
+              <div className="maybe__chips">
+                {maybe.map((name) => (
+                  <button type="button" key={name} className="maybe__chip" onClick={() => runExample(name)}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
