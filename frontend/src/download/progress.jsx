@@ -1,3 +1,4 @@
+import "./progress.css";
 import { Icon } from "../shared/icons.jsx";
 import { useNav } from "../app/useNav.js";
 import { requestReveal } from "../listen/revealRequest.js";
