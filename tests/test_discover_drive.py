@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import functools
 import os
-import threading
 import time
 
 import httpx
@@ -23,12 +22,11 @@ from backend.app.main import create_app
 from backend.app.storage import set_storage
 from fake_drive import FakeDrive
 
-#: Lo que lista un GET frio: el indice (la biblioteca), el registro de guardadas,
-#: las fichas, los descartes y, en un solo `q`, los meses y agregados de escucha.
-COLD_LISTINGS = 5
-#: El indice y el registro de guardadas comparten lock: cuatro listados pueden
-#: correr a la vez, el quinto (library-) va justo despues del indice.
-PARALLEL_LISTINGS = 4
+#: Lo que lista un GET frio: el `lifespan` precalienta TODOS los prefijos
+#: chicos en un solo `files.list` (P-drive-io-4) antes de servir ningun
+#: pedido, asi que el indice, las guardadas, las fichas, los descartes y los
+#: meses/agregados de escucha salen de ese mismo listado, no de uno cada uno.
+COLD_LISTINGS = 1
 
 
 class _Tokens:
@@ -123,24 +121,23 @@ def test_el_get_frio_lista_cada_prefijo_una_sola_vez(launch, monkeypatch):
                for q in fake.list_queries)
 
 
-def test_los_listados_del_get_frio_van_en_paralelo(launch, monkeypatch):
-    fake, _ = launch
-    monkeypatch.setattr(main, "_enricher", FakeEnricher())
-    # Cada listado espera a los demas: en serie, el primero no pasa nunca.
-    barrier = threading.Barrier(PARALLEL_LISTINGS, timeout=5)
-    seen = []
+def test_el_precalentado_cubre_a_cada_registro_sin_listar_de_nuevo(launch):
+    """`warm_small_files` (disparado por el `lifespan`, aca llamado a mano
+    para no depender de el) deja un listado que cada registro reusa: ninguno
+    (indice, guardadas, playlists, fichas, descartes, escuchas) tiene que
+    volver a pedirle nada a Drive."""
+    fake, storage = launch
+    storage.warm_small_files()
+    fake.reset_calls()
 
-    def _on_list(q):
-        if len(seen) < PARALLEL_LISTINGS:
-            seen.append(q)
-            barrier.wait()
+    storage.list()
+    storage.load_saved()
+    storage.load_playlists()
+    storage.load_artistinfo()
+    storage.load_discover()
+    storage.load_listens_summary()
 
-    fake.on_list = _on_list
-    with TestClient(create_app()) as client:
-        response = client.get("/api/discover")
-
-    assert response.status_code == 200
-    assert _artists(response.json()) == ["X"]
+    assert fake.list_queries == []
 
 
 def test_el_enricher_no_vuelve_a_listar_lo_que_leyo_el_get(launch,
