@@ -1937,6 +1937,24 @@ async def downloads_enqueue(request: Request):
     return JSONResponse({"items": downloads.enqueue(specs, group)})
 
 
+async def downloads_network(request: Request):
+    """POST /api/downloads/network: informa la conexion y las preferencias.
+
+    La UI (Bridge de Android o `navigator.connection`) dice si hay red, si es
+    Wi-Fi y si el usuario exige Wi-Fi / prohibe roaming. Con eso la cola decide
+    si un item puede empezar o debe esperar con fase «Esperando Wi-Fi».
+    """
+    body = await _json_body(request)
+    tipo = body.get("type")
+    if tipo is not None and not isinstance(tipo, str):
+        raise _invalid(["body", "type"], "Input should be a valid string")
+    return JSONResponse(downloads.set_network(
+        type=tipo,
+        online=body.get("online"),
+        wifi_only=body.get("wifi_only"),
+        roaming_allowed=body.get("roaming_allowed")))
+
+
 async def downloads_cancel(request: Request):
     """POST /api/downloads/{id}/cancel: cancela un item en cola o en curso."""
     item_id = request.path_params["id"]
@@ -2282,6 +2300,23 @@ async def _fileinfo_records(storage) -> dict:
         return {}
 
 
+def _dumps_json(content: Any) -> bytes:
+    """Mismos parametros que `JSONResponse.render` (Starlette), para que un
+    payload serializado en un thread sea byte-por-byte lo mismo que uno hecho
+    en el loop."""
+    return json.dumps(content, ensure_ascii=False, allow_nan=False, indent=None,
+                      separators=(",", ":")).encode("utf-8")
+
+
+async def _json_response_threaded(content: Any, *, status_code: int = 200) -> Response:
+    """Como `JSONResponse(content)`, pero el `json.dumps` corre en el pool de
+    storage: docs/performance.md midio 1,15 MB para 3000 pistas, que en el
+    telefono son decenas de ms bloqueando el loop si se serializa inline.
+    """
+    body = await run_storage(_dumps_json, content)
+    return Response(body, status_code=status_code, media_type="application/json")
+
+
 #: Columnas de la forma compacta de `/api/library` (P-large-library-scale-1,
 #: P-large-library-scale-8). El array de objetos repite cada nombre de campo
 #: en cada fila; a 20k pistas eso es la mayor parte de los ~7.7 MB del cuerpo.
@@ -2346,8 +2381,10 @@ async def library(request: Request):
     files, records = await asyncio.gather(
         run_storage(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
-    body, etag = await asyncio.to_thread(_library_body, storage.describe(),
-                                         files, compact)
+    # Serializar en el pool de storage (no en el loop) y, ademas, responder 304
+    # si el cliente ya tiene el mismo cuerpo (ETag debil).
+    body, etag = await run_storage(_library_body, storage.describe(), files,
+                                   compact)
     headers = {**_LIBRARY_CACHE, "ETag": etag}
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
@@ -3472,6 +3509,11 @@ def _storage_payload(flow) -> dict:
         "quota": quota,
         # Como se firma el sign-in en este dispositivo: la UI decide con esto si
         # abre un link o si le pide el token al shell nativo.
+        # Cuanto pode estar atrasada una version antigua que solo lee el
+        # indice: los cambios del journal se funden en el al cerrar un grupo,
+        # al quedar idle o al apagar. Se muestra en Ajustes.
+        "index_journal": (storage.journal_stats()
+                          if hasattr(storage, "journal_stats") else None),
         "connect_via": "android" if android else "browser",
         "providers": [{
             "id": "google",
@@ -3805,6 +3847,7 @@ routes = [
     Route("/api/downloads", downloads_list, methods=["GET"]),
     Route("/api/downloads", downloads_enqueue, methods=["POST"]),
     Route("/api/downloads/cancel", downloads_cancel_group, methods=["POST"]),
+    Route("/api/downloads/network", downloads_network, methods=["POST"]),
     Route("/api/downloads/{id}/cancel", downloads_cancel, methods=["POST"]),
     Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),
