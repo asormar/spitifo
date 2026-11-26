@@ -3530,9 +3530,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 

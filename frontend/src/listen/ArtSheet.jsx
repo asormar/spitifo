@@ -120,12 +120,19 @@ export default function ArtSheet({ target, name, query, kind, anchor, onClose })
     if (!file) return;
     setBusy("upload");
     setNotice("");
+    let source;
     try {
-      const source = await decode(file);
+      source = await decode(file);
       const { image, small, urls } = exportPair(source);
       result(await art.upload(target, image, small, urls));
     } catch {
       result(false);
+    } finally {
+      /* `createImageBitmap` solo se cierra sola con el recolector: con un
+         recorte de 600 px eso son ~1.4 MB de pixeles decodificados colgando
+         hasta entonces. El `<img>` de respaldo no tiene `.close`, por eso el
+         encadenado opcional. */
+      source?.close?.();
     }
   };
 
