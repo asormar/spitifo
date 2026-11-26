@@ -331,7 +331,8 @@ export default function GenreMap({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label={`Mapa de ${data.count} géneros musicales. Los que están cerca comparten artistas; no es un mapa del sonido. Para ir a un género usa el buscador. Con el mapa enfocado, las flechas lo mueven, más y menos acercan o alejan y cero lo encuadra entero.`}
+          aria-label="Mapa de géneros"
+          aria-describedby={`${listId}-desc`}
         />
       </div>
 
@@ -448,7 +449,13 @@ export default function GenreMap({
         </div>
       )}
       {!(narrow && sel >= 0) && (
-        <p className="gmap__note">Cerca = comparten artistas, no suenan parecido.</p>
+        <p className="gmap__note" id={`${listId}-desc`}>
+          Los géneros cercanos comparten artistas.
+          <br />
+          Busca un género para ir a él.
+          <br />
+          Flechas: mover. Más y menos: acercar. Cero: ver todo.
+        </p>
       )}
 
       {sel >= 0 && (

@@ -87,6 +87,6 @@ installer with the signed one before it is uploaded.
 
 ## What is signed
 
-The installer (`Spitifo-<version>-windows-x64-setup.exe`). The executables
+The installer (`spitifo-<version>-windows-setup.exe`). The executables
 inside it are not signed individually; that is not needed for SmartScreen and
 would mean signing during the Tauri build.

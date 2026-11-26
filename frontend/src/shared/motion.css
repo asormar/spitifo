@@ -165,6 +165,17 @@
   animation: spin 1.15s linear infinite;
 }
 
+/* Pestaña tapada o pantalla apagada (shared/screenState.js pone data-bg en
+   <html>): ninguna animacion necesita producir cuadros cuando nadie mira.
+   Cubre las quince animaciones infinitas y cualquier otra que se anada, sin
+   tocar el <audio>: la reproduccion sigue igual. */
+html[data-bg],
+html[data-bg] *,
+html[data-bg] *::before,
+html[data-bg] *::after {
+  animation-play-state: paused !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

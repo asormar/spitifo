@@ -38,12 +38,41 @@ describe("jobsStore", () => {
     const s = createJobsStore(5000);
     s.setJobFor("a", { status: "done" });
     vi.advanceTimersByTime(3000);
-    s.setJobFor("b", { status: "error" });
+    s.setJobFor("b", { status: "downloading", progress: 50 });
     vi.advanceTimersByTime(2000);
     expect(s.getJobs().a).toBeUndefined();
     expect(s.getJobs().b).toBeDefined();
-    vi.advanceTimersByTime(3000);
-    expect(s.getJobs().b).toBeUndefined();
+  });
+
+  it("un error NO se retira solo: la fila se queda fallida hasta un reintento o un descarte", () => {
+    const s = createJobsStore(5000);
+    s.setJobFor("a", { status: "error", error_code: "transient" });
+    vi.advanceTimersByTime(60000);
+    expect(s.getJobs().a).toBeDefined();
+    expect(s.getJobs().a.status).toBe("error");
+  });
+
+  it("un reintento con exito reemplaza el job fallido (misma clave)", () => {
+    const s = createJobsStore(5000);
+    s.setJobFor("a", { status: "error" });
+    s.setJobFor("a", { status: "downloading", progress: 0 });
+    expect(s.getJobs().a.status).toBe("downloading");
+  });
+
+  it("dismiss descarta explicitamente una fila fallida, y solo esa", () => {
+    const s = createJobsStore(5000);
+    s.setJobFor("a", { status: "error" });
+    s.setJobFor("b", { status: "error" });
+    s.dismiss("a");
+    expect(s.getJobs().a).toBeUndefined();
+    expect(s.getJobs().b).toBeDefined();
+  });
+
+  it("dismiss no hace nada sobre un job que no fallo", () => {
+    const s = createJobsStore(5000);
+    s.setJobFor("a", { status: "downloading", progress: 10 });
+    s.dismiss("a");
+    expect(s.getJobs().a).toBeDefined();
   });
 
   it("otra descarga sondeando no reinicia ni bloquea el temporizador del terminado", () => {

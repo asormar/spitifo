@@ -44,7 +44,7 @@ export const mixReady = (key, entries, hist, byKey) =>
 /* La linea bajo el titulo del disco. Una mezcla vacia dice por que. */
 export function mixSub(key, n) {
   if (n > 0) return `${songs(n)} en orden aleatorio, sin fin`;
-  if (key === "top") return "Aún no hay canciones escuchadas.";
+  if (key === "top") return "Todavía no hay canciones escuchadas.";
   if (key === "new") return "Ya has escuchado toda tu biblioteca.";
   return "Todavía no hay canciones.";
 }

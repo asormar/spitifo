@@ -26,6 +26,7 @@ import android.util.Log
 class DownloadService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var renewWakeLock: Runnable? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -47,16 +48,34 @@ class DownloadService : Service() {
             .build()
         startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
 
-        if (wakeLock == null) {
-            wakeLock = getSystemService(PowerManager::class.java)
-                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:downloads")
-                .apply { acquire() }
-        }
+        val lock = wakeLock ?: getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:downloads")
+            .apply { setReferenceCounted(false) }
+        lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+        wakeLock = lock
+        scheduleWakeLockRenew()
         Log.i(TAG, "download service in foreground")
         return START_NOT_STICKY
     }
 
+    // A single large download can outlast the lock's own safety timeout, so it
+    // is renewed well inside that window instead of relying on a fresh
+    // onStartCommand (an album may not get one for the whole transfer).
+    private fun scheduleWakeLockRenew() {
+        renewWakeLock?.let { main.removeCallbacks(it) }
+        val renew = object : Runnable {
+            override fun run() {
+                wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
+                main.postDelayed(this, WAKE_LOCK_RENEW_MS)
+            }
+        }
+        renewWakeLock = renew
+        main.postDelayed(renew, WAKE_LOCK_RENEW_MS)
+    }
+
     override fun onDestroy() {
+        renewWakeLock?.let { main.removeCallbacks(it) }
+        renewWakeLock = null
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         Log.i(TAG, "download service stopped")
@@ -74,6 +93,8 @@ class DownloadService : Service() {
          * instead of flickering the notification off and on.
          */
         private const val STOP_DELAY = 3_000L
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val WAKE_LOCK_RENEW_MS = 5 * 60 * 1000L
 
         private val main = Handler(Looper.getMainLooper())
         private var pendingStop: Runnable? = null

@@ -245,6 +245,33 @@ export default function ForYou({
 
   /* Solo un cambio de parada se anima; nacer o cambiar de tamano, no. */
   const placed = useRef(null);
+  const animTimer = useRef(0);
+  /* `will-change: transform` (discover.css) solo mientras dura el arrastre o
+     la animacion del cambio de parada: marcar el inicio acá y soltarlo al
+     terminar la transicion, con un respaldo por tiempo por si el valor de
+     destino no cambia (sin value change no hay `transitionend`). */
+  const markAnimating = (el) => {
+    el.dataset.animating = "";
+    clearTimeout(animTimer.current);
+    animTimer.current = setTimeout(() => {
+      delete el.dataset.animating;
+    }, 400);
+  };
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el || !narrow) return undefined;
+    const onTransitionEnd = (e) => {
+      if (e.target === el && e.propertyName === "transform") {
+        clearTimeout(animTimer.current);
+        delete el.dataset.animating;
+      }
+    };
+    el.addEventListener("transitionend", onTransitionEnd);
+    return () => {
+      el.removeEventListener("transitionend", onTransitionEnd);
+      clearTimeout(animTimer.current);
+    };
+  }, [narrow]);
   useLayoutEffect(() => {
     const el = sheetRef.current;
     if (!el) {
@@ -255,6 +282,7 @@ export default function ForYou({
     const still = placed.current === null || placed.current === snap;
     placed.current = snap;
     if (still) el.style.transition = "none";
+    else markAnimating(el);
     el.style.transform = `translateY(${geo.offsets[snap]}px)`;
     el.style.setProperty("--fy-hide", `${geo.offsets[snap]}px`);
     if (still) {
@@ -280,6 +308,7 @@ export default function ForYou({
     const from = Math.min(g.offsets.peek, Math.max(0, grab.current + dy));
     const to = pickSnap(from, vy, [g.offsets.full, g.offsets.half, g.offsets.peek]);
     delete el.dataset.drag;
+    markAnimating(el);
     el.style.transform = `translateY(${to}px)`;
     el.style.setProperty("--fy-hide", `${to}px`);
     goSnap(snapName(to, g.offsets));
@@ -469,7 +498,7 @@ export default function ForYou({
         ) : (
           <>
             {rec.status.offline && (
-              <p className="fy-note">Sin conexión: se completará cuando vuelva.</p>
+              <p className="fy-note">Sin conexión. Las recomendaciones volverán cuando vuelva la red.</p>
             )}
             <ul className="fy-list" aria-label="Artistas recomendados">
               {rows.map((row) => (

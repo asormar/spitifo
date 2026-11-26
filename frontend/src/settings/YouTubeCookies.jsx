@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 import { cookieStatus } from "./storageInfo.js";
+import SettingsSkeleton from "./SettingsSkeleton.jsx";
 
 /* ---------------------------------------------------------------------------
    COOKIES DE YOUTUBE (ultimo recurso)
@@ -25,6 +26,9 @@ function fmtImportDate(iso) {
 export default function YouTubeCookies({ focus }) {
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
+  /* Que accion esta en vuelo, para el spinner de 16 px de SU boton: no puede
+     ser optimista (depende de que el backend confirme el archivo). */
+  const [busyAction, setBusyAction] = useState(null);
   const [err, setErr] = useState(null);
   const fileRef = useRef(null);
   const boxRef = useRef(null);
@@ -54,6 +58,7 @@ export default function YouTubeCookies({ focus }) {
     const file = e.target.files?.[0];
     if (!file) return;
     setBusy(true);
+    setBusyAction("import");
     setErr(null);
     try {
       const fd = new FormData();
@@ -69,12 +74,14 @@ export default function YouTubeCookies({ focus }) {
       setErr(fetchErr(e2, "No se pudo importar el archivo."));
     } finally {
       setBusy(false);
+      setBusyAction(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   };
 
   const remove = async () => {
     setBusy(true);
+    setBusyAction("remove");
     setErr(null);
     try {
       const r = await fetch(`${API}/youtube/cookies`, { method: "DELETE" });
@@ -84,8 +91,17 @@ export default function YouTubeCookies({ focus }) {
       setErr(fetchErr(e, "No se pudo quitar las cookies."));
     } finally {
       setBusy(false);
+      setBusyAction(null);
     }
   };
+
+  if (!info && !err) {
+    return (
+      <div className="settings__card" ref={boxRef}>
+        <SettingsSkeleton label="Comprobando cookies…" />
+      </div>
+    );
+  }
 
   const configured = Boolean(info?.configured);
   const state = cookieStatus(info, fmtImportDate);
@@ -112,8 +128,18 @@ export default function YouTubeCookies({ focus }) {
           className="settings__btn settings__btn--acc"
           onClick={() => fileRef.current?.click()}
           disabled={busy}
+          aria-busy={busyAction === "import" || undefined}
         >
-          {configured ? "Reemplazar cookies.txt" : "Importar cookies.txt"}
+          {busyAction === "import" ? (
+            <>
+              <Icon name="ArrowClockwise" size="sm" className="spin" />
+              Guardando…
+            </>
+          ) : configured ? (
+            "Reemplazar cookies.txt"
+          ) : (
+            "Importar cookies.txt"
+          )}
         </button>
         {configured && (
           <button
@@ -121,9 +147,10 @@ export default function YouTubeCookies({ focus }) {
             className="settings__btn settings__btn--ghost"
             onClick={remove}
             disabled={busy}
+            aria-busy={busyAction === "remove" || undefined}
           >
-            <Icon name="Trash" size="sm" />
-            Quitar
+            <Icon name={busyAction === "remove" ? "ArrowClockwise" : "Trash"} size="sm" className={busyAction === "remove" ? "spin" : undefined} />
+            {busyAction === "remove" ? "Guardando…" : "Quitar"}
           </button>
         )}
       </div>

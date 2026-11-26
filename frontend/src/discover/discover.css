@@ -612,6 +612,13 @@ body.has-mini .gmap {
   right: 8px;
   bottom: 8px;
   transition: var(--tr-move);
+}
+
+/* Capa compuesta solo mientras se arrastra o se anima el cambio de parada
+   (ver ForYou.jsx: data-drag y data-animating); el resto del tiempo que
+   Descubrir esta abierto no hace falta mantenerla. */
+.fy--sheet[data-drag],
+.fy--sheet[data-animating] {
   will-change: transform;
 }
 

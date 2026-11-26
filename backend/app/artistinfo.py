@@ -25,8 +25,6 @@ import time
 import unicodedata
 from dataclasses import dataclass, field
 
-import httpx
-
 from .config import USER_AGENT
 
 log = logging.getLogger(__name__)
@@ -388,6 +386,7 @@ LB_THROTTLE = Throttle(LB_INTERVAL)
 
 
 def _http_client() -> httpx.Client:
+    import httpx  # perezoso: Descubrir no esta en el primer pintado
     return httpx.Client(timeout=httpx.Timeout(20.0, connect=10.0),
                         headers={"User-Agent": USER_AGENT},
                         follow_redirects=True)

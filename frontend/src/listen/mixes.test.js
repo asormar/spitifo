@@ -118,7 +118,7 @@ describe("mixSub", () => {
   });
 
   it("says why an empty mix is empty", () => {
-    expect(mixSub("top", 0)).toBe("Aún no hay canciones escuchadas.");
+    expect(mixSub("top", 0)).toBe("Todavía no hay canciones escuchadas.");
     expect(mixSub("new", 0)).toBe("Ya has escuchado toda tu biblioteca.");
     expect(mixSub("recent", 0)).toBe("Todavía no hay canciones.");
   });

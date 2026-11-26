@@ -70,7 +70,7 @@ def test_stream_album_primero_done_ultimo_y_pistas_incrementales(cliente, monkey
     retardos = {"1": 0.0, "2": 0.03, "3": 0.01, "4": 0.02}
     llamadas = []
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         clave = str(tracks[0]["trackId"])
         llamadas.append((len(tracks), clave, limit))
         if len(tracks) > 1:
@@ -121,7 +121,7 @@ def test_stream_album_primero_done_ultimo_y_pistas_incrementales(cliente, monkey
 def test_stream_pista_sin_match_solo_aparece_en_done(cliente, monkeypatch):
     canciones = [_song(1, "P1"), _song(2, "P2")]
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         if len(tracks) > 1:
             return {}
         clave = str(tracks[0]["trackId"])
@@ -145,7 +145,7 @@ def test_stream_pista_sin_match_solo_aparece_en_done(cliente, monkeypatch):
 def test_stream_cache_hit_emite_album_y_done_sin_buscar(cliente, monkeypatch):
     llamadas = []
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         llamadas.append(len(tracks))
         return {str(tracks[0]["trackId"]): _video(
             str(tracks[0]["trackId"]), tracks[0]["trackName"])}
@@ -169,7 +169,7 @@ def test_stream_cache_hit_emite_album_y_done_sin_buscar(cliente, monkeypatch):
 def test_ruta_json_sigue_devolviendo_el_mismo_payload(cliente, monkeypatch):
     canciones = [_song(1, "P1"), _song(2, "P2")]
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         return {str(t["trackId"]): _video(str(t["trackId"]), t["trackName"])
                 for t in tracks}
 
@@ -192,7 +192,7 @@ def test_cerrar_el_generador_cancela_las_busquedas_pendientes(monkeypatch):
     empezo = asyncio.Event()
     canceladas = []
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         if len(tracks) > 1:
             return {}  # la pista queda para la busqueda suelta
         empezo.set()

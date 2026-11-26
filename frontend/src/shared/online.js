@@ -14,6 +14,10 @@ let bound = false;
 const current = () =>
   typeof navigator === "undefined" || navigator.onLine !== false;
 
+/* Para codigo sin React (fetchErr, useSearchRun): la misma senal que
+   useOnline(), leida una vez, sin suscribirse. */
+export const isOnline = current;
+
 const notify = () => subs.forEach((fn) => fn());
 
 function subscribe(fn) {

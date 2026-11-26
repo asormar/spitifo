@@ -53,7 +53,7 @@ export function StateBlock({ kind, status, onRestore, onRetry }) {
     );
   }
   const copy = {
-    offline: "Sin conexión: se completará cuando vuelva.",
+    offline: "Sin conexión. Las recomendaciones volverán cuando vuelva la red.",
     empty: "Descarga algo de música para recibir recomendaciones.",
     hidden: "Has ocultado todos los artistas.",
     error: "No se pudieron cargar las recomendaciones.",

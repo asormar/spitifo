@@ -163,6 +163,18 @@ body.has-mini .progstack {
   background: var(--ok);
 }
 
+/* Unica accion de la unica superficie de finalizacion. */
+.prog__act {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--acc);
+  font: 800 13px var(--font-body);
+  cursor: pointer;
+}
+
 .prog.is-failed .prog__fill {
   background: var(--bad);
 }

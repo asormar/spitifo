@@ -71,6 +71,9 @@ export function readTheme(el) {
     palette: Array.from({ length: CLUSTERS }, (_, i) => v(`--genre-${i}`, "#6182f8")),
     ink: v("--ink", "#11111c"),
     halo: v("--s1", "#ffffff"),
+    /* Fondo opaco del lienzo: el contexto se crea con alpha:false, asi que
+       hay que pintarlo aqui en vez de dejar ver el --s1 del .gmap a traves. */
+    bg: v("--s1", "#ffffff"),
     font: v("--font-body", "system-ui, sans-serif"),
     display: v("--font-display", "system-ui, sans-serif"),
     /* color-scheme del tema: claro u oscuro (ver tokens.css). */
@@ -79,8 +82,15 @@ export function readTheme(el) {
   };
 }
 
+/* Cuantos cuadros se saltan entre recalculos de etiquetas mientras el gesto
+   sigue activo (arrastre, pellizco, vuelo o inercia). Al soltar, el siguiente
+   cuadro siempre recalcula a pleno detalle. */
+const LABEL_RELAYOUT_EVERY = 3;
+
 export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
-  const ctx = canvas.getContext("2d");
+  /* Lienzo opaco (draw() pinta el fondo del tema) y sin esperar al hilo
+     principal para presentar: mas barato de componer en Android. */
+  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
   let size = { w: 0, h: 0 };
   let dpr = 1;
   let lim = limits({ w: 1, h: 1 });
@@ -114,6 +124,7 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
   let labelAlpha = 1;
   let fade = null;
   let layout = null;
+  let labelTick = 0;
   let deferRaf = 0;
   let deferTimer = 0;
   const widths = new Float32Array(data.count).fill(-1);
@@ -176,7 +187,8 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
     const rel = focus >= 0 ? related(data, focus) : null;
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, w, h);
 
     /* Puntos: un trazo por color. Con un género en foco el resto se apaga. */
     ctx.globalAlpha = focus >= 0 ? 0.3 : 0.88;
@@ -293,9 +305,15 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       /* Etiquetas: tope de ~200 y nivel de detalle por colisión (ver placeLabels). */
       const key = [view.x, view.y, view.k, w, h, cx, cy, lim.min, first.join(",")].join("|");
       if (!layout || layout.key !== key) {
-        layout = {
-          key,
-          labels: placeLabels({
+        /* Mientras el gesto sigue activo (arrastre, pellizco, vuelo o inercia)
+           la vista cambia en cada cuadro: recalcular la disposicion completa
+           cada vez es la reasignacion costosa que este ajuste evita. Se
+           recalcula cada LABEL_RELAYOUT_EVERY cuadros durante el gesto y
+           siempre en el primer cuadro quieto (soltar, cambiar de foco, etc). */
+        const moving = !!anim || !!glide || !!(gesture && (gesture.kind === "pinch" || gesture.moved));
+        labelTick++;
+        if (!layout || !moving || labelTick % LABEL_RELAYOUT_EVERY === 0) {
+          const placed = placeLabels({
             order: data.order,
             xs,
             ys,
@@ -306,8 +324,22 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
             radius: dotR,
             first,
             center: { x: cx, y: cy },
-          }),
-        };
+          });
+          /* Guardar el desplazamiento respecto al punto, no la posicion de
+             pantalla: asi, mientras el gesto sigue y no recalculamos colisiones,
+             la etiqueta sigue pegada a su punto en vez de quedarse quieta y
+             dar un salto cada LABEL_RELAYOUT_EVERY cuadros. */
+          const boxOx = cx - view.x * view.k;
+          const boxOy = cy - view.y * view.k;
+          layout = {
+            key,
+            labels: placed.map((l) => ({
+              ...l,
+              dx: l.x - (xs[l.i] * view.k + boxOx),
+              dy: l.y - (ys[l.i] * view.k + boxOy),
+            })),
+          };
+        }
       }
       ctx.textBaseline = "middle";
       ctx.lineJoin = "round";
@@ -315,14 +347,16 @@ export function createMapCanvas({ canvas, host, data, onPick, onAnchor }) {
       ctx.strokeStyle = theme.halo;
       for (const l of layout.labels) {
         const text = data.names[l.i];
+        const lx = xs[l.i] * k + ox + l.dx;
+        const ly = ys[l.i] * k + oy + l.dy;
         ctx.font = fonts[tierOf(data.w[l.i])];
         ctx.textAlign = l.left ? "right" : "left";
         const main = priority.has(l.i);
         ctx.globalAlpha = 0.85 * labelAlpha;
-        ctx.strokeText(text, l.x, l.y);
+        ctx.strokeText(text, lx, ly);
         ctx.globalAlpha = (focus >= 0 && !main ? 0.5 : 1) * labelAlpha;
         ctx.fillStyle = main ? theme.ink : inks[data.c[l.i]];
-        ctx.fillText(text, l.x, l.y);
+        ctx.fillText(text, lx, ly);
       }
       ctx.globalAlpha = 1;
     }
