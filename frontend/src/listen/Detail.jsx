@@ -10,6 +10,10 @@ import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
 import { useNav } from "../app/useNav.js";
 import { keyUrl } from "../shared/api.js";
+import { crossGo } from "../app/crossMode.js";
+import { artistView, relatedArtists } from "./entityLinks.js";
+import { useReco } from "../discover/reco.js";
+import { absoluteUrl, shareLink } from "../app/share.js";
 import { AlbumCard, Cover, ListCard, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
 import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
@@ -28,6 +32,10 @@ import PlaylistSongs from "./PlaylistSongs.jsx";
 import MissingRow from "./MissingRow.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { playlists, usePlaylists } from "./playlists.js";
+import { queueStore } from "../download/queueStore.js";
+import { trackSpec } from "../download/albumText.js";
+import { resultOf } from "../player/savedTrack.js";
+import { formatForQuality, readDownloadQuality } from "../settings/downloadPrefs.js";
 import "../shared/sheet.css";
 import "./libraryTools.css";
 /* La ficha de Escuchar ya es un chunk perezoso: el top y sus filas se piden
@@ -58,7 +66,7 @@ function Gone({ d, backRef, ctx, nav, pc }) {
     <div className="lpage dpage">
       {!pc && (
         <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
         </div>
       )}
       {state === "loading" ? (
@@ -87,9 +95,21 @@ function Gone({ d, backRef, ctx, nav, pc }) {
               </>
             )
           ) : kind === "list" ? (
-            "Esta lista ya no existe."
+            <>
+              Esta lista ya no existe.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("home")}>
+                Vuelve a Inicio
+              </button>
+            </>
           ) : (
-            "Ya no está en tu biblioteca."
+            <>
+              Ya no está en tu biblioteca.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("search")}>
+                Búscala de nuevo
+              </button>
+            </>
           )}
         </p>
       )}
@@ -210,15 +230,26 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
      de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
-     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. La
+     promesa se guarda en un ref para que «Más de» la reuse en vez de pedir lo
+     mismo otra vez: una sola llamada a /api/artists/search por artista y
+     visita, aunque se pulse el boton antes de que esta termine. */
+  const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
+  /* Artistas similares: se usan los datos que Descubrir ya dejo en el
+     dispositivo. La vista es estable (el selector devuelve la foto entera). */
+  const recoArtists = useReco((s) => s.artists);
+  const similar = useMemo(() => relatedArtists(name, recoArtists, 6), [name, recoArtists]);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
+      linkPromiseRef.current = null;
       setArtistLinkId(null);
       return undefined;
     }
     let vivo = true;
-    resolveArtistLink(d.name, d.rows).then((vista) => {
+    const promise = resolveArtistLink(d.name, d.rows);
+    linkPromiseRef.current = promise;
+    promise.then((vista) => {
       if (vivo) setArtistLinkId(vista?.id ?? null);
     });
     return () => {
@@ -287,6 +318,24 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         setDup(null);
         ctx.show(message);
       },
+      });
+    };
+
+  /* Un tap baja TODA la lista que todavia no tenes, como un solo grupo. Las
+     filas con `song` son las que no tienen archivo propio. */
+  const downloadList = () => {
+    const fmt = formatForQuality(readDownloadQuality());
+    const items = rows.filter((r) => r.song && !r.song.file_key).map((r) => {
+      const s = r.song;
+      return trackSpec(resultOf(s), `${s.title || ""} ${s.artist || ""}`.trim(), fmt);
+    });
+    if (!items.length) {
+      ctx.show("Todas las canciones de esta lista ya están descargadas");
+      return;
+    }
+    queueStore.enqueue({
+      items,
+      group: { id: `playlist:${pl.id}`, title: pl.name, artwork_url: null },
     });
   };
 
@@ -313,6 +362,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     requestAnimationFrame(() => moreRef.current?.focus({ preventScroll: true }));
   };
 
+  /* «Compartir» de album y lista: la direccion de la pagina ya es canonica. */
+  const sharePage = () => {
+    const url = absoluteUrl(window.location.href, window.location.search);
+    shareLink({ title: name, url }).then((done) => {
+      if (done === "copied") ctx.show("Enlace copiado");
+    });
+  };
+
   const more = isList && !naming && (
     <button
       ref={moreRef}
@@ -337,6 +394,12 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         <Icon name="Shuffle" size="md" />
         Aleatorio
       </button>
+      {isList && (
+        <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
+          <Icon name="DownloadSimple" size="md" />
+          Descargar lista
+        </button>
+      )}
       {album && (
         <button
           type="button"
@@ -483,7 +546,8 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       anchor={top.anchor}
       onClose={nav.back}
       onPick={(kindPicked) => {
-        if (kindPicked === "rename") { nav.back(); setNaming(true); }
+        if (kindPicked === "share") { sharePage(); nav.back(); }
+        else if (kindPicked === "rename") { nav.back(); setNaming(true); }
         else if (kindPicked === "delete") deleteList();
         else {
           nav.back();
@@ -502,7 +566,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={name}
       anchor={stackTop.anchor}
       onClose={nav.back}
-      onPick={() => nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor })}
+      onPick={(kindPicked) => {
+        if (kindPicked === "share") {
+          sharePage();
+          nav.back();
+          return;
+        }
+        nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor });
+      }}
       onPhoto={() =>
         ctx.replaceArt(view.id, "album", name, stackTop.anchor, `${d.artist} ${name}`)
       }
@@ -555,11 +626,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     const seq = ++linkSeq.current;
     loadArtistChunk();
     setLinking(true);
-    const view = await resolveArtistLink(name, rows);
+    const view = await (linkPromiseRef.current || resolveArtistLink(name, rows));
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;
-    if (view) nav.goTo("search", view);
+    /* El contenido local se abre aqui; el catalogo salta a Buscar dejando
+       la migaja con el album del que se salio. */
+    const origin = { tab: nav.tab, label: name };
+    if (view) crossGo(nav, view, origin);
     else {
       requestSearch(name);
       nav.goTab("search");
@@ -607,7 +681,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
             </div>
           ) : (
             <>
-              <Back bref={backRef} onClick={ctx.back} className="hback ahero__back" />
+              <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback ahero__back" />
               <div className="ahero__in">
                 <h1>{name}</h1>
                 <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
@@ -645,6 +719,30 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
             sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
         <ArtistPopulares name={name} artistId={artistLinkId} />
+        {similar.length > 0 && (
+          <section className="sec" aria-labelledby="h-similares">
+            <SectionHead id="h-similares" title="Artistas similares" />
+            <div className="chips">
+              {similar.map((a) => (
+                <button
+                  key={a.name}
+                  type="button"
+                  className="chip"
+                  onClick={() => {
+                    const view = artistView(a.name, index.entries);
+                    if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+                    else {
+                      requestSearch(a.name);
+                      nav.goTab("search");
+                    }
+                  }}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {tracks}
         {body}
         {artistMenu}
@@ -669,7 +767,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     <div className="lpage dpage">
       {!pc && (
         <div className={cx("dbar", scrolled && "is-scrolled")}>
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
           <span className="dbar__title">{name}</span>
           {more}
         </div>

@@ -1,3 +1,5 @@
+import { isOnline } from "./online.js";
+
 export const API = "/api";
 /* El `detail` de FastAPI no siempre es un string: en un 422 es un array de
    {loc, msg, type}. Con `new Error(detail)` eso se convierte en
@@ -15,11 +17,16 @@ export function errMsg(d, fallback) {
   return fallback;
 }
 /* fetch() tira TypeError con "Failed to fetch" (en ingles) cuando el server esta
-   caido o se corta la red. Sin esto el usuario lee eso crudo en el aviso. */
+   caido o se corta la red. Sin esto el usuario lee eso crudo en el aviso.
+   Sin conexion y servidor sin respuesta son casos distintos (se elige con la
+   misma senal que useOnline()): con red, el backend embebido no contesto;
+   sin red, no hay nada que contactar. */
 export function fetchErr(e, fallback) {
   const m = typeof e?.message === "string" ? e.message : "";
   if (/failed to fetch|networkerror|load failed/i.test(m)) {
-    return "No se pudo contactar con el servidor. Esta sigue en marcha?";
+    return isOnline()
+      ? "El servidor no responde. Vuelve a intentarlo."
+      : "Sin conexión. Revisa tu red.";
   }
   return fallback;
 }

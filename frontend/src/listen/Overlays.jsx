@@ -12,6 +12,7 @@ import { albumId, artistId, rowArt } from "./library.js";
 import { useSaved } from "./saved.js";
 import { deferredDelete } from "./deleteSong.js";
 import { songMenuGroups } from "./songMenu.js";
+import { absoluteUrl, shareLink } from "../app/share.js";
 import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
@@ -46,6 +47,7 @@ import "./menus.css";
    una cancion ya no esta aqui: songMenu.js da los grupos y MenuBody los pinta. */
 const ALBUM_ITEMS = [
   ["photo", "UploadSimple", "Cambiar foto"],
+  ["share", "ShareNetwork", "Compartir esta página"],
   ["remove", "Trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
@@ -58,6 +60,7 @@ const LIST_ITEMS = [
   ["description", "Note", "Editar descripción"],
   ["cover", "Image", "Cambiar portada"],
   ["import", "FileCsv", "Importar canciones"],
+  ["share", "ShareNetwork", "Compartir esta página"],
   ["delete", "Trash", "Borrar lista", "bad"],
 ];
 
@@ -316,6 +319,15 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, locati
   }
 
   const pick = (kind) => {
+    if (kind === "share") {
+      /* El menu se cierra enseguida: compartir no cambia la pagina. */
+      const url = absoluteUrl(window.location.href, window.location.search);
+      shareLink({ title: entry.title, url }).then((done) => {
+        if (done === "copied") show("Enlace copiado");
+      });
+      back();
+      return;
+    }
     if (kind === "closePlayer") {
       closePlayer();
       return;

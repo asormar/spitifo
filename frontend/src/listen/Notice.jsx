@@ -12,6 +12,11 @@ import { bindSwipe } from "./swipe.js";
    biblioteca queda debajo de el). Descubrir usa el de la biblioteca a traves de
    `useShow()`: asi el "Ocultado {name}. Deshacer" es el mismo toast y sobrevive
    a salir de Descubrir.
+
+   Cada aviso tiene SU PROPIO temporizador y su propia ranura: uno nuevo nunca
+   acorta el deshacer de otro. Se apilan hasta MAX_VISIBLE a la vez (el mas
+   nuevo abajo, cerca del pulgar); uno de mas sigue vivo (su `commit` corre
+   igual) pero no ocupa pantalla.
    ------------------------------------------------------------------------- */
 
 /* Solo la funcion `show`, estable: quien la usa (Descubrir) no se repinta cada
@@ -31,82 +36,103 @@ const NOTICE_MS = 1600;
 const ACTION_MS = 5000;
 const COMMIT_MS = 8000;
 const NOTICE_LEAVE_MS = 180;
+const MAX_VISIBLE = 2;
 
 export const noticeWait = (action) =>
   action?.commit ? COMMIT_MS : action ? ACTION_MS : NOTICE_MS;
 
 /* Devuelve [nodo, show]. `show(text, { label, run, commit })`; la accion es
    opcional. `commit` (si la hay) corre al terminar la ventana SIN deshacer: es
-   el borrado diferido. Deshacer lo cancela. Otro aviso o desmontar lo
-   adelantan; cerrar la app no desmonta nada, asi que dentro de la ventana no
-   se borra. */
+   el borrado diferido. Deshacer lo cancela. Cerrar la app no desmonta nada, asi
+   que dentro de la ventana no se borra. */
 export function useNotice() {
-  const [notice, setNotice] = useState(null);
-  const timers = useRef([]);
-  const deferred = useRef(null);
-  const toast = useRef(null);
-  const current = useRef(null);
+  const [notices, setNotices] = useState([]);
+  /* id -> [timeoutOut, timeoutGone]; id -> deferred (solo si tiene commit). */
+  const timers = useRef(new Map());
+  const deferreds = useRef(new Map());
+  const seq = useRef(0);
+
+  const clearNoticeTimers = (id) => {
+    (timers.current.get(id) || []).forEach(clearTimeout);
+    timers.current.delete(id);
+  };
+
+  const remove = useCallback((id) => {
+    clearNoticeTimers(id);
+    deferreds.current.delete(id);
+    setNotices((list) => list.filter((n) => n.id !== id));
+  }, []);
 
   const show = useCallback((text, action) => {
-    timers.current.forEach(clearTimeout);
-    deferred.current?.flush();
-    deferred.current = null;
+    const id = ++seq.current;
     const wait = noticeWait(action);
-    current.current = Date.now();
-    setNotice({ text, action, out: false, id: current.current });
-    timers.current = [
-      setTimeout(() => setNotice((n) => n && { ...n, out: true }), wait),
-      setTimeout(() => setNotice(null), wait + NOTICE_LEAVE_MS),
-    ];
+    setNotices((list) => [...list, { id, text, action, out: false, wait }]);
+    timers.current.set(id, [
+      setTimeout(() => setNotices((list) => list.map((n) => (n.id === id ? { ...n, out: true } : n))), wait),
+      setTimeout(() => remove(id), wait + NOTICE_LEAVE_MS),
+    ]);
     if (action?.commit) {
-      deferred.current = createDeferred(action.commit);
-      deferred.current.start(wait);
+      const deferred = createDeferred(action.commit);
+      deferreds.current.set(id, deferred);
+      deferred.start(wait);
     }
-  }, []);
+  }, [remove]);
+
   useEffect(() => () => {
-    timers.current.forEach(clearTimeout);
-    deferred.current?.flush();
+    timers.current.forEach((ts) => ts.forEach(clearTimeout));
+    deferreds.current.forEach((d) => d.flush());
   }, []);
 
-  /* Deslizar el aviso es "ya lo vi": el borrado pendiente sale en el acto, no
-     se deshace. Si mientras salia llego otro aviso, ese se queda. */
-  useEffect(() => {
-    const el = toast.current;
-    if (!el || !notice) return undefined;
-    const id = notice.id;
-    return bindSwipe(el, () => {
-      if (current.current !== id) return;
-      timers.current.forEach(clearTimeout);
-      deferred.current?.flush();
-      deferred.current = null;
-      setNotice(null);
-    });
-  }, [notice?.id]);
+  const act = (n) => {
+    deferreds.current.get(n.id)?.cancel();
+    deferreds.current.delete(n.id);
+    n.action.run();
+    remove(n.id);
+  };
 
-  const act = () => {
-    deferred.current?.cancel();
-    deferred.current = null;
-    notice.action.run();
-    timers.current.forEach(clearTimeout);
-    setNotice(null);
+  /* Deslizar un aviso es "ya lo vi": su borrado pendiente (si lo hay) sale en
+     el acto, no se deshace. Solo afecta a ESE aviso. */
+  const dismissBySwipe = (n) => {
+    deferreds.current.get(n.id)?.flush();
+    deferreds.current.delete(n.id);
+    remove(n.id);
   };
 
   /* Siempre montada: un aria-live solo anuncia lo que cambia dentro de una
-     region que ya existia. El boton recibe el foco al aparecer: si no, quien
-     usa teclado tendria que recorrer toda la pagina para llegar a el. */
+     region que ya existia. Solo se pintan los MAX_VISIBLE mas nuevos; los
+     demas (si los hay) siguen vivos, con su `commit` corriendo igual. */
+  const visible = notices.slice(-MAX_VISIBLE);
   const node = (
     <div className="lnotice" aria-live="polite">
-      {notice && (
-        <span key={notice.id} ref={toast} className={cx("ltoast", notice.out && "is-out")}>
-          {notice.text}
-          {notice.action && (
-            <button type="button" className="ltoast__act" autoFocus onClick={act}>
-              {notice.action.label}
-            </button>
-          )}
-        </span>
-      )}
+      {visible.map((n) => (
+        <NoticeToast key={n.id} n={n} onAct={() => act(n)} onSwipeDismiss={() => dismissBySwipe(n)} />
+      ))}
     </div>
   );
   return [node, show];
+}
+
+/* Un toast de la pila: su propio nodo para que el swipe y el autoFocus del
+   boton (al MONTAR, no al repintar) sean por aviso, no globales. */
+function NoticeToast({ n, onAct, onSwipeDismiss }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    return bindSwipe(el, onSwipeDismiss);
+  }, [onSwipeDismiss]);
+
+  return (
+    <span ref={ref} className={cx("ltoast", n.out && "is-out")} style={{ "--dismiss": `${n.wait}ms` }}>
+      {n.text}
+      {n.action && (
+        <button type="button" className="ltoast__act" autoFocus onClick={onAct}>
+          {n.action.label}
+        </button>
+      )}
+      {/* La barra muestra el tiempo real que queda: nunca se reinicia por otro
+          aviso, porque --dismiss es de ESTE. */}
+      {n.action?.commit && <span className="ltoast__bar" aria-hidden="true" />}
+    </span>
+  );
 }

@@ -35,6 +35,30 @@ MAX_HOPS = 2
 _HOST = "mzstatic.com"
 _SIZE_TAIL = re.compile(r"/\d+x\d+bb\.jpg$")
 
+# Un cliente por proceso: antes `fetch_itunes_covers` abria uno (y pagaba un
+# handshake TLS) por CADA descarga que trae ficha de iTunes. Mismo patron que
+# `stream.client()`/`identify.client()`. `follow_redirects=False` se mantiene:
+# los saltos se siguen a mano en `_get`, validando cada uno contra la lista de
+# hosts permitidos.
+_client: httpx.AsyncClient | None = None
+
+
+def client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(TIMEOUT_S),
+                                    follow_redirects=False,
+                                    headers={"User-Agent": USER_AGENT})
+    return _client
+
+
+async def aclose() -> None:
+    """Cierra el cliente compartido al apagar la app."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
 
 def _allowed(url: str) -> bool:
     """https, host de iTunes, sin usuario ni puerto raro, y sin query."""
@@ -95,10 +119,8 @@ async def fetch_itunes_covers(artwork_url: str | None,
     if urls is None:
         return None
     try:
-        timeout = httpx.Timeout(TIMEOUT_S)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False,
-                                     headers={"User-Agent": USER_AGENT}) as c:
-            big, small = await asyncio.gather(_get(c, urls[0]), _get(c, urls[1]))
+        c = client()
+        big, small = await asyncio.gather(_get(c, urls[0]), _get(c, urls[1]))
     except Exception as e:
         log.warning("portada de iTunes no disponible (%s): %s", artwork_url, e)
         return None

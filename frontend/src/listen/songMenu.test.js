@@ -13,11 +13,12 @@ const item = (groups, kind) => flat(groups).find((i) => i.kind === kind);
 describe("songMenuGroups", () => {
   it("groups a downloaded file in reading order, with removal last", () => {
     const groups = songMenuGroups(base);
-    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Quitar"]);
+    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Compartir", "Archivo", "Quitar"]);
     expect(kinds(groups)).toEqual([
       ["next", "end"],
       ["list"],
       ["album", "artist"],
+      ["share"],
       ["photo", "file"],
       ["remove"],
     ]);
@@ -25,6 +26,7 @@ describe("songMenuGroups", () => {
       "Reproducir a continuación", "Añadir al final de la cola",
       "Añadir a una lista…",
       "Ir al álbum", "Ir al artista",
+      "Compartir esta página",
       "Cambiar foto", "Ficha del archivo",
       "Quitar de tu biblioteca",
     ]);
@@ -60,15 +62,16 @@ describe("songMenuGroups", () => {
     };
     const groups = songMenuGroups(entry, { pc: true });
     expect(kinds(groups)[1]).toEqual(["list", "undownload"]);
-    expect(kinds(groups)[3]).toEqual(["photo", "file"]);
+    expect(kinds(groups)[3]).toEqual(["share"]);
+    expect(kinds(groups)[4]).toEqual(["photo", "file"]);
     expect(item(groups, "undownload").text).toBe("Quitar descarga");
     expect(item(groups, "file").text).toBe("Ver la ficha del archivo");
   });
 
   it("omits «Ir a» when there is no album or artist", () => {
     const groups = songMenuGroups({ key: "s", sid: "s", song: { id: "s" } });
-    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Archivo", "Quitar"]);
-    expect(kinds(groups)[2]).toEqual(["photo"]);
+    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Compartir", "Archivo", "Quitar"]);
+    expect(kinds(groups)[3]).toEqual(["photo"]);
   });
 
   it("keeps «Ir a» with just one of album or artist", () => {
@@ -83,7 +86,7 @@ describe("songMenuGroups", () => {
 
   it("puts «Cerrar reproductor» in its own last group when opened from Ahora suena", () => {
     const groups = songMenuGroups(base, { closePlayer: true });
-    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Quitar", "Reproductor"]);
+    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Compartir", "Archivo", "Quitar", "Reproductor"]);
     expect(kinds(groups).at(-1)).toEqual(["closePlayer"]);
     expect(item(groups, "closePlayer")).toEqual({ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" });
   });

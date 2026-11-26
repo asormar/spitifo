@@ -188,11 +188,14 @@ export function createPlaylists({
     return true;
   };
 
-  /* Devuelve cuantas claves eran nuevas. */
+  /* Devuelve cuantas claves eran nuevas. `have` (un Set) evita el
+     p.keys.includes(k) por cada clave nueva: en una lista de miles de temas
+     anadir un lote entero era O(K²) (P-large-library-scale-10). */
   const addKeys = (id, keys) => {
     const p = find(id);
     if (!p) return 0;
-    const fresh = [...new Set(keys)].filter((k) => !p.keys.includes(k));
+    const have = new Set(p.keys);
+    const fresh = [...new Set(keys)].filter((k) => !have.has(k));
     if (fresh.length) write({ ...p, keys: [...p.keys, ...fresh] });
     return fresh.length;
   };

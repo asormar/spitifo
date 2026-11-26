@@ -85,8 +85,10 @@ export function swapScreens(update, dir = 0) {
 
 /* Abre o cierra "Ahora suena". Con la API, la pastilla y la vista comparten
    nombre y el navegador mueve una caja en un solo gesto. Sin ella, la vista
-   sube desde abajo (y baja antes de desmontarse al cerrar). Con movimiento
-   reducido, cambia de golpe. */
+   sube desde abajo y, ademas, la portada hace su propio FLIP con WAAPI desde
+   el rectangulo de la pastilla hasta el suyo (transform, nada de layout): en
+   un WebView sin View Transitions la continuidad no se pierde, solo pierde el
+   recorte compartido. Con movimiento reducido, cambia de golpe. */
 export function swapNowPlaying(update, opening) {
   if (reducedMotion()) {
     update();
@@ -97,8 +99,21 @@ export function swapNowPlaying(update, opening) {
   const slide = { duration: 360, easing: "cubic-bezier(0.23, 1, 0.32, 1)" };
   const up = [{ transform: "translateY(100%)" }, { transform: "none" }];
   if (opening) {
+    const first = document.querySelector(".mini__art")?.getBoundingClientRect();
     flushSync(update);
     document.querySelector(".np")?.animate(up, slide);
+    const art = first && document.querySelector(".np__art");
+    const last = art?.getBoundingClientRect();
+    if (last) {
+      const dx = first.left - last.left;
+      const dy = first.top - last.top;
+      const sx = first.width / last.width;
+      const sy = first.height / last.height;
+      art.animate(
+        [{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` }, { transform: "none" }],
+        { duration: 360, easing: "cubic-bezier(0.32, 0.72, 0, 1)" }
+      );
+    }
     return;
   }
   const el = document.querySelector(".np");

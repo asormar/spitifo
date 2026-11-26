@@ -26,8 +26,11 @@ export function rowPlayPlan(t) {
 
 /* La pastilla de datos de la fila: «Buscando» solo mientras el servidor la
    busca de verdad (pending); una "lazy" espera a verse callada y pasa directo
-   a entera o a «30 s». */
+   a entera o a «30 s». «YouTube ocupado» es un «30 s» con motivo: el circuito
+   esta abierto (bot wall/429) y esta fila cayo al avance sin buscar nada, no
+   porque no exista version entera. */
 export function rowChip(t, plan = rowPlayPlan(t)) {
   if (plan === "eager") return matchState(t) === "pending" ? "seek" : null;
-  return plan === "preview" ? "30" : null;
+  if (plan !== "preview") return null;
+  return t?.extra?.youtube_busy ? "busy" : "30";
 }

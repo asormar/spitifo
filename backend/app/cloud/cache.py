@@ -147,7 +147,18 @@ class AudioCache:
 
     # ---------------------------------------------------------------- puerto
     def get(self, remote_id: str, revision: str) -> Path | None:
-        """Ruta cacheada o None. Si existe, la marca como la ultima usada."""
+        """Ruta cacheada o None. Si existe, la marca como la ultima usada.
+
+        El orden LRU se actualiza en memoria en CADA acierto (lo usa
+        `_evict_locked`), pero el `index.json` del disco NO se reescribe
+        aca: en una cache con miles de archivos, cada `get` (cada byte-range
+        que pide `/api/audio`) reescribia el indice entero. Solo se persiste
+        en `put`/`pin`/`unpin`/`evict`, que ya escriben por otro motivo. Ante
+        un corte justo despues de un acierto, lo peor que pasa es que el
+        orden de desalojo quede un poco desactualizado (un archivo
+        recien usado podria salir antes de lo ideal); nunca se pierde un
+        archivo de la biblioteca, que vive en la nube o en disco aparte.
+        """
         with self._lock:
             key = self._key(remote_id, revision)
             ent = self._index.get(key)
@@ -159,7 +170,6 @@ class AudioCache:
                 self._save()
                 return None
             ent["touched"] = self._clock()
-            self._save()
             return path
 
     def put(self, remote_id: str, revision: str, src: Path,

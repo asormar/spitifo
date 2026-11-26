@@ -9,6 +9,7 @@ import {
 } from "react";
 import { cx } from "../shared/ui.jsx";
 import { listKey } from "../shared/keyNav.js";
+import { rafThrottle } from "../shared/raf.js";
 import { visibleRange } from "./library.js";
 
 /* ---------------------------------------------------------------------------
@@ -105,12 +106,19 @@ const VirtualList = forwardRef(function VirtualList(
     /* App restaura el scroll de la pantalla en su layout effect, que corre
        DESPUES del de este hijo: se vuelve a medir con el scroll ya puesto. */
     measure();
+    /* Coalescido por cuadro: un scroll rapido dispara el evento mucho mas
+       seguido que una vez por cuadro, y measure() hace dos
+       getBoundingClientRect (layout forzado) en cada llamada. Sin esto, una
+       lista de 20k filas podia forzar ese layout varias veces por cuadro
+       (P-large-library-scale-11). */
+    const throttled = rafThrottle(measure);
     const target = scroller?.current || window;
-    target.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("resize", measure);
+    target.addEventListener("scroll", throttled, { passive: true });
+    window.addEventListener("resize", throttled);
     return () => {
-      target.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
+      throttled.cancel();
+      target.removeEventListener("scroll", throttled);
+      window.removeEventListener("resize", throttled);
     };
   }, [active, measure, scroller]);
 

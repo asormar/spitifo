@@ -1,4 +1,5 @@
 import { clock } from "../shared/format.js";
+import { V_EXPLAIN } from "../shared/Verdict.jsx";
 import { checkOf, songsOnly } from "./fileCheck.js";
 import { fold } from "./library.js";
 
@@ -40,10 +41,9 @@ export function checkText(entry, { card = false } = {}) {
     /* Repetir el mismo titulo no explica nada (registros anteriores que
        comparaban con lo escrito y no con la ficha). */
     if (entry.real && fold(entry.real) !== fold(title)) return `En el archivo dice «${entry.real}».`;
-    return v === "partial" ? "Se parece, pero no es exactamente lo que buscaste." : "No es lo que buscabas.";
+    return V_EXPLAIN[v];
   }
-  if (v === "unv") return "No se pudo leer el título del audio.";
-  return "Todavía no se ha comprobado el audio.";
+  return V_EXPLAIN.unv;
 }
 
 /* El final de la linea de un album: «Todo coincide» o «3 de 5 coinciden».

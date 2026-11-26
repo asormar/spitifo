@@ -1,7 +1,9 @@
 import { lazy, Suspense } from "react";
 import { useNav } from "../app/useNav.js";
 import BrandLogo from "../app/BrandLogo.jsx";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { Icon } from "./icons.jsx";
+import { homeGreeting } from "./home.js";
 import { useListen } from "./ListenProvider.jsx";
 import LibraryGate from "./LibraryGate.jsx";
 import HomeFeed from "./HomeFeed.jsx";
@@ -62,6 +64,59 @@ function HomeSkeleton() {
   );
 }
 
+/* Biblioteca vacia: la Mezcla se ve deshabilitada y dos estantes de invitacion
+   ocupan el sitio del esqueleto, para que el paso a contenido real no salte. */
+function HomeEmpty({ folder }) {
+  const nav = useNav();
+  return (
+    <div className="hfeed hempty">
+      <div className="mezcla mezcla--off" aria-disabled="true">
+        <div className="mz__pill">
+          <div className="mz__txt">
+            <b>Mezcla lista</b>
+            <small>Añade música para empezar</small>
+          </div>
+          <button type="button" className="mz__play" disabled aria-label="Mezcla lista: añade música para empezar">
+            <Icon name="Play" weight="fill" size="md" className="mz__play-i" />
+          </button>
+        </div>
+        <div className="mz__rec" aria-hidden="true" />
+      </div>
+      <div className="hempty__note">
+        <b>Busca tu primera canción.</b>
+        <br />
+        Prueba «Mesmerizer Satsuki» o «Despechá ROSALÍA» — se verifica antes de guardarla.
+        <br />
+        <button type="button" className="btn btn--acc" onClick={() => nav.goTab("search")}>
+          Ir a Buscar
+        </button>
+      </div>
+      <div className="hempty__note">
+        <b>Canciones libres ya esperan en Descubrir.</b>
+        <br />
+        Explora el mapa de géneros mientras llenas tu biblioteca.
+        <br />
+        <button type="button" className="btn btn--soft" onClick={() => nav.goTab("discover")}>
+          Ir a Descubrir
+        </button>
+      </div>
+      <p className="hempty__folder">{folder}</p>
+    </div>
+  );
+}
+
+/* Un toque abre Buscar con el campo ya enfocado y el teclado arriba. El campo
+   vive en otra pestana, así que se espera a que entre en el DOM (con transicion
+   de vista) antes de darle el foco. */
+function focusSearchField(tries = 20) {
+  const field = document.querySelector('[data-screen]:not([hidden]) [data-field="search"]');
+  if (field && field.getClientRects().length) {
+    field.focus({ preventScroll: true });
+    return;
+  }
+  if (tries > 0) requestAnimationFrame(() => focusSearchField(tries - 1));
+}
+
 export default function HomeScreen({ ready, error, errorCode, active, onRetry, storagePath }) {
   const nav = useNav();
   const { ctx, model } = useListen();
@@ -78,17 +133,24 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
     <section className="listen" aria-label="Inicio">
       <header className="apphead">
         <BrandLogo />
-        <button
-          type="button"
-          className="cbtn cbtn--l apphead__gear"
-          onClick={() => nav.openSettings()}
-          aria-label="Ajustes"
-          title="Abrir los ajustes"
-        >
-          <Icon name="GearSix" size="lg" />
-        </button>
+        <div className="apphead__acts">
+          <button
+            type="button"
+            className="cbtn cbtn--l apphead__search"
+            onClick={() => {
+              nav.goTab("search");
+              requestAnimationFrame(() => focusSearchField());
+            }}
+            aria-label="Buscar"
+            title="Buscar"
+          >
+            <Icon name="MagnifyingGlass" size="lg" />
+          </button>
+          <ChromeButtons />
+        </div>
       </header>
       <h1 className="sr-only">Inicio</h1>
+      {ready && !error && <p className="hm__greet">{homeGreeting(model.entries.length)}</p>}
       {showFirstRun && (
         <Suspense fallback={null}>
           <FirstRunCard folder={folder} />
@@ -101,6 +163,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
         onRetry={onRetry}
         folder={folder}
         loading={<HomeSkeleton />}
+        emptyView={<HomeEmpty folder={folder} />}
       >
         <HomeFeed
           index={model.index}

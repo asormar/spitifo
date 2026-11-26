@@ -4,6 +4,7 @@ import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
+import { openNewList } from "./newList.js";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
 import { DOWNLOAD_FILTERS, rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
@@ -39,12 +40,19 @@ export function Cover({ tone, label, src, target, size, round, className, childr
   const record = useArtRecord(target);
   const shown = artSrc(record, keyUrl) || src;
   useEffect(() => setBad(false), [shown]);
+  /* Sin foto, una letra sobre un color plano se confunde con el esqueleto de
+     carga. En su lugar va un patron de dos tonos sacado del mismo tono. */
+  const generated = !(shown && !bad);
   return (
     <span
       className={cx("cv", toneClass(tone), round && "cv--round", className)}
       style={{ ...toneVars(tone), ...(size && { "--s": `${size}px` }) }}
     >
-      <span aria-hidden="true">{initial(label)}</span>
+      {generated ? (
+        <span className="cv__gen" aria-hidden="true" />
+      ) : (
+        <span aria-hidden="true">{initial(label)}</span>
+      )}
       {shown && !bad && (
         <img
           className="cv__img"
@@ -205,7 +213,7 @@ export function DownloadChips({ filter, onChange }) {
 /* Sin ninguna lista: la tarjeta que invita a crear la primera. */
 export const NewListCard = ({ ctx }) => (
   <Card
-    onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
+    onClick={() => openNewList(null, ctx)}
     cover={
       <span className="cv card__add">
         <Icon name="Plus" size="xl" />

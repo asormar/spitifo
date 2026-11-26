@@ -33,6 +33,7 @@ export function mergeLibrary(files, savedById) {
     linked.set(song.file_key, {
       ...f, title, artist, album, sid: song.id, song,
       search: fold(`${title} ${artist} ${album}`),
+      titleKey: fold(title),
     });
   }
 

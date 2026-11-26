@@ -29,6 +29,13 @@ export function songMenuGroups(entry, { fmt = "m4a", closePlayer = false, pc = f
   if (entry?.artist) go.push({ kind: "artist", icon: "User", text: "Ir al artista" });
   if (go.length) groups.push({ label: "Ir a", items: go });
 
+  /* La direccion de la pagina es compartible: el⋮ de cada entidad ofrece
+     «Compartir» con el sistema o el portapapeles. */
+  groups.push({
+    label: "Compartir",
+    items: [{ kind: "share", icon: "ShareNetwork", text: "Compartir esta página" }],
+  });
+
   const file = [{ kind: "photo", icon: "UploadSimple", text: "Cambiar foto" }];
   /* La ficha del archivo solo existe cuando la cancion lo tiene descargado. */
   if (downloaded) file.push({ kind: "file", icon: "File", text: pc ? "Ver la ficha del archivo" : "Ficha del archivo" });
