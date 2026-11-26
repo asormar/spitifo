@@ -13,14 +13,18 @@ import { useDragSort } from "./useDragSort.js";
    asa, el numero y "quitar" (rows.jsx).
    ------------------------------------------------------------------------- */
 
-export default function PlaylistSongs({ playlist, rows, active, ctx, from, table, onRemove }) {
+export default function PlaylistSongs({ playlist, rows, active, ctx, from, table, onRemove, selectFor, draggable = true }) {
   const move = (from, to) => {
     if (to < 0 || to >= rows.length) return false;
     const keys = rows.map((e) => e.key);
     const [a, b] = visibleToKeyIndex(playlist.keys, keys, from, to);
     return playlists.move(playlist.id, a, b);
   };
-  const sort = useDragSort({ first: 0, last: rows.length - 1, onMove: move, watch: rows });
+  const sort = useDragSort({
+    first: 0, last: rows.length - 1,
+    onMove: draggable ? move : () => false,
+    watch: rows,
+  });
 
   return (
     <VirtualList
@@ -36,7 +40,8 @@ export default function PlaylistSongs({ playlist, rows, active, ctx, from, table
           from,
           table,
           onRemove,
-          drag: sort.dragFor(rows[i].key, i),
+          drag: draggable ? sort.dragFor(rows[i].key, i) : undefined,
+          select: selectFor?.(rows[i]),
         })
       }
     />

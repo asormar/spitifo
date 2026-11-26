@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { clamp } from "../shared/ui.jsx";
+import { HAPTIC, haptic } from "../shared/haptics.js";
+import { motion } from "../shared/motion.js";
 import { ROW_H } from "./VirtualList.jsx";
 
 /* ---------------------------------------------------------------------------
@@ -66,7 +68,9 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
         const bottom = p.bottom - EDGE;
         const speed = p.y < top ? (p.y - top) / EDGE : p.y > bottom ? (p.y - bottom) / EDGE : 0;
         if (speed) {
-          scrollEl().scrollBy(0, Math.round(clamp(speed, -1, 1) * 18));
+          /* Cuadratico (§8): empieza suave y acelera solo si el dedo insiste. */
+          const mag = clamp(Math.abs(speed), 0, 1);
+          scrollEl().scrollBy(0, Math.round(Math.sign(speed) * mag * mag * 24));
           setDragged({ ...d, dy: travelled() });
         }
       }
@@ -107,12 +111,24 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
       pointer.current.y = e.clientY;
       setDragged({ ...dragRef.current, dy: travelled() });
     },
-    onPointerUp() {
+    onPointerUp(e) {
       const d = dragRef.current;
       if (!d) return;
       setDragged(null);
       const dest = landing(d);
-      if (dest !== d.from) move.current(d.from, dest);
+      if (dest === d.from) return;
+      if (move.current(d.from, dest)) {
+        /* Confirmacion discreta y asiento con un leve rebote, en vez del salto. */
+        haptic(HAPTIC.CONFIRM);
+        const row = e.currentTarget.closest?.(".qrow");
+        const dur = motion(280);
+        if (row && dur) {
+          row.animate(
+            [{ transform: "scale(1.035)" }, { transform: "none" }],
+            { duration: dur, easing: "cubic-bezier(.2,1.3,.4,1)" }
+          );
+        }
+      }
     },
     onPointerCancel() {
       setDragged(null);
@@ -121,7 +137,10 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
       const step = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
       if (!step) return;
       e.preventDefault();
-      if (move.current(pos, pos + step)) refocus.current = id;
+      if (move.current(pos, pos + step)) {
+        haptic(HAPTIC.CONFIRM);
+        refocus.current = id;
+      }
     },
   });
 
@@ -129,7 +148,7 @@ export function useDragSort({ scroller, first, last, onMove, watch }) {
      que deja la arrastrada. */
   const transformFor = (pos) => {
     if (!drag) return undefined;
-    if (pos === drag.from) return `translateY(${drag.dy}px) scale(1.02)`;
+    if (pos === drag.from) return `translateY(${drag.dy}px) scale(1.035)`;
     if (drag.from < to && pos > drag.from && pos <= to) return `translateY(${-ROW_H}px)`;
     if (drag.from > to && pos >= to && pos < drag.from) return `translateY(${ROW_H}px)`;
     return undefined;

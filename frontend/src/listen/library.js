@@ -78,6 +78,10 @@ export function normalizeEntry(file) {
     downloaded: true,
     /* Precalcular el texto evita normalizar cada fila en cada tecla. */
     search: fold(`${title} ${artist} ${album}`),
+    /* Solo el titulo, para relevance() en busqueda: sin esto cada tecla
+       volvia a aplicar fold() (minusculas + NFD) al titulo de CADA cancion
+       (P-large-library-scale-2). */
+    titleKey: fold(title),
   };
 }
 

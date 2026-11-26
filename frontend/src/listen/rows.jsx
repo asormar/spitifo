@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
+import { addBoundedSet } from "../shared/bounded.js";
 import { clock } from "../shared/format.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
@@ -39,7 +40,10 @@ export const Bars = ({ on }) => (
 );
 
 /* Miniaturas que dieron error: una fila que se vuelve a montar (lista
-   virtual) no reintenta un 404. */
+   virtual) no reintenta un 404. Acotado: una sesion larga con muchas
+   portadas caidas no puede crecer sin limite; la mas vieja se desaloja y, en
+   el peor caso, esa fila reintenta una vez mas. */
+const BAD_ART_CAP = 200;
 const BAD_ART = new Set();
 
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar); con el, lo
@@ -67,6 +71,7 @@ export const SongRow = memo(function SongRow({
   onPlay,
   onMenu,
   onRemove,
+  onEntity,
   rank,
   num,
   sub,
@@ -74,6 +79,7 @@ export const SongRow = memo(function SongRow({
   table,
   drag,
   from,
+  select,
 }) {
   const { key, title, artist, album } = entry;
   selection.remember(entry);
@@ -97,6 +103,40 @@ export const SongRow = memo(function SongRow({
   const checked = lib || page;
   const pill = checked || all ? checkOf(entry) : rowPill(entry);
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
+  /* Los nombres de la fila son enlaces a una sola pagina por entidad. Son
+     hermanos del texto, no botones anidados: el tap no reproduce la cancion. */
+  const entityLink = (kind, name) => ({
+    role: "link",
+    tabIndex: 0,
+    className: "srow__link",
+    "aria-label": `Ir al ${kind} ${name}`,
+    title: `Ir al ${kind} ${name}`,
+    onClick: (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onEntity?.(kind, name);
+    },
+    onKeyDown: (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.stopPropagation();
+      e.preventDefault();
+      onEntity?.(kind, name);
+    },
+  });
+  const metaNode =
+    !lib && !sub && onEntity ? (
+      <>
+        {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
+        {artist && <span {...entityLink("artista", artist)}>{artist}</span>}
+        {artist && album && <span aria-hidden="true"> · </span>}
+        {album && <span {...entityLink("álbum", album)}>{album}</span>}
+      </>
+    ) : (
+      <>
+        {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
+        {meta}
+      </>
+    );
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
   const artRec = useArtRecord(songTarget(entry));
@@ -180,6 +220,13 @@ export const SongRow = memo(function SongRow({
           <Icon name="DotsSixVertical" size="md" />
         </button>
       )}
+      {select && (
+        <span className="srow__sel">
+          <input type="checkbox" checked={Boolean(select.checked)}
+            aria-label={`Seleccionar ${title}`}
+            onChange={(e) => select.onChange(e.target.checked)} />
+        </span>
+      )}
       {table && (rankCell || numCell)}
       <button
         type="button"
@@ -228,7 +275,7 @@ export const SongRow = memo(function SongRow({
                 decoding="async"
                 fetchpriority="low"
                 onError={(e) => {
-                  BAD_ART.add(src);
+                  addBoundedSet(BAD_ART, src, BAD_ART_CAP);
                   e.currentTarget.hidden = true;
                 }}
               />
@@ -244,14 +291,15 @@ export const SongRow = memo(function SongRow({
           <span className="srow__t">{title}</span>
           {(video || meta) && (
             <span className="srow__m">
-              {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
-              {meta}
+              {metaNode}
             </span>
           )}
         </span>
         {!table && pill && <VerdictPill v={pill} />}
         {!video && entry.downloaded && <span className={cx("srow__dl", table && "srow__dl--t")} aria-hidden="true" />}
-        {!table && num == null && dur && <span className="srow__d">{dur}</span>}
+        {/* La duración tiene su propia columna aunque la fila lleve número de
+            pista: en teléfono antes no se veía (U7). */}
+        {!table && dur && <span className="srow__d">{dur}</span>}
       </button>
       {lib && <span className="srow__c">{artist}</span>}
       {table && !page && <span className="srow__c">{album}</span>}

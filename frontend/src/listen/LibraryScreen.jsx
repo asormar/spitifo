@@ -1,5 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
+import ChromeButtons from "../app/ChromeButtons.jsx";
+import { openNewList } from "./newList.js";
 import { Icon } from "./icons.jsx";
 import SearchField from "../shared/SearchField.jsx";
 import { usePc } from "../shared/viewport.js";
@@ -61,16 +63,19 @@ export default function LibraryScreen({ ready, error, errorCode, active, onRetry
         <h1 className="lhead__h" id="library-title">
           Tu biblioteca
         </h1>
-        <button
-          type="button"
-          className={pc ? "lbtn lbtn--go" : "lhead__new"}
-          aria-label={pc ? undefined : "Nueva lista"}
-          title="Nueva lista"
-          onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
-        >
-          <Icon name="Plus" size={pc ? "sm" : "md"} />
-          {pc && "Nueva lista"}
-        </button>
+        <span className="lhead__acts">
+          <button
+            type="button"
+            className={pc ? "lbtn lbtn--go" : "lhead__new"}
+            aria-label={pc ? undefined : "Nueva lista"}
+            title="Nueva lista"
+            onClick={() => openNewList(nav, ctx)}
+          >
+            <Icon name="Plus" size={pc ? "sm" : "md"} />
+            {pc && "Nueva lista"}
+          </button>
+          {!pc && <ChromeButtons />}
+        </span>
       </header>
       <LibraryGate ready={ready} error={error} errorCode={errorCode} onRetry={onRetry}>
         <div className={pc ? "lstick lstick--pc" : "lstick"}>

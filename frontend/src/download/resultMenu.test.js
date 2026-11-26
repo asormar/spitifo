@@ -13,10 +13,10 @@ describe("resultMenuGroups", () => {
     extra: { webpage_url: "https://youtu.be/abcdefghijk", collection_id: 123 },
   };
 
-  it("pinta los cuatro grupos en orden con la descarga y el formato", () => {
-    const groups = resultMenuGroups(full, { fmt: "m4a" });
+  it("pinta los cuatro grupos en orden, sin repetir el formato en cada fila", () => {
+    const groups = resultMenuGroups(full);
     expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo"]);
-    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "m4a" });
+    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar" });
     expect(groups[2].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",

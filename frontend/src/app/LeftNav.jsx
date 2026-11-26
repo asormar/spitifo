@@ -1,16 +1,22 @@
-import { useRef, useSyncExternalStore } from "react";
-import { ProgressStack } from "../download/progress.jsx";
+import { lazy, Suspense, useRef, useSyncExternalStore } from "react";
 import { songs } from "../listen/home.js";
 import { playlists, usePlaylists } from "../listen/playlists.js";
 import { useListen } from "../listen/ListenProvider.jsx";
 import BrandLogo from "./BrandLogo.jsx";
 import { ITEMS } from "./Nav.jsx";
+import { openNewList } from "../listen/newList.js";
 import { Icon } from "../shared/icons.jsx";
 import { useNav } from "./useNav.js";
 import { clampRail, collapsedSetting, railSetting } from "./desktop.js";
 
 const TAB_ICON = { home: "House", search: "MagnifyingGlass", library: "Books", discover: "VinylRecord" };
 const DND = "application/x-spitifo-song";
+
+/* Las tarjetas de descarga no pintan nada en el primer frame: su modulo viaja
+   aparte, se pide al montar el shell y aparece sin spinner cuando hay trabajo. */
+const ProgressStack = lazy(() =>
+  import("../download/progress.jsx").then((m) => ({ default: m.ProgressStack }))
+);
 
 /* ---------------------------------------------------------------------------
    MENU LATERAL (escritorio)
@@ -113,7 +119,7 @@ export default function LeftNav() {
   const collapsed = useSyncExternalStore(collapsedSetting.subscribe, collapsedSetting.get);
   const settingsOpen = nav.settings !== null;
   const page = nav.pageOf("library");
-  const newList = () => nav.goTo("library", { type: "all", what: "lists", naming: true });
+  const newList = () => openNewList(nav, null);
 
   const menuList = (p, e) => {
     e.preventDefault();
@@ -143,7 +149,7 @@ export default function LeftNav() {
         <button
           type="button"
           className="leftnav__brand"
-          aria-label="Spitifo, ir al inicio"
+          aria-label="spitifo, ir al inicio"
           title="Inicio"
           onClick={() => nav.goTab("home")}
         >
@@ -185,7 +191,9 @@ export default function LeftNav() {
           />
         </div>
 
-        <ProgressStack inline />
+        <Suspense fallback={null}>
+          <ProgressStack inline />
+        </Suspense>
 
         <button
           type="button"

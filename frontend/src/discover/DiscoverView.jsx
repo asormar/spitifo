@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
 import { subscribeGenre, takeGenre } from "./genreRequest.js";
 import { useShow } from "../listen/Notice.jsx";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { engine } from "../player/engine.js";
 import ForYouSlot from "./ForYouSlot.jsx";
 import GenreMap from "./GenreMap.jsx";
@@ -89,6 +90,12 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
     setAttempt((n) => n + 1);
   }, []);
 
+  /* «Para ti» también se puede refrescar tirando desde arriba (§6). */
+  useEffect(() => {
+    window.addEventListener("spitifo-refresh", retry);
+    return () => window.removeEventListener("spitifo-refresh", retry);
+  }, [retry]);
+
   /* Primero el pedido y luego el cambio de pantalla: Buscar lo toma al
      montarse o en cuanto se avisa. */
   const searchGenre = useCallback(
@@ -156,6 +163,9 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
   return (
     <>
       <h1 className="sr-only">Descubrir</h1>
+      <header className="apphead discoverhead">
+        <ChromeButtons className="apphead__gear" />
+      </header>
       {state.status === "ready" ? (
         <GenreMap
           data={state.data}

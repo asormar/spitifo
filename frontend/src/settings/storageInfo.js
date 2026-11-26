@@ -25,7 +25,7 @@ export function quotaView(quota) {
   if (!quota) return null;
   const { limit, usage, app } = quota;
   const others = Math.max(0, usage - app);
-  if (!limit) return { unlimited: true, legend: `Espacio sin límite · Spitifo ocupa ${fmtGB(app)}` };
+  if (!limit) return { unlimited: true, legend: `Espacio sin límite · spitifo ocupa ${fmtGB(app)}` };
   const free = Math.max(0, limit - usage);
   const pct = (n) => `${Math.min(100, (n / limit) * 100)}%`;
   return {
@@ -33,11 +33,11 @@ export function quotaView(quota) {
     app: pct(app),
     others: pct(others),
     legend: [
-      `Spitifo ${fmtGB(app)}`,
+      `spitifo ${fmtGB(app)}`,
       `Otros ${fmtGB(others)}`,
       `Libre ${fmtGB(free)}`,
     ],
-    aria: `Spitifo ${fmtGB(app)}, otros archivos ${fmtGB(others)}, libres ${fmtGB(free)} de ${fmtGB(limit)}`,
+    aria: `spitifo ${fmtGB(app)}, otros archivos ${fmtGB(others)}, libres ${fmtGB(free)} de ${fmtGB(limit)}`,
   };
 }
 
