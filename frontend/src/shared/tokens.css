@@ -111,16 +111,20 @@
   --action: var(--acc);
   --action-ink: var(--acc-ink);
 
-  /* Nueve tamaños de letra, ninguno por debajo de 11px. */
-  --fs-micro: 11px;
-  --fs-label: 12px;
-  --fs-caption: 13px;
-  --fs-ui: 14px;
-  --fs-body: 15px;
-  --fs-title: 18px;
-  --fs-headline: 22px;
-  --fs-display: 28px;
-  --fs-display-xl: 44px;
+  /* Nueve tamaños de letra, ninguno por debajo de 11px a escala 100%. En rem
+     para que la escala de fuente del sistema (textZoom del WebView de Android,
+     o el tamaño de letra del navegador) los escale de verdad: 11/16 ... 44/16.
+     Las medidas de caja (iconos, tenues, radios) siguen en px: son zonas de
+     toque y estructura, no texto. */
+  --fs-micro: 0.6875rem;
+  --fs-label: 0.75rem;
+  --fs-caption: 0.8125rem;
+  --fs-ui: 0.875rem;
+  --fs-body: 0.9375rem;
+  --fs-title: 1.125rem;
+  --fs-headline: 1.375rem;
+  --fs-display: 1.75rem;
+  --fs-display-xl: 2.75rem;
 
   /* Espaciado en pasos de 4px. */
   --sp-1: 4px;

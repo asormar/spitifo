@@ -12,7 +12,7 @@ import { albumId, artistId, rowArt } from "./library.js";
 import { useSaved } from "./saved.js";
 import { deferredDelete } from "./deleteSong.js";
 import { songMenuGroups } from "./songMenu.js";
-import { absoluteUrl, shareLink } from "../app/share.js";
+import { share } from "../shared/share.js";
 import { resultOf, savedEntry, tracksFor } from "../player/savedTrack.js";
 import { trackSpec } from "../download/albumText.js";
 import { queueStore } from "../download/queueStore.js";
@@ -47,7 +47,6 @@ import "./menus.css";
    una cancion ya no esta aqui: songMenu.js da los grupos y MenuBody los pinta. */
 const ALBUM_ITEMS = [
   ["photo", "UploadSimple", "Cambiar foto"],
-  ["share", "ShareNetwork", "Compartir esta página"],
   ["remove", "Trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
@@ -60,7 +59,6 @@ const LIST_ITEMS = [
   ["description", "Note", "Editar descripción"],
   ["cover", "Image", "Cambiar portada"],
   ["import", "FileCsv", "Importar canciones"],
-  ["share", "ShareNetwork", "Compartir esta página"],
   ["delete", "Trash", "Borrar lista", "bad"],
 ];
 
@@ -202,6 +200,11 @@ function NpResultMenu({ top, back, show, goTo, replace, locationToken }) {
       closePlayer();
       return;
     }
+    if (kind === "share") {
+      share({ kind: "song", title: top.t?.title, artist: top.t?.artist, result: top.t }, show);
+      back();
+      return;
+    }
     if (kind === "ficha") {
       /* «Ver ficha» sustituye al menu en su entrada: sin popstate, App no
          interpreta el cambio como un cierre y la hoja queda encima de la
@@ -320,17 +323,18 @@ export default function Overlays({ top, byKey, back, replace, goTo, show, locati
   }
 
   const pick = (kind) => {
-    if (kind === "share") {
-      /* El menu se cierra enseguida: compartir no cambia la pagina. */
-      const url = absoluteUrl(window.location.href, window.location.search);
-      shareLink({ title: entry.title, url }).then((done) => {
-        if (done === "copied") show("Enlace copiado");
-      });
-      back();
-      return;
-    }
     if (kind === "closePlayer") {
       closePlayer();
+      return;
+    }
+    if (kind === "share") {
+      share({
+        kind: "song",
+        title: entry.title,
+        artist: entry.artist,
+        result: entry.song ? resultOf(entry.song) : null,
+      }, show);
+      back();
       return;
     }
     if (kind === "photo") {

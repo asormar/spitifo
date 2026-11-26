@@ -1,0 +1,229 @@
+/* Letra dentro del reproductor. La línea que suena es rosa (--sound) porque es
+   «lo que está sonando»; todo lo demás es cobalto o texto. Las medidas de letra
+   salen de la escala de nueve pasos, asi que siguen la escala del sistema. */
+
+.lyr {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--ink);
+}
+
+/* La tarjeta de vista previa reutiliza .ncard: no inventa otro contenedor. */
+.lyr__card {
+  display: grid;
+  gap: var(--sp-1);
+  width: 100%;
+  text-align: left;
+}
+
+.lyr__card-h {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.lyr__card-go {
+  margin-left: auto;
+  transform: rotate(90deg);
+}
+
+.lyr__card-line {
+  color: var(--mut);
+  font: var(--fs-ui) var(--font-body);
+  line-height: 1.45;
+}
+
+.lyr__head {
+  display: grid;
+  grid-template-columns: var(--hit) minmax(0, 1fr) var(--hit);
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--hit);
+  flex: none;
+}
+
+.lyr__back {
+  justify-self: start;
+}
+
+.lyr__switch {
+  display: inline-flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--s2);
+}
+
+.lyr__switch button {
+  min-height: var(--sp-8);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--mut);
+  font: var(--fs-caption) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btnc);
+}
+
+.lyr__switch button.is-on {
+  background: var(--s1);
+  color: var(--action);
+}
+
+.lyr__who {
+  display: grid;
+  min-width: 0;
+  text-align: center;
+}
+
+.lyr__who b {
+  overflow: hidden;
+  font: var(--fs-ui) var(--font-display);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyr__who small {
+  color: var(--mut);
+  font: var(--fs-caption) var(--font-body);
+}
+
+.lyr__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-10) var(--sp-4);
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  touch-action: pan-y;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyr__scroll {
+    scroll-behavior: auto;
+  }
+}
+
+.lyr__line {
+  display: block;
+  width: 100%;
+  min-height: var(--hit);
+  padding: var(--sp-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--mut);
+  font: var(--fs-body) var(--font-body);
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--t-quick) var(--ease);
+}
+
+.lyr__line:hover {
+  background: var(--hover);
+}
+
+.lyr__line.is-past {
+  color: var(--dim);
+}
+
+.lyr__line.is-now {
+  color: var(--sound);
+  font: var(--fs-headline) var(--font-display);
+}
+
+.lyr__plain {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-8) var(--sp-4);
+  color: var(--ink);
+  font: var(--fs-body) var(--font-body);
+  line-height: 1.8;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.lyr__state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-height: 0;
+  padding: var(--sp-6);
+  text-align: center;
+}
+
+.lyr__state svg {
+  color: var(--mut);
+}
+
+.lyr__state b {
+  font: var(--fs-body) var(--font-body);
+}
+
+.lyr__state span {
+  max-width: 38ch;
+  color: var(--mut);
+  font: var(--fs-caption) var(--font-body);
+  line-height: 1.5;
+}
+
+.lyr__skel {
+  display: grid;
+  gap: var(--sp-4);
+  flex: 1;
+  padding: var(--sp-10) var(--sp-8);
+}
+
+.lyr__skel i {
+  display: block;
+  width: 72%;
+  height: var(--sp-4);
+  margin: 0 auto;
+  border-radius: var(--r-md);
+  background: var(--s2);
+  font-style: normal;
+}
+
+.lyr__skel i:nth-child(even) {
+  width: 50%;
+}
+
+.lyr__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: var(--hit);
+  padding: var(--sp-2);
+  flex: none;
+}
+
+.lyr__time {
+  color: var(--mut);
+  font: var(--fs-caption) var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.lyr__now {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sound);
+  font: var(--fs-caption) var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* En PC sobra alto: la línea activa usa el paso Display, como el título del
+   reproductor ampliado, y el panel derecho no necesita el transporte de abajo. */
+@media (min-width: 960px) {
+  .np--pane .lyr__line.is-now {
+    font-size: var(--fs-display);
+  }
+}

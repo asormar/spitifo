@@ -5,6 +5,7 @@ import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { Icon } from "./icons.jsx";
+import { share } from "../shared/share.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
@@ -13,7 +14,6 @@ import { keyUrl } from "../shared/api.js";
 import { crossGo } from "../app/crossMode.js";
 import { artistView, relatedArtists } from "./entityLinks.js";
 import { useReco } from "../discover/reco.js";
-import { absoluteUrl, shareLink } from "../app/share.js";
 import { AlbumCard, Cover, ListCard, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
 import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
@@ -362,14 +362,6 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     requestAnimationFrame(() => moreRef.current?.focus({ preventScroll: true }));
   };
 
-  /* «Compartir» de album y lista: la direccion de la pagina ya es canonica. */
-  const sharePage = () => {
-    const url = absoluteUrl(window.location.href, window.location.search);
-    shareLink({ title: name, url }).then((done) => {
-      if (done === "copied") ctx.show("Enlace copiado");
-    });
-  };
-
   const more = isList && !naming && (
     <button
       ref={moreRef}
@@ -384,6 +376,19 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     </button>
   );
 
+  /* Compartir vive en la cabecera: un álbum y un artista mandan un enlace de
+     búsqueda, una lista manda su tracklist porque no tiene equivalente público.
+     El aviso de PC sale por el mismo toast que el resto de la app. */
+  const doShare = () => {
+    if (isList) {
+      share({ kind: "list", title: pl.name, songs: rows.map((r) => ({ title: r.title, artist: r.artist })) }, ctx.show);
+    } else if (album) {
+      share({ kind: "album", title: name, artist: rows[0]?.artist }, ctx.show);
+    } else {
+      share({ kind: "artist", title: name, artist: null }, ctx.show);
+    }
+  };
+
   const acts = (
     <div className="dacts">
       <button type="button" className="btn btn--pink" disabled={noSongs} onClick={play}>
@@ -393,6 +398,10 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={shuffle}>
         <Icon name="Shuffle" size="md" />
         Aleatorio
+      </button>
+      <button type="button" className="btn btn--ghost" aria-label={`Compartir ${name}`} onClick={doShare}>
+        <Icon name="Share" size="md" />
+        Compartir
       </button>
       {isList && (
         <button type="button" className="btn btn--ghost" disabled={noSongs} onClick={downloadList}>
@@ -546,8 +555,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       anchor={top.anchor}
       onClose={nav.back}
       onPick={(kindPicked) => {
-        if (kindPicked === "share") { sharePage(); nav.back(); }
-        else if (kindPicked === "rename") { nav.back(); setNaming(true); }
+        if (kindPicked === "rename") { nav.back(); setNaming(true); }
         else if (kindPicked === "delete") deleteList();
         else {
           nav.back();
@@ -566,12 +574,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={name}
       anchor={stackTop.anchor}
       onClose={nav.back}
-      onPick={(kindPicked) => {
-        if (kindPicked === "share") {
-          sharePage();
-          nav.back();
-          return;
-        }
+      onPick={() => {
         nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor });
       }}
       onPhoto={() =>

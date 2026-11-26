@@ -16,6 +16,7 @@ import { requestFirstRun } from "../onboarding/firstRun.js";
 import { collapsedSetting, titleBarSetting } from "../app/desktop.js";
 import { installedLabel, newerLabel, useReleaseCheck } from "./releaseCheck.js";
 import StorageSettings from "./StorageSettings.jsx";
+import PlaybackSettings from "./PlaybackSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
 import "./settings.css";
 import "../shared/chips.css";
@@ -309,6 +310,15 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
           <p className="settings__note">
             Los cambios del índice se agrupan: una versión antigua puede ver la biblioteca hasta 5 minutos atrasada.
           </p>
+        </div>
+      </section>
+
+      <section className="settings__sec" aria-labelledby="settings-playback">
+        <h2 id="settings-playback" className="settings__h">
+          Reproducción y datos
+        </h2>
+        <div className="settings__card">
+          <PlaybackSettings />
         </div>
       </section>
 

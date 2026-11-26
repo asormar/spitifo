@@ -41,6 +41,11 @@ export function resultMenuGroups(t, { downloaded = false } = {}) {
     });
   }
 
+  groups.push({
+    label: "Compartir",
+    items: [{ kind: "share", icon: "Share", text: "Compartir" }],
+  });
+
   const go = [];
   if (canOpenAlbumSheet(t)) go.push({ kind: "album", icon: "VinylRecord", text: `Ir al álbum «${t.album}»` });
   if (t?.artist) go.push({ kind: "artist", icon: "User", text: `Ir a ${t.artist}` });

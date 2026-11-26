@@ -22,19 +22,13 @@ export function songMenuGroups(entry, { fmt = "m4a", closePlayer = false, pc = f
   } else if (saved && downloaded) {
     library.push({ kind: "undownload", icon: "Prohibit", text: "Quitar descarga" });
   }
+  library.push({ kind: "share", icon: "Share", text: "Compartir" });
   groups.push({ label: "Tu biblioteca", items: library });
 
   const go = [];
   if (entry?.album) go.push({ kind: "album", icon: "VinylRecord", text: "Ir al álbum" });
   if (entry?.artist) go.push({ kind: "artist", icon: "User", text: "Ir al artista" });
   if (go.length) groups.push({ label: "Ir a", items: go });
-
-  /* La direccion de la pagina es compartible: el⋮ de cada entidad ofrece
-     «Compartir» con el sistema o el portapapeles. */
-  groups.push({
-    label: "Compartir",
-    items: [{ kind: "share", icon: "ShareNetwork", text: "Compartir esta página" }],
-  });
 
   const file = [{ kind: "photo", icon: "UploadSimple", text: "Cambiar foto" }];
   /* La ficha del archivo solo existe cuando la cancion lo tiene descargado. */

@@ -20,6 +20,7 @@ import { useVideoHost } from "./videoStore.js";
 import { Controls } from "./controls.jsx";
 import Scrub from "./Scrub.jsx";
 import NowCards, { FichaCard } from "./NowCards.jsx";
+import LyricsView, { LyricsCard } from "../lyrics/LyricsView.jsx";
 import { sourceCaption, splitMeta } from "./nowInfo.js";
 import { npLinks } from "./npLinks.js";
 import { npMenuKey, npMenuKind } from "./npMenu.js";
@@ -122,6 +123,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   const track = useEngine((s) => s.track);
   const playing = useEngine((s) => s.playing);
   const engineDuration = useEngine((s) => s.duration);
+  const time = useEngine((s) => s.time);
   const source = useEngine((s) => s.source);
   /* Para el carrusel de deslizar la portada (vecinos que asoman) y la insignia
      de la cola. */
@@ -132,6 +134,9 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   /* Solo se anima el cambio de pestana, no la primera pintura. */
   const [seen, setSeen] = useState({ tab, wide, moved: false });
   if (seen.tab !== tab || seen.wide !== wide) setSeen({ tab, wide, moved: true });
+  /* La letra se abre desde la tarjeta de «Ahora suena» y no añade pestaña. */
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  useEffect(() => setLyricsOpen(false), [track?.key]);
   const vhost = useVideoHost();
   /* Dentro del proveedor de la biblioteca: de ahi sale el menu ⋯ de la pista
      y, en escritorio, el aviso. */
@@ -471,8 +476,12 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
     );
   const caption = sourceCaption(source, track);
 
-  /* Salir de la pestana 0 suelta el ampliado: con su misma transicion. */
-  const go = (i) => panel.show(i);
+  /* Salir de la pestana 0 suelta el ampliado y cierra la letra: con su misma
+     transicion, y sin dejar la vista colgada al volver. */
+  const go = (i) => {
+    if (i !== 0) setLyricsOpen(false);
+    panel.show(i);
+  };
 
   const onTabKey = (e) => {
     const to = { ArrowRight: Math.min(tab + 1, 2), ArrowLeft: Math.max(tab - 1, 0), Home: 0, End: 2 }[e.key];
@@ -550,7 +559,18 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
   );
 
   let panelBody;
-  if (tab === 1) {
+  if (lyricsOpen && tab === 0) {
+    panelBody = (
+      <LyricsView
+        track={track}
+        time={time}
+        duration={duration}
+        pc={pc}
+        onClose={() => setLyricsOpen(false)}
+        onSeek={(at) => engine.seek(at)}
+      />
+    );
+  } else if (tab === 1) {
     panelBody = (
       <div className="np__q">
         <QueueList active scroller={bodyRef} />
@@ -643,11 +663,10 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
             </div>
           )}
         </div>
-        {library && (
-          <div className="np__cards">
-            <NowCards artist={artist} trackKey={track.key} />
-          </div>
-        )}
+        <div className="np__cards">
+          <LyricsCard track={track} time={time} onOpen={() => setLyricsOpen(true)} />
+          {library && <NowCards artist={artist} trackKey={track.key} />}
+        </div>
       </div>
     );
   }
@@ -770,7 +789,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
 
         <div
           ref={bodyRef}
-          className="np__body"
+          className={cx("np__body", lyricsOpen && tab === 0 && "np__body--lyr")}
           onPointerDown={onBodyDown}
           onPointerUp={onBodyUp}
           onPointerCancel={() => {

@@ -1,6 +1,7 @@
 package dev.spitifo
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.app.AlertDialog
 import android.content.Context
@@ -267,6 +268,27 @@ class MainActivity : ComponentActivity() {
         }
 
         /**
+         * The WebView has no navigator.share, so the page builds the final text
+         * and hands it over here. Android draws the chooser; the app draws
+         * nothing of it. Kept as plain text/plain so every share target that
+         * accepts text shows up.
+         */
+        @JavascriptInterface
+        fun share(text: String) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            runOnUiThread {
+                try {
+                    startActivity(Intent.createChooser(intent, "Compartir"))
+                } catch (e: ActivityNotFoundException) {
+                    Log.w(TAG, "no activity can share text", e)
+                }
+            }
+        }
+
+        /**
          * Discrete confirmation only (shared/haptics.js): 0 = confirm (heart,
          * a sheet or row settling, a finished download), 1 = detent (the
          * scrubber crossing a whole minute). The system's own feedback is used
@@ -487,6 +509,11 @@ class MainActivity : ComponentActivity() {
             // blocks exactly that by default, so the next track would silently
             // never start.
             settings.mediaPlaybackRequiresUserGesture = false
+            // The typographic scale is in rem, so the system font size has to
+            // reach the WebView: textZoom is the only setting that does it.
+            // 100 is the default; 130/160 are the sizes we check the UI at.
+            settings.textZoom = (resources.configuration.fontScale * 100).toInt()
+                .coerceIn(MIN_TEXT_ZOOM, MAX_TEXT_ZOOM)
             // No Material glow when a list reaches its end: the page handles
             // over-scroll itself (and pull-to-refresh where it means something).
             setOverScrollMode(View.OVER_SCROLL_NEVER)
@@ -609,6 +636,9 @@ class MainActivity : ComponentActivity() {
         const val PERMISSION_RETRY_MS = 7L * 24 * 60 * 60 * 1000
         const val TAG = "Spitifo"
         const val PERMISSIONS_REQUEST = 1
+        /** Bounds for the system font scale mirrored into WebView textZoom. */
+        const val MIN_TEXT_ZOOM = 50
+        const val MAX_TEXT_ZOOM = 200
 
         /** THEME_COLOR in frontend/src/shared/theme.js: the page grounds. */
         const val BAR_DARK = 0xFF0E0E18.toInt()

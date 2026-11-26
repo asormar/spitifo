@@ -13,19 +13,20 @@ describe("resultMenuGroups", () => {
     extra: { webpage_url: "https://youtu.be/abcdefghijk", collection_id: 123 },
   };
 
-  it("pinta los cuatro grupos en orden, sin repetir el formato en cada fila", () => {
+  it("pinta los grupos en orden con la descarga y compartir, sin repetir el formato en cada fila", () => {
     const groups = resultMenuGroups(full);
-    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo"]);
+    expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Compartir", "Ir a", "Archivo"]);
     expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar" });
-    expect(groups[2].items.map((i) => i.text)).toEqual([
+    expect(groups[2].items).toEqual([{ kind: "share", icon: "Share", text: "Compartir" }]);
+    expect(groups[3].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",
     ]);
   });
 
-  it("no ofrece descargar un resultado que solo tiene 30 s", () => {
+  it("no ofrece descargar un resultado que solo tiene 30 s, pero sí compartirlo", () => {
     const preview = { source: "itunes", source_id: "2", preview_url: "https://x/preview.m4a", extra: {} };
-    expect(labels(resultMenuGroups(preview))).toEqual(["Escuchar", "Archivo"]);
+    expect(labels(resultMenuGroups(preview))).toEqual(["Escuchar", "Compartir", "Archivo"]);
   });
 
   it("sí ofrece descargar un resultado pendiente de resolver", () => {
@@ -41,11 +42,11 @@ describe("resultMenuGroups", () => {
   it("no ofrece «Ir al álbum» cuando no hay ficha que abrir", () => {
     const noSheet = { ...full, extra: { webpage_url: "https://youtu.be/abcdefghijk" } };
     const groups = resultMenuGroups(noSheet);
-    expect(groups[2].items.map((i) => i.text)).toEqual(["Ir a Radiohead"]);
+    expect(groups[3].items.map((i) => i.text)).toEqual(["Ir a Radiohead"]);
   });
 
   it("omite «Ir a» sin album ni artista", () => {
     const bare = { source: "itunes", source_id: "4", extra: { webpage_url: "https://youtu.be/abcdefghijk" } };
-    expect(labels(resultMenuGroups(bare))).toEqual(["Escuchar", "Tu biblioteca", "Archivo"]);
+    expect(labels(resultMenuGroups(bare))).toEqual(["Escuchar", "Tu biblioteca", "Compartir", "Archivo"]);
   });
 });

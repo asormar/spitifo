@@ -142,6 +142,7 @@
 
 .np__tabs {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
   padding: 2px 0 10px;
@@ -175,6 +176,17 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
+}
+
+/* La letra scrollea por dentro: el cuerpo no debe robarle el gesto ni dejar
+   que el autoscroll mueva toda la vista. */
+.np__body--lyr {
+  padding: 0;
+  overflow: hidden;
+}
+
+.np__body--lyr .np__panel {
+  height: 100%;
 }
 
 /* Cambiar de pestana entra con el fundido de la casa. La primera pintura no

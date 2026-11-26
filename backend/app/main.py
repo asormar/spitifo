@@ -2117,9 +2117,15 @@ async def stream_audio(request: Request):
     ysrc = BY_NAME.get("ytdlp")
     if not ysrc or not ysrc.available():
         return Response(status_code=204)
+    # La calidad elegida en Ajustes llega como query. Un valor desconocido (un
+    # cliente viejo, una URL escrita a mano) cae a `auto`: nunca un error HTTP.
+    calidad = _query_str(request, "quality", default=None, max_length=16)
+    if calidad not in stream_mod.QUALITIES:
+        calidad = None
+    opciones = {"quality": calidad} if calidad else {}
     vid = stream_mod.video_id(canon) or canon
     try:
-        info = await stream_mod.resolve(canon)
+        info = await stream_mod.resolve(canon, **opciones)
     except BotCheckError as e:
         # Mismo codigo y mensaje que la descarga: la UI ofrece importar cookies.
         return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
@@ -2142,9 +2148,9 @@ async def stream_audio(request: Request):
     except stream_mod.UpstreamGone:
         # La URL del formato vencio antes de mandar nada: se descarta y se
         # resuelve una sola vez mas. Despues del primer byte ya no se reintenta.
-        stream_mod.drop(vid)
+        stream_mod.drop(vid, **opciones)
         try:
-            info = await stream_mod.resolve(canon, force=True)
+            info = await stream_mod.resolve(canon, force=True, **opciones)
         except BotCheckError as e:
             return JSONResponse({"detail": str(e), "code": e.code}, status_code=502)
         except Exception as e:
