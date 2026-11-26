@@ -16,6 +16,7 @@ import mimetypes
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -28,7 +29,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
-import httpx
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
@@ -41,6 +41,7 @@ from starlette.staticfiles import StaticFiles
 from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .executors import run_prefetch, run_storage
+from .library_snapshot import SnapshotStore
 from .runtime import configure_runtime, start_ytdlp_zip_check, ytdlp_version
 
 # ANTES de importar el motor: fija el PATH de ffmpeg (SPITIFO_FFMPEG_DIR) y los
@@ -94,6 +95,11 @@ FRONTEND_DIST = Path(os.getenv(
 # tasks asyncio en vuelo (descargas ytdlp en background), para que Python
 # no las recolecte a mitad de camino
 BG_TASKS: set = set()
+
+#: Se abre en cuanto `/api/library` contesta por primera vez. El import de
+#: yt-dlp y la peticion a youtube.com no deben competir con el primer pintado
+#: (P-cold-start-4): antes corrian apenas empezaba el lifespan.
+FIRST_LIBRARY_SERVED = asyncio.Event()
 
 # Cache del match de albumes: {album_id: (timestamp, respuesta)}. Media hora y
 # ~50 albumes: abrir el mismo album dos veces no vuelve a buscar en YouTube.
@@ -343,6 +349,26 @@ async def _prewarm_search() -> None:
         log.info("ytdlp: preparacion de la busqueda fallo: %s", e)
 
 
+async def _warm_after_first_library() -> None:
+    """Calienta yt-dlp y el visitor SOLO despues de la primera biblioteca.
+
+    Antes el import y la peticion a youtube.com arrancaban con el lifespan: en
+    un telefono competian con el parseo del entry y con el escaneo justo cuando
+    se decide si la pantalla es usable. Esperar a la primera respuesta de
+    `/api/library` los deja fuera del camino critico (P-cold-start-4).
+    """
+    await FIRST_LIBRARY_SERVED.wait()
+    if not any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
+        return
+    from .ytdlp_source import ensure_yt_dlp_imported
+    from . import stream as stream_mod
+    for coro in (ensure_yt_dlp_imported(), stream_mod.warm_visitor(),
+                 _prewarm_search()):
+        tarea = asyncio.create_task(coro)
+        BG_TASKS.add(tarea)
+        tarea.add_done_callback(BG_TASKS.discard)
+
+
 async def _recover_queue_and_cleanup() -> None:
     """Recupera la cola y limpia temporales viejos, SIN demorar `SPITIFO_READY`.
 
@@ -365,8 +391,41 @@ async def _recover_queue_and_cleanup() -> None:
         log.warning("no se pudieron limpiar las carpetas parciales viejas: %s", e)
 
 
+async def _warm_storage_after_ready(storage) -> None:
+    """Precalienta los archivos chicos del storage, tras READY.
+
+    El adapter ya esta resuelto al arrancar (los tests lo cambian en caliente,
+    asi que las tareas de fondo no deben volver a `get_storage()`). Lo que se
+    mueve fuera del camino de READY es el trabajo de disco/red, no la eleccion
+    del adapter (P-cold-start-5).
+    """
+    log.info("biblioteca: %s", storage.describe())
+    log.info("fuentes activas: %s",
+             [s.name for s in ALL_SOURCES if s.available()])
+    warm = getattr(storage, "warm_small_files", None)
+    if warm is not None:
+        try:
+            await asyncio.to_thread(warm)
+        except Exception as exc:
+            log.info("no se pudo precalentar los archivos chicos: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: Starlette):
+    # La instantanea de /api/library se lee y se refresca FUERA del camino de
+    # READY: el primer GET no debe esperar a que el escaneo termine (el primer
+    # analisis del antivirus puede tardar minutos en una biblioteca grande).
+    storage = get_storage()
+    root = getattr(storage, "root", None)
+    if root is not None:
+        data_dir = Path(root) / ".spitifo"
+    else:
+        from .cloud.tokens import default_data_dir
+        data_dir = default_data_dir()
+    state = _LibraryState(data_dir, storage)
+    app.state.library_state = state
+    await asyncio.to_thread(state.load)
+    state.trigger()
     _register_ytdlp()  # registrar al arrancar para que /api/download la encuentre
     tarea = asyncio.create_task(_recover_queue_and_cleanup())
     BG_TASKS.add(tarea)
@@ -377,43 +436,21 @@ async def lifespan(app: Starlette):
     # Chequeo de yt-dlp en segundo plano: si hay una version mas nueva en GitHub
     # la deja lista para el proximo arranque (no reemplaza la ya importada).
     ytdlp_update.start_background_check()
-    # El visitor_data del streaming se busca al arrancar, nunca en el primer
-    # play: si falla, el camino rapido cae al completo y el usuario no lo nota.
-    if any(s.name == "ytdlp" and s.available() for s in ALL_SOURCES):
-        from .ytdlp_source import ensure_yt_dlp_imported
-        # El import de yt_dlp arranca YA, en un hilo: es CPU/disco puro y no
-        # compite por la conexion a youtube.com, asi que no espera los 4 s del
-        # prewarm de red (ese retraso es solo para no competir con la primera
-        # pantalla con trafico).
-        tarea = asyncio.ensure_future(ensure_yt_dlp_imported())
-        BG_TASKS.add(tarea)
-        tarea.add_done_callback(BG_TASKS.discard)
-        from . import stream as stream_mod
-        for coro in (stream_mod.warm_visitor(), _prewarm_search()):
-            tarea = asyncio.create_task(coro)
-            BG_TASKS.add(tarea)
-            tarea.add_done_callback(BG_TASKS.discard)
-    storage = get_storage()
-    log.info("biblioteca: %s", storage.describe())
-    log.info("fuentes activas: %s",
-             [s.name for s in ALL_SOURCES if s.available()])
+    # El visitor_data del streaming y el import de yt-dlp se calientan en
+    # segundo plano, pero solo DESPUES de la primera biblioteca: durante el
+    # primer pintado no deben robar CPU ni radio (P-cold-start-4).
+    tarea = asyncio.create_task(_warm_after_first_library())
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
     # Un solo `files.list` para TODOS los registros chicos (indice, playlists,
     # guardadas, imagenes, escuchas, artistinfo, descartes, fileinfo) en vez
     # de uno por cada uno al primer pedido de cada pantalla (P-drive-io-4).
     # Sin red (disco local, o la nube caida) no es grave: cada registro cae
-    # a listar el suyo, como siempre.
-    # En segundo plano: el arranque nunca espera a la red (sin conexion, el
-    # listado podria tardar el timeout entero antes de SPITIFO_READY).
-    warm = getattr(storage, "warm_small_files", None)
-    if warm is not None:
-        async def _warm_small_files() -> None:
-            try:
-                await asyncio.to_thread(warm)
-            except Exception as exc:
-                log.info("no se pudo precalentar los archivos chicos: %s", exc)
-        tarea = asyncio.create_task(_warm_small_files())
-        BG_TASKS.add(tarea)
-        tarea.add_done_callback(BG_TASKS.discard)
+    # a listar el suyo, como siempre. Tras READY y en segundo plano: el arranque
+    # nunca espera a la red (P-cold-start-5).
+    tarea = asyncio.create_task(_warm_storage_after_ready(storage))
+    BG_TASKS.add(tarea)
+    tarea.add_done_callback(BG_TASKS.discard)
     yield
     for s in ALL_SOURCES:
         await s.aclose()
@@ -424,6 +461,7 @@ async def lifespan(app: Starlette):
     await covers.aclose()
     # Cualquier cambio del indice que haya quedado diferido (dentro de un
     # `batch_index_writes` que no llego a cerrar su bloque) se sube ahora.
+    storage = await asyncio.to_thread(get_storage)
     flush_all = getattr(storage, "flush_all", None)
     if flush_all is not None:
         try:
@@ -684,6 +722,18 @@ class TrackPayload:
 
 
 # -------------------------------------------------------------------- rutas
+def _health_ytdlp_version() -> str | None:
+    """Version para health SIN importar yt-dlp durante el primer pintado.
+
+    Si el modulo ya esta cargado se dice la version real; si no, se lee la
+    del paquete empaquetado del disco, queno cuesta un import (P-cold-start-4).
+    """
+    if "yt_dlp" in sys.modules:
+        return ytdlp_version()
+    from .runtime import bundled_ytdlp_version
+    return bundled_ytdlp_version()
+
+
 async def health(request: Request):
     _register_ytdlp()  # mostrar yt-dlp en health si esta habilitada
     # Runtime de JS de yt-dlp: "quickjs" solo si SPITIFO_QJS apunta a un
@@ -699,7 +749,7 @@ async def health(request: Request):
         "library": get_storage().describe(),
         # None si yt-dlp no se puede importar. El primer import es lento: va a
         # un thread para no frenar el event loop.
-        "ytdlp_version": await asyncio.to_thread(ytdlp_version),
+        "ytdlp_version": await asyncio.to_thread(_health_ytdlp_version),
         # Version ya bajada que todavia no es la cargada (se aplica al reiniciar).
         "ytdlp_pending": await asyncio.to_thread(ytdlp_update.pending_version),
         "js_runtime": configured_js_runtime(),
@@ -2363,6 +2413,108 @@ def _library_etag(body: bytes) -> str:
 #: cache local sin que el codigo de la UI note la diferencia.
 _LIBRARY_CACHE = {"Cache-Control": "private, no-cache"}
 
+#: Cuanto espera la primera request a que termine el escaneo de fondo antes de
+#: servir la instantanea. Un escaneo normal tarda decenas de ms y entra aqui;
+#: un escaneo frenado por el primer analisis del antivirus no: la UI ve la
+#: biblioteca anterior (o el esqueleto) y sigue usable (P-cold-start-1).
+LIBRARY_SNAPSHOT_WAIT_S = 0.25
+
+#: Header con el que se marca una respuesta servida de la instantanea mientras
+#: el escaneo real sigue corriendo. El frontend pide de nuevo al rato.
+LIBRARY_PENDING_HEADER = "x-spitifo-library-pending"
+
+
+def _fast_signature(storage) -> str | None:
+    """Firma barata del contenido, o None si el storage no la ofrece."""
+    firma = getattr(storage, "fast_signature", None)
+    if firma is None:
+        return None
+    try:
+        return firma()
+    except Exception as exc:
+        log.info("no se pudo firmar la biblioteca: %s", exc)
+        return None
+
+
+class _LibraryState:
+    """Instantanea servida por `/api/library` y su refresco en segundo plano."""
+
+    def __init__(self, data_dir: Path, storage) -> None:
+        self.store = SnapshotStore(data_dir)
+        self.storage = storage
+        self.signature: str | None = None
+        self.describe = ""
+        self.body_files, self.etag_files = _library_body("", [], False)
+        self.body_compact, self.etag_compact = _library_body("", [], True)
+        self.refreshed = asyncio.Event()
+        self._task: asyncio.Task | None = None
+
+    def load(self) -> None:
+        guardado = self.store.load()
+        if not guardado:
+            return
+        self.signature = guardado["signature"]
+        self.describe = guardado["describe"]
+        self.body_files = guardado["body_files"]
+        self.etag_files = guardado["etag_files"]
+        self.body_compact = guardado["body_compact"]
+        self.etag_compact = guardado["etag_compact"]
+
+    def body(self, compact: bool) -> tuple[bytes, str]:
+        if compact:
+            return self.body_compact, self.etag_compact
+        return self.body_files, self.etag_files
+
+    def trigger(self) -> None:
+        if self._task is not None and not self._task.done():
+            return
+        self.refreshed.clear()
+        self._task = asyncio.create_task(self._refresh())
+        BG_TASKS.add(self._task)
+        self._task.add_done_callback(BG_TASKS.discard)
+
+    async def _refresh(self) -> None:
+        storage = self.storage
+        # Solo el adapter local ofrece una firma barata. Los demas (Drive) no
+        # tienen instantanea y siguen usando el camino sincronico de siempre.
+        if _fast_signature(storage) is None:
+            self.refreshed.set()
+            return
+        try:
+            # Si la biblioteca cambia MIENTRAS se escanea (un test que planta
+            # archivos, una descarga que termina), se repite: la instantanea
+            # tiene que corresponder al estado que ve el que la pide.
+            for _intentos in range(3):
+                antes = await asyncio.to_thread(storage.fast_signature)
+                files, records = await asyncio.gather(
+                    run_storage(library_scan, storage),
+                    _fileinfo_records(storage))
+                files = with_checks(files, records)
+                describe = await asyncio.to_thread(storage.describe)
+                signature = await asyncio.to_thread(storage.fast_signature)
+                if signature == antes:
+                    break
+            body_files, etag_files = await asyncio.to_thread(
+                _library_body, describe, files, False)
+            body_compact, etag_compact = await asyncio.to_thread(
+                _library_body, describe, files, True)
+            self.signature = signature
+            self.describe = describe
+            self.body_files = body_files
+            self.etag_files = etag_files
+            self.body_compact = body_compact
+            self.etag_compact = etag_compact
+            await asyncio.to_thread(self.store.save, {
+                "signature": signature, "describe": describe,
+                "body_files": body_files, "etag_files": etag_files,
+                "body_compact": body_compact, "etag_compact": etag_compact,
+            })
+        except Exception as exc:
+            log.info("no se pudo refrescar la instantanea de la biblioteca: %s",
+                     exc)
+        finally:
+            self.refreshed.set()
+
 
 async def library(request: Request):
     """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
@@ -2376,16 +2528,41 @@ async def library(request: Request):
     la columna. Las dos formas quedan bajo URLs distintas, asi que el cache
     HTTP (ETag) de cada una es independiente.
     """
-    storage = get_storage()
+    # Si el storage es Drive, construirlo aqui (en un hilo) en vez de en el
+    # lifespan: el shell ya navego y el primer GET manda (P-cold-start-5).
+    storage = await asyncio.to_thread(get_storage)
     compact = request.query_params.get("shape") == "compact"
-    files, records = await asyncio.gather(
-        run_storage(library_scan), _fileinfo_records(storage))
-    files = with_checks(files, records)
-    # Serializar en el pool de storage (no en el loop) y, ademas, responder 304
-    # si el cliente ya tiene el mismo cuerpo (ETag debil).
-    body, etag = await run_storage(_library_body, storage.describe(), files,
-                                   compact)
+    state: _LibraryState | None = getattr(request.app.state, "library_state", None)
+    signature = await asyncio.to_thread(_fast_signature, storage) if state else None
+
+    pending = False
+    if signature is None:
+        # Drive (u otro storage sin firma barata): se mantiene el camino de
+        # siempre, que ya corre en el pool de storage.
+        files, records = await asyncio.gather(
+            run_storage(library_scan, storage), _fileinfo_records(storage))
+        files = with_checks(files, records)
+        body, etag = await run_storage(_library_body, storage.describe(),
+                                       files, compact)
+    else:
+        if signature != state.signature:
+            state.trigger()
+            try:
+                await asyncio.wait_for(state.refreshed.wait(),
+                                       timeout=LIBRARY_SNAPSHOT_WAIT_S)
+            except asyncio.TimeoutError:
+                pass
+        body, etag = state.body(compact)
+        # El escaneo de fondo no alcanzo: se sirve la instantanea y se avisa
+        # al frontend para que pida de nuevo cuando la biblioteca este lista.
+        pending = signature != state.signature
+
+    # La primera biblioteca ya esta servida: a partir de aqui pueden arrancar
+    # el import de yt-dlp y la peticion a youtube.com (P-cold-start-4).
+    FIRST_LIBRARY_SERVED.set()
     headers = {**_LIBRARY_CACHE, "ETag": etag}
+    if pending:
+        headers[LIBRARY_PENDING_HEADER] = "1"
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
         return Response(status_code=304, headers=headers)
@@ -2843,6 +3020,7 @@ class ArtFetchError(Exception):
 
 def _art_client() -> httpx.AsyncClient:
     """Cliente HTTP de las imagenes. Los tests lo cambian por un MockTransport."""
+    import httpx  # perezoso: las imagenes no estan en el primer pintado
     return httpx.AsyncClient(timeout=httpx.Timeout(ART_TIMEOUT_S),
                              follow_redirects=False,
                              headers={"User-Agent": USER_AGENT})
@@ -2850,6 +3028,7 @@ def _art_client() -> httpx.AsyncClient:
 
 async def _art_get(client: httpx.AsyncClient, url: str, source: str) -> bytes:
     """Baja un JPG de la lista, sin seguir redirecciones fuera de ella."""
+    import httpx  # perezoso: solo hace falta si hay una imagen que bajar
     for _ in range(ART_MAX_HOPS + 1):
         try:
             resp = await client.get(url)

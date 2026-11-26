@@ -47,8 +47,6 @@ import time
 import zipfile
 from pathlib import Path
 
-import httpx
-
 from . import runtime
 from . import ytdlp_signature
 
@@ -71,8 +69,14 @@ _TAG_EN_LOCATION = "/releases/tag/"
 _TAG_VALIDA = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 #: No tiene sentido consultar GitHub en cada arranque.
 CHECK_INTERVAL = 24 * 60 * 60
-TIMEOUT = httpx.Timeout(15.0)
+TIMEOUT_S = 15.0
 _MANIFEST = "current.json"
+
+
+def _timeout():
+    """Timeout del actualizador: httpx se importa solo si hay que consultar."""
+    import httpx
+    return httpx.Timeout(TIMEOUT_S)
 
 
 def check_and_update(client: httpx.Client | None = None) -> str | None:
@@ -140,7 +144,8 @@ def _check_and_update(client: httpx.Client | None) -> str | None:
     if propio:
         # Sin seguir redirects: el tag de la ultima release sale justamente del
         # 302. Las descargas piden `follow_redirects=True` por request.
-        client = httpx.Client(timeout=TIMEOUT, follow_redirects=False)
+        import httpx
+        client = httpx.Client(timeout=_timeout(), follow_redirects=False)
     try:
         return _consultar(client, directorio, manifest, ahora)
     finally:
@@ -188,7 +193,8 @@ def latest_tag(client: httpx.Client | None = None) -> str | None:
     """
     propio = client is None
     if propio:
-        client = httpx.Client(timeout=TIMEOUT, follow_redirects=False)
+        import httpx
+        client = httpx.Client(timeout=_timeout(), follow_redirects=False)
     try:
         return _latest_tag(client)
     finally:
@@ -303,7 +309,7 @@ def _sumas_verificadas(client: httpx.Client, url_sumas: str,
 def _bajar_firma(client: httpx.Client, url: str) -> bytes | None:
     """Baja `SHA2-256SUMS.sig`, o None si el status no es 200."""
     resp = client.get(url, follow_redirects=True)
-    if resp.status_code != httpx.codes.OK:
+    if resp.status_code != 200:  # httpx.codes.OK, sin importar httpx aqui
         log.warning("yt-dlp: no se pudo bajar %s (status %s); no se instala nada",
                     ASSET_SIG, resp.status_code)
         return None

@@ -12,8 +12,6 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 
-import httpx
-
 from .config import IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from . import fileinfo
 from .executors import run_storage
@@ -53,6 +51,7 @@ def _ffmpeg_ok() -> bool:
 
 async def _download_to(url: str, dest: Path,
                        progress: "asyncio.Queue | None" = None) -> Path:
+    import httpx  # perezoso: descargar no es parte del arranque
     timeout = httpx.Timeout(300.0, connect=15.0, read=60.0)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True,
                                  headers={"User-Agent": USER_AGENT}) as c:
@@ -326,7 +325,7 @@ def thumb_small_sidecar(key: str) -> str:
     return _thumb_sidecar(key)[: -len(".jpg")] + ".s.jpg"
 
 
-def library_scan() -> list[dict]:
+def library_scan(storage=None) -> list[dict]:
     """Lista la biblioteca terminada a traves del puerto, con la duracion real.
 
     Devuelve audio y video. Cada entrada suma `kind` (audio/video), `thumb_key`
@@ -335,7 +334,9 @@ def library_scan() -> list[dict]:
     como temas: son sidecars, asi que uno huerfano queda oculto. `thumb_s: True`
     (solo si existe) avisa que ademas hay una portada chica `<stem>.s.jpg`.
     """
-    files = list(get_storage().list())
+    # `storage` explicito para las tareas de fondo: leer el global aqui las
+    # pondria a competir con un test (o una request) que lo cambia en caliente.
+    files = list((storage if storage is not None else get_storage()).list())
     thumbs = {f.key for f in files
               if os.path.splitext(f.key)[1].lower() in IMAGE_EXTS}
     out = []
