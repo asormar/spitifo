@@ -4,6 +4,7 @@ import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
+import { openNewList } from "./newList.js";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
 import { DOWNLOAD_FILTERS, rowArt } from "./library.js";
 import { useMore } from "./useMore.js";
@@ -193,7 +194,7 @@ export function DownloadChips({ filter, onChange }) {
 /* Sin ninguna lista: la tarjeta que invita a crear la primera. */
 export const NewListCard = ({ ctx }) => (
   <Card
-    onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
+    onClick={() => openNewList(null, ctx)}
     cover={
       <span className="cv card__add">
         <Icon name="Plus" size="xl" />

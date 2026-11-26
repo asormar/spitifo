@@ -32,7 +32,7 @@
   }
 
   body.nav-swipe {
-    --nav-h: calc(44px + env(safe-area-inset-bottom, 0px));
+    --nav-h: calc(56px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -302,7 +302,14 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .dots {
   align-items: center;
   justify-content: center;
-  height: calc(44px + env(safe-area-inset-bottom, 0px));
+  gap: var(--sp-1);
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
+}
+
+.dots__item {
+  display: grid;
+  justify-items: center;
+  min-width: 0;
 }
 
 @media (max-width: 959.98px) {
@@ -314,8 +321,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .dots__btn {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -338,9 +345,32 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .dots__name {
-  min-width: 84px;
-  font-size: 12.5px;
-  font-weight: 800;
+  overflow: hidden;
+  color: var(--mut);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dots__btn[aria-current="page"] + .dots__name {
+  color: var(--acc);
+}
+
+/* Pista del gesto, una sola vez. Va sobre la barra, sin tapar la pagina. */
+.swipe-hint {
+  position: fixed;
+  z-index: 45;
+  right: 0;
+  bottom: calc(var(--nav-h) + var(--sp-2));
+  left: 0;
+  margin: 0;
+  padding: var(--sp-2) var(--gutter);
+  background: color-mix(in srgb, var(--acc) 13%, var(--s1));
+  color: var(--acc);
+  font: 700 var(--fs-micro) var(--font-body);
   text-align: center;
 }
 
@@ -633,8 +663,24 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .apphead__gear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
   margin-right: -8px;
   color: var(--ink);
+}
+
+/* Guia y Ajustes juntos, en la cabecera de cualquier pestana del telefono. */
+.chrome-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.lhead__acts {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 

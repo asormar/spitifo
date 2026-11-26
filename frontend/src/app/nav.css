@@ -73,6 +73,28 @@ html[data-vt="theme"]::view-transition-new(root) {
   }
 }
 
+/* Migaja «Volver a…» de un salto real entre pestanas (fase 14). Cobalto,
+   nunca rosa: no es sonido, es navegacion. El objetivo de toque es de 48 px. */
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--hit);
+  margin: 0 var(--gutter) var(--sp-3);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--action) 13%, transparent);
+  color: var(--action);
+  font: 700 var(--fs-caption) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-press);
+}
+
+.crumb:active {
+  transform: scale(var(--press-row));
+}
+
 /* Icono de los botones de descarga: entra con un pequeno giro de escala cada
    vez que cambia, por eso lleva `key` en el JSX. */
 .swap {

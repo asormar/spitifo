@@ -32,7 +32,7 @@ open to DevTools); everything else comes from the published files.
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
 | JavaScript bundle (raw, all `.js`) | — | 433,924 B | 314,126 B (gzip 88,464 B) | same file | 422,018 B (gzip 161,577 B) | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 135,571 B | 52,787 B (gzip 11,115 B) | same file | 133,125 B (gzip 38,264 B) | CI, `test.yml` |
-| JavaScript bundle (raw, all `.js`) | — | 460,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 470,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
 | CSS bundle (raw, all `.css`) | — | 150,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
@@ -94,6 +94,11 @@ open to DevTools); everything else comes from the published files.
   it is there. The installer and APK budgets are unchanged: building either
   needs the full Tauri/Rust or Gradle/Chaquopy toolchain, which this baseline
   session did not set up, so there is nothing fresh to measure them against.
+- **2026-11-26**: JS 460,000 → 470,000 B while merging the Spotify-gap chain.
+  Phase 14 (#118, addressable pages, a stack per tab, the guide and settings
+  buttons on every tab) measured 452,500 B on `main` before it and 460,900 B
+  after it (+8,400 B), which went 900 B over the old budget; the raise is that
+  growth rounded up to the nearest 10,000 B.
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.

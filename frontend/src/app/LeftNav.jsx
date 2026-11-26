@@ -3,6 +3,7 @@ import { songs } from "../listen/home.js";
 import { usePlaylists } from "../listen/playlists.js";
 import BrandLogo from "./BrandLogo.jsx";
 import { ITEMS } from "./Nav.jsx";
+import { openNewList } from "../listen/newList.js";
 import { Icon } from "../shared/icons.jsx";
 import { useNav } from "./useNav.js";
 
@@ -50,7 +51,7 @@ export default function LeftNav() {
   const nav = useNav();
   const settingsOpen = nav.settings !== null;
   const page = nav.pageOf("library");
-  const newList = () => nav.goTo("library", { type: "all", what: "lists", naming: true });
+  const newList = () => openNewList(nav, null);
 
   return (
     <nav className="leftnav" aria-label="Modos">

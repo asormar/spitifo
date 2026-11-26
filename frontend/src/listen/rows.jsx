@@ -69,6 +69,7 @@ export const SongRow = memo(function SongRow({
   onPlay,
   onMenu,
   onRemove,
+  onEntity,
   rank,
   num,
   sub,
@@ -97,6 +98,40 @@ export const SongRow = memo(function SongRow({
   const checked = lib || page;
   const pill = checked || all ? checkOf(entry) : rowPill(entry);
   const meta = lib ? "" : sub ?? (album ? `${artist} · ${album}` : artist);
+  /* Los nombres de la fila son enlaces a una sola pagina por entidad. Son
+     hermanos del texto, no botones anidados: el tap no reproduce la cancion. */
+  const entityLink = (kind, name) => ({
+    role: "link",
+    tabIndex: 0,
+    className: "srow__link",
+    "aria-label": `Ir al ${kind} ${name}`,
+    title: `Ir al ${kind} ${name}`,
+    onClick: (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      onEntity?.(kind, name);
+    },
+    onKeyDown: (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.stopPropagation();
+      e.preventDefault();
+      onEntity?.(kind, name);
+    },
+  });
+  const metaNode =
+    !lib && !sub && onEntity ? (
+      <>
+        {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
+        {artist && <span {...entityLink("artista", artist)}>{artist}</span>}
+        {artist && album && <span aria-hidden="true"> · </span>}
+        {album && <span {...entityLink("álbum", album)}>{album}</span>}
+      </>
+    ) : (
+      <>
+        {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
+        {meta}
+      </>
+    );
   const tone = coverTone(artist, album);
   const dur = entry.duration ? clock(Math.round(entry.duration)) : null;
   const artRec = useArtRecord(songTarget(entry));
@@ -192,8 +227,7 @@ export const SongRow = memo(function SongRow({
           <span className="srow__t">{title}</span>
           {(video || meta) && (
             <span className="srow__m">
-              {video && <span className="tag">{entry.hasAudio ? "Vídeo" : "Vídeo sin audio"}</span>}
-              {meta}
+              {metaNode}
             </span>
           )}
         </span>

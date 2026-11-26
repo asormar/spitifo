@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { requestSearch } from "../download/searchRequest.js";
 import { subscribeGenre, takeGenre } from "./genreRequest.js";
 import { useShow } from "../listen/Notice.jsx";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { engine } from "../player/engine.js";
 import ForYouSlot from "./ForYouSlot.jsx";
 import GenreMap from "./GenreMap.jsx";
@@ -156,6 +157,9 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
   return (
     <>
       <h1 className="sr-only">Descubrir</h1>
+      <header className="apphead discoverhead">
+        <ChromeButtons className="apphead__gear" />
+      </header>
       {state.status === "ready" ? (
         <GenreMap
           data={state.data}

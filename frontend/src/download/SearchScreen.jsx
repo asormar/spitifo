@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNav } from "../app/useNav.js";
+import { crossGo } from "../app/crossMode.js";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { rowKey } from "../shared/api.js";
 import SearchField from "../shared/SearchField.jsx";
 import { cx } from "../shared/ui.jsx";
@@ -228,7 +230,7 @@ export default function SearchScreen({
     async (t, anchor) => {
       loadArtistChunk();
       const links = npLinks({ result: t }, null);
-      if (links.artist?.view) return nav.goTo("search", links.artist.view);
+      if (links.artist?.view) return crossGo(nav, links.artist.view, null);
       if (links.artist?.resolve) {
         const locationToken = listenCtx.locationToken;
         const token = locationToken?.();
@@ -237,13 +239,13 @@ export default function SearchScreen({
         /* El menu ya se desmonto si el usuario retrocedio o cambio de pantalla
            mientras se buscaba: ni se abre la pagina ni se lanza otra busqueda. */
         if (locationToken && locationToken() !== token) return;
-        if (view) return nav.goTo("search", view);
+        if (view) return crossGo(nav, view, null);
       }
       const name = links.artist?.name || t.artist;
       setQ(name);
       run.run(name, mode);
     },
-    [nav.goTo, setQ, run.run, mode]
+    [nav.goTo, setQ, run.run, mode, nav]
   );
 
   const pickResult = useCallback(
@@ -470,6 +472,7 @@ export default function SearchScreen({
 
       <header className="lhead">
         <h1 className="lhead__h">Buscar</h1>
+        {!pc && <ChromeButtons />}
       </header>
 
       {/* En escritorio el campo es el de la barra de arriba. */}

@@ -33,7 +33,7 @@ export default function FirstRunCard({ folder }) {
         ))}
       </ol>
       <div className="fr__f">
-        <p>Puedes volver a verlo en Ajustes › Guía.</p>
+        <p>⋯ abre más acciones y «Volver» cierra un paso. El «?» de la barra te trae esta guía.</p>
         <button type="button" className="fr__btn" onClick={dismissFirstRun}>
           Entendido
         </button>

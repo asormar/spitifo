@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
+import { backToLabel } from "../app/crossMode.js";
 import { usePc } from "../shared/viewport.js";
 import { useTheme } from "../shared/theme.js";
 import { APP_VERSION } from "../shared/appVersion.js";
@@ -99,6 +100,8 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const storageHeadRef = useRef(null);
   const cookiesRef = useRef(null);
   const cookiesHeadRef = useRef(null);
+  const guideRef = useRef(null);
+  const guideHeadRef = useRef(null);
   const coversHeadRef = useRef(null);
   const [theme, chooseTheme] = useTheme();
   const [autoDownload, setAutoDownload] = useAutoDownload();
@@ -141,7 +144,9 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
     const target =
       focus === "cookies"
         ? { box: cookiesRef, head: cookiesHeadRef }
-        : { box: storageRef, head: storageHeadRef };
+        : focus === "guide"
+          ? { box: guideRef, head: guideHeadRef }
+          : { box: storageRef, head: storageHeadRef };
     if (!target.box.current) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     target.box.current.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
@@ -159,7 +164,13 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   return (
     <div className="settings">
       <header className="settings__head">
-        <button type="button" className="settings__back cbtn cbtn--soft cbtn--l" aria-label="Volver" onClick={onClose}>
+        <button
+          type="button"
+          className="settings__back cbtn cbtn--soft cbtn--l"
+          aria-label={backToLabel(nav)}
+          title={backToLabel(nav)}
+          onClick={onClose}
+        >
           <Icon name="CaretLeft" size="md" />
         </button>
         <h1 className="settings__title">Ajustes</h1>
@@ -311,8 +322,8 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
         </div>
       </section>
 
-      <section className="settings__sec" aria-labelledby="settings-guide">
-        <h2 id="settings-guide" className="settings__h">
+      <section className="settings__sec" ref={guideRef} aria-labelledby="settings-guide">
+        <h2 id="settings-guide" ref={guideHeadRef} tabIndex={-1} className="settings__h">
           Guía
         </h2>
         <div className="settings__card">

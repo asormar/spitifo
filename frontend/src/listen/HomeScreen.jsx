@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { useNav } from "../app/useNav.js";
 import BrandLogo from "../app/BrandLogo.jsx";
+import ChromeButtons from "../app/ChromeButtons.jsx";
 import { Icon } from "./icons.jsx";
 import { homeGreeting } from "./home.js";
 import { useListen } from "./ListenProvider.jsx";
@@ -145,15 +146,7 @@ export default function HomeScreen({ ready, error, errorCode, active, onRetry, s
           >
             <Icon name="MagnifyingGlass" size="lg" />
           </button>
-          <button
-            type="button"
-            className="cbtn cbtn--l apphead__gear"
-            onClick={() => nav.openSettings()}
-            aria-label="Ajustes"
-            title="Abrir los ajustes"
-          >
-            <Icon name="GearSix" size="lg" />
-          </button>
+          <ChromeButtons />
         </div>
       </header>
       <h1 className="sr-only">Inicio</h1>

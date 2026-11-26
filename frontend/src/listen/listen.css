@@ -360,6 +360,25 @@
   line-height: 1.3;
 }
 
+/* Los nombres de artista y album de los metadatos son enlaces. Cobalto, nunca
+   rosa: no son sonido. Sobre el telefono el objetivo de toque es de 48 px. */
+.srow__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--action);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--action) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.srow__link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+
 .srow__d {
   flex: none;
   color: var(--dim);

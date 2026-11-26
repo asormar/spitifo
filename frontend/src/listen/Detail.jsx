@@ -9,6 +9,10 @@ import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
 import { useNav } from "../app/useNav.js";
+import { crossGo } from "../app/crossMode.js";
+import { artistView, relatedArtists } from "./entityLinks.js";
+import { useReco } from "../discover/reco.js";
+import { absoluteUrl, shareLink } from "../app/share.js";
 import { AlbumCard, Cover, Mosaic, SectionHead, Shelf, coverOf } from "./cards.jsx";
 import { detailMeta, detailOf } from "./detail.js";
 import { loadAlbumTracklist, mergeAlbumTracks, mostCommonAlbumId } from "./albumTracks.js";
@@ -57,7 +61,7 @@ function Gone({ d, backRef, ctx, nav, pc }) {
     <div className="lpage dpage">
       {!pc && (
         <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
         </div>
       )}
       {state === "loading" ? (
@@ -199,6 +203,10 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
      visita, aunque se pulse el boton antes de que esta termine. */
   const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
+  /* Artistas similares: se usan los datos que Descubrir ya dejo en el
+     dispositivo. La vista es estable (el selector devuelve la foto entera). */
+  const recoArtists = useReco((s) => s.artists);
+  const similar = useMemo(() => relatedArtists(name, recoArtists, 6), [name, recoArtists]);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
       linkPromiseRef.current = null;
@@ -272,6 +280,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const endNaming = () => {
     setNaming(false);
     requestAnimationFrame(() => moreRef.current?.focus({ preventScroll: true }));
+  };
+
+  /* «Compartir» de album y lista: la direccion de la pagina ya es canonica. */
+  const sharePage = () => {
+    const url = absoluteUrl(window.location.href, window.location.search);
+    shareLink({ title: name, url }).then((done) => {
+      if (done === "copied") ctx.show("Enlace copiado");
+    });
   };
 
   const more = isList && !naming && (
@@ -419,7 +435,11 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={pl.name}
       anchor={top.anchor}
       onClose={nav.back}
-      onPick={(kindPicked) => (kindPicked === "rename" ? (nav.back(), setNaming(true)) : deleteList())}
+      onPick={(kindPicked) =>
+        kindPicked === "share" ? (sharePage(), nav.back())
+          : kindPicked === "rename" ? (nav.back(), setNaming(true))
+            : deleteList()
+      }
     />
   );
 
@@ -431,7 +451,14 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
       name={name}
       anchor={stackTop.anchor}
       onClose={nav.back}
-      onPick={() => nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor })}
+      onPick={(kindPicked) => {
+        if (kindPicked === "share") {
+          sharePage();
+          nav.back();
+          return;
+        }
+        nav.replace({ type: "aldel", key: view.id, anchor: stackTop.anchor });
+      }}
       onPhoto={() =>
         ctx.replaceArt(view.id, "album", name, stackTop.anchor, `${d.artist} ${name}`)
       }
@@ -479,7 +506,10 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;
-    if (view) nav.goTo("search", view);
+    /* El contenido local se abre aqui; el catalogo salta a Buscar dejando
+       la migaja con el album del que se salio. */
+    const origin = { tab: nav.tab, label: name };
+    if (view) crossGo(nav, view, origin);
     else {
       requestSearch(name);
       nav.goTab("search");
@@ -501,7 +531,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
             </div>
           ) : (
             <>
-              <Back bref={backRef} onClick={ctx.back} className="hback ahero__back" />
+              <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback ahero__back" />
               <div className="ahero__in">
                 <h1>{name}</h1>
                 <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
@@ -537,6 +567,30 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
         {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
             sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
         <ArtistPopulares name={name} artistId={artistLinkId} />
+        {similar.length > 0 && (
+          <section className="sec" aria-labelledby="h-similares">
+            <SectionHead id="h-similares" title="Artistas similares" />
+            <div className="chips">
+              {similar.map((a) => (
+                <button
+                  key={a.name}
+                  type="button"
+                  className="chip"
+                  onClick={() => {
+                    const view = artistView(a.name, index.entries);
+                    if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+                    else {
+                      requestSearch(a.name);
+                      nav.goTab("search");
+                    }
+                  }}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {tracks}
       </div>
     );
@@ -552,7 +606,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     <div className="lpage dpage">
       {!pc && (
         <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
+          <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} className="hback cbtn--soft" />
           {more}
         </div>
       )}

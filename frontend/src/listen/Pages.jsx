@@ -8,6 +8,7 @@ import { playlists } from "./playlists.js";
 import { NameField } from "./PlaylistPicker.jsx";
 import VirtualList from "./VirtualList.jsx";
 import { Thead } from "./rows.jsx";
+import { openNewList } from "./newList.js";
 import { AllSongs, Cards, DownloadChips } from "./cards.jsx";
 import { emptyFilterNote, filterByDownload } from "./library.js";
 import {
@@ -40,8 +41,8 @@ export function useFocusBack(ref, on = true) {
   }, [ref, on]);
 }
 
-export const Back = ({ bref, onClick, className = "hback" }) => (
-  <button ref={bref} type="button" className={className} aria-label="Volver" onClick={onClick}>
+export const Back = ({ bref, onClick, className = "hback", label = "Volver" }) => (
+  <button ref={bref} type="button" className={className} aria-label={label} title={label} onClick={onClick}>
     <Icon name="CaretLeft" size="lg" />
   </button>
 );
@@ -70,6 +71,12 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   const [naming, setNaming] = useState(Boolean(view.naming));
   const [download, setDownload] = useState("all");
   useFocusBack(backRef);
+
+  /* El «+» de esta pagina llama a la misma funcion que el riel y la casilla:
+     sustituye la entrada por la pagina de listas con el nombre abierto. */
+  useEffect(() => {
+    if (view.naming) setNaming(true);
+  }, [view.naming]);
 
   /* Lo que se lista, sin depender de `ctx`: ordenar miles de canciones no puede
      repetirse por eso. El historial solo cuenta en "top": las demas no se
@@ -137,7 +144,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   return (
     <div className="lpage">
       <div className="phead">
-        <Back bref={backRef} onClick={ctx.back} />
+        <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} />
         <h1 className="phead__h">{TITLES[what]}</h1>
         <span className="count">{isSongs ? shown.length : items.length}</span>
       </div>
@@ -156,7 +163,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
               onCancel={endNaming}
             />
           ) : (
-            <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming(true)}>
+            <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => openNewList(null, ctx)}>
               <Icon name="Plus" size="sm" />
               Nueva lista
             </button>
@@ -260,7 +267,7 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
       ) : (
         <>
           <div className="phead">
-            <Back bref={backRef} onClick={ctx.back} />
+            <Back bref={backRef} onClick={ctx.back} label={ctx.backLabel?.()} />
             <h1 className="sr-only">Todas tus canciones</h1>
           </div>
           <AllSongs n={shown.length} storage={storage} check={check} onPlay={play} onShuffle={shuffle} />
