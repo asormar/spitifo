@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "./icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { useSaveTarget } from "./saveSong.js";
+import { HAPTIC, haptic } from "../shared/haptics.js";
 import "./saveHeart.css";
 
 /* ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ export default function SaveHeart({ t, track, query = "", size = "md", className
       title={label}
       onClick={() => {
         setPop(true);
+        haptic(HAPTIC.CONFIRM);
         toggle();
       }}
       onAnimationEnd={() => setPop(false)}

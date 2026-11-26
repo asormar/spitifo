@@ -281,17 +281,34 @@ export function canStartSwipe(target) {
   return !target.closest(NO_SWIPE_SELECTOR);
 }
 
+/* 20 dp de borde cedidos al gesto de atras de Android (Decision 1). Con
+   viewport a escala 1 un dp CSS equivale a un dp del sistema; el escalado de
+   fuentes ya entra en la medida del rectangulo. El swipe de modos ignora el
+   toque que nace ahi: en ese borde solo manda el atrás del sistema. */
+export const SWIPE_EDGE = 20;
+
+export function inSwipeEdge(x, rect, edge = SWIPE_EDGE) {
+  if (!rect || !Number.isFinite(x)) return false;
+  const left = Number.isFinite(rect.left) ? rect.left : 0;
+  const right = Number.isFinite(rect.right)
+    ? rect.right
+    : left + (globalThis.innerWidth || 0);
+  return x <= left + edge || x >= right - edge;
+}
+
 const PHONE_NAV_KEY = "spitifo.phoneNav";
 const PHONE_NAV_VALUES = new Set(["tabs", "swipe"]);
 
 /* localStorage puede no existir (SSR, tests) o lanzar (modo privado con
-   almacenamiento bloqueado). Un fallo nunca puede impedir arrancar la app. */
+   almacenamiento bloqueado). Un fallo nunca puede impedir arrancar la app.
+   Por defecto manda el swipe en el telefono (Decision 1); «Pestañas» sigue
+   disponible en Ajustes exactamente como antes. */
 export function readPhoneNav() {
   try {
     const value = globalThis.localStorage?.getItem(PHONE_NAV_KEY);
-    return PHONE_NAV_VALUES.has(value) ? value : "tabs";
+    return PHONE_NAV_VALUES.has(value) ? value : "swipe";
   } catch (e) {
-    return "tabs";
+    return "swipe";
   }
 }
 

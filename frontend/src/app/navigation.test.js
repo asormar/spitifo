@@ -5,6 +5,7 @@ import {
   aboveNp,
   canStartSwipe,
   depthOf,
+  inSwipeEdge,
   isNpEntry,
   parsePage,
   pageToken,
@@ -828,10 +829,32 @@ describe("canStartSwipe", () => {
   });
 });
 
+describe("inSwipeEdge", () => {
+  const rect = { left: 0, right: 400 };
+
+  it("yields the 20dp edges to Android back", () => {
+    expect(inSwipeEdge(0, rect)).toBe(true);
+    expect(inSwipeEdge(20, rect)).toBe(true);
+    expect(inSwipeEdge(400, rect)).toBe(true);
+    expect(inSwipeEdge(380, rect)).toBe(true);
+  });
+
+  it("lets the swipe start in the central 90%", () => {
+    expect(inSwipeEdge(21, rect)).toBe(false);
+    expect(inSwipeEdge(200, rect)).toBe(false);
+    expect(inSwipeEdge(379, rect)).toBe(false);
+  });
+
+  it("accepts an adjustable edge and ignores a missing rect", () => {
+    expect(inSwipeEdge(30, rect, 40)).toBe(true);
+    expect(inSwipeEdge(100, null)).toBe(false);
+  });
+});
+
 describe("phone navigation preference", () => {
-  it("defaults to tabs when storage is missing", () => {
+  it("defaults to swipe when storage is missing", () => {
     vi.stubGlobal("localStorage", undefined);
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
   });
 
   it("reads and writes the stored value", () => {
@@ -844,7 +867,7 @@ describe("phone navigation preference", () => {
     expect(store.get("spitifo.phoneNav")).toBe("swipe");
     expect(readPhoneNav()).toBe("swipe");
     store.set("spitifo.phoneNav", "otra-cosa");
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
   });
 
   it("survives storage that throws", () => {
@@ -856,7 +879,7 @@ describe("phone navigation preference", () => {
         throw new Error("blocked");
       },
     });
-    expect(readPhoneNav()).toBe("tabs");
+    expect(readPhoneNav()).toBe("swipe");
     expect(() => writePhoneNav("swipe")).not.toThrow();
   });
 

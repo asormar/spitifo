@@ -579,9 +579,11 @@
    soltar, el motor reordena y la caja de cada fila salta a su sitio, y una
    transicion que siguiera viva las haria volver a recorrer ese hueco. */
 .is-sorting .qrow:not(.is-drag) {
-  transition: var(--tr-move);
+  transition: transform var(--t-ind) var(--ease);
 }
 
+/* La fila levantada crece de golpe (el dedo no espera) y gana sombra sin
+   animarla: solo transform y opacity se animan en esta app (§8). */
 .qrow.is-drag {
   background: var(--s1);
   box-shadow: var(--shadow);

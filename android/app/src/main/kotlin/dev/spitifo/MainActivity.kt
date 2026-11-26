@@ -19,6 +19,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -32,6 +33,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import com.chaquo.python.Python
@@ -112,6 +114,19 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
+        // Predictive back (Android 13+): the system draws the previous screen
+        // while the finger drags from the edge. The callback keeps today's
+        // decisions exactly: full screen first, then web history, then leave.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val view = web
+                when {
+                    fullscreenView != null -> hideFullscreen()
+                    view != null && view.canGoBack() -> view.goBack()
+                    else -> finish()
+                }
+            }
+        })
         // Until the page reports its theme (setBars), match the system mode so
         // the bars never flash the wallpaper colour while the backend starts.
         val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
@@ -170,18 +185,6 @@ class MainActivity : ComponentActivity() {
             view.loadUrl(backend.url(port, share, isYouTube(share)))
         } else {
             pendingShare = share
-        }
-    }
-
-    /** Back goes through the web history first, then leaves the app. */
-    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
-    override fun onBackPressed() {
-        val view = web
-        when {
-            // Back leaves full screen before it does anything else.
-            fullscreenView != null -> hideFullscreen()
-            view != null && view.canGoBack() -> view.goBack()
-            else -> super.onBackPressed()
         }
     }
 
@@ -261,6 +264,24 @@ class MainActivity : ComponentActivity() {
         fun setBars(color: String, light: Boolean) {
             val parsed = runCatching { Color.parseColor(color) }.getOrNull() ?: return
             runOnUiThread { applyBars(parsed, light) }
+        }
+
+        /**
+         * Discrete confirmation only (shared/haptics.js): 0 = confirm (heart,
+         * a sheet or row settling, a finished download), 1 = detent (the
+         * scrubber crossing a whole minute). The system's own feedback is used
+         * so the user's accessibility settings are respected.
+         */
+        @JavascriptInterface
+        fun haptic(kind: Int) {
+            runOnUiThread {
+                val constant = if (kind == 1) {
+                    HapticFeedbackConstants.VIRTUAL_KEY
+                } else {
+                    HapticFeedbackConstants.CONFIRM
+                }
+                web?.performHapticFeedback(constant)
+            }
         }
     }
 
@@ -466,6 +487,9 @@ class MainActivity : ComponentActivity() {
             // blocks exactly that by default, so the next track would silently
             // never start.
             settings.mediaPlaybackRequiresUserGesture = false
+            // No Material glow when a list reaches its end: the page handles
+            // over-scroll itself (and pull-to-refresh where it means something).
+            setOverScrollMode(View.OVER_SCROLL_NEVER)
             // The Drive sign-in needs a native Activity: the page asks for it
             // through this interface instead of a link (see DriveAuth).
             addJavascriptInterface(AndroidBridge(), "SpitifoAndroid")

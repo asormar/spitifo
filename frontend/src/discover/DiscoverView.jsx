@@ -90,6 +90,12 @@ export default function DiscoverView({ active = true, onOpenDownload }) {
     setAttempt((n) => n + 1);
   }, []);
 
+  /* «Para ti» también se puede refrescar tirando desde arriba (§6). */
+  useEffect(() => {
+    window.addEventListener("spitifo-refresh", retry);
+    return () => window.removeEventListener("spitifo-refresh", retry);
+  }, [retry]);
+
   /* Primero el pedido y luego el cambio de pantalla: Buscar lo toma al
      montarse o en cuanto se avisa. */
   const searchGenre = useCallback(

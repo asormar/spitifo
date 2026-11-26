@@ -19,11 +19,14 @@
   /* Borde izquierdo del reproductor flotante y de los avisos: pegado al menu
      lateral en escritorio. */
   --dock-l: 0px;
-  /* Recorrido del cambio de pantalla: en el telefono se desliza en X; en
-     escritorio, en Y. Las variables llegan a los pseudo-elementos de la
-     View Transition por herencia desde <html>. */
-  --vt-dx: 24px;
+  /* Un solo movimiento de modo (§9): la que entra viene de 36px, la que sale
+     va a 24px con escala 0.98. En escritorio el recorrido es vertical. Las
+     variables llegan a los pseudo-elementos de la View Transition por herencia
+     desde <html>. */
+  --vt-dx: 36px;
   --vt-dy: 0px;
+  --vt-out-x: 24px;
+  --vt-out-y: 0px;
 }
 
 @media (max-width: 959.98px) {
@@ -42,7 +45,9 @@
 @media (min-width: 960px) {
   :root {
     --vt-dx: 0px;
-    --vt-dy: 16px;
+    --vt-dy: 12px;
+    --vt-out-x: 0px;
+    --vt-out-y: -12px;
     --top-h: 64px;
     --dock-l: calc(var(--nav-w) + 12px);
     /* Alto de .dock (88px, DESIGN.md > decision 3) mas su aire: 12px abajo
@@ -164,15 +169,15 @@ html[data-vt="mode"]::view-transition-old(*) {
 html[data-vt="mode"]::view-transition-old(screen) {
   display: block;
   translate: 0 var(--vt-shift, 0px);
-  animation: screen-out var(--t-quick) var(--ease) both;
+  animation: screen-out var(--t-swipe) var(--drawer) both;
 }
 
 html[data-vt="mode"]::view-transition-new(screen) {
-  animation: screen-in var(--t-enter) var(--ease) both;
+  animation: screen-in var(--t-swipe) var(--drawer) both;
 }
 
-/* La vieja sale hacia el lado contrario al avance y la nueva entra desde el
-   lado del avance. --vt-dir vale -1, 0 o 1 (0 solo funde). */
+/* Una sola duracion y curva para las dos: la que entra desde 36px con
+   fundido, la que sale a 24px con escala. --vt-dir vale -1, 0 o 1. */
 @keyframes screen-in {
   from {
     opacity: 0;
@@ -187,9 +192,9 @@ html[data-vt="mode"]::view-transition-new(screen) {
   to {
     opacity: 0;
     transform: translate(
-      calc(var(--vt-dir, 0) * var(--vt-dx) * -1),
-      calc(var(--vt-dir, 0) * var(--vt-dy) * -1)
-    );
+      calc(var(--vt-dir, 0) * var(--vt-out-x) * -1),
+      calc(var(--vt-dir, 0) * var(--vt-out-y) * -1)
+    ) scale(0.98);
   }
 }
 
@@ -246,7 +251,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
   justify-items: center;
   width: calc((100% - 12px) / 4);
   transform: translateX(calc(var(--i, 0) * 100%));
-  transition: transform var(--t-enter) var(--ease);
+  transition: transform var(--t-ind) var(--ease);
 }
 
 .tabbar__ind::before {
@@ -321,8 +326,8 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .dots__btn {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: var(--hit);
+  height: var(--hit);
   padding: 0;
   border: 0;
   border-radius: var(--r-pill);
@@ -396,7 +401,7 @@ html[data-vt="mode"]::view-transition-new(screen) {
 }
 
 .cbtn:active {
-  transform: scale(0.92);
+  transform: scale(0.96);
 }
 
 .cbtn:disabled {
@@ -427,6 +432,31 @@ html[data-vt="mode"]::view-transition-new(screen) {
 .cbtn--l {
   width: 44px;
   height: 44px;
+}
+
+/* Dedo: 48px de area real para todo boton redondo, con ::after cuando el
+   glifo visible debe seguir midiendo menos (como ya hacia la X de las hojas). */
+@media (pointer: coarse) {
+  .cbtn {
+    width: var(--hit);
+    height: var(--hit);
+  }
+
+  .cbtn--sm {
+    position: relative;
+    width: 34px;
+    height: 34px;
+  }
+
+  .cbtn--sm::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--hit);
+    height: var(--hit);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* --- Menu lateral (escritorio) -------------------------------------------- */

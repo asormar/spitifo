@@ -78,7 +78,9 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     // El selector de archivos de la WebView (fotos y cookies de YouTube): el
     // resultado llega como content Uri, sin permisos nuevos.
-    implementation("androidx.activity:activity:1.5.1")
+    // 1.6+ wires OnBackPressedDispatcher to the platform OnBackInvokedCallback,
+    // which is what draws the predictive-back preview on Android 13+.
+    implementation("androidx.activity:activity:1.6.1")
 }
 
 /* ------------------------------------------------------------------ quickjs
