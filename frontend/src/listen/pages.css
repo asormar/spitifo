@@ -69,74 +69,100 @@
   margin: 0 -8px;
 }
 
-.dside {
+/* Una sola cabecera para album, artista y lista. El lado de la portada y el
+   titulo se leen de --hero-h y --hero-title: los fija el CSS por ancho de
+   pantalla, no el componente. "Volver" y las acciones van siempre aqui. */
+.dhero {
+  --hero-h: min(280px, calc(100vw - 2 * var(--gutter)));
+  --hero-title: var(--fs-display);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 var(--gutter);
+}
+
+.dhero__back {
+  position: absolute;
+  z-index: 2;
+  top: var(--sp-1);
+  left: var(--gutter);
+}
+
+.dhero__art {
+  display: grid;
+  place-items: center;
+}
+
+.dhero__art > .cv,
+.dhero__art > .mos {
+  --s: var(--hero-h);
+  width: var(--hero-h);
+  height: var(--hero-h);
+  border-radius: var(--r-lg);
+  box-shadow: 0 22px 44px rgba(var(--shadow-rgb), 0.22);
+}
+
+/* El artista solo cambia la forma de la portada: circulo en vez de tarjeta. */
+.dhero--round .dhero__art > .cv {
+  border-radius: 50%;
+}
+
+.dhero__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
   min-width: 0;
   text-align: center;
 }
 
-.dcv {
-  --s: 236px;
-  width: var(--s);
-  height: var(--s);
-  margin: 0 auto;
-  border-radius: 26px;
-  box-shadow: 0 22px 44px rgba(var(--shadow-rgb), 0.22);
-}
-
-.dtrow {
+.dhero__top {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
-.dtl {
-  flex: 1;
+.dhero__more {
+  flex: none;
+}
+
+.dhero h1 {
   min-width: 0;
-  margin: 20px 0 0;
-  font: 800 24px / 1.1 var(--font-display);
-  letter-spacing: -0.04em;
+  margin: var(--sp-3) 0 0;
+  font: 700 var(--hero-title) / 1.1 var(--font-display);
+  letter-spacing: -0.03em;
   overflow-wrap: anywhere;
 }
 
-.dtrow .nfield {
-  margin-top: 16px;
+.dhero__top .nfield {
+  margin-top: var(--sp-3);
 }
 
-/* Un boton de texto de 44 px de alto con el texto de 16. */
-.dby {
-  position: relative;
+.dhero__by {
   display: inline-flex;
-  margin-top: 6px;
+  align-items: center;
+  min-height: var(--hit);
   padding: 0;
   border: 0;
   background: none;
-  color: var(--acc);
-  font: 700 16px var(--font-body);
-  text-align: left;
+  color: var(--action);
+  font: 700 var(--fs-body) var(--font-body);
   cursor: pointer;
 }
 
-.dby::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: -8px;
-  left: -8px;
-  height: 44px;
-  transform: translateY(-50%);
-}
-
-.dside .dmeta {
-  margin: 4px 0 0;
+.dhero__meta {
+  margin: 0;
   color: var(--mut);
-  font-size: 13px;
+  font-size: var(--fs-caption);
 }
 
 .dacts {
   display: flex;
-  gap: 10px;
-  padding: 18px 0 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
 }
 
 /* «Más de <artista>» sale bajo las acciones de la ficha de Escuchar. */
@@ -242,73 +268,6 @@
   font-weight: 700;
 }
 
-.ghead {
-  margin: 0;
-  padding: 20px 6px 0;
-  color: var(--mut);
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-/* Artista, telefono: la portada llena la cabecera, sin desenfoque, con un
-   degradado para el texto blanco. */
-.ahero {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  height: 340px;
-  margin: -12px calc(var(--gutter) * -1) 0;
-  overflow: hidden;
-  border-radius: 0 0 32px 32px;
-  background: var(--s2);
-  color: #fff;
-}
-
-.ahero .cv {
-  --s: 340px;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 0;
-}
-
-.ahero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to bottom, rgba(14, 14, 24, 0.08) 30%, rgba(14, 14, 24, 0.72));
-}
-
-.ahero__back {
-  position: absolute;
-  z-index: 2;
-  top: 8px;
-  left: 8px;
-  background: rgba(14, 14, 24, 0.42);
-  box-shadow: none;
-  color: #fff;
-}
-
-.ahero__in {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 20px 20px;
-}
-
-.ahero h1 {
-  min-width: 0;
-  margin: 0;
-  font: 800 clamp(26px, 8.2vw, 32px) / 1.05 var(--font-display);
-  letter-spacing: -0.045em;
-  overflow-wrap: anywhere;
-}
-
 .dalb {
   margin-top: 14px;
 }
@@ -405,42 +364,52 @@
   }
 
   .dgrid {
+    --hero-h: 240px;
     display: grid;
-    grid-template-columns: 264px minmax(0, 1fr);
+    grid-template-columns: var(--hero-h) minmax(0, 1fr);
     align-items: start;
-    gap: 0 40px;
-    margin-top: 6px;
+    gap: 0 var(--sp-10);
+    margin-top: var(--sp-1);
   }
 
-  .dside {
+  .dhero {
+    --hero-title: var(--fs-display-xl);
     position: sticky;
-    top: calc(var(--top-h) + 6px);
+    top: calc(var(--top-h) + var(--sp-1));
+    padding: 0;
+  }
+
+  .dhero__art > .cv,
+  .dhero__art > .mos {
+    border-radius: var(--r-md);
+    box-shadow: none;
+  }
+
+  .dhero__back {
+    left: 0;
+  }
+
+  .dhero__body {
+    align-items: flex-start;
+    gap: var(--sp-1);
     text-align: left;
   }
 
-  .dcv {
-    --s: 264px;
+  .dhero__top {
+    justify-content: flex-start;
+  }
+
+  .dhero h1 {
     margin: 0;
-    border-radius: 22px;
   }
 
-  .dtrow {
-    justify-content: space-between;
+  .dhero__top .nfield {
+    margin-top: 0;
   }
 
-  .dtl {
-    margin-top: 22px;
-    font-size: 26px;
-    letter-spacing: -0.045em;
-  }
-
-  .dtrow .cbtn {
-    margin-top: 16px;
-  }
-
-  .dacts {
-    margin-top: 18px;
-    padding: 0;
+  .dhero .dacts {
+    margin-top: var(--sp-3);
+    justify-content: flex-start;
   }
 
   .liner {
@@ -464,70 +433,6 @@
 
   .srow--n .srow__n {
     font-size: 14px;
-  }
-
-  /* Artista, escritorio: un banner con la portada redonda. */
-  .ahero {
-    flex-direction: row;
-    align-items: center;
-    gap: 32px;
-    height: auto;
-    min-height: 216px;
-    margin: 6px 0 0;
-    padding: 30px 40px;
-    border-radius: 36px;
-    background: linear-gradient(
-      120deg,
-      color-mix(in oklab, var(--c) 66%, #11111c),
-      color-mix(in oklab, var(--c) 34%, #11111c)
-    );
-  }
-
-  :root[data-theme="dark"] .ahero {
-    background: linear-gradient(
-      120deg,
-      color-mix(in oklab, var(--c) 55%, #11111c),
-      color-mix(in oklab, var(--c) 30%, #11111c)
-    );
-  }
-
-  .ahero::after {
-    display: none;
-  }
-
-  .ahero .cv {
-    --s: 156px;
-    position: static;
-    width: var(--s);
-    height: var(--s);
-    border-radius: 50%;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  }
-
-  .ahero__t {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .ahero h1 {
-    display: -webkit-box;
-    overflow: hidden;
-    font-size: 44px;
-    line-height: 1.06;
-    letter-spacing: -0.05em;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-
-  .ahero p {
-    margin: 10px 0 0;
-    font-size: 15px;
-    font-weight: 600;
-  }
-
-  .dpage--artist .dacts {
-    max-width: 380px;
-    margin-top: 18px;
   }
 
   .dalb {

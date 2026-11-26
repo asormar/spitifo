@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx } from "../shared/ui.jsx";
+import { starterGenre } from "../shared/starters.js";
 import { listDrag, panelDecision, pickSnap, resist, sheetGeometry, snapName, tabDecision } from "./gestures.js";
 import { PANEL_ROOM, PANEL_W, startsCollapsed } from "./frame.js";
 import { Icon } from "./icons.jsx";
@@ -450,8 +451,21 @@ export default function ForYou({
     </div>
   );
 
+  /* Genero semilla para los estados sin historial: el primero que el mapa ya
+     conozca. Asi Descubrir hace algo util en la primera visita. */
+  const seedGenre = starterGenre([
+    ...explore.map(({ i }) => data?.names[i]),
+    ...mine.map((g) => g.name),
+  ]);
   const stateBlock = (k) => (
-    <StateBlock kind={k} status={rec.status} onRestore={() => reco.restoreAll()} onRetry={() => reco.load(true)} />
+    <StateBlock
+      kind={k}
+      status={rec.status}
+      onRestore={() => reco.restoreAll()}
+      onRetry={() => reco.load(true)}
+      onStart={() => play(`g:${seedGenre}`, seedGenre, onPlayGenre)}
+      onExplore={() => onSearch(seedGenre)}
+    />
   );
 
   const body = (

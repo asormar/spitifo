@@ -39,7 +39,7 @@ button {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--pink) 40%, transparent);
+  background: color-mix(in srgb, var(--action) 30%, transparent);
   color: var(--ink);
 }
 

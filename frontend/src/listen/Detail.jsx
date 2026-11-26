@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DetailHero from "./DetailHero.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
 import { loadArtistChunk } from "../download/artistChunk.js";
 import { resolveArtistLink } from "../download/artistLink.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { Icon } from "./icons.jsx";
-import { toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
@@ -435,125 +435,92 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   };
 
   if (artist) {
-    const cover = (
-      <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} size={pc ? 156 : 340} round={pc} />
-    );
     return (
       <div className="lpage dpage dpage--artist">
-        <header className="ahero" style={toneVars(tone)}>
-          {cover}
-          {pc ? (
-            <div className="ahero__t">
-              <h1>{name}</h1>
-              <p>{meta}</p>
-            </div>
-          ) : (
-            <>
-              <Back bref={backRef} onClick={ctx.back} className="hback ahero__back" />
-              <div className="ahero__in">
-                <h1>{name}</h1>
-                <button type="button" className="pk" aria-label={`Reproducir ${name}`} disabled={empty} onClick={play}>
-                  <Icon name="Play" size="xl" weight="fill" />
-                </button>
-              </div>
-            </>
-          )}
-        </header>
-        {!pc && <p className="ghead">{meta}</p>}
-        {acts}
-        <button
-          type="button"
-          className="btn btn--ghost amore"
-          onPointerEnter={loadArtistChunk}
-          onFocus={loadArtistChunk}
-          onClick={moreArtist}
-          disabled={linking}
-          aria-busy={linking || undefined}
-        >
-          Más de {name}
-        </button>
-        {d.albums.length > 0 && (
-          <section className="sec dalb" aria-labelledby="h-dalb">
-            <SectionHead id="h-dalb" title="Álbumes" />
-            <Shelf grid={pc}>
-              {d.albums.map((g) => (
-                <AlbumCard key={g.id} g={g} ctx={ctx} sub={songs(g.entries.length)} />
-              ))}
-            </Shelf>
-          </section>
-        )}
-        {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
-            sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
-        <ArtistPopulares name={name} artistId={artistLinkId} />
-        {tracks}
+        <div className="dgrid">
+          <DetailHero
+            round
+            tone={tone}
+            art={<Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} round />}
+            title={<h1>{name}</h1>}
+            meta={meta}
+            acts={acts}
+            back={!pc && <Back bref={backRef} onClick={ctx.back} className="hback" />}
+          />
+          <div className="dmain">
+            <button
+              type="button"
+              className="btn btn--ghost amore"
+              onPointerEnter={loadArtistChunk}
+              onFocus={loadArtistChunk}
+              onClick={moreArtist}
+              disabled={linking}
+              aria-busy={linking || undefined}
+            >
+              Más de {name}
+            </button>
+            {d.albums.length > 0 && (
+              <section className="sec dalb" aria-labelledby="h-dalb">
+                <SectionHead id="h-dalb" title="Álbumes" />
+                <Shelf grid={pc}>
+                  {d.albums.map((g) => (
+                    <AlbumCard key={g.id} g={g} ctx={ctx} sub={songs(g.entries.length)} />
+                  ))}
+                </Shelf>
+              </section>
+            )}
+            {/* Encima de las canciones guardadas, como en Spotify. El boton rosa
+                sigue reproduciendo `rows`: lo tuyo, no el top de iTunes. */}
+            <ArtistPopulares name={name} artistId={artistLinkId} />
+            {tracks}
+          </div>
+        </div>
       </div>
     );
   }
 
   const art = isList ? (
-    <Mosaic tones={mosaicTones(pl.keys, byKey)} className="dcv" />
+    <Mosaic tones={mosaicTones(pl.keys, byKey)} />
   ) : (
-    <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} className="dcv" />
+    <Cover tone={tone} label={name} src={coverOf(rows)} target={view.id} />
+  );
+  const title = naming && isList ? (
+    <NameField
+      value={pl.name}
+      label="Nuevo nombre de la lista"
+      submit="Guardar"
+      onSubmit={(next) => {
+        playlists.rename(pl.id, next);
+        endNaming();
+      }}
+      onCancel={endNaming}
+    />
+  ) : (
+    <h1>{name}</h1>
+  );
+  const liner = album && (
+    <p className="liner">
+      <b>{shownLiner[0]}</b>
+      <br />
+      {shownLiner[1]}
+    </p>
   );
 
   return (
     <div className="lpage dpage">
-      {!pc && (
-        <div className="dbar">
-          <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />
-          {more}
-        </div>
-      )}
       <div className="dgrid">
-        <div className="dside">
-          {art}
-          <div className="dtrow">
-            {naming && isList ? (
-              <NameField
-                value={pl.name}
-                label="Nuevo nombre de la lista"
-                submit="Guardar"
-                onSubmit={(next) => {
-                  playlists.rename(pl.id, next);
-                  endNaming();
-                }}
-                onCancel={endNaming}
-              />
-            ) : (
-              <h1 className="dtl">{name}</h1>
-            )}
-            {pc && more}
-          </div>
-          {album && (
-            <button
-              type="button"
-              className="dby"
-              aria-label={`Abrir artista ${d.artist}`}
-              onClick={() => ctx.open({ type: "artist", id: d.artistId })}
-            >
-              {d.artist}
-            </button>
-          )}
-          {meta && <p className="dmeta">{meta}</p>}
-          {acts}
-          {album && pc && (
-            <p className="liner">
-              <b>{shownLiner[0]}</b>
-              <br />
-              {shownLiner[1]}
-            </p>
-          )}
-        </div>
-        <div className="dmain">
-          {tracks}
-          {album && !pc && (
-            <p className="liner">
-              <b>{shownLiner[0]}</b>
-              <br />
-              {shownLiner[1]}
-            </p>
-          )}
-        </div>
+        <DetailHero
+          art={art}
+          title={title}
+          meta={meta}
+          by={album && { name: d.artist, onClick: () => ctx.open({ type: "artist", id: d.artistId }) }}
+          acts={acts}
+          foot={liner}
+          back={!pc && <Back bref={backRef} onClick={ctx.back} className="hback cbtn--soft" />}
+          more={more}
+          tone={tone}
+        />
+        <div className="dmain">{tracks}</div>
       </div>
       {menu}
       {albumMenu}

@@ -257,6 +257,22 @@
   font-weight: 600;
 }
 
+/* El avance de 30 s no puede parecer la cancion completa: el mismo texto que
+   en la fila y un punto aviso, sin inventar un cuarto color de acento. */
+.np__state--preview {
+  background: color-mix(in srgb, var(--near) 40%, rgba(14, 14, 24, 0.34));
+  font-weight: 700;
+}
+
+.np__state--preview::before {
+  content: "";
+  flex: none;
+  width: var(--sp-1);
+  height: var(--sp-1);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--near) 60%, var(--on));
+}
+
 .np__state-check {
   color: var(--ok-glow);
 }

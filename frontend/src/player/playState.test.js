@@ -15,7 +15,7 @@ describe("playStateText", () => {
   });
 
   it("names a 30 s preview", () => {
-    expect(playStateText({ kind: "preview" })).toBe("Vista previa de 30 s");
+    expect(playStateText({ kind: "preview" })).toBe("Avance de 30 s");
   });
 
   it("says nothing for an unknown track", () => {

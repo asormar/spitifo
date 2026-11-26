@@ -261,7 +261,7 @@ export default function NowPlaying({ mode, onClose, onReveal, onWide, onGo }) {
      El veredicto del archivo ya no vive junto al titulo, sino en la Ficha. */
   const stateText = playStateText({ kind: track.kind, saved: savedStream });
   const stateChip = stateText && (
-    <span className="np__state">
+    <span className={cx("np__state", track.kind === "preview" && "np__state--preview")}>
       {library && <Icon name="Check" size="sm" className="np__state-check" />}
       {stateText}
     </span>

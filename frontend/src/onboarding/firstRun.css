@@ -11,7 +11,7 @@
 
 .fr__t {
   margin: 0 0 16px;
-  font: 700 18px / 1.25 var(--font-display);
+  font: 700 var(--fs-title) / 1.25 var(--font-display);
 }
 
 .fr__ol {
@@ -42,7 +42,7 @@
   border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--acc) 14%, var(--s1));
   color: var(--acc);
-  font: 800 13px var(--font-display);
+  font: 800 var(--fs-caption) var(--font-display);
 }
 
 /* El texto va bajo el titulo, en la columna del texto (sin esto cae en la del
@@ -51,8 +51,31 @@
   grid-column: 2;
   overflow-wrap: anywhere;
   color: var(--mut);
-  font-size: 13px;
-  line-height: 1.45;
+  font: 500 var(--fs-body) / 1.45 var(--font-body);
+}
+
+/* Una accion real por paso. Cobalto: abrir Buscar o Ajustes no es sonido. */
+.fr__act {
+  grid-column: 2;
+  justify-self: start;
+  min-height: var(--hit);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font: 700 var(--fs-ui) var(--font-body);
+  text-decoration: underline;
+  text-underline-offset: var(--sp-1);
+  cursor: pointer;
+}
+
+.fr__act:active {
+  transform: scale(var(--press));
+}
+
+.fr__act:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 .fr__f {
@@ -71,13 +94,13 @@
 
 .fr__btn {
   flex: none;
-  height: 40px;
-  padding: 0 18px;
+  height: var(--hit);
+  padding: 0 var(--sp-5);
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--acc);
-  color: var(--acc-ink);
-  font: 800 14px var(--font-body);
+  background: var(--action);
+  color: var(--action-ink);
+  font: 700 var(--fs-ui) var(--font-body);
   cursor: pointer;
   transition: transform var(--t-press) var(--ease);
 }

@@ -204,9 +204,10 @@
   background: var(--s2);
 }
 
+/* El espacio que usa la app no es sonido: cobalto, como el resto de acciones. */
 .quota__app,
 .quota__key--app {
-  background: var(--pink);
+  background: var(--action);
 }
 
 .quota__other,

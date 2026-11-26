@@ -89,8 +89,8 @@ html[data-vt="theme"]::view-transition-new(root) {
 .count {
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: var(--pink);
-  color: var(--on-pink);
+  background: var(--action);
+  color: var(--action-ink);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
