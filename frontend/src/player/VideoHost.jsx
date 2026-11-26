@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./video.css";
 import { Icon } from "../shared/icons.jsx";
+import { useShow } from "../listen/Notice.jsx";
 import { engine } from "./engine.js";
 import { setVideoEl, setVideoHost, useVideoHost, videoHost } from "./videoStore.js";
+import { resumeNotice } from "./videoResume.js";
 
 /* Lo que se puede tabular dentro del dialogo, para atrapar el Tab. */
 const VHOST_FOCUSABLE =
@@ -21,6 +24,10 @@ function VideoHost() {
   const [pip, setPip] = useState(false);
   const [fs, setFs] = useState(false);
   const [notice, setNotice] = useState(null);
+  const show = useShow();
+  /* Si la cancion sonaba cuando se abrio ESTE video: lo que decide si cerrar
+     lo retoma. Un video abierto con la cancion ya en pausa no la arranca. */
+  const wasPlayingRef = useRef(false);
 
   /* En WebView2 ninguna de las dos APIs existe en todas las versiones: los
      botones se esconden cuando no estan, en vez de fallar al pulsarlos. */
@@ -94,6 +101,9 @@ function VideoHost() {
     if (next === (v.getAttribute("src") || "")) return;
     setFailed(false);
     setNotice(null);
+    /* Lo que valía la cancion ANTES de que este video pausara el audio (ver
+       onPlay): es lo que decide si cerrar la retoma. */
+    wasPlayingRef.current = Boolean(next) && engine.getState().playing;
     if (next) v.setAttribute("src", next);
     else {
       /* Cerrar de verdad: se suelta el archivo (y con el, el buffer). */
@@ -120,15 +130,24 @@ function VideoHost() {
 
   const close = useCallback(() => {
     /* Con la ventana flotante activa, cerrar la caja de la app no corta el
-       video: se sigue viendo en PiP y al salir de el vuelve aca. */
+       video: se sigue viendo en PiP y al salir de el vuelve aca (y la cancion
+       sigue en pausa: el video sigue sonando por su cuenta). */
     if (inPip()) {
       setVideoHost({ mode: "closed" });
       return;
     }
     vidRef.current?.pause();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    /* Retoma la cancion en el mismo segundo en que se pauso (engine.pause()
+       nunca mueve currentTime) y lo dice con un aviso corto, solo si este
+       video fue quien la pauso. */
+    if (wasPlayingRef.current && item) {
+      const at = engine.getState().time;
+      engine.resume();
+      show?.(resumeNotice(item.title, at));
+    }
     setVideoHost({ mode: "closed", item: null });
-  }, [inPip]);
+  }, [inPip, item, show]);
 
   /* Foco: entra al dialogo al abrir, se queda dentro (Tab) y vuelve a la
      miniatura al cerrar. El primer tabulado es el propio <video>: es lo primero

@@ -355,6 +355,16 @@
   font-size: 1.15em;
 }
 
+/* Portada sin imagen: dos tonos del genero y un disco, en vez de una letra que
+   se parecia al esqueleto de carga. Sobre el color de la trama cv-p*. */
+.cv > span.cv__gen {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, #fff) 0 16%, transparent 16.5%),
+    linear-gradient(135deg, var(--c) 0 50%, color-mix(in srgb, var(--c) 60%, #11111c) 50%);
+}
+
 .cv-p0 {
   background-image: radial-gradient(circle at 78% 78%, color-mix(in oklab, var(--c) 44%, #fff) 0 18%, transparent 18.5% 34%, color-mix(in oklab, var(--c) 72%, #fff) 34.5% 36%, transparent 36.5%);
 }
@@ -434,6 +444,25 @@
   font-size: 12.5px;
   line-height: 1.3;
 }
+
+/* Los nombres de artista y album de los metadatos son enlaces. Cobalto, nunca
+   rosa: no son sonido. Sobre el telefono el objetivo de toque es de 48 px. */
+.srow__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--action);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--action) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.srow__link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
 
 .srow__d {
   flex: none;
@@ -589,7 +618,9 @@
   right: 16px;
   bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + 8px);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -598,6 +629,8 @@ body.has-mini .lnotice {
 }
 
 .ltoast {
+  position: relative;
+  overflow: hidden;
   padding: 14px 16px;
   border-radius: var(--r-cover);
   background: var(--ink);
@@ -610,6 +643,26 @@ body.has-mini .lnotice {
   pointer-events: auto;
   touch-action: pan-y;
   user-select: none;
+}
+
+/* Cuanto le queda a un deshacer: el tiempo real, no una promesa. Un aviso
+   nuevo nunca la reinicia ni la acorta (cada una tiene su propio --dismiss). */
+.ltoast__bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--acc);
+  transform: scaleX(1);
+  transform-origin: left;
+  animation: ltoast-shrink var(--dismiss, 5000ms) linear forwards;
+}
+
+@keyframes ltoast-shrink {
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* Mientras se arrastra manda el transform del dedo, no el de la entrada. */

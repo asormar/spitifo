@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { coverOwner, coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { cx } from "../shared/ui.jsx";
-import { thumbUrl } from "./artwork.js";
+import { shelfThumbUrl } from "./artwork.js";
 import { loadAlbumChunk } from "./albumChunk.js";
 import "./albumShelf.css";
 
@@ -26,10 +26,11 @@ function AlbumCover({ album }) {
       <span>{initial(coverOwner(album.artist, album.title) || album.title)}</span>
       {album.artwork_url && !broken && (
         <img
-          src={thumbUrl(album.artwork_url)}
+          src={shelfThumbUrl(album.artwork_url)}
           alt=""
           loading="lazy"
           decoding="async"
+          fetchPriority="low"
           width={142}
           height={142}
           onError={() => setBroken(true)}

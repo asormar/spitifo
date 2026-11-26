@@ -95,7 +95,9 @@
 }
 
 .dhero__art > .cv,
-.dhero__art > .mos {
+.dhero__art > .mos,
+.dhero__art > .dcv--cover,
+.dhero__art > .dcv--folder {
   --s: var(--hero-h);
   width: var(--hero-h);
   height: var(--hero-h);
@@ -380,7 +382,9 @@
   }
 
   .dhero__art > .cv,
-  .dhero__art > .mos {
+  .dhero__art > .mos,
+  .dhero__art > .dcv--cover,
+  .dhero__art > .dcv--folder {
     border-radius: var(--r-md);
     box-shadow: none;
   }

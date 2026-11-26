@@ -23,23 +23,30 @@ export function matchState(t) {
 }
 
 /* YouTube ocupado (503) es "no hay entera", no un error: la fila cae al
-   avance de 30 s como si el match hubiera terminado sin video. */
-export const busyResult = (t) => ({
+   avance de 30 s como si el match hubiera terminado sin video. `youtubeBusy`
+   distingue ESE caso (circuito abierto) de un match que de verdad no
+   encontro nada, para que la fila lo diga en vez de quedar en silencio. */
+export const busyResult = (t, youtubeBusy = false) => ({
   ...t,
-  extra: { ...t.extra, match_state: "none" },
+  extra: {
+    ...t.extra, match_state: "none",
+    ...(youtubeBusy ? { youtube_busy: true } : {}),
+  },
 });
 
 /* GET /api/search/match/{id}[?priority=1]. El id es el source_id de iTunes
    (_track_key en main.py). Un toque pide priority para adelantarse. Cualquier
-   fallo (incluido el 503 de YouTube ocupado) cae a "none": la fila suena el
-   avance de 30 s en vez de quedar colgada. */
+   fallo cae a "none": la fila suena el avance de 30 s en vez de quedar
+   colgada; el 503 de YouTube ocupado ademas marca `youtube_busy` para que la
+   fila lo avise en vez de parecer un simple "sin version entera". */
 export async function fetchTrackMatch(t, signal, priority = false) {
   const r = await fetch(
     `${API}/search/match/${t?.source_id || ""}${priority ? "?priority=1" : ""}`,
     { signal }
   );
-  const d = r.ok ? await r.json().catch(() => ({})) : {};
-  return d?.track || busyResult(t);
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) return d?.track || busyResult(t);
+  return busyResult(t, d?.code === "youtube_busy");
 }
 
 /* Artistas y albumes de un evento, o null si no los trae: el catalogo los

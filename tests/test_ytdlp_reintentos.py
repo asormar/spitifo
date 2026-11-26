@@ -191,6 +191,9 @@ def test_reintenta_hasta_3_veces_y_recien_despues_es_error(yt_dlp_falso):
     job = ys.get_job(YtDlpFalso.job_id)
     assert job["status"] == "error"
     assert "403" in job["error"]
+    # El frontend nunca muestra job["error"]: solo lee error_code para elegir
+    # entre sus dos frases fijas (searchPlan.js). Un 403 agotado es transitorio.
+    assert job["error_code"] == "transient"
 
 
 @pytest.mark.parametrize("mensaje", [
@@ -204,7 +207,9 @@ def test_un_error_permanente_se_intenta_una_sola_vez(yt_dlp_falso, mensaje):
         _bajar("Permanente")
 
     assert yt_dlp_falso.intentos == 1
-    assert ys.get_job(YtDlpFalso.job_id)["status"] == "error"
+    job = ys.get_job(YtDlpFalso.job_id)
+    assert job["status"] == "error"
+    assert job["error_code"] == "permanent"
 
 
 def test_el_reintento_resetea_el_progreso_del_job(yt_dlp_falso):

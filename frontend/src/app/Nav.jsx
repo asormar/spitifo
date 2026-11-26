@@ -13,15 +13,16 @@ export const ITEMS = [
   { id: "discover", label: "Descubrir" },
 ];
 
-const indexOf = (tab) => Math.max(0, TABS.indexOf(tab));
+const indexOf = (tab) => TABS.indexOf(tab);
 
 export function TabBar({ tab, onTab }) {
-  const index = indexOf(tab);
+  const found = indexOf(tab);
+  const index = Math.max(0, found);
   return (
     <nav className="tabbar" aria-label="Modos">
       {/* La pastilla del icono viaja con transform: es lo unico que se mueve al
-          cambiar de pestana. */}
-      <span className="tabbar__ind" aria-hidden="true" style={{ "--i": index }} />
+          cambiar de pestana. Con Ajustes abierta no hay pestana activa. */}
+      {found >= 0 && <span className="tabbar__ind" aria-hidden="true" style={{ "--i": index }} />}
       {ITEMS.map(({ id, label }) => {
         const active = tab === id;
         return (
@@ -41,32 +42,29 @@ export function TabBar({ tab, onTab }) {
   );
 }
 
-/* Variante de paginas deslizables: barra mucho mas baja, dos puntos, el nombre
-   de la pestana activa y dos puntos. El gesto es el protagonista. */
+/* Variante de paginas deslizables: puntos con las cuatro etiquetas SIEMPRE
+   visibles (micro, el mismo tipo que la barra), no solo la de la pestana
+   activa. El objetivo de toque de cada punto es de 48 px. */
 export function SwipeDots({ tab, onTab }) {
-  const index = indexOf(tab);
-  const dot = ({ id, label }) => {
-    const active = tab === id;
-    return (
-      <button
-        key={id}
-        type="button"
-        className="dots__btn"
-        aria-label={label}
-        aria-current={active ? "page" : undefined}
-        onClick={() => onTab(id)}
-      >
-        <span className="dots__dot" aria-hidden="true" />
-      </button>
-    );
-  };
   return (
     <nav className="dots" aria-label="Modos">
-      {ITEMS.slice(0, 2).map(dot)}
-      <span className="dots__name" aria-hidden="true">
-        {ITEMS[index].label}
-      </span>
-      {ITEMS.slice(2).map(dot)}
+      {ITEMS.map(({ id, label }) => {
+        const active = tab === id;
+        return (
+          <span key={id} className="dots__item">
+            <button
+              type="button"
+              className="dots__btn"
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              onClick={() => onTab(id)}
+            >
+              <span className="dots__dot" aria-hidden="true" />
+            </button>
+            <span className="dots__name" aria-hidden="true">{label}</span>
+          </span>
+        );
+      })}
     </nav>
   );
 }

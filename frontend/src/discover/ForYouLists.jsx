@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { cx } from "../shared/ui.jsx";
 import { coverTone, toneVars } from "../shared/cover.js";
-import { becauseText, initials, percent } from "../shared/format.js";
+import { becauseText, initials, percent, percentLabel } from "../shared/format.js";
 import { Icon } from "./icons.jsx";
 import { swipeDecision, swipeOffset, swipeProgress } from "./gestures.js";
 import { useDrag } from "./useDrag.js";
@@ -265,6 +265,10 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
       {mine.length > 0 && (
         <>
           <h3 className="fy-h">Tus géneros</h3>
+          <div className="fy-gen__head" aria-hidden="true">
+            <span>Género</span>
+            <span>Cuota de tus escuchas</span>
+          </div>
           <ol className="fy-list">
             {mine.map((g, n) => {
               const body = (
@@ -292,7 +296,7 @@ export function GenresTab({ data, mine, explore, busy, onOpen, onPlay }) {
                     <button
                       type="button"
                       className="fy-gen"
-                      aria-label={`${g.name}, ${percent(g.share)}. Ver en el mapa`}
+                      aria-label={`${g.name}, ${percentLabel(g.share)}. Ver en el mapa`}
                       onClick={() => onOpen(g.i)}
                     >
                       {body}

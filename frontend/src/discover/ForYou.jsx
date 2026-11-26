@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { cx } from "../shared/ui.jsx";
 import { starterGenre } from "../shared/starters.js";
 import { listDrag, panelDecision, pickSnap, resist, sheetGeometry, snapName, tabDecision } from "./gestures.js";
-import { PANEL_ROOM, PANEL_W, startsCollapsed } from "./frame.js";
+import { initialSnap, PANEL_ROOM, PANEL_W, rememberSnap, startsCollapsed } from "./frame.js";
 import { Icon } from "./icons.jsx";
 import { PanelTitle, panelHead } from "./ForYouSlot.jsx";
 import { normalize } from "./map.js";
@@ -64,7 +64,7 @@ export default function ForYou({
   const [menu, setMenu] = useState(null);
   const [leaving, setLeaving] = useState(NONE);
   const [busy, setBusy] = useState(null);
-  const [snap, setSnap] = useState("peek");
+  const [snap, setSnap] = useState(initialSnap);
   /* El hueco (ForYouSlot) ya decidio si el panel lateral nace recogido. */
   const [collapsed, setCollapsed] = useState(initialCollapsed);
 
@@ -91,6 +91,8 @@ export default function ForYou({
   );
   const kind = emptyKind({ rec, hiddenCount: rec.hidden.length });
   const head = panelHead(rec);
+  const artistCount = artists.length;
+  const artistLabel = `${artistCount} ${artistCount === 1 ? "artista" : "artistas"}`;
 
   /* --- Fila elegida: anillo fuerte en el mapa y vuelo al primer genero ------ */
 
@@ -234,6 +236,7 @@ export default function ForYou({
        viven abajo y no caben a la vez. */
     if (name !== "peek" && genreOpen) ctx.closeGenre();
     setSnap(name);
+    rememberSnap(name);
   };
 
   /* La tarjeta de un genero manda: la hoja se recoge a la barra. */
@@ -243,6 +246,33 @@ export default function ForYou({
 
   /* Solo un cambio de parada se anima; nacer o cambiar de tamano, no. */
   const placed = useRef(null);
+  const animTimer = useRef(0);
+  /* `will-change: transform` (discover.css) solo mientras dura el arrastre o
+     la animacion del cambio de parada: marcar el inicio acá y soltarlo al
+     terminar la transicion, con un respaldo por tiempo por si el valor de
+     destino no cambia (sin value change no hay `transitionend`). */
+  const markAnimating = (el) => {
+    el.dataset.animating = "";
+    clearTimeout(animTimer.current);
+    animTimer.current = setTimeout(() => {
+      delete el.dataset.animating;
+    }, 400);
+  };
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el || !narrow) return undefined;
+    const onTransitionEnd = (e) => {
+      if (e.target === el && e.propertyName === "transform") {
+        clearTimeout(animTimer.current);
+        delete el.dataset.animating;
+      }
+    };
+    el.addEventListener("transitionend", onTransitionEnd);
+    return () => {
+      el.removeEventListener("transitionend", onTransitionEnd);
+      clearTimeout(animTimer.current);
+    };
+  }, [narrow]);
   useLayoutEffect(() => {
     const el = sheetRef.current;
     if (!el) {
@@ -253,6 +283,7 @@ export default function ForYou({
     const still = placed.current === null || placed.current === snap;
     placed.current = snap;
     if (still) el.style.transition = "none";
+    else markAnimating(el);
     el.style.transform = `translateY(${geo.offsets[snap]}px)`;
     el.style.setProperty("--fy-hide", `${geo.offsets[snap]}px`);
     if (still) {
@@ -278,6 +309,7 @@ export default function ForYou({
     const from = Math.min(g.offsets.peek, Math.max(0, grab.current + dy));
     const to = pickSnap(from, vy, [g.offsets.full, g.offsets.half, g.offsets.peek]);
     delete el.dataset.drag;
+    markAnimating(el);
     el.style.transform = `translateY(${to}px)`;
     el.style.setProperty("--fy-hide", `${to}px`);
     goSnap(snapName(to, g.offsets));
@@ -470,13 +502,17 @@ export default function ForYou({
 
   const body = (
     <>
+      {/* Lo que diferencia el producto va arriba, no tras toda la lista. */}
+      <p className="fy-privacy">
+        Privado: calculado en tu dispositivo con MusicBrainz y ListenBrainz. Tu historial no sale de aquí.
+      </p>
       {tab === "art" ? (
         rows.length === 0 ? (
           stateBlock(kind)
         ) : (
           <>
             {rec.status.offline && (
-              <p className="fy-note">Sin conexión: se completará cuando vuelva.</p>
+              <p className="fy-note">Sin conexión. Las recomendaciones volverán cuando vuelva la red.</p>
             )}
             <ul className="fy-list" aria-label="Artistas recomendados">
               {rows.map((row) => (
@@ -515,9 +551,6 @@ export default function ForYou({
           onPlay={(name) => play(`g:${name}`, name, onPlayGenre)}
         />
       )}
-      <p className="fy-foot">
-        Calculado en tu dispositivo con MusicBrainz y ListenBrainz. Tu historial no sale de aquí.
-      </p>
     </>
   );
 
@@ -611,12 +644,15 @@ export default function ForYou({
           ref={pillRef}
           type="button"
           className="fy__pill"
-          aria-label="Mostrar el panel Para ti"
+          aria-label={`Mostrar el panel Para ti, ${artistLabel}`}
           aria-expanded="false"
           onClick={() => fold(false, true)}
           {...tabDrag}
         >
           <Icon name="Sparkle" weight="fill" size="sm" />
+          <span className="fy__pill-badge" aria-hidden="true">
+            {artistCount}
+          </span>
           <span>Para ti</span>
         </button>
       )}

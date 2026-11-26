@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { useNav } from "../app/useNav.js";
+import { crossGo } from "../app/crossMode.js";
+import { artistView } from "../listen/entityLinks.js";
 import { Icon } from "../listen/icons.jsx";
 import { requestGenre } from "../discover/genreRequest.js";
 import { requestSearch } from "../download/searchRequest.js";
@@ -61,7 +63,17 @@ export function FichaCard({ track, full = false, onReveal }) {
    Descubrir o Buscar la hayan cargado una vez. */
 export function TryCard({ artist, trackKey }) {
   const nav = useNav();
+  const { model } = useListen();
   const list = useMemo(() => relatedTo(artist, readReco()), [artist, trackKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openArtist = (name) => {
+    /* Un mismo nombre abre la misma pagina que el menu ⋯ o los metadatos. */
+    const view = artistView(name, model.entries);
+    if (view) crossGo(nav, view, { tab: nav.tab, label: name });
+    else {
+      requestSearch(name);
+      nav.goTab("search");
+    }
+  };
   if (!list.length) return null;
 
   return (
@@ -84,12 +96,9 @@ export function TryCard({ artist, trackKey }) {
             <button
               type="button"
               className="cbtn cbtn--w"
-              aria-label={`Buscar a ${name} para descargar`}
-              title="Buscar para descargar"
-              onClick={() => {
-                requestSearch(name);
-                nav.goTab("search");
-              }}
+              aria-label={`Ver a ${name}`}
+              title={`Ver a ${name}`}
+              onClick={() => openArtist(name)}
             >
               <Icon name="MagnifyingGlass" size="md" />
             </button>

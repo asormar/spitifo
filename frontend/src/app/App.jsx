@@ -1,17 +1,17 @@
 import React, { Suspense, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { API, keyUrl } from "../shared/api.js";
+import { afterIdle } from "../shared/raf.js";
+import { COMPACT_FIELDS, compactLibraryRows, expandCompactLibrary } from "./libraryCompact.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
 import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
 import { useShow } from "../listen/Notice.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
-import VideoHost from "../player/VideoHost.jsx";
 import { engine } from "../player/engine.js";
 import { panel, panelMode, usePanel } from "../player/panel.js";
 import { useEngine } from "../player/useEngine.js";
-import { createListenTracker } from "../player/listens.js";
-import { bindMediaSession } from "../player/mediaSession.js";
+import { readSnapshot, writeSnapshot } from "../player/sessionSnapshot.js";
 import StreamErrors from "../player/StreamErrors.jsx";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
@@ -22,21 +22,23 @@ import { saved } from "../listen/saved.js";
 import { art } from "../listen/art.js";
 import { artSrc, songTarget } from "../listen/artLogic.js";
 import { loadOverlays, loadPageHost } from "../listen/pageLoader.jsx";
-import { ProgressStack } from "../download/progress.jsx";
 import {
   TABS,
   aboveNp,
   canStartSwipe,
   nextGuess,
   readPhoneNav,
+  readSwipeHint,
   readView,
   swipeTarget,
   viewKey,
   writePhoneNav,
+  writeSwipeHint,
 } from "./navigation.js";
 import { createLocationToken, createNpHistory } from "./npHistory.js";
 import useNavController, { NavContext } from "./useNav.js";
-import { SwipeDots, TabBar } from "./Nav.jsx";
+import { ITEMS, SwipeDots, TabBar } from "./Nav.jsx";
+import { crossGo } from "./crossMode.js";
 import LeftNav from "./LeftNav.jsx";
 import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
@@ -48,19 +50,36 @@ import { closeDock, registerClosePlayer } from "../player/useDock.js";
 /* Ultima biblioteca que respondio el servidor, guardada en el dispositivo.
    Con Drive la lista tarda segundos en llegar (es red): mientras tanto
    Inicio y Tu biblioteca pintan la de la vez anterior y la real la reemplaza
-   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella. */
-const LIB_CACHE = "spitifo:library";
+   al llegar. Si el almacenamiento no deja leer o escribir, se sigue sin ella.
+
+   Se guarda en columnas (ver libraryCompact.js), no un objeto por archivo: a
+   20k pistas el espejo clasico pesaba ~7.7 MB, el doble contando el
+   `JSON.stringify` de cada escritura, y se acercaba a la cuota tipica de
+   localStorage (P-large-library-scale-1). "v2" en la clave es la migracion:
+   un espejo de la version anterior (un array de objetos) no calza con esta
+   forma y se descarta solo, sin romper nada; la red trae la lista de nuevo,
+   como si no hubiera cache. */
+const LIB_CACHE = "spitifo:library:v2";
+const LIB_CACHE_OLD = "spitifo:library";
 const readLibCache = () => {
   try {
-    const files = JSON.parse(localStorage.getItem(LIB_CACHE));
-    return Array.isArray(files) ? files : null;
+    const raw = JSON.parse(localStorage.getItem(LIB_CACHE));
+    if (raw && Array.isArray(raw.rows)) {
+      return expandCompactLibrary(raw.fields, raw.rows);
+    }
   } catch {
-    return null;
+    /* cache corrupta: se sigue sin ella, como si no existiera */
   }
-};
-const writeLibCache = (files) => {
   try {
-    localStorage.setItem(LIB_CACHE, JSON.stringify(files));
+    localStorage.removeItem(LIB_CACHE_OLD);
+  } catch {
+    /* no se puede limpiar: no es grave, solo queda un espejo viejo sin uso */
+  }
+  return null;
+};
+const writeLibCache = (fields, rows) => {
+  try {
+    localStorage.setItem(LIB_CACHE, JSON.stringify({ fields, rows }));
   } catch {
     /* lleno o bloqueado: la proxima apertura espera a la red, como antes */
   }
@@ -102,6 +121,15 @@ function DiscoverView(props) {
   return <View {...props} />;
 }
 const SettingsView = React.lazy(loadSettingsView);
+/* El <video> y las tarjetas de progreso no pintan nada en el primer frame: el
+   primero esta oculto hasta que se abre un video y las segundas solo existen
+   cuando hay una descarga en curso. Van en su propio chunk, se piden al montar
+   el shell y no muestran nada mientras llegan (sin spinner), asi que la primera
+   pintura queda igual. */
+const VideoHost = React.lazy(() => import("../player/VideoHost.jsx"));
+const ProgressStack = React.lazy(() =>
+  import("../download/progress.jsx").then((m) => ({ default: m.ProgressStack }))
+);
 /* La pildora llega con el espejo de la cola, no con el shell: hasta que el
    usuario descarga algo o el sondeo de entrada encuentra trabajo, no se carga. */
 const QueuePill = React.lazy(() => import("../download/QueuePill.jsx"));
@@ -261,6 +289,21 @@ export default function App() {
   const [libErr, setLibErr] = useState(false);
   /* Codigo del ultimo fallo: `reconnect_required` tiene su propia salida. */
   const [libErrCode, setLibErrCode] = useState(null);
+  /* El servidor sirvio la biblioteca de la instantanea mientras el escaneo
+     sigue corriendo: se avisa y se pide de nuevo en cuanto hay hueco. */
+  const [libPending, setLibPending] = useState(false);
+  const retryTimer = useRef(null);
+  const loadLibRef = useRef(null);
+  const pendingCache = useRef(null);
+  const cancelCacheIdle = useRef(null);
+  const flushLibCache = useCallback(() => {
+    cancelCacheIdle.current?.();
+    cancelCacheIdle.current = null;
+    const p = pendingCache.current;
+    if (!p) return;
+    pendingCache.current = null;
+    writeLibCache(p.fields, p.rows);
+  }, []);
   /* Espejo sincronico de `lib`: el borrado diferido necesita devolver EXACTAMENTE
      las filas que saco, aunque el deshacer llegue antes del siguiente render. */
   const libRef = useRef(lib);
@@ -270,6 +313,7 @@ export default function App() {
 
   const pc = usePc();
   const [phoneNav, setPhoneNav] = useState(readPhoneNav);
+  const [swipeHint, setSwipeHint] = useState(readSwipeHint);
   const screensRef = useRef(null);
 
   /* "Ahora suena" abierta. Como Ajustes, abrirla empuja UNA entrada al
@@ -317,12 +361,21 @@ export default function App() {
       .then(setHealth)
       .catch(() => setHealth(null));
   }, []);
-  useEffect(loadHealth, [loadHealth]);
 
-  /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez:
-     el motor avisa de cada cambio de pista o de estado y mediaSession solo
-     traduce. Sin la API, bindMediaSession devuelve un no-op. */
-  useEffect(() => bindMediaSession(engine), []);
+  /* Teclas multimedia, auriculares y pantalla de bloqueo. Se engancha UNA vez,
+     pero el traductor no pinta nada en la primera pantalla: su modulo viaja
+     aparte y se engancha en cuanto llega. Sin la API devuelve un no-op. */
+  useEffect(() => {
+    let off = () => {};
+    let alive = true;
+    import("../player/mediaSession.js").then(({ bindMediaSession }) => {
+      if (alive) off = bindMediaSession(engine);
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
 
   /* El aviso del proximo stream se carga aparte: mientras suena musica de la
      biblioteca no hace falta ni el modulo ni ninguna peticion. */
@@ -359,51 +412,132 @@ export default function App() {
     };
   }, []);
 
-  /* Historial de escucha: UNA vez por app. El tracker vive mientras App este
-     montada y cierra la sesion abierta con "close" al desmontarse. */
+  /* Historial de escucha: UNA vez por app. Tampoco pinta nada al arrancar, asi
+     que su modulo viaja aparte y el tracker se arma cuando llega; al desmontarse
+     cierra la sesion abierta con "close". */
   useEffect(() => {
-    const tracker = createListenTracker(engine);
-    return () => tracker.stop();
+    let tracker = null;
+    let alive = true;
+    import("../player/listens.js").then(({ createListenTracker }) => {
+      if (alive) tracker = createListenTracker(engine);
+    });
+    return () => {
+      alive = false;
+      tracker?.stop();
+    };
+  }, []);
+
+  /* Retomar la sesion (R2-robustez-f): si Android (o el usuario) mato la app
+     mientras sonaba algo, un snapshot ligero trae la pista, la cola y la
+     posicion de vuelta, en pausa y sin autoplay (engine.restore no arranca el
+     audio). Solo al arrancar, y solo si no hay nada sonando ya. */
+  useEffect(() => {
+    if (engine.getState().track) return;
+    const snap = readSnapshot();
+    if (snap) engine.restore(snap.track, snap.queue, snap.index, snap.time);
+  }, []);
+
+  /* La foto se guarda cada ~5 s y al ocultarse la app (la pestana pierde foco
+     o Android la manda a segundo plano): es el ultimo momento seguro antes de
+     que el sistema pueda matarla sin aviso. */
+  useEffect(() => {
+    const save = () => {
+      const s = engine.getState();
+      writeSnapshot(s.track, s.queue, s.time);
+    };
+    const id = setInterval(save, 5000);
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") save();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
   }, []);
 
   /* Si el server no responde, el contador queda en null (consultando) en vez
      de romperse: el panel se abre vacio y el error se ve en la consola. */
   const loadLib = useCallback(async (opts) => {
-    /* El registro de guardadas se pide junto con la biblioteca, pero NO se
-       espera: una lista con Drive tarda y las filas de archivos tienen que
-       pintarse igual. Se pide en cada recarga: una descarga terminada enlaza
-       su archivo con la guardada en el servidor (el backend lo tiene en cache). */
-    saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
-    /* Las fotos propias se piden con la biblioteca y las guardadas. */
-    art.load(true);
     /* El borrado confirmado suelta sus claves antes de recargar: lo que no se
        pudo borrar tiene que volver a verse. `opts` puede ser un evento (onRetry). */
     if (Array.isArray(opts?.release)) pendingDeletes.current.release(opts.release);
     try {
-      const r = await fetch(`${API}/library`);
+      /* `shape=compact` pide las filas en columnas (libraryCompact.js): un
+         backend viejo ignora el parametro desconocido y sigue mandando
+         `files` como siempre (P-large-library-scale-1, -8). */
+      const r = await fetch(`${API}/library?shape=compact`);
       if (!r.ok) {
         /* El 503 del token de la nube se distingue del resto: ahi lo que hay
            que hacer es reconectar, no reintentar (ADR 0002, seccion 8). */
         const d = await r.json().catch(() => ({}));
+        setLibPending(false);
         setLibErr(true); // un 500 no puede pisar el contador
         setLibErrCode(d.code || null);
         return;
       }
+      const pending = r.headers.get("x-spitifo-library-pending") === "1";
       const d = await r.json();
-      setLib(pendingDeletes.current.filter(d.files || []));
-      writeLibCache(d.files || []);
+      const fields = Array.isArray(d.fields) && d.fields.length ? d.fields : COMPACT_FIELDS;
+      const files = Array.isArray(d.rows) ? expandCompactLibrary(fields, d.rows) : d.files || [];
+      setLib(pendingDeletes.current.filter(files));
+      /* Guardadas y portadas despues de la biblioteca: son las que hacen
+         competencia en el primer pintado, no la lista que necesita Inicio
+         (P-cold-start-3). Se piden en cada recarga: una descarga terminada
+         enlaza su archivo con la guardada en el servidor. */
+      saved.load(true, (songs) => pendingDeletes.current.filterSaved(songs));
+      art.load(true);
+      setLibPending(pending);
+      clearTimeout(retryTimer.current);
+      if (pending) {
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          loadLibRef.current?.();
+        }, 1200);
+      }
+      /* Siempre se guarda compacto, aunque el backend haya mandado `files`
+         (uno viejo que no entiende `shape=compact`): el espejo de
+         localStorage no depende de la version del servidor. */
+      /* El espejo se escribe al ocio: un JSON.stringify de miles de filas
+         justo cuando Inicio pinta es un bloqueo de decenas de ms en el telefono
+         (P-cold-start-7). pagehide lo adelanta si la app se cierra antes. */
+      pendingCache.current = {
+        fields,
+        rows: Array.isArray(d.rows) ? d.rows : compactLibraryRows(files, fields),
+      };
+      cancelCacheIdle.current?.();
+      cancelCacheIdle.current = afterIdle(flushLibCache);
       setLibErr(false);
       setLibErrCode(null);
       /* El borrado mira esta lista, sin filtrar, para saber que se fue de verdad. */
-      return d.files || [];
+      return files;
     } catch (e) {
+      setLibPending(false);
       setLibErr(true);
       setLibErrCode(null);
       /* ACA NO se toca `lib`. Setearlo a [] convierte "no se pudo consultar"
          en "biblioteca vacia", que es justo lo que `lib === null` servia para
          distinguir. Un 500 con 22 archivos en disco llegaba como "vacia". */
     }
-  }, []);
+  }, [flushLibCache]);
+  loadLibRef.current = loadLib;
+  useEffect(() => {
+    window.addEventListener("pagehide", flushLibCache);
+    return () => {
+      window.removeEventListener("pagehide", flushLibCache);
+      clearTimeout(retryTimer.current);
+      flushLibCache();
+    };
+  }, [flushLibCache]);
+
+  /* La biblioteca es la PRIMERA peticion del arranque: los efectos de los
+     hijos corren antes que los del padre, asi que pedirla aqui (y no en un
+     efecto mas abajo) es lo que la pone delante de listas y health. */
+  useEffect(() => {
+    loadLib();
+  }, [loadLib]);
+  /* Lo demas espera al ocio: ninguno de estos datos decide si Inicio pinta. */
+  useEffect(() => afterIdle(loadHealth), [loadHealth]);
 
   /* La notificacion (y Media Session) leen track.artwork del motor. Cuando
      cambia la foto de la pista que suena, o cambia de pista, se vuelve a
@@ -664,7 +798,11 @@ export default function App() {
         TABS.indexOf(tab),
         TABS.length
       );
-      if (next !== null) goTab(TABS[next]);
+      if (next !== null) {
+        writeSwipeHint();
+        setSwipeHint(false);
+        goTab(TABS[next]);
+      }
     };
 
     const onCancel = () => {
@@ -740,16 +878,18 @@ export default function App() {
           nav.open(link.sheet);
           return;
         }
+        const label = ITEMS.find((i) => i.id === nav.tab)?.label ?? "";
+        const origin = { tab: nav.tab, label };
         if (link.view) {
           if (link.view.type === "itunesartist") loadArtistChunk();
-          nav.goTo(link.tab, link.view);
+          crossGo(nav, link.view, origin);
           return;
         }
         loadArtistChunk();
         /* Solo hace falta aqui: no entra en el primer script. */
         const { resolveArtistLink } = await import("../download/artistLink.js");
         const view = await resolveArtistLink(link.name, []);
-        if (view) nav.goTo("search", view);
+        if (view) crossGo(nav, view, origin);
         else {
           requestSearch(link.name);
           nav.goTab("search");
@@ -759,12 +899,6 @@ export default function App() {
     },
     [leaveNp, nav.open, nav.goTo, nav.goTab]
   );
-
-  /* /api/library se pide al montar y no solo al abrir una pantalla: es una lista
-     de archivos locales (no toca red) y asi las pantallas ya la tienen. */
-  useEffect(() => {
-    loadLib();
-  }, [loadLib]);
 
   /* null = la consulta sigue en vuelo. Sin esta distincion Inicio mostraria
      "vacia" mientras todavia pregunta. */
@@ -892,21 +1026,35 @@ export default function App() {
               marcha. En escritorio las tarjetas van en el menu lateral. */}
           {pc ? <PlayerBar onOpen={openNp} npOpen={false} tab={np ? panelState.tab : -1} /> : (
             <>
-              <ProgressStack />
+              <Suspense fallback={null}>
+                <ProgressStack />
+              </Suspense>
               <MiniPlayer onOpen={openNp} npOpen={full} />
             </>
           )}
           {/* Montado una sola vez: es el dueno del <video> y por eso la
               reproduccion no se corta al cambiar de pestana. */}
-          <VideoHost />
+          <Suspense fallback={null}>
+            <VideoHost />
+          </Suspense>
 
           {!pc &&
             (phoneNav === "tabs" ? (
-              <TabBar tab={nav.tab} onTab={nav.goTab} />
+              <TabBar tab={nav.activeId} onTab={nav.goTab} />
             ) : (
-              <SwipeDots tab={nav.tab} onTab={nav.goTab} />
+              <>
+                {swipeHint && <p className="swipe-hint">Desliza para cambiar de modo</p>}
+                <SwipeDots tab={nav.activeId} onTab={nav.goTab} />
+              </>
             ))}
         </main>
+        {/* Mientras el servidor escanea se ve la biblioteca del espejo y este
+            aviso: la primera pantalla nunca espera al escaneo. */}
+        {libPending && (
+          <div className="lib-sync" role="status" aria-live="polite">
+            Actualizando biblioteca…
+          </div>
+        )}
         {/* Fuera de <main>: este se vuelve inerte mientras la vista esta a pantalla
             completa. */}
         {np && NowPlaying && (

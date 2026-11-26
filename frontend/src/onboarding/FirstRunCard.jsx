@@ -10,20 +10,18 @@ export default function FirstRunCard({ folder }) {
   const place = folder || FALLBACK_FOLDER;
   const steps = [
     {
-      title: "Busca tu canción",
-      text: "Escribe el nombre y toca un resultado para escucharlo.",
+      title: "Encuentra tu música",
+      text: "«Música» busca en el catálogo y encuentra la canción completa. Si no está, te ofrece otras fuentes.",
       action: "Ir a Buscar",
       run: () => nav.goTab("search"),
     },
     {
-      title: "Descarga en m4a",
-      text: "Es el formato por defecto. Puedes cambiarlo en Ajustes › Descargas.",
-      action: "Ver formato",
-      run: () => nav.openSettings(),
+      title: "Toca y suena",
+      text: "La canción empieza al momento. Con el corazón la guardas en tu biblioteca.",
     },
     {
-      title: "Escucha sin conexión",
-      text: `Todo queda en ${place}.`,
+      title: "Descarga para escuchar sin conexión",
+      text: `Canciones sueltas, discos enteros o la discografía de un artista. Todo queda en ${place}.`,
       action: "Cambiar carpeta",
       run: () => nav.openSettings("storage"),
     },
@@ -38,14 +36,16 @@ export default function FirstRunCard({ folder }) {
           <li key={step.title} className="fr__li">
             <b>{step.title}</b>
             <span>{step.text}</span>
-            <button type="button" className="fr__act" onClick={step.run}>
-              {step.action}
-            </button>
+            {step.action && (
+              <button type="button" className="fr__act" onClick={step.run}>
+                {step.action}
+              </button>
+            )}
           </li>
         ))}
       </ol>
       <div className="fr__f">
-        <p>Puedes volver a verlo en Ajustes</p>
+        <p>⋯ abre más acciones y «Volver» cierra un paso. El «?» de la barra te trae esta guía.</p>
         <button type="button" className="fr__btn" onClick={dismissFirstRun}>
           Entendido
         </button>
