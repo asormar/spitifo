@@ -4,12 +4,12 @@ import { API, keyUrl } from "../shared/api.js";
 import { afterIdle } from "../shared/raf.js";
 import { COMPACT_FIELDS, compactLibraryRows, expandCompactLibrary } from "./libraryCompact.js";
 import MiniPlayer from "../player/MiniPlayer.jsx";
-import PlayerBar from "../player/PlayerBar.jsx";
 import { onQueueReady, probeQueue } from "../download/queueBoot.js";
 import { useShow } from "../listen/Notice.jsx";
 import { loadAlbumChunk } from "../download/albumChunk.js";
 import { engine } from "../player/engine.js";
 import { panel, panelMode, usePanel } from "../player/panel.js";
+import PlayerBar from "../player/PlayerBar.jsx";
 import { useEngine } from "../player/useEngine.js";
 import { readSnapshot, writeSnapshot } from "../player/sessionSnapshot.js";
 import StreamErrors from "../player/StreamErrors.jsx";
@@ -361,7 +361,6 @@ export default function App() {
      (0 cerrada, 1 abierta, 2 cerrandose), la profundidad de la pila al abrir,
      si la salida anima y el `then` pendiente. El estado abierto/cerrado y la
      pestana viven en el almacen del panel. */
-  const panelState = usePanel();
   const hasTrack = useEngine((s) => Boolean(s.track));
   const npRef = useRef(null);
   if (npRef.current === null) {
@@ -673,12 +672,18 @@ export default function App() {
      sin historial: no es navegacion, el atras no la cierra. */
   const { activeId, visited } = nav;
   const viewId = viewKey(nav.tab, nav.stack);
-  const mode = panelMode(panelState, {
+  /* Suscripciones estrechas: cambiar de pestana dentro de "Ahora suena" no
+     tiene que reconstruir todo el shell. App solo necesita el MODO derivado y
+     los tres campos que decides abrir/cerrar; la pestana la lee NowPlaying. */
+  const mode = usePanel((s) => panelMode(s, {
     key: viewId,
     discover: activeId === "discover",
     pc,
     track: hasTrack,
-  });
+  }));
+  const panelOpen = usePanel((s) => s.open);
+  const panelAt = usePanel((s) => s.at);
+  const panelWide = usePanel((s) => s.wide);
   const full = mode === "full";
   const np = mode !== "off";
   const wide = mode === "wide";
@@ -686,10 +691,10 @@ export default function App() {
   /* La columna sabe en que vista se abrio o se amplio: al cambiar de vista, la
      ampliada vuelve a columna y lo abierto en Descubrir deja de flotar. */
   useEffect(() => {
-    if (!panelState.open || panelState.at === viewId) return;
-    if (panelState.wide) panel.collapse();
-    else if (panelState.at === "discover") panel.show(panelState.tab, viewId);
-  }, [panelState, viewId]);
+    if (!panelOpen || panelAt === viewId) return;
+    if (panelWide) panel.collapse();
+    else if (panelAt === "discover") panel.show(panel.get().tab, viewId);
+  }, [panelOpen, panelAt, panelWide, viewId]);
 
   /* El CSS aparta las paginas segun el estado de la columna (shell.css). */
   useLayoutEffect(() => {
@@ -1140,7 +1145,7 @@ export default function App() {
 
           {/* Fuera de las pantallas: Buscar puede estar oculta con la descarga en
               marcha. En escritorio las tarjetas van en el menu lateral. */}
-          {pc ? <PlayerBar onOpen={openNp} npOpen={false} tab={np ? panelState.tab : -1} /> : (
+          {pc ? <PlayerBar onOpen={openNp} npOpen={false} /> : (
             <>
               <Suspense fallback={null}>
                 <ProgressStack />

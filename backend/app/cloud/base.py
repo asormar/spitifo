@@ -1309,7 +1309,7 @@ class CloudStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         if entry is None or not entry.remote_id:
             return False
         remote_id, revision = entry.remote_id, entry.revision
-        if cache.get(remote_id, revision) is not None:
+        if cache.has(remote_id, revision):
             return True
         token = (remote_id, revision)
         with self._prefetch_lock:

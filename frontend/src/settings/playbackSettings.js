@@ -57,8 +57,8 @@ export const readAutoSaver = (storage = browserStorage()) => {
   }
   return DEFAULT_AUTO_SAVER;
 };
-const secondsToStep = (s) => (Number.isInteger(s) && s >= 2 && s <= CROSSFADE_MAX + 1 ? s - 1 : 0);
-const stepToSeconds = (step) => (step === 0 ? 0 : step + 1);
+export const secondsToStep = (s) => (Number.isInteger(s) && s >= 2 && s <= CROSSFADE_MAX + 1 ? s - 1 : 0);
+export const stepToSeconds = (step) => (step === 0 ? 0 : step + 1);
 export const readCrossfade = (storage = browserStorage()) => {
   const raw = read(storage, CROSSFADE_KEY, (v) => /^\d+$/.test(String(v)), "0");
   return secondsToStep(Number(raw));

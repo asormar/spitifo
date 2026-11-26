@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { bindStreamPrefetch, nextStreamUrl, shouldPrepare } from "./streamPrefetch.js";
+import { bindStreamPrefetch, nextStreamUrl, nextStreamUrls, shouldPrepare, shouldPrepareAhead } from "./streamPrefetch.js";
 
 const URL1 = "https://www.youtube.com/watch?v=abcdefghijk";
 const URL2 = "https://www.youtube.com/watch?v=abcdefghijl";
@@ -20,6 +20,37 @@ describe("nextStreamUrl", () => {
   it("ignores a library next or an empty queue", () => {
     expect(nextStreamUrl(state(true, { key: "lib/x", kind: "library" }))).toBeNull();
     expect(nextStreamUrl({ track: stream(URL1), queue: [], index: -1 })).toBeNull();
+  });
+});
+
+const URL3 = "https://www.youtube.com/watch?v=abcdefghijm";
+
+describe("nextStreamUrls (P-time-to-audio-5)", () => {
+  it("prepares up to two upcoming streams, not just the next one", () => {
+    const s = {
+      ...state(),
+      queue: [stream(URL1), stream(URL2), stream(URL3)],
+    };
+    expect(nextStreamUrls(s)).toEqual([URL2, URL3]);
+  });
+
+  it("skip streams already prepared and non-stream tracks", () => {
+    const s = {
+      ...state(),
+      queue: [stream(URL1), stream(URL2), { key: "lib/x", kind: "library" }, stream(URL3)],
+    };
+    expect(nextStreamUrls(s, new Set([URL2]))).toEqual([URL3]);
+  });
+
+  it("warms a stream after a library track too", () => {
+    const s = {
+      track: { key: "lib/x", kind: "library" },
+      queue: [{ key: "lib/x", kind: "library" }, stream(URL2)],
+      index: 0,
+      playing: true,
+    };
+    expect(shouldPrepareAhead(s)).toEqual([URL2]);
+    expect(shouldPrepareAhead({ ...s, playing: false, buffering: false })).toEqual([]);
   });
 });
 

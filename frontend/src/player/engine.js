@@ -19,8 +19,13 @@
 import { API } from "../shared/api.js";
 import { setBoundedMap } from "../shared/bounded.js";
 import { pauseVideo } from "./videoStore.js";
+import { effectiveCrossfade } from "./playbackSettings.js";
 
 const DEFAULT_VOLUME = 0.8;
+/* Claves ya adelantadas por la UI (cola construida). Comparten el dedupe con
+   el adelanto del motor, pero viven fuera de la instancia para que sobrevivan
+   a un cambio de cola. */
+const prefetchSeen = new Set();
 /* Sin datos durante esto, se avisa "red lenta" (sin tapar los controles) y se
    reintenta una vez solo, recargando el src (no solo resume()): un stream
    (`/api/stream?url=`) re-resuelve en el backend con cada peticion nueva, asi
@@ -68,7 +73,14 @@ export function createEngine({
     endless: false,
   };
 
+  /* Tres canales: `listeners` ve TODO (incluido el reloj), `stateListeners`
+     solo los cambios de pista/estado y `timeListeners` solo el timeupdate. Las
+     filas y los controles no tienen por que despertarse 4 veces por segundo:
+     el reloj lo consume unicamente la barra de progreso. El puente nativo y la
+     Media Session siguen en `listeners` porque necesitan la posicion. */
   const listeners = new Set();
+  const stateListeners = new Set();
+  const timeListeners = new Set();
   /* Portada original por clave: la foto propia se aplica sobre la pista, pero
      al volver a la original tiene que volver a la del sidecar/fuente. */
   const baseArt = new Map();
@@ -81,8 +93,16 @@ export function createEngine({
      suscriptor pueda marcar el cambio como forzado. */
   const seekEvents = new Set();
   let audio = null;
-  /* Ultima clave adelantada. Evita repetir el POST al reanudar una pausa. */
-  let prefetched = null;
+  /* Segundo elemento: precarga la siguiente pista para cambiar sin silencio.
+     Se crea solo cuando hay siguiente (las pruebas sin cola siguen viendo un
+     unico <audio>). `preloadReady` la pone el evento `canplay` de ese elemento. */
+  let preload = null;
+  let preloadKey = null;
+  let preloadReady = false;
+  let fadeTimer = null;
+  /* Claves ya adelantadas. Evita repetir el POST al reanudar una pausa, pero
+     deja adelantar varias pistas de la cola. */
+  const prefetched = new Set();
   /* Cola en su orden de usuario, sin barajar. No entra en el estado porque la
      vista solo necesita la cola efectiva; se guarda para poder deshacer el
      shuffle sin perder las pistas anadidas mientras estaba activo. */
@@ -137,7 +157,10 @@ export function createEngine({
     }
     if (!changed) return;
     state = { ...state, ...patch };
+    const keys = Object.keys(patch);
+    const onlyTime = keys.length === 1 && keys[0] === "time";
     listeners.forEach((l) => l());
+    (onlyTime ? timeListeners : stateListeners).forEach((l) => l());
   };
 
   const notifyTrack = (event) => {
@@ -156,42 +179,133 @@ export function createEngine({
     emit({ failed: true, playing: false, buffering: false });
   };
 
-  const start = () => {
-    const a = ensureAudio();
+  const start = (element = ensureAudio()) => {
     onPlayStart();
-    const p = a.play();
+    const p = element.play();
     if (p && typeof p.catch === "function") p.catch(playFailed);
   };
 
-  /* Adelanta la siguiente pista de la biblioteca sin esperar respuesta: si
-     falla, al final se bajara igual. Los previews (30 s remotos) no se tocan y
-     el guardia evita repetir la misma clave dos veces seguidas. */
+  /* Adelanta hasta las DOS siguientes pistas de biblioteca, sin esperar
+     respuesta: si falla, al final se bajara igual. Antias se hacia solo la
+     inmediata y solo al emitir `playing`, asi que la primera pista y los
+     saltos llegaban frios. Ahora se arma tambien al cargar. Los previews (30 s
+     remotos) no se tocan; el guardia evita repetir una clave ya pedida. */
+  const PREFETCH_AHEAD = 2;
   const prefetchNext = () => {
-    let candidate = state.queue[state.index + 1];
+    const candidates = state.queue.slice(
+      state.index + 1,
+      state.index + 1 + PREFETCH_AHEAD
+    );
     /* Con repeat all (o sin fin) la ultima pista tendra continuacion: la
        primera. Barajado no se sabe cual sera: la vuelta se baraja al llegar. */
-    if (!candidate && wraps() && !state.shuffle && state.queue.length) {
-      candidate = state.queue[0];
-    }
     if (
-      !candidate ||
-      candidate.kind !== "library" ||
-      candidate.key === prefetched
+      !candidates.length &&
+      wraps() &&
+      !state.shuffle &&
+      state.queue.length
     ) {
-      return;
+      candidates.push(state.queue[0]);
     }
-    prefetched = candidate.key;
+    for (const candidate of candidates) {
+      if (
+        !candidate ||
+        candidate.kind !== "library" ||
+        !candidate.key ||
+        prefetched.has(candidate.key)
+      ) {
+        continue;
+      }
+      prefetched.add(candidate.key);
+      /* Cola acotada: no crece sin limite en una sesion larga. */
+      if (prefetched.size > 64) prefetched.delete(prefetched.values().next().value);
+      try {
+        Promise.resolve(
+          fetchFn(`${API}/prefetch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: candidate.key }),
+          })
+        ).catch(() => {});
+      } catch {
+        /* el prefetch nunca puede romper la reproduccion */
+      }
+    }
+  };
+
+  /* Preload: solo escucha `canplay`. Antes de ese evento el elemento todavia
+     no tiene bytes decodificados y cambiar a el no ahorraria nada. */
+  const wirePreload = (a) => {
+    a.addEventListener("canplay", () => {
+      if (a === preload && preloadKey && state.queue[state.index + 1]?.key === preloadKey) {
+        preloadReady = true;
+      }
+    });
+  };
+
+  /* Segundo <audio>: deja la siguiente pista lista para sonar sin pedirla ni
+     decodificarla en el momento del cambio. Solo se crea si hay siguiente, y
+     nunca se engancha a la cola: el motor sigue teniendo UNA pista, UNA cola y
+     UNA Media Session. */
+  const preloadNext = () => {
+    const next = state.queue[state.index + 1];
+    if (!next || !next.src || next.kind === "preview") return;
+    if (preloadKey === next.key && preload?.src === next.src) return;
+    if (!preload) {
+      preload = createAudio();
+      preload.preload = "auto";
+      wirePreload(preload);
+    }
+    preloadKey = next.key;
+    preloadReady = false;
+    preload.preload = "auto";
+    preload.src = next.src;
+    preload.muted = state.muted;
+    preload.volume = state.volume;
     try {
-      Promise.resolve(
-        fetchFn(`${API}/prefetch`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key: candidate.key }),
-        })
-      ).catch(() => {});
+      preload.load?.();
     } catch {
-      /* el prefetch nunca puede romper la reproduccion */
+      /* un audio falso puede no cargar: el cambio normal seguira funcionando */
     }
+  };
+
+  const stopFade = () => {
+    if (fadeTimer === null) return;
+    clearInterval(fadeTimer);
+    fadeTimer = null;
+  };
+
+  /* Rampa de volumen para el crossfade. El elemento nuevo sube desde 0 y el
+     viejo baja hasta 0 antes de pausarse; al terminar se devuelve el volumen
+     del ajuste. Un cambio de pista o una pausa corta la rampa. */
+  const fadeBetween = (from, to, seconds) => {
+    stopFade();
+    const target = state.volume;
+    const stepMs = 50;
+    let elapsed = 0;
+    try {
+      to.volume = 0;
+    } catch {
+      /* ignorado */
+    }
+    fadeTimer = setInterval(() => {
+      elapsed += stepMs / 1000;
+      const k = Math.min(1, elapsed / seconds);
+      try {
+        from.volume = Math.max(0, target * (1 - k));
+        to.volume = Math.min(target, target * k);
+      } catch {
+        /* ignorado */
+      }
+      if (k >= 1) {
+        stopFade();
+        try {
+          from.pause();
+        } catch {
+          /* ignorado */
+        }
+        to.volume = target;
+      }
+    }, stepMs);
   };
 
   /* Un stream colgado: 8 s en "waiting" sin pasar a "playing" avisa "red
@@ -222,30 +336,38 @@ export function createEngine({
   };
 
   /* Los eventos se enganchan una sola vez, al crear el elemento. */
+  /* Ambos elementos se cablean igual, pero solo el ACTIVO manda eventos al
+     motor: cuando el antiguo pasa a preload (o el preload pasa a activo) no
+     queremos que su `pause`/`timeupdate` pise el estado de la pista que suena. */
+  const on = (a, event, fn) =>
+    a.addEventListener(event, (...args) => {
+      if (a === audio) fn(...args);
+    });
+
   const wire = (a) => {
-    a.addEventListener("play", () => emit({ playing: true }));
-    a.addEventListener("playing", () => {
+    on(a, "play", () => emit({ playing: true }));
+    on(a, "playing", () => {
       clearStall();
       autoRetried = false;
       emit({ playing: true, buffering: false, stalled: false });
       prefetchNext();
     });
-    a.addEventListener("waiting", () => {
+    on(a, "waiting", () => {
       emit({ buffering: true });
       armStall();
     });
-    a.addEventListener("pause", () => {
+    on(a, "pause", () => {
       clearStall();
       emit({ playing: false, buffering: false });
     });
-    a.addEventListener("timeupdate", () => emit({ time: a.currentTime }));
-    a.addEventListener("durationchange", () => emit({ duration: durationNow() }));
-    a.addEventListener("loadedmetadata", () => emit({ duration: durationNow() }));
-    a.addEventListener("error", () => {
+    on(a, "timeupdate", () => emit({ time: a.currentTime }));
+    on(a, "durationchange", () => emit({ duration: durationNow() }));
+    on(a, "loadedmetadata", () => emit({ duration: durationNow() }));
+    on(a, "error", () => {
       clearStall();
       emit({ failed: true, playing: false, buffering: false, stalled: false });
     });
-    a.addEventListener("ended", () => {
+    on(a, "ended", () => {
       /* repeat one repite sin recargar el src: asignarlo de nuevo haria un
          viaje al backend y cortaria el buffer ya descargado. */
       if (state.repeat === "one") {
@@ -278,7 +400,8 @@ export function createEngine({
   const load = (track, queue, index, reason = "change", at = 0, meta = {}) => {
     const q = queue && queue.length ? queue : [track];
     const i = index >= 0 && index < q.length ? index : 0;
-    const a = ensureAudio();
+    let a = ensureAudio();
+    stopFade();
     /* La cola nunca lleva la foto propia: siempre se guarda la de origen. */
     setBoundedMap(baseArt, track.key, track.artwork || null, BASE_ART_CAP);
     /* Se avisa ANTES de reemplazar la foto: quien escucha (el historial)
@@ -286,7 +409,13 @@ export function createEngine({
     if (state.track) {
       notifyTrack({ type: "change", reason, track, previous: state.track });
     }
-    emit({
+
+    /* Cambio sin silencio: si el preload ya tiene ESTA pista decodificada,
+       intercambiamos los papeles en vez de asignar `src` y volver a descargar.
+       Si no esta listo (o no hay siguiente), el camino es el de siempre. */
+    const swap = preload && preloadReady && preload !== a &&
+      preloadKey === track.key && preload.src === track.src;
+    const common = {
       track,
       queue: q,
       index: i,
@@ -295,18 +424,49 @@ export function createEngine({
          biblioteca; el evento loadedmetadata la corrige si hace falta. */
       duration: track.duration || 0,
       failed: false,
-      buffering: true,
-      playing: false,
+      stalled: false,
       ...meta,
-    });
-    a.preload = "auto";
-    a.src = track.src;
-    /* Retomar: con el src recien puesto el navegador guarda la posicion y la
-       aplica al cargar los metadatos. */
-    if (at > 0) a.currentTime = at;
-    a.volume = state.volume;
-    a.muted = state.muted;
-    start();
+    };
+
+    if (swap) {
+      const old = a;
+      audio = preload;
+      preload = old;
+      preloadKey = null;
+      preloadReady = false;
+      a = audio;
+      clearStall();
+      autoRetried = false;
+      /* Sin spinner: el elemento entrante ya tiene datos, anunciar "buffering"
+         seria un parpadeo justo en el cambio. */
+      emit({ ...common, buffering: false, playing: true });
+      a.currentTime = at;
+      a.muted = state.muted;
+      const seconds = effectiveCrossfade();
+      if (seconds > 0 && !old.paused) {
+        start(a);
+        fadeBetween(old, a, seconds);
+      } else {
+        a.volume = state.volume;
+        start(a);
+        old.pause();
+      }
+    } else {
+      emit({ ...common, buffering: true, playing: false });
+      a.preload = "auto";
+      a.src = track.src;
+      /* Retomar: con el src recien puesto el navegador guarda la posicion y la
+         aplica al cargar los metadatos. */
+      if (at > 0) a.currentTime = at;
+      a.volume = state.volume;
+      a.muted = state.muted;
+      start(a);
+    }
+
+    /* Armar el adelanto de la cola tambien al cargar, no solo al oir `playing`:
+       asi la primera pista y los saltos encuentran la red caliente. */
+    prefetchNext();
+    preloadNext();
   };
 
   /* Recarga la pista actual en su misma posicion: una peticion nueva al
@@ -368,6 +528,9 @@ export function createEngine({
     if (!track) return;
     const q = queue && queue.length ? queue : [track];
     const i = index >= 0 && index < q.length ? index : 0;
+    stopFade();
+    preloadKey = null;
+    preloadReady = false;
     const a = ensureAudio();
     baseArt.set(track.key, track.artwork || null);
     original = q.slice();
@@ -395,6 +558,8 @@ export function createEngine({
 
   const pause = () => {
     if (!audio) return;
+    stopFade();
+    audio.volume = state.volume;
     audio.pause();
   };
 
@@ -538,7 +703,7 @@ export function createEngine({
     const before = state.queue;
     const had = before.reduce((n, t) => n + (gone.has(t.key) ? 1 : 0), 0);
     if (!had) return 0;
-    if (gone.has(prefetched)) prefetched = null;
+    for (const key of gone) prefetched.delete(key);
 
     const queue = before.filter((t) => !gone.has(t.key));
     original = original.filter((t) => !gone.has(t.key));
@@ -620,9 +785,14 @@ export function createEngine({
   const setVolume = (v) => {
     const volume = Math.min(Math.max(Number(v) || 0, 0), 1);
     const muted = volume === 0;
+    stopFade();
     const a = ensureAudio();
     a.volume = volume;
     a.muted = muted;
+    if (preload) {
+      preload.volume = volume;
+      preload.muted = muted;
+    }
     emit({ volume, muted });
   };
 
@@ -630,9 +800,14 @@ export function createEngine({
     const muted = !(state.muted || state.volume === 0);
     /* Reactivar desde 0 devolveria el silencio con el icono de sonido. */
     const volume = !muted && state.volume === 0 ? DEFAULT_VOLUME : state.volume;
+    stopFade();
     const a = ensureAudio();
     a.volume = volume;
     a.muted = muted;
+    if (preload) {
+      preload.volume = volume;
+      preload.muted = muted;
+    }
     emit({ volume, muted });
   };
 
@@ -649,6 +824,16 @@ export function createEngine({
   const subscribe = (listener) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
+  };
+
+  const subscribeState = (listener) => {
+    stateListeners.add(listener);
+    return () => stateListeners.delete(listener);
+  };
+
+  const subscribeTime = (listener) => {
+    timeListeners.add(listener);
+    return () => timeListeners.delete(listener);
   };
 
   const onTrackEvent = (fn) => {
@@ -671,6 +856,8 @@ export function createEngine({
 
   return {
     subscribe,
+    subscribeState,
+    subscribeTime,
     onTrackEvent,
     onSeek,
     getState: () => state,
@@ -696,6 +883,24 @@ export function createEngine({
     toggleMute,
     setArtwork,
   };
+}
+
+/* Adelantar la pista ACTUAL en cuanto se construye la cola: antes solo se
+   adelantaba la siguiente y la primera de un grupo llegaba fria de Drive. */
+export function prefetchKey(key) {
+  if (!key || prefetchSeen.has(key)) return false;
+  prefetchSeen.add(key);
+  if (prefetchSeen.size > 256) prefetchSeen.delete(prefetchSeen.values().next().value);
+  try {
+    fetch(`${API}/prefetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    }).catch(() => {});
+  } catch {
+    /* nunca puede romper la reproduccion */
+  }
+  return true;
 }
 
 /* Una sola instancia para toda la app. `onPlayStart` conecta el motor con el

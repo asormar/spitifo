@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import { engine } from "../player/engine.js";
-import { useEngine } from "../player/useEngine.js";
+import { useEngine, useEngineTime } from "../player/useEngine.js";
 import { usePc } from "../shared/viewport.js";
 import { Icon } from "./icons.jsx";
 import { useHistory } from "./history.js";
@@ -65,7 +65,7 @@ function ContinueCard({ item, items, ctx, active, pc }) {
   const [current, playing] = useNow(entry.key);
   /* El progreso en vivo solo lo sigue la tarjeta que suena y solo con el
      inicio a la vista; las demas, el guardado. */
-  const time = useEngine((s) => (active && s.track?.key === entry.key ? s.time : -1));
+  const time = useEngineTime((s) => (active && s.track?.key === entry.key ? s.time : -1));
   const live = useEngine((s) => (active && s.track?.key === entry.key ? s.duration : 0));
   const dur = time >= 0 && live ? live : item.dur;
   const pos = time >= 0 ? time : item.pos;

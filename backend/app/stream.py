@@ -41,9 +41,10 @@ VISITOR_TTL_S = 6 * 60 * 60
 VISITOR_URL = "https://www.youtube.com/"
 VISITOR_RE = re.compile(r'"VISITOR_DATA":"([^"]+)"')
 
-#: Si la home de YouTube no contesta, no se reintenta en cada play: durante este
-#: rato se va directo al camino completo en vez de esperar otro timeout.
-VISITOR_BACKOFF_S = 5 * 60
+#: Si la home de YouTube no contesta, no se reintenta en CADA play, pero cinco
+#: minutos condenaban toda la sesion al camino completo tras un solo fallo.
+#: Media vida de backoff y, sobre todo, el ultimo visitor bueno como fallback.
+VISITOR_BACKOFF_S = 30
 
 #: Topes de cada camino. Ninguna resolucion puede dejar el boton girando para
 #: siempre: el rapido cede al completo y el completo termina en un error que la
@@ -59,6 +60,9 @@ MAX_CHUNK = 1024 * 1024
 
 #: Los resultados se guardan hasta 60 s antes de que venza la URL de formato.
 CACHE_MARGIN_S = 60.0
+#: Cuanto antes de ese margen se renueva la URL en background. Asi un 403 antes
+#: del primer byte no obliga a re-resolver DENTRO de la peticion de audio.
+REFRESH_LEAD_S = 5 * 60
 CACHE_MAX = 64
 
 #: Calidad de transmision elegida en Ajustes. `auto` (o ausente) mantiene la
@@ -93,6 +97,9 @@ class StreamInfo:
 _visitor: str | None = None
 _visitor_at = 0.0
 _visitor_failed_at = 0.0
+#: Ultimo visitor que funciono, aunque su TTL haya vencido: vale mas intentar
+#: el camino rapido con el que un fallo de red obligue a todos al completo.
+_visitor_stale: str | None = None
 _visitor_lock = threading.Lock()
 
 _pool: queue.Queue = queue.Queue(maxsize=3)
@@ -158,24 +165,31 @@ async def warm_visitor() -> None:
 
 
 async def ensure_visitor() -> str | None:
-    """Devuelve el visitor_data en cache o lo busca; TTL de 6 h."""
-    global _visitor, _visitor_at, _visitor_failed_at
+    """Devuelve el visitor_data en cache o lo busca; TTL de 6 h.
+
+    Un fallo al refrescar NO borra el ultimo bueno: durante el backoff se
+    devuelve igual, para que esa sola peticion a la home no fuerce el camino
+    completo durante minutos. El backoff solo espacia los INTENTOS.
+    """
+    global _visitor, _visitor_at, _visitor_failed_at, _visitor_stale
     now = time.time()
     with _visitor_lock:
         if _visitor and now - _visitor_at < VISITOR_TTL_S:
             return _visitor
         if now - _visitor_failed_at < VISITOR_BACKOFF_S:
-            return None
+            return _visitor_stale
     data = await asyncio.to_thread(_fetch_visitor_sync)
     with _visitor_lock:
         if data:
             _visitor = data
             _visitor_at = time.time()
+            _visitor_stale = data
+            _visitor_failed_at = 0.0
         else:
             _visitor_failed_at = time.time()
     if data:
         _reset_pool()
-    return data
+    return data if data else _visitor_stale
 
 
 def cached_visitor() -> str | None:
@@ -210,11 +224,12 @@ async def fast_raw(url: str) -> dict | None:
 
 def invalidate() -> None:
     """Descarta el visitor_data y los YoutubeDL construidos con el."""
-    global _visitor, _visitor_at, _visitor_failed_at
+    global _visitor, _visitor_at, _visitor_failed_at, _visitor_stale
     with _visitor_lock:
         _visitor = None
         _visitor_at = 0.0
         _visitor_failed_at = 0.0
+        _visitor_stale = None
     _reset_pool()
 
 
@@ -396,6 +411,8 @@ def _from_info(info: dict, path: str) -> StreamInfo:
 
 _cache: dict[str, StreamInfo] = {}
 _pending: dict[str, asyncio.Task] = {}
+_refreshing: set[str] = set()
+_refresh_tasks: set[asyncio.Task] = set()
 _lock = threading.Lock()
 
 
@@ -403,6 +420,45 @@ def cache_key(video_key: str, quality: str | None = None) -> str:
     """Dos calidades del mismo video son dos resoluciones: no se pisa una a
     otra. `auto` comparte la clave sin calidad, que es la que siempre hubo."""
     return video_key if quality in (None, QUALITY_AUTO) else f"{video_key}:{quality}"
+
+
+def fresh_for(video_key: str, older_than: float,
+              quality: str | None = None) -> StreamInfo | None:
+    """Entrada cacheada mas reciente que la que acaba de fallar."""
+    with _lock:
+        hit = _cache.get(cache_key(video_key, quality))
+    return hit if hit and hit.expires_at > older_than else None
+
+
+def maybe_refresh(url: str, quality: str | None = None) -> bool:
+    """Renueva en background una URL que vence pronto, sin bloquear el play.
+
+    La entrada anterior NO se borra: sigue sirviendo hasta que la nueva este
+    lista. Si el reintento falla, el cache pierde la entrada (como antes) y el
+    proxy puede volver a intentarlo en la peticion siguiente.
+    """
+    clave = cache_key(video_id(url) or url, quality)
+    with _lock:
+        info = _cache.get(clave)
+        if not info or info.expires_at - CACHE_MARGIN_S - REFRESH_LEAD_S > time.time():
+            return False
+        if clave in _refreshing:
+            return False
+        _refreshing.add(clave)
+
+    async def _bg() -> None:
+        try:
+            await resolve(url, force=True, quality=quality)
+        except Exception as e:
+            log.info("stream: renovacion en background fallo: %s", e)
+        finally:
+            with _lock:
+                _refreshing.discard(clave)
+
+    task = asyncio.create_task(_bg())
+    _refresh_tasks.add(task)
+    task.add_done_callback(_refresh_tasks.discard)
+    return True
 
 
 def drop(video_key: str, quality: str | None = None) -> None:
@@ -417,6 +473,7 @@ def clear() -> None:
     with _lock:
         _cache.clear()
         _pending.clear()
+        _refreshing.clear()
     _client = None
     invalidate()
 
@@ -428,13 +485,19 @@ async def resolve(url: str, *, force: bool = False,
     clave = cache_key(vid, quality)
     with _lock:
         hit = _cache.get(clave)
-        if not force and hit and hit.expires_at - CACHE_MARGIN_S > time.time():
-            return hit
+        usable = bool(not force and hit and hit.expires_at - CACHE_MARGIN_S > time.time())
         task = _pending.get(clave) if not force else None
-        if task is None:
+        if not usable and task is None:
             task = asyncio.create_task(_resolve_uncached(url, clave, quality))
             _pending[clave] = task
             task.add_done_callback(lambda _t, c=clave: _pending.pop(c, None))
+    if usable:
+        # Se renueva ANTES de que venza, en background, para que el siguiente
+        # play (o un 403) encuentre una URL nueva ya resuelta. Fuera del lock:
+        # maybe_refresh toma el mismo cerrojo.
+        if hit.expires_at - CACHE_MARGIN_S - REFRESH_LEAD_S <= time.time():
+            maybe_refresh(url, quality)
+        return hit
     return await asyncio.shield(task)
 
 

@@ -79,6 +79,26 @@ def test_audio_rango_reenvia_el_range_a_drive(api):
     assert len(fake.calls) == 1
 
 
+def test_audio_lleva_etag_y_cache_control_privado(api):
+    c, _, _ = api
+    r = c.get("/api/audio", params={"key": "Artista/Artista - Tema.mp3"})
+    etag = r.headers["etag"]
+    assert etag.startswith('"') and etag.endswith('"')
+    assert r.headers["cache-control"] == "private, max-age=86400"
+
+
+def test_if_none_match_contesta_304_sin_abrir_el_archivo(api):
+    c, fake, _ = api
+    r = c.get("/api/audio", params={"key": "Artista/Artista - Tema.mp3"})
+    etag = r.headers["etag"]
+    fake.reset_calls()
+    r2 = c.get("/api/audio", params={"key": "Artista/Artista - Tema.mp3"},
+               headers={"If-None-Match": etag})
+    assert r2.status_code == 304
+    assert r2.content == b""
+    assert fake.calls == []
+
+
 def test_audio_clave_inexistente_es_404(api):
     c, _, _ = api
     r = c.get("/api/audio", params={"key": "Artista/no-esta.mp3"})

@@ -5,7 +5,7 @@ import { requestSearch } from "../download/searchRequest.js";
 import { albumView, artistView } from "./entityLinks.js";
 import { keyUrl } from "../shared/api.js";
 import { afterIdle } from "../shared/raf.js";
-import { engine } from "../player/engine.js";
+import { engine, prefetchKey } from "../player/engine.js";
 import { openVideo } from "../player/videoStore.js";
 import { checkedSummary } from "./fileCheck.js";
 import { mergeLibrary } from "./mergedLibrary.js";
@@ -122,6 +122,9 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
       const queue = tracksFor(usable(list), model.byKey, model.savedById, keyUrl);
       const at = queue.findIndex((t) => t.key === entry.key || (entry.sid && t.sid === entry.sid));
       const track = at >= 0 ? queue[at] : tracksFor([entry], model.byKey, model.savedById, keyUrl)[0];
+      /* La cola ya esta construida: adelantar la pista que se va a tocar (y no
+         solo la siguiente) quita el viaje en frio a Drive del primer toque. */
+      if (track?.kind === "library") prefetchKey(track.key);
       engine.play(track, { queue, index: at, source: from });
     };
 

@@ -64,6 +64,22 @@ describe("cola: fases de red y subida (R2 / P-downloads-pipeline-3)", () => {
 });
 
 describe("cola: espejo de GET /api/downloads", () => {
+  it("no emite un snapshot nuevo si el sondeo no trajo cambios (P-render-main-thread-6)", () => {
+    const s = createQueueStore();
+    let emissions = 0;
+    s.subscribe(() => { emissions += 1; });
+    const payload = { items: [item(1, "processing", { progress: 40, phase: "processing" })], running: 1, queued: 0 };
+    s.applyPayload(payload);
+    expect(emissions).toBe(1);
+    s.applyPayload(payload);
+    s.applyPayload(payload);
+    expect(emissions).toBe(1);
+    /* El avance real si publica. */
+    s.applyPayload({ ...payload, items: [item(1, "processing", { progress: 55, phase: "processing" })] });
+    expect(emissions).toBe(2);
+    s.dispose();
+  });
+
   it("agrupa por grupo y deja cada item sin grupo en el suyo", () => {
     const s = createQueueStore();
     s.applyPayload({
