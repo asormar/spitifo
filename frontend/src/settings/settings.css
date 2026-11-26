@@ -41,6 +41,50 @@
   letter-spacing: -0.04em;
 }
 
+/* --- Esqueleto (primer fetch de una tarjeta) -------------------------------- */
+
+.settings__skel {
+  display: grid;
+  gap: 10px;
+}
+
+.settings__skelrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+.settings__skelicon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--s2);
+}
+
+.settings__skeltext {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+}
+
+.settings__skeltext i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--s2);
+}
+
+.settings__skeltext i:last-child {
+  width: 40%;
+  height: 10px;
+}
+
+.settings__skeltext i:first-child {
+  width: 60%;
+}
+
 /* --- Secciones ------------------------------------------------------------- */
 
 .settings__sec {
@@ -371,6 +415,90 @@
   color: var(--mut);
   font-size: 13px;
   line-height: 1.45;
+}
+
+/* --- Acerca de la app -------------------------------------------------- */
+
+.settings__about {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.settings__about > svg {
+  flex: none;
+  color: var(--mut);
+}
+
+.settings__aboutinfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__aboutok {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 3px 0 0;
+  color: var(--ok-t);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.settings__aboutok svg {
+  flex: none;
+}
+
+/* La banda de version nueva: cobalto, nunca rosa (no es sonido) ni ambar (es
+   el color del veredicto "Parecido"). */
+.settings__update {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--acc) 10%, var(--s1));
+}
+
+.settings__update > svg {
+  flex: none;
+  color: var(--acc);
+}
+
+.settings__updateinfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings__updatetitle {
+  margin: 0;
+  color: var(--acc);
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.settings__updatesub {
+  margin: 2px 0 0;
+  color: var(--mut);
+  font-size: 11.5px;
+}
+
+.settings__update .settings__btn {
+  flex: none;
+  text-decoration: none;
+}
+
+/* Columna estrecha (telefono): el boton pasa a su propia fila en vez de
+   apretar el nombre de la version. */
+@container (max-width: 420px) {
+  .settings__about {
+    flex-wrap: wrap;
+  }
+
+  .settings__about .settings__btn {
+    flex: 1 0 100%;
+  }
 }
 
 /* --- Notas y errores ------------------------------------------------------- */

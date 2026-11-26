@@ -312,3 +312,74 @@ def test_enrich_fuente_despagada_no_busca(fake_ytdlp):
     src = fake_ytdlp(VIDEOS, disponible=False)
     assert asyncio.run(enrich_with_ytdlp(ITUNES, "x", src)) == {}
     assert src.llamadas == 0
+
+
+# -------------------------------------------------- offload del match grupal
+def test_enrich_con_mas_de_una_pista_ofrece_el_match_a_un_hilo(monkeypatch, fake_ytdlp):
+    """El cruce de puntajes (hasta 30x40 parejas) no corre en el loop."""
+    import backend.app.matcher as matcher_mod
+
+    hilos = []
+    real_to_thread = asyncio.to_thread
+
+    async def _to_thread_espia(fn, *a, **kw):
+        hilos.append(fn)
+        return await real_to_thread(fn, *a, **kw)
+
+    monkeypatch.setattr(matcher_mod.asyncio, "to_thread", _to_thread_espia)
+    src = fake_ytdlp(VIDEOS)
+    asyncio.run(enrich_with_ytdlp(ITUNES, "Bohemian Rhapsody", src))
+    assert hilos == [matcher_mod._score_pass]
+
+
+def test_enrich_una_sola_pista_no_ofrece_nada_a_un_hilo(monkeypatch, fake_ytdlp):
+    """Una pista suelta: pocas parejas, no vale la pena el viaje a un hilo."""
+    import backend.app.matcher as matcher_mod
+
+    hilos = []
+
+    async def _to_thread_espia(fn, *a, **kw):
+        hilos.append(fn)
+        raise AssertionError("no deberia llamarse")
+
+    monkeypatch.setattr(matcher_mod.asyncio, "to_thread", _to_thread_espia)
+    src = fake_ytdlp(VIDEOS)
+    asyncio.run(enrich_with_ytdlp([ITUNES[0]], "Bohemian Rhapsody", src))
+    assert hilos == []
+
+
+def test_enrich_el_segundo_pase_de_alias_tambien_se_ofrece_al_hilo(monkeypatch, fake_ytdlp):
+    """Finding #5 (search-latency): si el match grupal se offloadea, el
+    segundo pase (con los alias japoneses ya puestos) tiene que ir al MISMO
+    hilo, no al loop, o la ganancia del primer pase se pierde en el segundo."""
+    import backend.app.matcher as matcher_mod
+
+    raw = {"trackId": 1, "trackName": "Mesmerizer", "artistName": "Satsuki",
+          "trackTimeMillis": 200000}
+    otra = {"trackId": 2, "trackName": "Otra", "artistName": "Alguien",
+           "trackTimeMillis": 200000}
+    videos = [
+        {"id": "v1", "title": "サツキ - メズマライザー", "uploader": "サツキ", "duration": 200},
+        {"id": "v2", "title": "Alguien - Otra", "uploader": "Alguien", "duration": 200},
+    ]
+
+    async def _alias(ficha):
+        return ({"title": "メズマライザー", "artist": "サツキ"}
+                if ficha.get("trackId") == 1 else {})
+
+    monkeypatch.setattr(matcher_mod, "_aliases_for", _alias)
+
+    pases_en_hilo = []
+    real_to_thread = asyncio.to_thread
+
+    async def _to_thread_espia(fn, *a, **kw):
+        pases_en_hilo.append(fn)
+        return await real_to_thread(fn, *a, **kw)
+
+    monkeypatch.setattr(matcher_mod.asyncio, "to_thread", _to_thread_espia)
+    res = asyncio.run(enrich_with_ytdlp(
+        [raw, otra], "Mesmerizer Satsuki", fake_ytdlp(videos)))
+
+    assert res["1"]["video"]["id"] == "v1"  # el alias encontro la pareja
+    # dos pases (sin y con alias), los dos offloadeados al mismo hilo.
+    assert pases_en_hilo == [matcher_mod._score_pass, matcher_mod._score_pass]

@@ -59,9 +59,7 @@ export default function ArchiveListenButton({ t, query, text = false }) {
       /* Sin archivo no hay que tocar: el aviso dice por que (por ejemplo, un
          item que Internet Archive tiene restringido). */
       if (!(await listenArchive(t, q))) {
-        const rec = verdictStore.get(verdictKey(t, q));
-        const why = rec?.extra?.unreadable ? "archive.org no deja leer el archivo" : rec?.error;
-        show?.(`No se puede escuchar «${title}»${why ? `: ${why}` : ""}`);
+        show?.(`No se puede escuchar «${title}» con esta fuente. Prueba otra fuente.`);
       }
     } finally {
       setWaiting(false);

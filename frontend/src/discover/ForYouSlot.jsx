@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { startsCollapsed } from "./frame.js";
+import { initialSnap, startsCollapsed } from "./frame.js";
 import { Icon } from "./icons.jsx";
 import { useReco, visibleArtists } from "./reco.js";
 
@@ -33,7 +33,7 @@ function Frame({ narrow, collapsed, covered }) {
   const head = panelHead(useReco());
   if (narrow) {
     return (
-      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap="peek" data-covered={covered ? "" : undefined} inert>
+      <section className="fy fy--sheet fy--stub" aria-hidden="true" data-snap={initialSnap()} data-covered={covered ? "" : undefined} inert>
         <div className="fy__top">
           <div className="fy__peek">
             <span className="fy__grip" />

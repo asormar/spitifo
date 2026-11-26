@@ -119,9 +119,16 @@ export function useResultPlayback({ t, query = "", queue = [], source = null }) 
     }
     if (plan === "archive") {
       const intento = ++seq.current;
-      const ok = await listenArchive(t, query || t.title);
-      if (!alive.current || intento !== seq.current) return;
-      if (!ok) fail();
+      /* El toque se reconoce en el mismo fotograma: la fila dice «Buscando…»
+         mientras la red contesta, igual que en resolve y eager. */
+      setResolving(true);
+      try {
+        const ok = await listenArchive(t, query || t.title);
+        if (!alive.current || intento !== seq.current) return;
+        if (!ok) fail();
+      } finally {
+        if (alive.current && intento === seq.current) setResolving(false);
+      }
       return;
     }
     if (plan === "preview") return engine.play(previewTrack(t));

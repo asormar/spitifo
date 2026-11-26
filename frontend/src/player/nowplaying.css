@@ -14,7 +14,9 @@
   --ink: #fff;
   --on: #11111c;
   --mut: rgba(255, 255, 255, 0.9);
-  --dim: rgba(255, 255, 255, 0.8);
+  /* 92 %: con el contraste 7.5:1 del tinte (tint.js > MIN_CONTRAST) el texto
+     secundario mas debil sigue por encima de 4.5:1 en toda portada. */
+  --dim: rgba(255, 255, 255, 0.92);
   --line: rgba(255, 255, 255, 0.22);
   --s1: #1c1c2c;
   --s2: rgba(255, 255, 255, 0.22);
@@ -146,7 +148,7 @@
 }
 
 .np__tab {
-  min-height: 36px;
+  min-height: var(--hit);
   padding: 0 16px;
   border: 0;
   border-radius: var(--r-pill);
@@ -182,9 +184,15 @@
   animation: var(--rise-enter);
 }
 
-/* La portada se encoge un poco en pausa. */
+/* La portada se encoge un poco en pausa. Limitada a 34dvh (alto de la
+   ventana, no del contenedor): en un telefono bajo (360x640) deja sitio al
+   transporte fijo de debajo Y al titulo con su marcador de verificacion, sin
+   que el ancho por si solo la desborde. Probado con screenshots reales: con
+   38dvh el marcador quedaba a medias bajo el recorte del scroll en ese
+   tamano; a 34dvh los dos caben sin raspar el fondo del scroll. */
 .np__cover {
-  width: 100%;
+  position: relative;
+  width: min(100%, 34dvh);
   max-width: 420px;
   margin: 0 auto;
   aspect-ratio: 1;
@@ -203,6 +211,60 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* --- Deslizar la portada para saltar de cancion (telefono) -------------------
+   Tres carteles (anterior, actual, siguiente) uno junto a otro; el JS solo
+   mueve `.np__cover-track` en px, asi que cada cartel se coloca con su propio
+   desplazamiento del 100% en vez de con flex: el anterior pegado a la
+   izquierda, el siguiente a la derecha, inmoviles salvo por ese transform. */
+.np__cover-track {
+  position: absolute;
+  inset: 0;
+  touch-action: pan-y;
+}
+
+.np__cover-item {
+  position: absolute;
+  inset: 0;
+}
+
+.np__cover-item--prev {
+  right: 100%;
+  left: auto;
+}
+
+.np__cover-item--next {
+  left: 100%;
+  right: auto;
+}
+
+/* Ghosts de direccion: el dedo los trae segun hacia donde desliza (JS los
+   pinta con opacity, ver NowPlaying.jsx > onCoverMove). */
+.np__cover-chev {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-top: -18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(14, 14, 24, 0.5);
+  color: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.np__cover-chev--l {
+  left: 10px;
+}
+
+.np__cover-chev--r {
+  right: 10px;
+  transform: scaleX(-1);
 }
 
 /* Sin portada: la inicial del artista sobre el color de fondo. */
@@ -241,9 +303,9 @@
   min-width: 0;
 }
 
-/* Chip discreto con como suena la pista. Una sola pastilla bajo el titulo: no
-   compite con el veredicto, que vive en la pestana Ficha. Solo transform y
-   opacity se animan en esta vista; aqui no hay movimiento. */
+/* Chip discreto con como suena la pista: solo se pinta cuando el archivo no
+   tiene veredicto (ver `marker` en NowPlaying.jsx), que lo sustituye. Solo
+   transform y opacity se animan en esta vista; aqui no hay movimiento. */
 .np__state {
   display: inline-flex;
   align-items: center;
@@ -287,14 +349,24 @@
   margin-left: auto;
 }
 
-/* La pastilla sobre el panel oscuro: un chip con su punto de estado. */
+/* La pastilla sobre el panel oscuro: mismo tamano que el chip de estado. El
+   veredicto junto al titulo (np__verdict) queda fuera: ese SI lleva su color
+   de tono (verdict.css), aqui solo se agranda y se le anade el punto. */
 .np .vb {
   gap: 8px;
   height: 30px;
   padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.np .vb:not(.np__verdict) {
   background: rgba(14, 14, 24, 0.34);
   color: #fff;
-  font-size: 12.5px;
+}
+
+/* Junto al titulo: la pastilla del veredicto, con su tono y un punto delante. */
+.np__verdict {
+  margin-top: 10px;
 }
 
 .np .vb::before {
@@ -320,7 +392,7 @@
 
 /* Escritorio: blanco al 12 % (el 16 % del prototipo da 4.2:1 sobre el fondo mas
    claro; shared/tokens.test.js pide 4.5). */
-.np--pane .vb {
+.np--pane .vb:not(.np__verdict) {
   background: rgba(255, 255, 255, 0.12);
 }
 
@@ -367,6 +439,51 @@
   width: 100%;
   max-width: 420px;
   margin: 8px auto 4px;
+}
+
+.np__ctl-queue {
+  position: relative;
+}
+
+/* Insignia de lo que queda por sonar, sobre el sexto boton de la cola. */
+.np__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--acc);
+  color: var(--acc-ink);
+  font: 700 11px / 16px var(--font-body);
+  text-align: center;
+}
+
+/* --- Transporte fijo (telefono) ----------------------------------------------
+   Fuera del scroll de .np__body: reproducir y saltar siguen al alcance aunque
+   la portada, el estado o las tarjetas no quepan en un telefono bajo. */
+.np__transport {
+  flex: none;
+  padding: 10px 2px max(10px, env(safe-area-inset-bottom));
+}
+
+/* El scrim del arrastre de cierre: fuera de .np (su transform no lo arrastra
+   con la tarjeta), justo detras. Entra con un fundido (si no, aparece de golpe
+   en cuanto se monta, antes de que la tarjeta termine de subir) y el gesto
+   toma el control de su opacidad en cuanto empieza a arrastrar. */
+.np__scrim {
+  position: fixed;
+  z-index: 54;
+  inset: 0;
+  background: var(--scrim);
+  animation: np-scrim-in var(--t-move) var(--ease) backwards;
+}
+
+@keyframes np-scrim-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Boton redondo (.cbtn) sobre la portada: blanco, sin tinte al pasar el raton y
@@ -606,7 +723,7 @@
 /* --- Escritorio: columna al lado de las paginas ------------------------------------ */
 
 .np--pane {
-  inset: 12px 12px 96px auto;
+  inset: 12px 12px var(--mini-h) auto;
   z-index: 46;
   width: 340px;
   border-radius: 28px;
@@ -664,7 +781,11 @@
   scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
 
-.np--pane .np__cover {
+/* :not(.np__cover--s): la miniatura de la Ficha tiene su propio ancho fijo
+   (72px); dos clases le ganarian en especificidad aunque esta regla cargue
+   antes, y la estirarian al 100% de la columna. */
+.np--pane .np__cover:not(.np__cover--s) {
+  width: 100%;
   max-width: none;
   border-radius: 22px;
 }
@@ -698,7 +819,7 @@
    quedan). Solo la pestana Ahora suena: portada y titulo a la izquierda
    (pegados), las tarjetas a la derecha. */
 .np--wide {
-  inset: 64px 12px 96px var(--dock-l);
+  inset: 64px 12px var(--mini-h) var(--dock-l);
   width: auto;
 }
 

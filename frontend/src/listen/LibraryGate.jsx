@@ -21,7 +21,7 @@ export const skeleton = (n) =>
 
 /* `loading`: el esqueleto con la forma de la pantalla que espera (Inicio pasa
    el suyo); sin el, filas de lista como en Tu biblioteca. */
-export default function LibraryGate({ ready, error, errorCode, onRetry, folder, loading, children }) {
+export default function LibraryGate({ ready, error, errorCode, onRetry, folder, loading, emptyView, children }) {
   const nav = useNav();
   const { model } = useListen();
 
@@ -62,6 +62,9 @@ export default function LibraryGate({ ready, error, errorCode, onRetry, folder, 
   /* Las guardadas viven en entries (van sin archivo), pero por si el registro
      llega antes que la biblioteca tambien se mira directamente. */
   if (!model.entries.length && !model.savedById?.size && !model.lists.length) {
+    /* Inicio lleva su propia vista de invitacion (la Mezcla sigue visible y
+       deshabilitada); Tu biblioteca mantiene la nota de siempre. */
+    if (emptyView) return emptyView;
     return (
       <p className="lnote">
         Todavía no has guardado nada.

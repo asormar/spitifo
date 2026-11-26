@@ -28,11 +28,23 @@ from pathlib import Path
 from typing import Any
 
 from . import activity
+from .executors import run_storage
 
 log = logging.getLogger("spitifo.downloads")
 
-# Maximo de descargas corriendo a la vez, global (no por ruta).
-MAX_RUNNING = 2
+# Fase de RED: bajar bytes no quema CPU, asi que pueden ir varias a la vez.
+# (P-downloads-pipeline-1: antes un unico semaforo de 2 confundia esperar red
+# con transcodificar y un album en m4a tardaba el doble sin motivo.)
+MAX_NETWORK = 4
+# Fase de CPU: la conversion real a mp3 se limita aparte, porque ahi si hay
+# un nucleo ocupado por pista. m4a/original NO cuentan (contenedor/AAC directo).
+MAX_TRANSCODE = 2
+#: Compatibilidad con el nombre que usan otros modulos y tests: el limite de
+#: descargas "en curso" es ahora el de la fase de red.
+MAX_RUNNING = MAX_NETWORK
+
+#: Cada cuanto se reintenta la comprobacion de red mientras un item espera Wi-Fi.
+NETWORK_CHECK_S = 1.0
 
 # Los items terminados viven 24 h en la cola (para que la UI pueda reenganchar
 # tras recargar) y se tiran del JSON al cargar y al guardar.
@@ -77,14 +89,74 @@ def _init_semaphores():
     return _SEMAPHORES
 
 
-def _semaphore() -> asyncio.Semaphore:
+def _semaphore(kind: str = "network") -> asyncio.Semaphore:
+    """Semaforo por loop Y por fase (`network` / `cpu`).
+
+    Con un solo semaforo compartido, dos conversiones mp3 ocupaban los mismos
+    huecos que dos descargas que solo esperan bytes: separarlas deja 4 streams
+    en vuelo y como mucho 2 transcodificaciones reales.
+    """
     loop = asyncio.get_running_loop()
     store = _init_semaphores()
-    sem = store.get(loop)
+    por_fase = store.get(loop)
+    if por_fase is None:
+        por_fase = {}
+        store[loop] = por_fase
+    sem = por_fase.get(kind)
     if sem is None:
-        sem = asyncio.Semaphore(MAX_RUNNING)
-        store[loop] = sem
+        limite = MAX_TRANSCODE if kind == "cpu" else MAX_NETWORK
+        sem = asyncio.Semaphore(limite)
+        por_fase[kind] = sem
     return sem
+
+
+# ------------------------------------------------------------- red / Wi-Fi
+#: Lo que informa la UI (Bridge de Android o `navigator.connection`). `unknown`
+#: NO bloquea: en escritorio no hay forma de saber si es Wi-Fi y no se puede
+#: castigar al usuario por eso.
+_NETWORK = {
+    "type": "unknown",
+    "online": True,
+    "wifi_only": False,
+    "roaming_allowed": True,
+}
+
+
+def set_network(*, type: str | None = None, online: bool | None = None,
+                wifi_only: bool | None = None,
+                roaming_allowed: bool | None = None) -> dict:
+    """Actualiza la ultima conexion conocida y las preferencias del usuario."""
+    tipos = ("wifi", "cellular", "roaming", "ethernet", "other", "none",
+             "unknown")
+    with _LOCK:
+        if type is not None:
+            _NETWORK["type"] = type if type in tipos else "unknown"
+        if online is not None:
+            _NETWORK["online"] = bool(online)
+        if wifi_only is not None:
+            _NETWORK["wifi_only"] = bool(wifi_only)
+        if roaming_allowed is not None:
+            _NETWORK["roaming_allowed"] = bool(roaming_allowed)
+        return dict(_NETWORK)
+
+
+def network_payload() -> dict:
+    with _LOCK:
+        return dict(_NETWORK)
+
+
+def _network_wait() -> str | None:
+    """Fase en la que debe esperar el item, o None si puede seguir."""
+    with _LOCK:
+        estado = dict(_NETWORK)
+    if not estado["online"]:
+        return "waiting_network"
+    tipo = estado["type"]
+    if estado["wifi_only"] and tipo not in ("wifi", "ethernet", "unknown"):
+        return "waiting_wifi"
+    if not estado["roaming_allowed"] and tipo == "roaming":
+        return "waiting_roaming"
+    return None
 
 
 # activity: un unico begin/end para TODO el periodo ocupado (bordes 0->1 y
@@ -124,39 +196,75 @@ def _purge_finished_locked(now: float) -> None:
         _QUEUE.pop(i, None)
 
 
-def _save() -> None:
-    """Escribe atomico (temporal + replace) y purga terminados viejos.
+#: Serializa el guardado EN SI (el temp+replace de `_save_sync`), no el dict:
+#: para eso ya esta `_LOCK`. Sin esto, dos guardados concurrentes (p. ej. un
+#: tick de progreso y un cancel llegando juntos) escriben cada uno su PROPIO
+#: temporal y hacen su PROPIO `os.replace`; el que gana la carrera del
+#: replace puede ser el que tenia la foto mas vieja, y la actualizacion del
+#: otro se pierde del archivo (aunque siga viva en memoria). Con el lock,
+#: el guardado que efectivamente escribe ultimo es el que tomo la foto mas
+#: reciente de `_QUEUE` (la foto se saca RECIEN adentro del lock, no antes de
+#: pedirlo), asi que ninguna actualizacion se pierde aunque los guardados se
+#: disparen fuera de orden.
+_SAVE_LOCK = threading.Lock()
+
+
+def _save_sync() -> None:
+    """El guardado real: atomico (temporal + replace) y purga terminados viejos.
 
     Sin `fsync`: este JSON es un espejo reconstruible de la cola, no un dato
     cuya durabilidad haya que garantizar. `os.replace` ya deja el archivo
-    siempre en un estado completo (o el viejo o el nuevo), y en un telefono el
+    siempre en un estado completo (o el viejo o el nuevo: nunca a medias ni
+    vacio aunque el proceso muera a mitad de escritura), y en un telefono el
     fsync de cada tick de progreso es bateria y E/S regalados.
     """
     path = queue_path()
+    with _SAVE_LOCK:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _LOCK:
+                _purge_finished_locked(time.time())
+                payload = {"items": [dict(it) for it in _QUEUE.values()]}
+            tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+                f.flush()
+            os.replace(tmp, path)
+        except OSError as e:
+            log.warning("no se pudo guardar la cola de descargas: %s", e)
+
+
+def _save() -> None:
+    """Dispara `_save_sync`, sin bloquear el event loop con disco.
+
+    `_update`/`enqueue`/`cancel`/`retry`/`cancel_group` son funciones
+    SINCRONAS que se llaman tanto desde rutas async (una request, el worker de
+    la cola) como desde el hilo del progress hook de yt-dlp (`_progress_cb`,
+    que ya corre FUERA del loop, en el pool de yt-dlp). Con un loop corriendo
+    en este hilo, el guardado real se manda al pool de storage; sin loop (ya
+    estamos en un hilo de executor) se escribe de una, que no cuesta nada
+    extra: ese hilo ya iba a tocar disco de todos modos.
+    """
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _LOCK:
-            _purge_finished_locked(time.time())
-            payload = {"items": [dict(it) for it in _QUEUE.values()]}
-        tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False)
-            f.flush()
-        os.replace(tmp, path)
-    except OSError as e:
-        log.warning("no se pudo guardar la cola de descargas: %s", e)
+        asyncio.get_running_loop()
+    except RuntimeError:
+        _save_sync()
+        return
+    run_storage(_save_sync)
 
 
-def load() -> None:
-    """Recupera la cola al arrancar. Los que estaban en curso vuelven a `queued`."""
+def _load_sync() -> list[str]:
+    """Lee y parsea el JSON de la cola (bloqueante: disco). Devuelve los ids a
+    reanudar; NO los agenda (`_schedule` necesita el loop de asyncio, que este
+    cuerpo puede correr fuera de el -- ver `load`/`load_async`)."""
     path = queue_path()
     if not path.is_file():
-        return
+        return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         log.warning("no se pudo leer la cola de descargas: %s", e)
-        return
+        return []
 
     now = time.time()
     reanudar: list[str] = []
@@ -186,6 +294,31 @@ def load() -> None:
     if reanudar:
         log.info("cola recuperada: %d descarga(s) vuelven a la cola", len(reanudar))
     _activity_update()
+    return reanudar
+
+
+def load() -> None:
+    """Recupera la cola al arrancar. Los que estaban en curso vuelven a `queued`.
+
+    Sincrona de punta a punta (disco + agendado): la usan los tests, que la
+    llaman sin un loop de asyncio corriendo (`_schedule` no hace nada sin
+    loop, como siempre). Para arrancar el server de verdad sin bloquear el
+    event loop con la lectura del JSON, usar `load_async`.
+    """
+    reanudar = _load_sync()
+    for jid in reanudar:
+        _ensure_job(jid)
+        _schedule(jid)
+
+
+async def load_async() -> None:
+    """Igual que `load`, pero la lectura/parseo del JSON corre en el pool de
+    storage: el lifespan la usa para no demorar `SPITIFO_READY` con un
+    `read_text`+`json.loads` sincronos en el arranque. El agendado de los
+    reanudados (`_schedule`) se hace de vuelta en el loop: necesita un loop
+    corriendo en el hilo que lo llama.
+    """
+    reanudar = await run_storage(_load_sync)
     for jid in reanudar:
         _ensure_job(jid)
         _schedule(jid)
@@ -338,24 +471,99 @@ def enqueue(specs: list[dict], group: dict | None = None) -> list[dict]:
     return salida
 
 
-async def _worker(item_id: str) -> None:
-    """Corre un item respetando el semaforo global; escribe cada cambio."""
-    sem = _semaphore()
-    async with sem:
-        item = get_item(item_id)
-        if item is None or item.get("status") in FINISHED:
-            _finish_task(item_id)
+#: Una tanda de escritura del indice por GRUPO (album/lista), compartida por
+#: todos sus workers: la abre la primera pista y la cierra la ultima, asi un
+#: album de 15 temas sube el indice UNA vez, no 15 (P-drive-io-2).
+_BATCH_LOCK = threading.Lock()
+_BATCHES: dict[str, tuple[object, int]] = {}
+
+
+def _group_batch_enter(group_id: str) -> None:
+    from .storage import get_storage
+    with _BATCH_LOCK:
+        actual = _BATCHES.get(group_id)
+        if actual is not None:
+            cm, n = actual
+            _BATCHES[group_id] = (cm, n + 1)
             return
+    gestor = getattr(get_storage(), "batch_index_writes", None)
+    if gestor is None:
+        return  # storage local: no hay indice remoto que agrupar
+    cm = gestor()
+    cm.__enter__()
+    with _BATCH_LOCK:
+        if group_id not in _BATCHES:
+            _BATCHES[group_id] = (cm, 1)
+            return
+    # Alguien mas abrio la tanda mientras tanto: cerramos la nuestra.
+    cm.__exit__(None, None, None)
+
+
+def _group_batch_exit(group_id: str) -> None:
+    with _BATCH_LOCK:
+        actual = _BATCHES.get(group_id)
+        if actual is None:
+            return
+        cm, n = actual
+        if n > 1:
+            _BATCHES[group_id] = (cm, n - 1)
+            return
+        _BATCHES.pop(group_id, None)
+    # Cierra la ultima pista del grupo: aqui es donde se sube el indice.
+    cm.__exit__(None, None, None)
+
+
+def _compact_idle() -> None:
+    """Con la cola vacia, terminar de subir el journal sin esperar al apagado."""
+    from .storage import get_storage
+    compactar = getattr(get_storage(), "compact_index_journal", None)
+    if compactar is not None:
+        compactar()
+
+
+async def _worker(item_id: str) -> None:
+    """Corre un item: espera red si hace falta, reserva la fase de red y, si
+    hay que transcodificar, tambien la de CPU."""
+    item = get_item(item_id)
+    if item is None or item.get("status") in FINISHED:
+        _finish_task(item_id)
+        return
+    from . import ytdlp_source as ys
+    fmt = item.get("fmt") or "original"
+    media = item.get("media") or "audio"
+    cpu = _semaphore("cpu") if ys.is_transcode(fmt, media) else None
+
+    async with _semaphore("network"):
+        # R2: la UI informa el tipo de conexion y las preferencias. Mientras no
+        # pueda descargar (Wi-Fi obligatorio, roaming desactivado, sin red), el
+        # item sigue en cola con una fase que la UI traduce a «Esperando Wi-Fi».
+        while True:
+            motivo = _network_wait()
+            if motivo is None:
+                break
+            actual = get_item(item_id)
+            if actual is None or actual.get("status") in FINISHED:
+                _finish_task(item_id)
+                return
+            _update(item_id, status="queued", phase=motivo)
+            await asyncio.sleep(NETWORK_CHECK_S)
         _update(item_id, status="downloading", phase="preparing")
 
-        from . import ytdlp_source as ys
         cancel = _CANCELS.get(item_id) or threading.Event()
         cb = _progress_cb(item_id)
+        grupo = (item.get("group") or {}).get("id") if isinstance(
+            item.get("group"), dict) else None
+        if grupo:
+            await run_storage(_group_batch_enter, grupo)
         try:
-            resultado = await ys.YtDlpSource().download(
-                _to_track(item), item.get("fmt") or "original", job_id=item_id,
-                query=item.get("query"), media=item.get("media") or "audio",
-                height=item.get("height"), cancel=cancel, on_progress=cb)
+            async def _download():
+                return await ys.YtDlpSource().download(
+                    _to_track(item), fmt, job_id=item_id,
+                    query=item.get("query"), media=media,
+                    height=item.get("height"), cancel=cancel, on_progress=cb)
+
+            resultado = (await (_download() if cpu is None else _con_cpu(
+                cpu, _download)))
             _update(item_id, result=resultado, save=False)
             # La descarga ya esta en la biblioteca: si corresponde a una cancion
             # guardada, se enlaza con UNA escritura del registro.
@@ -380,6 +588,18 @@ async def _worker(item_id: str) -> None:
             _sync_from_job(item_id, ys.get_job(item_id) or {}, save=True)
             _CANCELS.pop(item_id, None)
             _finish_task(item_id)
+            if grupo:
+                await run_storage(_group_batch_exit, grupo)
+            if not any(it.get("status") in BUSY_STATES for it in get_items()):
+                await run_storage(_compact_idle)
+
+
+async def _con_cpu(cpu: asyncio.Semaphore, accion) -> dict:
+    """Reserva la fase de CPU mientras yt-dlp hace extraccion + postproceso:
+    en la misma llamada ocurren ambas cosas, asi que la conversion no se puede
+    separar sin rehacer el pipeline de yt-dlp."""
+    async with cpu:
+        return await accion()
 
 
 def _es_cancel_local(error: BaseException, cancel: threading.Event) -> bool:
@@ -393,11 +613,35 @@ def _finish_task(item_id: str) -> None:
         ev.set()
 
 
-async def wait_item(item_id: str) -> None:
-    """Espera a que el item termine (para `POST /api/download?wait=1`)."""
+#: Plazo de `wait_item`: sin esto, un job atascado en una llamada de red de
+#: yt-dlp sin su propio timeout dejaba la conexion HTTP (y el navegador que
+#: la espera) colgada para siempre. Mismo valor que el deadline del lado del
+#: cliente que ya usan los jobs sueltos via progress-polling.
+WAIT_ITEM_TIMEOUT_S = 60.0
+
+
+async def wait_item(item_id: str, timeout: float | None = None) -> bool:
+    """Espera a que el item termine (para `POST /api/download?wait=1`).
+
+    Devuelve `True` si termino dentro del plazo. `False` significa que el job
+    SIGUE corriendo (no es un error): el caller debe tratarlo como si nunca
+    hubiera pedido `wait=1`, dejando que la UI siga por polling de progreso,
+    nunca inventando un resultado o un error.
+
+    `timeout=None` (el default real) lee `WAIT_ITEM_TIMEOUT_S` en el momento
+    de la llamada, no al definir la funcion: asi un test puede monkeypatchear
+    la constante del modulo sin tener que pasar el valor a mano.
+    """
     ev = _DONE.get(item_id)
-    if ev is not None:
-        await ev.wait()
+    if ev is None:
+        return True
+    if timeout is None:
+        timeout = WAIT_ITEM_TIMEOUT_S
+    try:
+        await asyncio.wait_for(ev.wait(), timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
 
 
 # ------------------------------------------------------------------- comandos
@@ -530,8 +774,12 @@ def reset_for_tests() -> None:
         _QUEUE.clear()
         _CANCELS.clear()
         _DONE.clear()
+        _NETWORK.update(type="unknown", online=True, wifi_only=False,
+                        roaming_allowed=True)
         estaba = _activity_on
         _activity_on = False
         _SEMAPHORES and _SEMAPHORES.clear()
+    with _BATCH_LOCK:
+        _BATCHES.clear()
     if estaba:
         activity.end()

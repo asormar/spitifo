@@ -67,7 +67,13 @@ export function detailOf(view, { index, byKey, savedById, lists, listsReady, lis
 export function detailMeta(d, storage, disc) {
   const n = d.rows.length;
   const time = d.mins ? ` · ${d.mins} min` : "";
-  if (d.kind === "list") return { meta: `Lista · ${songs(n)}${time}` };
+  if (d.kind === "list") {
+    if (d.pl?.is_folder) {
+      const k = d.pl.keys.length;
+      return { meta: `Carpeta · ${k} ${k === 1 ? "lista" : "listas"}` };
+    }
+    return { meta: `Lista · ${songs(n)}${time}` };
+  }
   if (d.kind === "album") {
     const check = albumVerdict(d.rows);
     const count = disc?.have != null ? `${disc.have} de ${disc.total} en tu biblioteca` : songs(n);

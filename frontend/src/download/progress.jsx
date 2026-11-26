@@ -1,5 +1,7 @@
 import "./progress.css";
 import { Icon } from "../shared/icons.jsx";
+import { useNav } from "../app/useNav.js";
+import { requestReveal } from "../listen/revealRequest.js";
 import { JOB_DISMISS_MS } from "./constants.js";
 import { useJobs } from "./jobsStore.js";
 import { dlState, dlText } from "./dlState.js";
@@ -24,6 +26,7 @@ export function ProgressStack({ inline = false }) {
 }
 
 export function ProgressBar({ job }) {
+  const nav = useNav();
   if (!job) return null;
   const pct = Math.round(job.progress || 0);
   const done = job.status === "done";
@@ -32,6 +35,12 @@ export function ProgressBar({ job }) {
      se puede seguir mirando. No es "descargando" porque ya no lo sabemos. */
   const halted = job.status === "timeout" || job.status === "gone";
   const shown = done ? 100 : Math.max(pct, 2);
+  /* La unica superficie autorizada para anunciar que termino: 5 s, una accion.
+     El toast global y el aviso de pantalla no repiten lo mismo. */
+  const revealInLibrary = () => {
+    if (job.key) requestReveal(job.key);
+    nav.goTo("library", { type: "library", sort: "recent" });
+  };
   return (
     <div
       className={`prog ${done ? "is-done" : ""} ${failed || halted ? "is-failed" : ""}`}
@@ -51,13 +60,13 @@ export function ProgressBar({ job }) {
         {/* El porcentaje cambia cada ~700 ms: solo se anuncian los estados finales. */}
         <span className="prog__state" aria-hidden={done || failed || halted ? undefined : true}>
           {failed
-            ? "Falló la descarga"
+            ? dlText(dlState({ job }))
             : done
             ? "Listo, está en tu biblioteca"
             : halted
             ? job.status === "gone"
-              ? "El servidor ya no tiene esta descarga"
-              : "Sigue descargando en el servidor"
+              ? "Ya no podemos seguir la descarga. Puede que aparezca en tu biblioteca cuando termine."
+              : "La descarga sigue en segundo plano."
             : dlText(dlState({ busy: true, job }))}
         </span>
       </div>
@@ -71,6 +80,11 @@ export function ProgressBar({ job }) {
       >
         <div className="prog__fill" style={{ transform: `scaleX(${shown / 100})` }} />
       </div>
+      {done && (
+        <button type="button" className="prog__act" onClick={revealInLibrary}>
+          Ver en biblioteca
+        </button>
+      )}
     </div>
   );
 }

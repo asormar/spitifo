@@ -1,7 +1,7 @@
 import { coverTone } from "../shared/cover.js";
 import { clock } from "../shared/format.js";
 import { collator, fold, groupAlbums, groupArtists } from "./library.js";
-import { continueListening, mostPlayed } from "./history.js";
+import { mostPlayed } from "./history.js";
 
 /* ---------------------------------------------------------------------------
    LOGICA DEL INICIO DE ESCUCHAR
@@ -24,17 +24,18 @@ export const SORTS = [
 
 /* Cuantas filas admite cada ranking al abrirse con "Ver todo". */
 export const TOP_ALL = 20;
-export const TOP_HOME = 5;
 
 /* --- Busqueda ------------------------------------------------------------- */
 
 export const queryTerms = (query) => fold(query).split(/\s+/).filter(Boolean);
 
-/* Cuanto se parece un nombre a la consulta: igual, empieza por ella, alguna
-   palabra empieza por ella, o solo la contiene. 0 = no aparece. */
-export function relevance(name, query) {
-  const f = fold(name);
-  const q = fold(query);
+/* Cuanto se parece un nombre YA PLEGADO (fold()) a una consulta YA PLEGADA:
+   igual, empieza por ella, alguna palabra empieza por ella, o solo la
+   contiene. 0 = no aparece. Separada de relevance() para que buscar en la
+   biblioteca grande no vuelva a plegar la MISMA consulta en cada candidato
+   (P-large-library-scale-2): quien recorre muchos candidatos pliega la
+   consulta una vez y llama a esta version con los dos lados ya plegados. */
+function relevanceFolded(f, q) {
   if (!q || !f) return 0;
   if (f === q) return 100;
   if (f.startsWith(q)) return 80;
@@ -42,7 +43,17 @@ export function relevance(name, query) {
   return f.includes(q) ? 40 : 0;
 }
 
-/* Artistas y albumes se agrupan UNA vez por biblioteca, no por tecla. */
+/* Cuanto se parece un nombre a la consulta. Pliega los dos lados: para un
+   solo candidato (fuera del bucle de busqueda) no hace falta separar el
+   plegado de la comparacion. */
+export function relevance(name, query) {
+  return relevanceFolded(fold(name), fold(query));
+}
+
+/* Artistas y albumes se agrupan UNA vez por biblioteca, no por tecla.
+   `search` sigue siendo el texto combinado para filtrar (hasAll); `nameFold`
+   es solo el nombre, plegado una vez, para relevance() en pickBest. En
+   artistas `search` YA es el nombre solo: no hace falta otro campo. */
 export function buildIndex(entries) {
   return {
     entries,
@@ -50,6 +61,7 @@ export function buildIndex(entries) {
     albums: groupAlbums(entries).map((a) => ({
       ...a,
       search: fold(`${a.name} ${a.artist}`),
+      nameFold: fold(a.name),
     })),
   };
 }
@@ -62,17 +74,21 @@ const ARTIST_BONUS = 6;
 const ALBUM_BONUS = 3;
 
 function pickBest(query, songs, artists, albums) {
+  /* `query` ya llega plegada (viene de queryTerms().join(" ") en
+     searchLibrary): plegarla otra vez por candidato era el costo que mas
+     pesaba al escribir con la biblioteca grande. */
+  const q = fold(query);
   const candidates = [];
   for (const a of artists) {
-    const score = relevance(a.name, query);
+    const score = relevanceFolded(a.search, q);
     if (score) candidates.push({ kind: "artist", item: a, score: score + ARTIST_BONUS });
   }
   for (const a of albums) {
-    const score = relevance(a.name, query);
+    const score = relevanceFolded(a.nameFold, q);
     if (score) candidates.push({ kind: "album", item: a, score: score + ALBUM_BONUS });
   }
   for (const s of songs) {
-    const score = relevance(s.title, query);
+    const score = relevanceFolded(s.titleKey, q);
     if (score) candidates.push({ kind: "song", item: s, score });
   }
   /* sort es estable: a igual puntuacion gana el que se anadio antes. */
@@ -86,16 +102,25 @@ function pickBest(query, songs, artists, albums) {
   return null;
 }
 
+/* `plays` desempata por reproducciones: puede llegar como objeto plano (los
+   tests, y quien arme uno a mano) o como el Map mutable y estable de
+   history.js (ListenProvider pasa ESE, sin convertirlo: volverlo objeto en
+   cada busqueda recrearia justo el costo que se evito en record()). */
+const playsFor = (plays, key) => (plays instanceof Map ? plays.get(key) : plays?.[key]) || 0;
+
 /* Las canciones que casan con todas las palabras, de mas a menos parecidas al
    titulo y, a igualdad, de mas a menos reproducidas. La relevancia se calcula
    una vez por cancion (no por comparacion): con la biblioteca grande es lo que
    mas pesa al escribir. */
 function rankSongs(index, terms, plays) {
-  const q = terms.join(" ");
+  /* terms ya son tokens plegados (queryTerms pliega antes de separar), asi
+     que q YA esta plegada: relevanceFolded no vuelve a plegarla por
+     cancion, solo usa el titleKey precalculado de cada una. */
+  const q = fold(terms.join(" "));
   return index.entries
     .filter((e) => hasAll(e.search, terms))
-    .map((e) => [relevance(e.title, q), e])
-    .sort((a, b) => b[0] - a[0] || (plays[b[1].key] || 0) - (plays[a[1].key] || 0))
+    .map((e) => [relevanceFolded(e.titleKey, q), e])
+    .sort((a, b) => b[0] - a[0] || playsFor(plays, b[1].key) - playsFor(plays, a[1].key))
     .map((p) => p[1]);
 }
 
@@ -136,14 +161,30 @@ export function searchLibrary(index, query, { lists = [], plays = {} } = {}) {
 
 const byTitle = (a, b) => collator.compare(a.title, b.title);
 
+/* Cache por version de biblioteca (la identidad del array `entries`, que solo
+   cambia cuando la biblioteca de verdad cambio) y modo de orden: "Todas tus
+   canciones" vuelve a montarse al entrar y salir de la pagina, y sin esta
+   cache volvia a correr Intl.Collator sobre 20k filas cada vez aunque nada
+   hubiera cambiado (P-large-library-scale-4). Un WeakMap no retiene el array
+   viejo cuando la biblioteca se recarga de verdad. */
+const sortCache = new WeakMap();
+
 /* Copia ordenada: A-Z por titulo, Recientes (lo ultimo que llego primero) o por
    artista y, dentro, por titulo. Los empates conservan el orden de entrada. */
 export function sortEntries(entries, mode) {
+  let byMode = sortCache.get(entries);
+  const cached = byMode?.get(mode);
+  if (cached) return cached;
   const out = entries.slice();
   if (mode === "az") out.sort(byTitle);
   else if (mode === "artist") {
     out.sort((a, b) => collator.compare(a.artist, b.artist) || byTitle(a, b));
   } else out.sort((a, b) => b.added - a.added);
+  if (!byMode) {
+    byMode = new Map();
+    sortCache.set(entries, byMode);
+  }
+  byMode.set(mode, out);
   return out;
 }
 
@@ -202,22 +243,25 @@ const SECONDS = 1000;
    terminada (misma regla que continueListening). */
 const FINISHED_S = 10;
 
-/* "Seguir escuchando": las pistas a medias que siguen en la biblioteca, con su
-   progreso. El historial guarda ms; aqui todo va en segundos. */
-export function continueItems(state, byKey, n) {
+/* "Seguir escuchando" y "Ya escuchadas": las pistas a medias y las terminadas
+   que siguen en la biblioteca, con su progreso. El historial guarda ms; aqui
+   todo va en segundos. Una terminada no ocupa sitio en "Seguir escuchando": se
+   repone con la siguiente a medias y se muda a su propio estante. */
+function historyCards(state, byKey, n, wantFinished) {
   const out = [];
   /* Una guardada con archivo puede tener escuchas bajo la clave del archivo y
      bajo su id: las dos resuelven a la MISMA entrada. Gana la mas reciente. */
   const seen = new Set();
   if (!(n > 0)) return out;
-  for (const rec of continueListening(state, Number.MAX_SAFE_INTEGER)) {
+  for (const rec of state?.recent || []) {
     const entry = byKey.get(rec.key);
-    if (!playable(entry) || seen.has(entry)) continue;
-    seen.add(entry);
+    if (!playable(entry)) continue;
     const dur = (Number(rec.dur) || 0) / SECONDS || entry.duration || 0;
     const pos = Math.min(Math.max(0, (Number(rec.pos) || 0) / SECONDS), dur || Infinity);
     const left = Math.max(0, dur - pos);
     const finished = dur > 0 && left <= FINISHED_S;
+    if (finished !== wantFinished || seen.has(entry)) continue;
+    seen.add(entry);
     out.push({
       entry,
       pos,
@@ -231,6 +275,34 @@ export function continueItems(state, byKey, n) {
     if (out.length >= n) break;
   }
   return out;
+}
+
+export const continueItems = (state, byKey, n) => historyCards(state, byKey, n, false);
+export const finishedItems = (state, byKey, n) => historyCards(state, byKey, n, true);
+
+/* Saludo del inicio: la hora y cuanta musica hay lista, en una sola linea. */
+export function greeting(hour = new Date().getHours()) {
+  if (hour < 6 || hour >= 20) return "Buenas noches";
+  if (hour < 12) return "Buenos días";
+  return "Buenas tardes";
+}
+
+export const homeGreeting = (n, hour) =>
+  `${greeting(hour)} · ${plural(n, "canción lista", "canciones listas")}`;
+
+/* Los atajos del hero: lo mas escuchado primero y lo mas reciente despues, sin
+   repetir y con tope (la rejilla del telefono cabe ocho). */
+export function shortcutEntries(top, recent, n = 8) {
+  const out = [];
+  const seen = new Set();
+  const add = (entry) => {
+    if (!entry || seen.has(entry)) return;
+    seen.add(entry);
+    out.push(entry);
+  };
+  for (const t of top || []) add(t.entry || t);
+  for (const entry of recent || []) add(entry);
+  return out.slice(0, Math.max(0, n));
 }
 
 /* "Lo que más escuchas": por reproducciones, solo las que de verdad se han

@@ -1,6 +1,7 @@
 import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
-import { Icon } from "../listen/icons.jsx";
+import { Icon } from "./icons.jsx";
+import { VerdictPill } from "../shared/Verdict.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadArtistChunk } from "./artistChunk.js";
 import { bestResultSong } from "./bestResultSong.js";
@@ -9,19 +10,23 @@ import "../shared/pinkPlay.css";
 import "./bestResult.css";
 
 /* ---------------------------------------------------------------------------
-   MEJOR RESULTADO (Buscar, modo Musica)
+   MEJOR RESULTADO (Buscar)
 
-   Una tarjeta pequena encima del estante de albumes. El nombre y el genero
-   vienen de /api/artists/search; la portada redonda es del disco mas nuevo del
-   mismo artista entre los resultados de albumes, o la inicial. El chunk de la
-   pagina se adelanta al enfocarla. No pide nada por su cuenta: si la busqueda
-   de artistas fallo, simplemente no se pinta.
-
-   El boton rosa reproduce la primera cancion del artista que haya entre los
-   resultados y se pueda tocar, por el mismo camino que una fila. Tocar la
-   tarjeta sigue abriendo la pagina del artista. Las clases llevan prefijo
-   propio: .best ya es la tarjeta del mejor resultado de la biblioteca.
+   Tarjeta encima del estante de albumes. Antes solo existia si el texto nombraba
+   entero a un artista y siempre dibujaba una portada redonda; ahora la elige
+   bestPick.js entre cancion, album y artista, y dibuja el tipo que gano con su
+   etiqueta. El boton rosa reproduce la primera cancion que se pueda tocar, por
+   el mismo camino que una fila. Tocar la tarjeta abre la ficha del tipo.
    ------------------------------------------------------------------------- */
+
+const KIND_LABEL = { song: "Canción", album: "Álbum", artist: "Artista" };
+
+export function playableSong(best, results = []) {
+  if (!best) return null;
+  if (best.kind === "song") return best.item;
+  if (best.kind === "artist") return bestResultSong(results, best.item);
+  return results.find((t) => t?.album && best.item?.title && t.album === best.item.title) || null;
+}
 
 /* Envuelve el hook aparte: asi solo se monta cuando hay cancion, sin condicionar
    hooks dentro de la tarjeta. */
@@ -61,28 +66,35 @@ export function BestResultSkeleton() {
   );
 }
 
-export default function BestResult({ artist, results = [], query = "", onOpen }) {
-  const song = bestResultSong(results, artist);
+export default function BestResult({ best, results = [], query = "", onOpen }) {
+  if (!best) return null;
+  const song = playableSong(best, results);
   const source = query ? `search:${query}` : null;
+  const round = best.kind === "artist";
   return (
     <div className="bestc">
       <button
         type="button"
         className="bestc__main"
-        aria-label={`Abrir artista ${artist.name}`}
-        onPointerEnter={loadArtistChunk}
-        onFocus={loadArtistChunk}
-        onClick={(e) => onOpen(artist, e.currentTarget)}
+        aria-label={`Abrir ${KIND_LABEL[best.kind] || "resultado"} ${best.title}`}
+        onPointerEnter={round ? loadArtistChunk : undefined}
+        onFocus={round ? loadArtistChunk : undefined}
+        onClick={(e) => onOpen(best, e.currentTarget)}
       >
         <Cover
-          tone={coverTone(artist.name, "")}
-          label={artist.name}
-          src={artist.artwork_url ? thumbUrl(artist.artwork_url) : undefined}
+          tone={coverTone(best.title, best.sub)}
+          label={best.title}
+          src={best.artwork_url ? thumbUrl(best.artwork_url) : undefined}
+          round={round}
           className="bestc__cv"
         />
         <span className="bestc__txt">
-          <span className="bestc__t">{artist.name}</span>
-          <span className="bestc__m">Artista · {artist.genre || "—"}</span>
+          <span className="bestc__kind">{KIND_LABEL[best.kind] || "Resultado"}</span>
+          <span className="bestc__t">{best.title}</span>
+          <span className="bestc__m">
+            {best.sub}
+            {best.verdict === "match" && <VerdictPill v="match" />}
+          </span>
         </span>
       </button>
       {song && <BestPlay song={song} query={query} queue={results} source={source} />}

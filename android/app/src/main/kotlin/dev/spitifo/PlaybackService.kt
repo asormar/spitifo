@@ -44,6 +44,17 @@ class PlaybackService : Service() {
 
     private lateinit var mediaSession: MediaSession
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /* La pagina solo avisa al cambiar de estado (play, pausa, pista): una pista
+       de mas de diez minutos no traeria ningun refresh. Mientras suena, el
+       plazo del wake lock se renueva solo cada cinco minutos. */
+    private val renewWakeLock = object : Runnable {
+        override fun run() {
+            if (stopped || !(playing || buffering)) return
+            wakeLock?.acquire(WAKE_LOCK_TIMEOUT_MS)
+            main.postDelayed(this, WAKE_LOCK_RENEW_MS)
+        }
+    }
     private var foregrounded = false
     private var stopped = false
 
@@ -268,12 +279,20 @@ class PlaybackService : Service() {
         val notification = buildNotification()
         if (playing || buffering) {
             if (!foregrounded) enterForeground() else notificationManager().notify(NOTIFICATION_ID, notification)
-            if (wakeLock?.isHeld != true) {
-                wakeLock = getSystemService(PowerManager::class.java)
-                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:playback")
-                    .apply { acquire() }
-            }
+            // Un acquire() sin plazo no tiene red de seguridad si algun camino
+            // futuro deja `playing = true` sin volver a `false`. El plazo se
+            // renueva en cada refresh (la pagina los manda seguido mientras
+            // suena), asi que una sesion real nunca lo nota; uno que se queda
+            // trabado se suelta solo en minutos, no al matar el proceso.
+            val lock = wakeLock ?: getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "spitifo:playback")
+                .apply { setReferenceCounted(false) }
+            lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+            wakeLock = lock
+            main.removeCallbacks(renewWakeLock)
+            main.postDelayed(renewWakeLock, WAKE_LOCK_RENEW_MS)
         } else {
+            main.removeCallbacks(renewWakeLock)
             wakeLock?.let { if (it.isHeld) it.release() }
             wakeLock = null
             if (foregrounded) {
@@ -341,6 +360,7 @@ class PlaybackService : Service() {
         notificationManager().cancel(NOTIFICATION_ID)
         mediaSession.isActive = false
         mediaSession.release()
+        main.removeCallbacks(renewWakeLock)
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         if (foregrounded) {
@@ -357,6 +377,7 @@ class PlaybackService : Service() {
         if (!stopped) {
             stopped = true
             if (instance === this) instance = null
+            main.removeCallbacks(renewWakeLock)
             wakeLock?.let { if (it.isHeld) it.release() }
             wakeLock = null
             try {
@@ -376,6 +397,8 @@ class PlaybackService : Service() {
         private const val ART_SIZE = 512
         private const val MAX_ART_BYTES = 8 * 1024 * 1024
         private const val EXTRA_UPDATE = "dev.spitifo.media.update"
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val WAKE_LOCK_RENEW_MS = 5 * 60 * 1000L
         private const val ACTION_PLAY = "dev.spitifo.media.play"
         private const val ACTION_PAUSE = "dev.spitifo.media.pause"
         private const val ACTION_PREV = "dev.spitifo.media.prev"

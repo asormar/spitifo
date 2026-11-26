@@ -18,17 +18,18 @@ import time
 from collections import OrderedDict
 from typing import Any
 
-import httpx
-
 from .config import USER_AGENT
+from .identify import fold
 from .models import Track
 
 log = logging.getLogger("spitifo.sources")
-TIMEOUT = httpx.Timeout(20.0, connect=10.0)
 
 
 def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True,
+    """Cliente de busqueda. httpx se importa aqui, no al arrancar (P-cold-start-5)."""
+    import httpx
+    return httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0),
+                             follow_redirects=True,
                              headers={"User-Agent": USER_AGENT},
                              limits=httpx.Limits(max_connections=16))
 
@@ -149,14 +150,15 @@ class Source:
 
 
 # --------------------------------------------------------------------------
-# Cache de resultados de iTunes: acotada (128), TTL de 5 min, desalojo del mas
-# viejo primero. `album_detail` y `album_match` repiten la MISMA lookup: en un
+# Cache de resultados de iTunes: acotada (128), TTL de media hora (lo que dura
+# una sesion de escucha, igual que _TRACK_RAW_CACHE), desalojo del mas viejo
+# primero. `album_detail` y `album_match` repiten la MISMA lookup: en un
 # telefono eso son dos peticiones de red (y bateria) por cada visita al disco.
 # Los resultados se devuelven copiados para que ningun llamador pueda mutar lo
 # que quedo guardado. Los errores nunca entran: el `raise_for_status` salta
 # antes de guardar.
 # --------------------------------------------------------------------------
-ITUNES_CACHE_TTL_S = 300.0
+ITUNES_CACHE_TTL_S = 1800.0
 ITUNES_CACHE_MAX = 128
 
 _ITUNES_CACHE: "OrderedDict[tuple, tuple[float, Any]]" = OrderedDict()
@@ -331,11 +333,14 @@ class ITunesSource(Source):
         songs = [t for t in results if t.get("kind") == "song"]
         return collection, songs
 
+    @_cached
     async def lookup_track(self, track_id: str | int) -> dict | None:
         """Un item crudo de iTunes por trackId (lookup?id=...).
 
         La ruta de match puntual lo usa cuando la pista no estaba en la cache
-        de la busqueda que la origino. Reutiliza el httpx.Client compartido.
+        de la busqueda que la origino (expiro o el proceso reinicio). Cacheado
+        igual que el resto: sin esto, cada fila sin `_TRACK_RAW_CACHE` paga un
+        lookup nuevo aunque el mismo id ya se haya pedido antes.
         """
         r = await self.client.get(
             "https://itunes.apple.com/lookup", params={"id": track_id})
@@ -344,6 +349,52 @@ class ITunesSource(Source):
             if str(item.get("trackId")) == str(track_id):
                 return item
         return None
+
+    @_cached
+    async def _jp_names(self, track_id: str | int) -> dict:
+        """Titulo y artista del storefront de Japon para un trackId, crudos.
+
+        Mismo cliente, timeout y cache que el resto de iTunes. Best effort: un
+        fallo devuelve {} (que `_vacio` no guarda) para que la proxima busqueda
+        pueda reintentar sin quedar colgada de un resultado viejo.
+        """
+        try:
+            r = await self.client.get(
+                "https://itunes.apple.com/lookup",
+                params={"id": track_id, "country": "jp"})
+            r.raise_for_status()
+            results = r.json().get("results", [])
+        except Exception as e:
+            log.warning("iTunes lookup jp fallo para %s: %s", track_id, e)
+            return {}
+        item = next((t for t in results
+                     if str(t.get("trackId")) == str(track_id)), None)
+        if not item:
+            return {}
+        return {"title": item.get("trackName") or "",
+                "artist": item.get("artistName") or ""}
+
+    async def lookup_aliases(self, track: dict) -> dict:
+        """Los nombres en japones de una pista QUE DIFIEREN de su ficha actual.
+
+        Las fichas de iTunes suelen venir en latin y los videos de YouTube (o
+        otras fuentes) en japones, y al reves: sin alias el matcher ve titulos
+        distintos y el veredicto dice "NO es lo que buscabas" aunque sea la
+        misma cancion. El lookup con `country=jp` da el nombre nativo cuando
+        iTunes lo tiene; si dice lo mismo que la busqueda por defecto, no hay
+        alias que agregar. Best effort: ante un fallo devuelve {} y la busqueda
+        sigue igual.
+        """
+        track_id = track.get("trackId")
+        if not track_id:
+            return {}
+        jp = await self._jp_names(track_id)
+        aliases: dict[str, str] = {}
+        if jp.get("title") and fold(jp["title"]) != fold(track.get("trackName")):
+            aliases["title"] = jp["title"]
+        if jp.get("artist") and fold(jp["artist"]) != fold(track.get("artistName")):
+            aliases["artist"] = jp["artist"]
+        return aliases
 
     async def search(self, q: str, limit: int = 20) -> list[Track]:
         r = await self.client.get(
