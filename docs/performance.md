@@ -30,8 +30,10 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 400,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 131,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 433,924 B | 314,126 B (gzip 88,464 B) | same file | 422,018 B (gzip 161,577 B) | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 135,571 B | 52,787 B (gzip 11,115 B) | same file | 133,125 B (gzip 38,264 B) | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 470,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 150,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -47,6 +49,11 @@ open to DevTools); everything else comes from the published files.
   the library redesign (saved songs without a file, custom pictures). After
   #69–#71 the bundle sat at 344,700 B of JS and 123,400 B of CSS, with no room
   for the new screens. The limits above are the ones CI enforces.
+- **2026-11-25 (fase 16, Buscar)**: JS 420,750 → 433,924 B and CSS 131,000 →
+  135,571 B, exactly the measured growth of the search experience (combobox and
+  its suggestions, recent searches, type/source chips, legend, progress and
+  notices). Measured on the merged `feat/search-ux` tree: JS 408,858 → 422,032 B
+  and CSS 128,554 → 133,125 B (final JS 422,018 B). Nothing else was relaxed.
 - **2026-11-20**: JS 360,000 → 372,000 B and CSS 128,000 → 131,000 B, before
   the last three library redesign PRs (save buttons in Buscar and Ahora suena,
   custom pictures, Descubrir from saved songs). After #72–#75 the bundle sat at
@@ -72,6 +79,26 @@ open to DevTools); everything else comes from the published files.
   waves add 2,289 B (stream reader, lazy-row queue, the «Buscando» state and
   tap priority, reusing the album match stream client) and #96 adds 501 B.
   With both, the bundle sits at about 396,480 B.
+- **2026-11-24**: fresh baseline, `main` at `215f5de` (PR #100 merged): JS
+  398,405 B across 40 files (entry chunk `index-*.js` 141,238 B) and CSS
+  128,002 B across 19 files (entry chunk `index-*.css` 38,684 B). Both budgets
+  were effectively saturated (1.6 KiB and 2.9 KiB of headroom). The owner
+  approved bigger budgets ahead of the coming icons, lyrics, sharing and
+  playlist work: **JS 400,000 → 460,000 B and CSS 131,000 → 150,000 B**, the
+  fresh baseline plus about 15% headroom, rounded up to the nearest 10,000 B.
+  **Policy going forward**: this is a one-time, deliberate headroom raise for
+  known upcoming work, not a new default margin. Each later PR still raises a
+  budget only by its own measured growth (built before and after, the
+  difference rounded up, same as every entry above) and says why in the pull
+  request — it does not dip back into this 2026-11-24 headroom just because
+  it is there. The installer and APK budgets are unchanged: building either
+  needs the full Tauri/Rust or Gradle/Chaquopy toolchain, which this baseline
+  session did not set up, so there is nothing fresh to measure them against.
+- **2026-11-26**: JS 460,000 → 470,000 B while merging the Spotify-gap chain.
+  Phase 14 (#118, addressable pages, a stack per tab, the guide and settings
+  buttons on every tab) measured 452,500 B on `main` before it and 460,900 B
+  after it (+8,400 B), which went 900 B over the old budget; the raise is that
+  growth rounded up to the nearest 10,000 B.
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.
@@ -203,6 +230,98 @@ is no antivirus in the way. Medians of 5 cold starts (`am force-stop`, then
   library stayed unloaded. Fixed: a request that finds no token yet now waits
   up to 5 s for it (`STARTUP_TOKEN_WAIT_S` in `backend/app/cloud/android.py`).
 
+## Cold start with a real library (2026-11-24)
+
+The Pixel's cold-start numbers above (302 and 13 tracks) were the only ones on
+record; a seeded library large enough to represent a real collection had never
+been measured. Using `backend_start.py` against the checkout's own `.venv`
+(not an installed build) with libraries from `seed_library.py --count 2000
+--folders 100` and `--count 20000 --folders 500`, removed with `--remove`
+right after:
+
+| Tracks | `ready_ms` | `index_ms` | `library1_ms` | `library2_ms` |
+| --- | --- | --- | --- | --- |
+| 2,000 | 598 ms (median of 5) | 74 ms (median of 5) | 83 ms (median of 5; see below) | 67 ms (median of 5) |
+| 20,000 | 662 ms | 89 ms | 791 ms (single run; see below) | 625 ms |
+
+For 2,000 tracks, `backend_start.py`'s own `statistics.median` of 5 runs
+already hides the real story: the first of the 5 runs measured `library1_ms`
+at **13,429 ms**, and runs 2-5 were 78-92 ms. That gap is not the scan code —
+it is Windows Defender scanning the 2,000 files `seed_library.py` had just
+written, the same effect already documented above for an installed app's
+first launch ("the very first launch after installing took 1.9 s ... the
+antivirus scans the unpacked runtime once"). Once the files have been touched
+once, every later launch pays only the scan itself, about 80 ms for 2,000
+tracks.
+
+At 20,000 tracks the same effect is large enough to break the measurement
+tool: a `--runs 5 backend_start.py` call never got past its first run — the
+`/api/library` GET hit its 120 s read timeout. A follow-up single run, made
+after that first Defender pass had already happened, measured `library1_ms`
+791 ms and `library2_ms` 625 ms: the scan itself scales fine (the synthetic
+3-second MP3s parse in well under 0.1 ms each), but a freshly-written
+20,000-track library is **unusable for well over two minutes** on this
+machine until Windows Defender finishes its first pass over it. This machine
+is not the brief's 5-year-old laptop and these numbers are not a validated
+budget, but the shape of the risk — a one-off antivirus tax that scales with
+file count, not with the app's own code — applies to any Windows machine and
+is worth a conscious decision (accept it as documented, or look at excluding
+the library folder from the real-time scan in the installer) before treating
+a 20,000-track library as routine.
+
+## Mid-range Android profile (`ui.mjs --profile mid-range`, 2026-11-24)
+
+Every speed number on this page so far was measured on a Pixel 9 Pro and a
+6-core desktop — both well above the brief's reference device (a Snapdragon
+6-series phone, 4 GB RAM, a mediocre 4G connection). `ui.mjs` now accepts
+`--profile mid-range` (or `SPITIFO_PERF_PROFILE=mid-range`), applied through
+CDP right after attaching: `Emulation.setCPUThrottlingRate` (4x by default,
+4-6x via `--cpu-throttle`/`SPITIFO_PERF_CPU_THROTTLE`), `Network.
+emulateNetworkConditions` set to Lighthouse's "Slow 4G" preset (150 ms RTT,
+1.6 Mbps down, 750 Kbps up), and `Emulation.setDeviceMetricsOverride` to a
+412x915 viewport at 2.625 device-scale-factor, with touch forced on. The
+printed JSON always carries a `profile` field naming what ran, so a report
+never has to be taken on trust. DevTools throttling does not reproduce a
+genuinely weaker chip's branch prediction or memory bandwidth — this is a
+closer proxy than the Pixel numbers elsewhere on this page, not a substitute
+for measuring on real mid-range hardware (still the right next step; see the
+device note below).
+
+First measurement, a 300-track local library, the checkout's own build served
+by `uvicorn` on loopback and attached to with headless Chrome:
+
+```bash
+node scripts/perf/ui.mjs --endpoint http://127.0.0.1:9333 --runs 3 --reload --profile mid-range
+```
+
+| Measure | Mid-range profile |
+| --- | --- |
+| First contentful paint | 1,516 ms |
+| Launch to usable (`/api/library` answered + Inicio rendered) | 3,657-3,686 ms |
+| Library scroll, 300 tracks, 3 flings | 59.9 fps median, 0.2% dropped, longest frame 33.7 ms |
+| Discover map, cold first draw | 1,181 ms (includes the idle-preloaded chunk and `genre-map.json`'s 1,058 ms fetch under Slow 4G) |
+| Discover map, warm redraw | 103.8 ms median |
+| Discover pan / zoom | 59.6 fps / 58.8 fps, longest frame 32.8 / 33.4 ms |
+| "Para ti" panel (the narrow-viewport sheet here) open / close | 33.1 / 32.4 ms median frame |
+
+No warnings; `discoverOnStartup` confirms the map chunk was still preloaded
+(`chunkRequested: "at 1535 ms"`) and `genre-map.json` was not fetched before
+the first visit to Descubrir, same as on the default profile.
+
+**What this does not cover**: "search to first result" (typing a query and
+getting a matched result) has no probe in `ui.mjs` — that number lives in the
+separate, backend-only `/api/search?mode=matched` benchmark below ("Música
+search"), not in this script, and adding it would be a change beyond the
+profile this session added.
+
+**Reading these numbers**: the library scan and every loopback HTTP call run
+on this PC's own CPU, not over the emulated link — Slow 4G mostly shows up in
+what the WebView itself fetches from the app's origin (chunks, fonts,
+`genre-map.json`: see its 1,058 ms fetch above, instant on the default
+profile). On the real target device the network affects the Drive path too;
+this profile credibly isolates the CPU/parse/paint cost, not a Drive-backed
+network cost.
+
 ## What makes the library slow
 
 > **Session 20:** fixed on disk. Durations and tags are cached in
@@ -228,6 +347,49 @@ measured the same before and after):
   every frame; the motion rules allow only `transform` and `opacity`;
 - every `Player` subscribes to the shared player state (`watchers`), so one
   change can re-render every row.
+
+## Cold start and the first scan of a real library (2026-11-25)
+
+The 2,000-track measurement from 2026-11-24 has a first run with
+`library1_ms` at 13.4 s and the next four at 78–92 ms. That gap is Windows
+Defender scanning the files `seed_library.py` had just written, not our scan
+code: a fresh library is unusable for as long as the first antivirus pass takes,
+and a 20,000-track one broke the measurement tool's 120 s read timeout.
+
+**Decision: accept the cost, do not add an antivirus exclusion.** A per-machine
+installer exception would move a one-off, OS-owned delay into a permanent
+security hole we would have to maintain and explain. Instead the cold start no
+longer waits for it: the backend answers `/api/library` from a SQLite snapshot
+(in `<library>/.spitifo/library-snapshot.sqlite3`) while the scan runs in a
+thread, marks the response with `X-Spitifo-Library-Pending: 1` when it served a
+stale one, and the frontend paints its localStorage mirror with an
+"Actualizando biblioteca…" notice and asks again. There is no UI timeout: the
+first answer is bounded by `LIBRARY_SNAPSHOT_WAIT_S` (250 ms), not by the scan.
+The media cache is also SQLite now (`media-cache.sqlite3`, migrated once from
+the old JSON with a single transaction), so a warm scan writes one upsert per
+changed file instead of rewriting the whole JSON.
+
+With a freshly seeded 2,000-track library (`seed_library.py --count 2000
+--folders 100`) and a fresh data dir, on this machine:
+
+| | first-ever `library1_ms` | median `library1_ms` (snapshot warm) | median `ready_ms` |
+| --- | --- | --- | --- |
+| before | 19,156 ms | 203 ms | 954 ms |
+| after | 349 ms (response marked pending, `count: 0`) | 74 ms (`count: 2000`) | 712 ms |
+
+The first-ever response is bounded by the 250 ms snapshot wait, not by the
+antivirus: with a long-lived process the real 2,000 rows arrive ~12 s later,
+once Defender's first pass finishes, and the snapshot is saved. `backend_start.py`
+kills the process after two back-to-back GETs, so its first-run `count` is 0 by
+design — the browser does not do that: it gets the pending header and asks
+again. Later launches on the same library read the saved snapshot and answer
+in tens of milliseconds. These are checkout measurements, not a validated
+budget on the reference laptop.
+
+- **2026-11-25**: JS 400,150 → 402,000 B. The branches merged into the cold
+  start work already built at 400,495 B (345 B over the stale budget), and the
+  snapshot progress UI, idle scheduling and font preload add the rest. The new
+  limit is the measured 401,745 B rounded up; CSS stays at 131,000 B.
 
 ## Música search (2026-11-20)
 
@@ -910,6 +1072,64 @@ On the Pixel_3a emulator (ARM code translated on x86, so far slower than a
 phone) a prepared result starts in about 1 s from the tap. The first two full
 search results and the next queued stream are prepared ahead.
 
+## Android battery and background cost (2026-11-25)
+
+Reproduced from the code, not from a device profile: no Pixel or
+`dumpsys batterystats`/Battery Historian session was available in this round
+either, so the numbers below are architectural estimates, not measurements.
+Treat every ✅-shaped claim in this section the same way the budgets table
+above treats a Pixel-only row: good reasoning, unverified on the target
+hardware.
+
+**What changed this round** (screen off while a track plays, no pause of the
+WebView itself — the `<audio>` element lives there and must keep playing):
+
+- The playback and download wake locks (`PlaybackService.kt`,
+  `DownloadService.kt`) now take an explicit 10-minute timeout instead of
+  holding the CPU awake indefinitely, and renew themselves well inside that
+  window (`refresh()` for playback, a repeating self-renew for downloads). A
+  future code path that sets "playing" without a matching "stopped" self-heals
+  in minutes instead of draining the battery for the rest of the session.
+- `MainActivity` now mirrors the real screen state (`ACTION_SCREEN_OFF`/`_ON`,
+  which `document.visibilityState` cannot see on its own — it only reflects
+  this Activity being covered) to the page as a `spitifo-screen` event
+  (`frontend/src/shared/screenState.js`). The page uses it to: fall the
+  download poller back from its 1 Hz "someone is watching the ring" cadence to
+  the same 10 s cadence it already uses when the sheet is closed
+  (`download/queueStore.js`), and pause the CSS "infinite" animations that are
+  tied to active playback — the equaliser bars, the Mezcla record's highlight
+  and the header logo's spin (`listen.css`, `home.css`, `nav.css`) — the same
+  way they already pause when scrolled out of view.
+- None of this pauses the WebView, the renderer, or the embedded CPython
+  interpreter: by design (see below), only the page's own timers, rAF loops
+  and pollers back off.
+
+**What is still an open cost, unmeasured.** Audio playback stays architecturally
+tied to a full WebView (Chromium renderer, JS heap, DOM) plus an embedded
+CPython interpreter (Chaquopy) that boots once and stays resident for the
+whole process lifetime. Even with every timer above stopped, that renderer and
+interpreter remain scheduled and held in memory by the same partial wake lock
+that legitimately keeps audio alive — a materially heavier baseline than a
+native decoder, independent of any one bug. Getting an actual number needs a
+real low/mid Android device and a `dumpsys batterystats` (or Battery Historian)
+pass across a one-hour screen-off local-file session, compared against the
+same session on Spotify; that pass has not happened in this repository yet.
+
+**What a native player service would change, and what it would cost.** Moving
+decode off the WebView — a native `MediaPlayer`/`ExoPlayer` fed the resolved
+stream URL, running in its own service — would let the WebView itself be
+fully paused (`onPause()`/`onResume()`) whenever the Activity is backgrounded,
+including screen-off, because the renderer would no longer be the thing
+producing sound. It would also remove CPython from the screen-off hot path
+entirely for local playback. That is not a small fix: it means a second
+playback implementation (queue, seek, crossfade/gapless if any, format
+negotiation) that has to stay in sync with the web engine (`player/engine.js`)
+instead of being the same code, a new native/JS bridge for every transport
+action the UI already dispatches as DOM events, and ongoing maintenance of two
+playback paths instead of one. Worth doing if the measurement above shows a
+real gap against the 3-5 %/h baseline; out of scope for this round, which only
+cuts what the current architecture allows.
+
 ## How to measure
 
 Everything below lives in `scripts/perf/`. Measure the **release** builds:
@@ -920,8 +1140,8 @@ build them as `release.yml` does. Close everything else first.
 
 ```bash
 node scripts/perf/check_size.mjs bundle frontend/dist
-node scripts/perf/check_size.mjs installer Spitifo-X.Y.Z-windows-x64-setup.exe
-node scripts/perf/check_size.mjs apk Spitifo-X.Y.Z-android-arm64.apk
+node scripts/perf/check_size.mjs installer spitifo-X.Y.Z-windows-setup.exe
+node scripts/perf/check_size.mjs apk spitifo-X.Y.Z-android.apk
 ```
 
 The same commands run in CI: the bundle check in the `frontend` job of
@@ -945,7 +1165,10 @@ the first N tracks, `--small-thumbs` the ~100 px `.s.jpg` beside each, and
 `/api/library` carries `verdict`, `meta_src`, `file_src` and `real` on each row:
 the worst case for the payload; `--remove` deletes it too). The 3,000-track runs
 of the verdict work used
-`--count 3000 --folders 300 --thumbs 3000 --small-thumbs --verdicts`. On the PC the library folder is
+`--count 3000 --folders 300 --thumbs 3000 --small-thumbs --verdicts`. The
+2026-11-24 cold-start-with-a-real-library numbers used `--count 2000 --folders
+100` and `--count 20000 --folders 500` ("Cold start with a real library"
+above). On the PC the library folder is
 `%USERPROFILE%\Music\Spitifo`; on the phone, push the folders to
 `/sdcard/Music/Spitifo/` with `adb push`.
 
@@ -1071,6 +1294,15 @@ make the "cold" visit warm). With a narrow `--window-size` the same command
 measures the tab bar and the bottom sheet; add `--touch` for touch drags (the
 library fling then falls back to the mouse wheel's gesture, which a desktop
 Chromium scrolls).
+
+Add `--profile mid-range` to the same command to emulate the brief's target
+phone instead of this PC: 4x CPU throttle, Lighthouse's "Slow 4G" network
+conditions, and a 412x915 viewport at 2.625 DPR with touch, all applied
+through CDP right after attaching (`--cpu-throttle` picks 4-6x; the env var
+`SPITIFO_PERF_PROFILE`/`SPITIFO_PERF_CPU_THROTTLE` works the same way for
+`--launch`/`--adb` runs). The printed result always has a `profile` field
+naming what ran. See "Mid-range Android profile" above for the first
+measurement and its caveats.
 
 ### UI and start-up on the Pixel
 

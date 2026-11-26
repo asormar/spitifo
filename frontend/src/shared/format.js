@@ -27,6 +27,10 @@ export function percent(share) {
   return n < 1 ? "<1 %" : `${n} %`;
 }
 
+/* Un porcentaje suelto no dice de que es: en la lista de generos se nombra
+   siempre la cuota de escuchas a la que se refiere. */
+export const percentLabel = (share) => `${percent(share)} de tus escuchas`;
+
 /* "Ana Maria" -> "AM"; "Wisin & Yandel" -> "WY"; un solo nombre, sus dos primeras letras. */
 export function initials(name) {
   const words = String(name || "")

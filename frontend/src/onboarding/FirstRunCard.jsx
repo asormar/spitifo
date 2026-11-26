@@ -1,19 +1,28 @@
-import { dismissFirstRun } from "./firstRun.js";
+import { dismissFirstRun, FALLBACK_FOLDER } from "./firstRun.js";
 import "./firstRun.css";
 
 /* Tarjeta de bienvenida de Inicio. Se trae en su propio chunk solo cuando va a
    pintarse. La lista es una <ol> de verdad: los numeros los pone CSS, no texto. */
 export default function FirstRunCard({ folder }) {
+  const place = folder || FALLBACK_FOLDER;
   const steps = [
-    ["Inicio", "Lo que escuchas. El engranaje abre Ajustes desde cualquier pestaña."],
-    ["Buscar", "Encuentra y descarga. La búsqueda se guarda en la dirección de la página."],
-    ["Tu biblioteca", "Tus archivos, álbumes y listas. Las listas siempre viven aquí."],
-    ["Descubrir", "Géneros y artistas. Desliza para cambiar de pestaña si lo prefieres."],
+    [
+      "Encuentra tu música",
+      "«Música» busca en el catálogo y encuentra la canción completa. Si no está, te ofrece otras fuentes.",
+    ],
+    [
+      "Toca y suena",
+      "La canción empieza al momento. Con el corazón la guardas en tu biblioteca.",
+    ],
+    [
+      "Descarga para escuchar sin conexión",
+      `Canciones sueltas, discos enteros o la discografía de un artista. Todo queda en ${place}; puedes cambiarlo en Ajustes.`,
+    ],
   ];
   return (
     <section className="fr" aria-labelledby="fr-title">
       <h2 id="fr-title" className="fr__t">
-        Así funciona Spitifo
+        Así funciona spitifo
       </h2>
       <ol className="fr__ol" role="list">
         {steps.map(([title, text]) => (

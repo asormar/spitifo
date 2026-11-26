@@ -117,16 +117,16 @@ describe("checkText", () => {
   });
 
   it("falls back to the known sentences when the real title is missing", () => {
-    expect(checkText(rec("partial"))).toBe("Se parece, pero no es exactamente lo que buscaste.");
-    expect(checkText(rec("mismatch"))).toBe("No es lo que buscabas.");
+    expect(checkText(rec("partial"))).toBe("Se parece a lo que buscaste, pero no es exacto.");
+    expect(checkText(rec("mismatch"))).toBe("No es la canción que buscaste.");
   });
 
   it("does not repeat the title when the file says the same", () => {
-    expect(checkText(rec("partial", { real: "numb" }))).toBe("Se parece, pero no es exactamente lo que buscaste.");
+    expect(checkText(rec("partial", { real: "numb" }))).toBe("Se parece a lo que buscaste, pero no es exacto.");
   });
 
-  it("unknown cannot read the title; legacy was never checked", () => {
-    expect(checkText(rec("unknown"))).toBe("No se pudo leer el título del audio.");
+  it("unknown and legacy share the same sentence (one explanation per verdict)", () => {
+    expect(checkText(rec("unknown"))).toBe("Todavía no se ha comprobado el audio.");
     expect(checkText(legacy)).toBe("Todavía no se ha comprobado el audio.");
   });
 });

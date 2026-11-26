@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { Icon } from "../shared/icons.jsx";
-import { clock } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
 import { VerdictChip } from "../shared/Verdict.jsx";
 import { Controls, DockArt, Volume } from "./controls.jsx";
@@ -61,9 +60,9 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
           <DockArt d={d} size={40} className="lcd__art" />
         </button>
         <Scrub key={info?.key} duration={d.dur} label={d.label}>
-          {(shown) => (
+          {({ elapsedRef, remainingRef }) => (
             <>
-              <span className="lcd__time">{clock(shown)}</span>
+              <span className="lcd__time" ref={elapsedRef} />
               <span className="lcd__tx">
                 <span className="lcd__line">
                   <span className="lcd__t" title={info?.title}>
@@ -80,9 +79,7 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
                   {d.status}
                 </span>
               </span>
-              <span className="lcd__time lcd__time--r">
-                {d.dur ? `-${clock(d.dur - shown)}` : "--:--"}
-              </span>
+              <span className="lcd__time lcd__time--r" ref={remainingRef} />
             </>
           )}
         </Scrub>

@@ -45,7 +45,9 @@
     --vt-dy: 16px;
     --top-h: 64px;
     --dock-l: calc(var(--nav-w) + 12px);
-    --mini-h: 96px;
+    /* Alto de .dock (88px, DESIGN.md > decision 3) mas su aire: 12px abajo
+       (bottom) + 12px arriba. */
+    --mini-h: 112px;
   }
 
   html {
@@ -70,7 +72,7 @@
   }
 
   body.has-mini .lnotice {
-    bottom: 96px;
+    bottom: var(--mini-h);
   }
 }
 
@@ -715,7 +717,7 @@ html[data-rp="wide"] .screens {
   visibility: hidden;
 }
 
-html[data-rp="wide"] .mezcla .rec__spin,
+html[data-rp="wide"] .mezcla .mz__spin,
 html[data-rp="wide"] .screens .eq i {
   animation-play-state: paused;
 }
@@ -737,4 +739,21 @@ html[data-rp="wide"] .screens .eq i {
 
 .skip-link:focus {
   transform: none;
+}
+/* Aviso de refresco de la biblioteca: aparece sobre la pantalla mientras el
+   escaneo de fondo termina, sin tapar ni bloquear la lista del espejo. */
+.lib-sync {
+  position: fixed;
+  z-index: 60;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--mut);
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
 }

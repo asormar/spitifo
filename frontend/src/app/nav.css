@@ -47,11 +47,11 @@
 }
 
 /* Cambio de tema: cortina vertical. La foto vieja queda fija debajo y la nueva
-   se descubre de arriba a abajo con una mascara de 300 % de alto: opaca el
-   primer tercio, degradado el segundo, transparente el ultimo. Al deslizar la
-   mascara el borde sube por toda la pantalla, sin arista. 550 ms con
-   ease-in-out simetrica: arranca y frena despacio. Sirve igual de claro a oscuro
-   que al reves, porque siempre es la foto "nueva" la que se descubre. */
+   baja encima desde arriba hasta cubrirla del todo, como una cortina real que
+   cae. 550 ms con ease-in-out simetrica: arranca y frena despacio. Sirve igual
+   de claro a oscuro que al reves, porque siempre es la foto "nueva" la que
+   cae. Solo transform: una mascara animada (`mask-position`) es mas cara de
+   componer y rompe la regla de animar solo transform/opacity. */
 /* Solo cuando la transicion la abrio el tema (data-vt): un cambio de pestana no
    debe recibir la cortina. */
 html[data-vt="theme"]::view-transition-old(root),
@@ -61,18 +61,15 @@ html[data-vt="theme"]::view-transition-new(root) {
 }
 
 html[data-vt="theme"]::view-transition-new(root) {
-  mask-image: linear-gradient(to bottom, #000 0, #000 33.3%, transparent 66.6%);
-  mask-size: 100% 300%;
-  mask-repeat: no-repeat;
   animation: theme-curtain var(--t-scene) cubic-bezier(0.45, 0, 0.55, 1) both;
 }
 
 @keyframes theme-curtain {
   from {
-    mask-position: 0% 100%;
+    transform: translateY(-100%);
   }
   to {
-    mask-position: 0% 0%;
+    transform: translateY(0%);
   }
 }
 

@@ -1,6 +1,9 @@
 import { lazy, Suspense } from "react";
 import { cx } from "../shared/ui.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { DockArt, PlayButton } from "./controls.jsx";
+import { engine } from "./engine.js";
+import { useEngine } from "./useEngine.js";
 import useDock from "./useDock.js";
 import Scrub from "./Scrub.jsx";
 
@@ -16,11 +19,10 @@ const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
    MINI-REPRODUCTOR (telefono)
 
    Pastilla de cristal flotante sobre la barra inferior. Es una vista del
-   motor, como las filas: no tiene <audio> propio. Como en Spotify, solo lleva
-   portada/titulo, el corazon de la pista y reproducir/pausar; la descarga,
-   Siguiente y "Cerrar reproductor" viven en el menu de "Ahora suena". No hay
-   gesto de deslizar: la pastilla es data-no-swipe y el gesto horizontal del
-   cuerpo no nace aqui.
+   motor, como las filas: no tiene <audio> propio. Lleva portada/titulo, el
+   corazon de la pista, Siguiente y reproducir/pausar; la descarga y "Cerrar
+   reproductor" viven en el menu de "Ahora suena". No hay gesto de deslizar: la
+   pastilla es data-no-swipe y el gesto horizontal del cuerpo no nace aqui.
 
    Tocar la portada o el titulo abre "Ahora suena" (onOpen); mientras esta
    abierta la pastilla se oculta, porque esa vista ya es el reproductor.
@@ -29,6 +31,8 @@ const SaveHeart = lazy(() => import("../listen/SaveHeart.jsx"));
 function MiniPlayer({ onOpen, npOpen }) {
   const d = useDock(npOpen);
   const { info, show, meta } = d;
+  /* Como en Controls: ¿hay a donde saltar? (cola o repetir todo). */
+  const canNext = useEngine((s) => (s.index >= 0 && s.index + 1 < s.queue.length) || s.repeat === "all");
   /* El corazon se oculta solo cuando la pista no se puede guardar (un avance). */
   const saveHeart = info ? (
     <Suspense fallback={<span className="shrt" aria-hidden="true" />}>
@@ -70,6 +74,16 @@ function MiniPlayer({ onOpen, npOpen }) {
           </span>
         </button>
         {saveHeart}
+        <button
+          type="button"
+          className="cbtn mini__next"
+          onClick={() => engine.next()}
+          disabled={!canNext}
+          aria-label="Siguiente"
+          title="Siguiente"
+        >
+          <Icon name="SkipForward" size="md" weight="fill" />
+        </button>
         <PlayButton icon={d.icon} playing={d.playing} label={d.label} size="md" />
       </div>
       {/* Hilo de progreso en el borde de abajo; tambien se puede arrastrar. */}

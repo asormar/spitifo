@@ -14,6 +14,7 @@ import { emptyFilterNote, filterByDownload } from "./library.js";
 import {
   SORTS,
   TOP_ALL,
+  continueItems,
   plural,
   sortEntries,
   topItems,
@@ -49,6 +50,7 @@ export const Back = ({ bref, onClick, className = "hback", label = "Volver" }) =
 /* --- Ver todo ------------------------------------------------------------------------ */
 
 const TITLES = {
+  continue: "Seguir escuchando",
   recent: "Añadido hace poco",
   top: "Lo que más escuchas",
   artists: "Artistas",
@@ -81,6 +83,8 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
      reordenan con cada escucha. */
   const items = useMemo(() => {
     switch (what) {
+      case "continue":
+        return continueItems(hist, byKey, TOP_ALL).map((i) => i.entry);
       case "recent":
         return sortEntries(index.entries, "recent");
       case "r-songs":
@@ -100,13 +104,14 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
       default:
         return r.lists;
     }
-  }, [what, index, byKey, lists, r, what === "top" ? hist : null]);
+  }, [what, index, byKey, lists, r, hist]);
   /* Artistas, albumes o listas: una tarjeta cada uno. */
   const kind = what.replace("r-", "").slice(0, -1);
   const cards = useMemo(() => items.map((item) => ({ kind, item })), [items, kind]);
 
   const isTop = what === "top";
-  const isSongs = isTop || what === "recent" || what === "r-songs";
+  const isContinue = what === "continue";
+  const isSongs = isTop || isContinue || what === "recent" || what === "r-songs";
   const shown = useMemo(
     () => (isSongs ? filterByDownload(items, download) : items),
     [isSongs, items, download]
@@ -114,9 +119,11 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
   /* Origen de la cola: la etiqueta de la lista o lo que se busco. */
   const from = isTop
     ? "library:Lo que más escuchas"
-    : what === "recent"
-      ? "library:Añadido hace poco"
-      : `search:${view.q ?? ""}`;
+    : isContinue
+      ? "library:Seguir escuchando"
+      : what === "recent"
+        ? "library:Añadido hace poco"
+        : `search:${view.q ?? ""}`;
   const row = (i, enter) =>
     isTop
       ? ctx.song(shown[i].entry, shown.map((t) => t.entry), {

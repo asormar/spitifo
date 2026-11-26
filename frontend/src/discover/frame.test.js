@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { PANEL_MIN_MAP, PANEL_ROOM, PEEK, startingObstacle, startsCollapsed } from "./frame.js";
+import {
+  initialSnap,
+  PANEL_MIN_MAP,
+  PANEL_ROOM,
+  PEEK,
+  rememberSnap,
+  startingObstacle,
+  startsCollapsed,
+} from "./frame.js";
 
 describe("startsCollapsed", () => {
   it("only collapses the side panel on a narrow, non-phone map", () => {
@@ -11,13 +19,32 @@ describe("startsCollapsed", () => {
   });
 });
 
+describe("initialSnap", () => {
+  it("opens at half on the first visit and remembers the last snap", () => {
+    rememberSnap(null);
+    expect(initialSnap()).toBe("half");
+    rememberSnap("full");
+    expect(initialSnap()).toBe("full");
+    rememberSnap(null);
+  });
+});
+
 describe("startingObstacle", () => {
-  it("is the peek bar plus its margin on a phone", () => {
-    expect(startingObstacle({ w: 390, narrow: true })).toEqual({ bottom: PEEK + 8 });
+  it("leaves room for the half sheet on the first phone visit", () => {
+    rememberSnap(null);
+    const { bottom } = startingObstacle({ w: 390, h: 600, narrow: true });
+    expect(bottom).toBeGreaterThan(PEEK + 8);
+    expect(bottom).toBeLessThan(600);
+  });
+
+  it("uses the remembered snap on later visits", () => {
+    rememberSnap("peek");
+    expect(startingObstacle({ w: 390, h: 600, narrow: true })).toEqual({ bottom: PEEK + 8 });
+    rememberSnap(null);
   });
 
   it("is the panel's room on a wide map and nothing when it starts collapsed", () => {
-    expect(startingObstacle({ w: 1200, narrow: false })).toEqual({ right: PANEL_ROOM });
-    expect(startingObstacle({ w: 700, narrow: false })).toEqual({ right: 0 });
+    expect(startingObstacle({ w: 1200, h: 600, narrow: false })).toEqual({ right: PANEL_ROOM });
+    expect(startingObstacle({ w: 700, h: 600, narrow: false })).toEqual({ right: 0 });
   });
 });

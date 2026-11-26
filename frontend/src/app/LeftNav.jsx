@@ -58,7 +58,7 @@ export default function LeftNav() {
       <button
         type="button"
         className="leftnav__brand"
-        aria-label="Spitifo, ir al inicio"
+        aria-label="spitifo, ir al inicio"
         title="Inicio"
         onClick={() => nav.goTab("home")}
       >

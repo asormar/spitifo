@@ -22,9 +22,9 @@ import Mezcla from "./Mezcla.jsx";
 import { Thead } from "./rows.jsx";
 import {
   TOP_ALL,
-  TOP_HOME,
   continueItems,
   entryTone,
+  finishedItems,
   plural,
   progressLabel,
   recentAlbums,
@@ -45,8 +45,10 @@ import "./home.css";
    `usePc()` aqui y no el CSS, asi no se montan las que no se ven.
    ------------------------------------------------------------------------- */
 
-const PHONE = { cont: 5, added: 8, lists: 8, albums: 8, artists: 12 };
-const PC = { cont: 5, added: 5, lists: 5, albums: 5, artists: 6 };
+/* Cupo de cada estante en el telefono: ocho, para que haya "Ver todo" de verdad
+   (Decision 2). En PC se mantiene el tamano de siempre. */
+const PHONE = { cont: 8, done: 8, top: 8, added: 8, lists: 8, albums: 8, artists: 8 };
+const PC = { cont: 5, done: 5, top: 5, added: 5, lists: 5, albums: 5, artists: 6 };
 
 /* Preguntas al motor como booleanos: con el motor emitiendo cuatro veces por
    segundo, una tarjeta solo se repinta si cambia lo suyo. */
@@ -107,6 +109,51 @@ function AddedCard({ entry, list, ctx, pc }) {
   );
 }
 
+/* --- Lo que más escuchas (tarjetas en el telefono) --------------------------- */
+
+function TopCard({ entry, plays, list, ctx, pc }) {
+  const [current, playing] = useNow(entry.key);
+  return (
+    <Card
+      current={current}
+      label={`${playing ? "Pausar" : "Reproducir"} ${entry.title}, ${entry.artist}`}
+      onClick={(e) => (current ? engine.toggle() : ctx.play(entry, e.currentTarget, list, "library:Lo que más escuchas"))}
+      cover={
+        <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
+          {current && <NowBadge on={playing} />}
+          {pc && <PlayOverlay />}
+        </Cover>
+      }
+      title={entry.title}
+      sub={`${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`}
+    />
+  );
+}
+
+/* --- Ya escuchadas ---------------------------------------------------------- */
+
+function FinishedCard({ item, ctx, pc }) {
+  const { entry } = item;
+  const [current, playing] = useNow(entry.key);
+  return (
+    <Card
+      current={current}
+      label={`${playing ? "Pausar" : "Volver a escuchar"} ${entry.title}, ${entry.artist}`}
+      onClick={(e) =>
+        current ? engine.toggle() : ctx.play(entry, e.currentTarget, [entry], "library:Ya escuchadas")
+      }
+      cover={
+        <Cover tone={entryTone(entry)} label={entry.title} src={coverOf([entry])}>
+          {current && <NowBadge on={playing} />}
+          {pc && <PlayOverlay />}
+        </Cover>
+      }
+      title={entry.title}
+      sub={entry.artist}
+    />
+  );
+}
+
 /* Memo: un menu abierto cambia la pila de navegacion y repinta la pantalla; el
    feed no cambia con ello. */
 export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, active }) {
@@ -116,6 +163,7 @@ export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, ac
   const cap = pc ? PC : PHONE;
 
   const cont = useMemo(() => continueItems(hist, byKey, cap.cont), [hist, byKey, cap]);
+  const done = useMemo(() => finishedItems(hist, byKey, cap.done), [hist, byKey, cap]);
   const top = useMemo(() => topItems(hist, byKey, TOP_ALL), [hist, byKey]);
   const added = useMemo(() => recentEntries(entries, cap.added), [entries, cap]);
   const artists = useMemo(() => topArtists(index.artists, cap.artists), [index, cap]);
@@ -127,16 +175,60 @@ export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, ac
 
   return (
     <div className="hfeed">
-      <Mezcla entries={entries} byKey={byKey} ctx={ctx} />
+      <Mezcla entries={entries} byKey={byKey} ctx={ctx} top={top} recent={added} />
 
       {cont.length > 0 && (
         <section className="sec sec--cont" aria-labelledby="h-cont">
-          <SectionHead id="h-cont" title="Seguir escuchando" />
+          <SectionHead id="h-cont" title="Seguir escuchando" onAll={open("continue")} />
           <Shelf grid={pc}>
             {cont.map((item) => (
               <ContinueCard key={item.entry.key} item={item} items={cont} ctx={ctx} active={active} pc={pc} />
             ))}
           </Shelf>
+        </section>
+      )}
+
+      {done.length > 0 && (
+        <section className="sec sec--done" aria-labelledby="h-done">
+          <SectionHead id="h-done" title="Ya escuchadas" />
+          <Shelf grid={pc}>
+            {done.map((item) => (
+              <FinishedCard key={item.entry.key} item={item} ctx={ctx} pc={pc} />
+            ))}
+          </Shelf>
+        </section>
+      )}
+
+      {/* El gusto real va antes que la fecha de guardado (Hallazgo 5). */}
+      {top.length > 0 && (
+        <section className="sec" aria-labelledby="h-top">
+          <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
+          {pc ? (
+            <>
+              <Thead />
+              {top.slice(0, cap.top).map(({ entry, plays }, i) =>
+                ctx.song(entry, topEntries, {
+                  rank: i + 1,
+                  table: true,
+                  from: "library:Lo que más escuchas",
+                  sub: `${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`,
+                })
+              )}
+            </>
+          ) : (
+            <Shelf>
+              {top.slice(0, cap.top).map(({ entry, plays }) => (
+                <TopCard
+                  key={entry.key}
+                  entry={entry}
+                  plays={plays}
+                  list={topEntries}
+                  ctx={ctx}
+                  pc={false}
+                />
+              ))}
+            </Shelf>
+          )}
         </section>
       )}
 
@@ -148,21 +240,6 @@ export default memo(function HomeFeed({ index, byKey, lists, listsReady, ctx, ac
               <AddedCard key={entry.key} entry={entry} list={added} ctx={ctx} pc={pc} />
             ))}
           </Shelf>
-        </section>
-      )}
-
-      {top.length > 0 && (
-        <section className="sec" aria-labelledby="h-top">
-          <SectionHead id="h-top" title="Lo que más escuchas" onAll={open("top")} />
-          {pc && <Thead />}
-          {top.slice(0, TOP_HOME).map(({ entry, plays }, i) =>
-            ctx.song(entry, topEntries, {
-              rank: i + 1,
-              table: pc,
-              from: "library:Lo que más escuchas",
-              sub: `${entry.artist} · ${plural(plays, "reproducción", "reproducciones")}`,
-            })
-          )}
         </section>
       )}
 

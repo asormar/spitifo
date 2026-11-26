@@ -320,6 +320,41 @@ def test_post_download_devuelve_job_id_y_wait(cliente, monkeypatch,
     assert datos["key"].endswith(".mp3"), "wait devuelve el resultado completo"
 
 
+def test_wait_vence_el_plazo_y_no_se_cuelga(cliente, monkeypatch, fake,
+                                            storage_temporal, tmp_path):
+    """P-backend-async-11: si el job tarda mas que `WAIT_ITEM_TIMEOUT_S`,
+    `wait=1` no debe colgar la conexion para siempre: responde igual que sin
+    wait (ok + job_id, sin resultado inventado) y la UI sigue el progreso por
+    ese job_id, como ya hace para una descarga sin wait."""
+    storage_temporal(tmp_path / "lib")
+    monkeypatch.setattr(d, "WAIT_ITEM_TIMEOUT_S", 0.05)
+    fake.DURACION = 1.0
+    monkeypatch.setenv("YTDLP_ENABLED", "1")
+    monkeypatch.setitem(sys.modules, "yt_dlp", _modulo_falso())
+    from backend.app.sources import _register_ytdlp
+    _register_ytdlp()
+
+    body = {"source": "ytdlp", "fmt": "mp3",
+            "track": {"source": "ytdlp", "source_id": "2", "title": "Lenta",
+                      "artist": "Artista",
+                      "extra": {"webpage_url": "https://youtu.be/x"}}}
+
+    t0 = time.time()
+    r = cliente.post("/api/download?wait=1", json=body)
+    tardo = time.time() - t0
+    assert r.status_code == 200
+    datos = r.json()
+    assert datos["ok"] is True and datos["job_id"]
+    assert "key" not in datos, "no debe inventar un resultado: el job sigue corriendo"
+    assert tardo < 1.0, "la respuesta no debe esperar a que el job termine"
+
+    deadline = time.time() + 5
+    while (time.time() < deadline
+           and d.get_item(datos["job_id"])["status"] not in d.FINISHED):
+        time.sleep(0.02)
+    assert d.get_item(datos["job_id"])["status"] == "done"
+
+
 # ------------------------------------------------------------------- resume
 def test_carpeta_estable_continuedl_y_borrado_al_terminar(fake, monkeypatch,
                                                           storage_temporal,

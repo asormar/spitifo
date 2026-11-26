@@ -1,40 +1,61 @@
-import { useEffect, useRef } from "react";
-import { useShow } from "../listen/Notice.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { engine } from "./engine.js";
 import { useEngine } from "./useEngine.js";
+import { useOnline } from "../shared/online.js";
+import { offlineNotice } from "../listen/offline.js";
+import "./streamErrors.css";
 
 /* ---------------------------------------------------------------------------
-   AVISO DE FALLO DE UN STREAM
+   AVISO DE UN STREAM (R2-robustez)
 
-   El motor ya publica `failed`; aca solo se traduce al aviso de la app. Un
-   aviso por intento: se rearma cuando el fallo desaparece o cambia de pista.
+   El motor ya publica `buffering`/`stalled`/`failed`; aca solo se traduce a lo
+   que ve el usuario. Panel propio (no el toast de Notice.jsx): "red lenta" no
+   tiene una duracion fija y el fallo se queda hasta que se resuelve, no 5 s.
+   Nunca tapa los controles (mismo sitio que .lnotice, por encima del
+   mini-reproductor). Solo para streams (YouTube, Internet Archive): un archivo
+   de la biblioteca tiene su propio camino de error.
    ------------------------------------------------------------------------- */
 
 export default function StreamErrors() {
-  const show = useShow();
   const track = useEngine((s) => s.track);
+  const stalled = useEngine((s) => s.stalled);
   const failed = useEngine((s) => s.failed);
-  const avisado = useRef(null);
+  const online = useOnline();
 
-  useEffect(() => {
-    if (!failed) {
-      avisado.current = null;
-      return;
-    }
-    if (track?.kind !== "stream" || avisado.current === track.key) return;
-    avisado.current = track.key;
-    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-    const texto = offline
-      ? "Sin conexión: esta canción no está guardada"
-      : `No se pudo reproducir «${track.title || "esta canción"}»`;
-    /* Reintentar carga la misma pista sin perder la cola: la URL del formato
-       pudo vencer o la red pudo cortarse un momento. */
-    const retry = () => {
-      const st = engine.getState();
-      engine.play(track, { restart: true, queue: st.queue, index: st.index, source: st.source });
-    };
-    show(texto, { label: "Reintentar", run: retry });
-  }, [failed, track, show]);
+  if (track?.kind !== "stream" || (!stalled && !failed)) return null;
 
-  return null;
+  /* Recarga la pista actual (una peticion nueva, no resume() sobre el mismo
+     audio): una URL de stream caducada necesita volver a resolverse. */
+  const retry = () => engine.reloadAt(engine.getState().time);
+  const title = track.title || "esta canción";
+
+  if (failed) {
+    const offline = !online;
+    return (
+      <div className="stream-note">
+        <span className="stream-note__card is-err" role="alert">
+          <Icon name="Warning" size="md" />
+          {offline ? (
+            <span>{offlineNotice({ title })}</span>
+          ) : (
+            <>
+              <span>No se pudo seguir reproduciendo.</span>
+              <button type="button" className="stream-note__act" onClick={retry}>
+                Reintentar
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stream-note">
+      <span className="stream-note__card" role="status">
+        <Icon name="Warning" size="md" />
+        <span>Red lenta. Seguimos esperando…</span>
+      </span>
+    </div>
+  );
 }

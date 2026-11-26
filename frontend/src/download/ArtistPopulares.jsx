@@ -8,6 +8,7 @@ import { pickResultAction } from "./resultMenuActions.js";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
 import { queueStore } from "./queueStore.js";
 import { trackSpec } from "./albumText.js";
+import Strip from "./Strip.jsx";
 import { rowKey } from "../shared/api.js";
 import { songIdOf } from "../shared/songId.js";
 import { useShow } from "../listen/Notice.jsx";
@@ -33,6 +34,7 @@ export default function ArtistPopulares({ name, artistId, results, query = name,
   const show = useShow();
   const [fmt] = useDownloadFormat();
   const [state, setState] = useState({ status: "loading", songs: [] });
+  const [retryTick, setRetryTick] = useState(0);
   const menuAt = nav.stack.at(-1)?.type === "downmenu" ? nav.stack.at(-1) : null;
 
   useEffect(() => {
@@ -47,13 +49,13 @@ export default function ArtistPopulares({ name, artistId, results, query = name,
       const songs = await fetchArtistTop(artistId, ac.signal);
       if (vivo) setState({ status: "ok", songs });
     })().catch((e) => {
-      if (vivo && e.name !== "AbortError") setState({ status: "ok", songs: [] });
+      if (vivo && e.name !== "AbortError") setState({ status: "error", songs: [] });
     });
     return () => {
       vivo = false;
       ac.abort();
     };
-  }, [artistId]);
+  }, [artistId, retryTick]);
 
   const songs = useMemo(
     () => artistPopulares(state.songs, results, name),
@@ -91,11 +93,19 @@ export default function ArtistPopulares({ name, artistId, results, query = name,
 
   return (
     <>
-      {(state.status === "loading" || songs.length > 0) && (
+      {(state.status === "loading" || state.status === "error" || songs.length > 0) && (
         <section className="aps appop" aria-labelledby="h-lpop">
           <h2 className="sh2" id="h-lpop">Populares</h2>
           {state.status === "loading" ? (
             <Skeleton count={5} className="rlist--compact" />
+          ) : state.status === "error" ? (
+            <Strip tone="err">
+              No se pudieron cargar las canciones populares.
+              <br />
+              <button type="button" className="vf vf--retry" onClick={() => setRetryTick((n) => n + 1)}>
+                Reintentar
+              </button>
+            </Strip>
           ) : (
             <ul className="rlist rlist--compact">
               {songs.map((t, i) => (

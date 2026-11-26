@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 import { candidateMeta, finderReducer, initialFinder, previewUrl } from "./coverFinder.js";
+import SettingsSkeleton from "./SettingsSkeleton.jsx";
 import "./coverFinder.css";
 
 /* ---------------------------------------------------------------------------
@@ -213,7 +214,7 @@ export default function CoverFinder({ onClose, onSaved }) {
         )}
       </header>
 
-      {st.status === "loading" && <p className="cf__lead">Buscando temas sin portada…</p>}
+      {st.status === "loading" && <SettingsSkeleton label="Buscando temas sin portada…" />}
 
       {st.status === "error" && (
         <p className="settings__err" role="alert">
@@ -299,6 +300,14 @@ export default function CoverFinder({ onClose, onSaved }) {
           {err && (
             <p className="settings__err" role="alert">
               {err}
+              <br />
+              <button
+                type="button"
+                className="settings__act"
+                onClick={() => search(item.key, query.trim() || item.query)}
+              >
+                Reintentar
+              </button>
             </p>
           )}
 

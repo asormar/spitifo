@@ -38,12 +38,19 @@ export function Cover({ tone, label, src, target, size, round, className, childr
   const record = useArtRecord(target);
   const shown = artSrc(record, keyUrl) || src;
   useEffect(() => setBad(false), [shown]);
+  /* Sin foto, una letra sobre un color plano se confunde con el esqueleto de
+     carga. En su lugar va un patron de dos tonos sacado del mismo tono. */
+  const generated = !(shown && !bad);
   return (
     <span
       className={cx("cv", toneClass(tone), round && "cv--round", className)}
       style={{ ...toneVars(tone), ...(size && { "--s": `${size}px` }) }}
     >
-      <span aria-hidden="true">{initial(label)}</span>
+      {generated ? (
+        <span className="cv__gen" aria-hidden="true" />
+      ) : (
+        <span aria-hidden="true">{initial(label)}</span>
+      )}
       {shown && !bad && (
         <img
           className="cv__img"

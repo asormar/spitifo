@@ -45,3 +45,8 @@ export function useStore(store) {
 
 export const useSearchDraft = () => useStore(searchDraft);
 export const useSearchBusy = () => useSyncExternalStore(searchBusy.subscribe, searchBusy.get);
+
+/* Sugerencias de la escritura. Las calcula Buscar (biblioteca + iTunes ligero)
+   y las lee tambien la barra de arriba en PC, que es el campo que se ve ahi. */
+export const searchSuggestions = createStore([], (v) => (Array.isArray(v) ? v : []));
+export const useSearchSuggestions = () => useStore(searchSuggestions);
