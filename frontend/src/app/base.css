@@ -93,11 +93,12 @@ body.has-mini .app {
 }
 
 /* Con la columna de "Ahora suena" al lado (App pone html[data-rp], ver
-   shell.css) las paginas dejan sitio a sus 340 px + 12 de aire por lado, en
-   lugar del margen de 56. Por debajo de 1200 px la columna tapa las paginas. */
-@media (min-width: 1200px) {
+   shell.css) las paginas dejan sitio a su ancho + 24 de aire, en lugar del
+   margen de 56. Desde 960 px, no solo desde 1200: la columna comparte la pagina
+   en vez de flotar sobre ella. En anchuras grandes crece, no se topa. */
+@media (min-width: 960px) {
   html[data-rp="docked"] .app {
-    padding-right: 364px;
+    padding-right: calc(var(--np-w, 340px) + 24px);
   }
 }
 

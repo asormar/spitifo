@@ -42,7 +42,13 @@ import { crossGo } from "./crossMode.js";
 import LeftNav from "./LeftNav.jsx";
 import TopBar from "./TopBar.jsx";
 import { isPc, usePc } from "../shared/viewport.js";
-import { isSearchShortcut, isTypingTarget } from "./hotkeys.js";
+import { desktopShortcut, isSearchShortcut, isTypingTarget } from "./hotkeys.js";
+import { collapsedSetting, watchPrefs } from "./desktop.js";
+import TitleBar from "./TitleBar.jsx";
+import ShortcutsSheet from "./ShortcutsSheet.jsx";
+import BulkBar from "./BulkBar.jsx";
+import PanelDivider from "./PanelDivider.jsx";
+import { playlists } from "../listen/playlists.js";
 import { swapNowPlaying } from "./screenSwap.js";
 import { createPendingDeletes } from "../listen/pending.js";
 import { closeDock, registerClosePlayer } from "../player/useDock.js";
@@ -143,6 +149,8 @@ const SearchPage = React.lazy(() => import("../download/SearchPage.jsx"));
 /* La hoja de Descargas comparte chunk con la ficha del album; se adelanta al
    enfocar la pildora o una tarjeta de album. */
 const QueueSheet = React.lazy(() => loadAlbumChunk().then((m) => ({ default: m.QueueSheet })));
+/* El menu del riel reusa el de listas de la biblioteca (mismo MenuSurface). */
+const RailListMenu = React.lazy(() => loadOverlays().then((m) => ({ default: m.ListMenu })));
 /* La ficha del album que abre una fila que falta en Escuchar. Buscar pinta la
    suya; esta sirve en cualquier pestana, como la hoja de Descargas. */
 const ListenAlbumSheet = React.lazy(() => loadAlbumChunk().then((m) => ({ default: m.AlbumSheet })));
@@ -219,7 +227,7 @@ const typing = () =>
    "/" y Ctrl/Cmd+K llevan el foco al buscador de la pantalla a la vista o al
    de la barra de arriba. El ultimo no actua mientras se escribe en otro campo;
    desde el propio buscador solo selecciona su texto. */
-function Hotkeys({ nav, escapeNp, npOpen, wide }) {
+function Hotkeys({ nav, escapeNp, npOpen, wide, pc, onHelp, onRail, onPanel }) {
   useEffect(() => {
     /* El de la pantalla, si se ve (el de Buscar esta oculto en escritorio);
        si no, el de la barra de arriba. */
@@ -233,13 +241,17 @@ function Hotkeys({ nav, escapeNp, npOpen, wide }) {
       if (e.key === "Escape") {
         if (escapeNp()) return;
         if (nav.getStack().length) nav.back();
-      } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
+        return;
+      }
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.defaultPrevented) {
         if (npOpen || typing()) return;
         const f = field();
         if (!f) return;
         e.preventDefault();
         f.focus();
-      } else if (isSearchShortcut(e)) {
+        return;
+      }
+      if (isSearchShortcut(e)) {
         if (npOpen) return;
         const f = field();
         if (!f) return;
@@ -248,11 +260,28 @@ function Hotkeys({ nav, escapeNp, npOpen, wide }) {
         e.preventDefault();
         if (at === f) f.select();
         else f.focus();
+        return;
       }
+      const act = pc ? desktopShortcut(e) : null;
+      if (!act || npOpen) return;
+      if (typing()) return;
+      /* Espacio sobre un boton lo activa: no lo robamos para reproducir. */
+      if (act === "playPause" && document.activeElement?.tagName === "BUTTON") return;
+      if ((act === "seekBack" || act === "seekFwd") && document.activeElement?.getAttribute("role") === "slider") return;
+      e.preventDefault();
+      if (act === "help") onHelp();
+      else if (act === "rail") onRail();
+      else if (act === "panel") onPanel();
+      else if (act === "playPause") engine.toggle();
+      else if (act === "mute") engine.toggleMute();
+      else if (act === "prev") engine.prev();
+      else if (act === "next") engine.next();
+      else if (act === "seekBack") engine.seek(engine.getState().time - 10);
+      else if (act === "seekFwd") engine.seek(engine.getState().time + 10);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [nav, escapeNp, npOpen, wide]);
+  }, [nav, escapeNp, npOpen, wide, pc, onHelp, onRail, onPanel]);
   return null;
 }
 
@@ -282,6 +311,10 @@ function QueueHooks({ onLibrary, onReady }) {
 }
 
 export default function App() {
+  /* Preferencias del escritorio (riel, panel, barra propia): se leen una vez y
+     escriben las variables que consumen las hojas del shell. */
+  useEffect(watchPrefs, []);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [health, setHealth] = useState(null);
   /* La pildora no se monta hasta que el espejo de la cola esta cargado. */
   const [queueReady, setQueueReady] = useState(false);
@@ -731,6 +764,11 @@ export default function App() {
     [nav.getKey]
   );
 
+  const toggleRail = useCallback(() => collapsedSetting.set(!collapsedSetting.get()), []);
+  const togglePanel = useCallback(() => (np ? closeNp() : openNp()), [np, closeNp, openNp]);
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const railMenu = nav.stack.at(-1)?.type === "rlmenu" ? nav.stack.at(-1) : null;
+
   /* El atras (o el cierre) de "Ahora suena". Va DESPUES del popstate de
      useNav para que este ya haya sincronizado la pila cuando corre `then`.
      La decision (seguir abierta si aterrizamos en su entrada, cerrar y correr
@@ -997,17 +1035,29 @@ export default function App() {
       >
         <QueueHooks onLibrary={loadLib} onReady={onQueueReadyPill} />
         <StreamErrors />
+        <TitleBar />
+        <PanelDivider active={pc && mode === "docked"} />
+        <BulkBar />
         <main className="app" inert={full}>
           {/* Un solo juego de chrome a la vez: el menu lateral y la barra de
               arriba en escritorio; la barra inferior y la pastilla, en telefono. */}
           {pc && (
             <>
               <LeftNav />
-              <TopBar />
+              <TopBar onHelp={openHelp} />
             </>
           )}
 
-          <Hotkeys nav={nav} escapeNp={escapeNp} npOpen={full} wide={wide} />
+          <Hotkeys
+            nav={nav}
+            escapeNp={escapeNp}
+            npOpen={full}
+            wide={wide}
+            pc={pc}
+            onHelp={openHelp}
+            onRail={toggleRail}
+            onPanel={togglePanel}
+          />
           <div className="screens" ref={screensRef} inert={wide}>
             {visited.has("home") && (
               <Screen id="home" active={activeId === "home"}>
@@ -1141,6 +1191,22 @@ export default function App() {
             />
           </Suspense>
         )}
+        {railMenu && (
+          <Suspense fallback={null}>
+            <RailListMenu
+              name={railMenu.name}
+              anchor={railMenu.anchor}
+              point={railMenu.point}
+              onClose={nav.back}
+              onPick={(kind) => {
+                nav.back();
+                if (kind === "rename") nav.goTo("library", { type: "list", id: railMenu.key, naming: true });
+                else if (kind === "delete") playlists.remove(railMenu.key);
+              }}
+            />
+          </Suspense>
+        )}
+        {helpOpen && <ShortcutsSheet onClose={() => setHelpOpen(false)} />}
       </ListenProvider>
     </NavContext.Provider>
   );

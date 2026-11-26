@@ -959,13 +959,12 @@ button.allsongs__main {
     margin-bottom: 14px;
   }
 
-  .grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 22px 18px;
-  }
-
+  /* El ancho manda, no un numero de columnas: en una ventana de 2560 px caben
+     mas tarjetas, no tarjetas mas grandes ni huecos a los lados. */
+  .grid,
   .grid--6 {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 22px 18px;
   }
 
   .lhome .tiles {
@@ -1071,11 +1070,6 @@ button.allsongs__main {
   }
 }
 
-/* Con la columna de "Ahora suena" al lado (App pone html[data-rp]) las paginas
-   miden 628 px: las rejillas pasan a 4 columnas. */
-@media (min-width: 1200px) {
-  html[data-rp="docked"] .grid,
-  html[data-rp="docked"] .grid--6 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
+/* Con la columna de "Ahora suena" al lado (App pone html[data-rp]) el ancho
+   disponible baja: auto-fill decide cuantas columnas caben, sin superponer
+   nada. Ya no hace falta un numero fijo ni un umbral de 1200 px. */

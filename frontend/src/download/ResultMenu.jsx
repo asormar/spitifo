@@ -56,7 +56,7 @@ export function MenuBody({ groups, title, onPick }) {
 /* La misma hoja/popover para cualquier menu en modo Descargar: el de una fila,
    el del album y el del artista, y el de una cancion de la biblioteca (que le
    anade una cabecera con la portada). Asi comparten foco, teclado y aspecto. */
-export function MenuSurface({ groups, title, anchor, onPick, onClose, head, width }) {
+export function MenuSurface({ groups, title, anchor, point, onPick, onClose, head, width }) {
   const pc = usePc();
   const body = (
     <>
@@ -65,7 +65,7 @@ export function MenuSurface({ groups, title, anchor, onPick, onClose, head, widt
     </>
   );
 
-  if (pc) return <Popover anchor={anchor} onClose={onClose} width={width}>{body}</Popover>;
+  if (pc) return <Popover anchor={anchor} point={point} onClose={onClose} width={width}>{body}</Popover>;
   return (
     <Sheet title={`Opciones de ${title}`} onClose={onClose} anchor={anchor}>
       <SheetBar title={`Opciones de ${title}`} onClose={onClose} quiet={!!head} />

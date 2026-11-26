@@ -16,7 +16,7 @@ import { backToLabel } from "./crossMode.js";
    de tu biblioteca y Enter lanza la busqueda de descargas.
    ------------------------------------------------------------------------- */
 
-export default function TopBar() {
+export default function TopBar({ onHelp }) {
   const nav = useNav();
   const [q, setQ] = useSearchDraft();
   const busy = useSearchBusy();
@@ -76,6 +76,16 @@ export default function TopBar() {
         placeholder={PLACEHOLDER.default}
         label="Qué quieres escuchar"
       />
+
+      <button
+        type="button"
+        className="cbtn"
+        aria-label="Ver atajos de teclado"
+        title="Atajos de teclado (?)"
+        onClick={onHelp}
+      >
+        <Icon name="Keyboard" size="lg" />
+      </button>
 
       <button
         type="button"

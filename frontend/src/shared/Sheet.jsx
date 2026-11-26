@@ -278,29 +278,33 @@ export function placePop({ anchor, vw, vh, natural, width = 300 }) {
   };
 }
 
-export function Popover({ anchor, onClose, rev, width = 300, children }) {
+export function Popover({ anchor, point, onClose, rev, width = 300, children }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
   const place = useCallback(() => {
     const box = ref.current;
-    if (!box || !anchor?.isConnected) return;
+    if (!box || (!anchor?.isConnected && !point)) return;
     /* La altura NATURAL: sin el tope de la colocacion anterior, que la mediria
        ya recortada. El estilo se devuelve tal cual. */
     const prev = box.style.maxHeight;
     box.style.maxHeight = "none";
     const natural = box.offsetHeight || 0;
     box.style.maxHeight = prev;
+    /* El clic derecho no tiene boton: un punto del puntero vale de ancla. */
+    const rect = point
+      ? { top: point.y, bottom: point.y, left: point.x, right: point.x + width, width, height: 0 }
+      : anchor.getBoundingClientRect();
     setPos(
       placePop({
-        anchor: anchor.getBoundingClientRect(),
+        anchor: rect,
         vw: window.innerWidth,
         vh: window.innerHeight,
         natural,
         width,
       })
     );
-  }, [anchor, width]);
+  }, [anchor, point, width]);
 
   /* Vuelve a colocarse cuando llega la lista (cambia la altura). */
   useLayoutEffect(() => {

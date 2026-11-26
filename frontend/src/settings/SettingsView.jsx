@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "./icons.jsx";
 import { useNav } from "../app/useNav.js";
 import { backToLabel } from "../app/crossMode.js";
@@ -13,6 +13,7 @@ import {
   useDownloadMedia, useDownloadQuality, useDownloadRoaming, useDownloadWifiOnly,
 } from "./downloadPrefs.js";
 import { requestFirstRun } from "../onboarding/firstRun.js";
+import { collapsedSetting, titleBarSetting } from "../app/desktop.js";
 import { installedLabel, newerLabel, useReleaseCheck } from "./releaseCheck.js";
 import StorageSettings from "./StorageSettings.jsx";
 import YouTubeCookies from "./YouTubeCookies.jsx";
@@ -30,6 +31,11 @@ const THEME_OPTIONS = [
 const NAV_OPTIONS = [
   { id: "tabs", label: "Pestañas" },
   { id: "swipe", label: "Páginas deslizables" },
+];
+
+const YES_NO = [
+  { id: "no", label: "No" },
+  { id: "yes", label: "Sí" },
 ];
 
 /* Solo confirmaciones discretas: se puede apagar entero (Decisión 3). */
@@ -120,6 +126,8 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
   const [roaming, setRoaming] = useDownloadRoaming();
   const nav = useNav();
   const pc = usePc();
+  const railCollapsed = useSyncExternalStore(collapsedSetting.subscribe, collapsedSetting.get);
+  const customTitleBar = useSyncExternalStore(titleBarSetting.subscribe, titleBarSetting.get);
   const [finder, setFinder] = useState(false);
   const coversSaved = useRef(false);
   const release = useReleaseCheck();
@@ -313,6 +321,32 @@ export default function SettingsView({ active, focus, onClose, onChanged, phoneN
             <p className="settings__label">Tema</p>
             <ChipRadio label="Tema" options={THEME_OPTIONS} value={theme} onPick={chooseTheme} />
           </div>
+          {/* Solas en el escritorio: son preferencias de la persona, no
+              detalles de implementación, y se guardan como el tema. */}
+          {pc && (
+            <>
+              <div className="settings__row">
+                <p className="settings__label">Riel colapsado</p>
+                <ChipRadio
+                  label="Riel colapsado"
+                  options={YES_NO}
+                  value={railCollapsed ? "yes" : "no"}
+                  onPick={(v) => collapsedSetting.set(v === "yes")}
+                />
+                <p className="settings__note">Solo iconos. También se cambia con Ctrl+\.</p>
+              </div>
+              <div className="settings__row">
+                <p className="settings__label">Barra de título propia</p>
+                <ChipRadio
+                  label="Barra de título propia"
+                  options={YES_NO}
+                  value={customTitleBar ? "yes" : "no"}
+                  onPick={(v) => titleBarSetting.set(v === "yes")}
+                />
+                <p className="settings__note">Solo Windows. Requiere reiniciar la ventana.</p>
+              </div>
+            </>
+          )}
           {/* Solo vibraciones de confirmacion: corazon, hoja o fila que encaja,
               descarga terminada y el detente del progreso. Se apaga entero. */}
           <div className="settings__row">

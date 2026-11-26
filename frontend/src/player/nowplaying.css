@@ -741,7 +741,7 @@
 .np--pane {
   inset: 12px 12px var(--mini-h) auto;
   z-index: 46;
-  width: 340px;
+  width: var(--np-w, 340px);
   border-radius: 28px;
   box-shadow: 0 14px 40px rgba(17, 17, 28, 0.22);
 }

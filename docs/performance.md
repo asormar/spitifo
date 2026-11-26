@@ -30,8 +30,8 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 510,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 159,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 524,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 166,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -114,6 +114,12 @@ open to DevTools); everything else comes from the published files.
   motion: predictive back, draggable sheets, haptics and the finger-following
   tab swipe). Built on `main` after #127 and on the merged branch: about
   496,740 → 505,511 B (+8,771 B), rounded up to the next 1,000 B.
+- **2026-11-26**: JS 510,000 → 524,000 B and CSS 159,000 → 166,000 B for
+  phase 20 (#121, the desktop: collapsible and resizable rail, both dividers,
+  the `?` shortcut sheet, in-app shortcuts, the multi-selection bar, drop
+  targets and the optional custom title bar). Built on `main` after #120 and
+  on the merged branch: JS 505,511 → 519,204 B (+13,693 B) and CSS
+  154,703 → 161,302 B (+6,599 B), each rounded up to the next 1,000 B.
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.
