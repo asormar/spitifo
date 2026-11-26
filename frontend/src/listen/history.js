@@ -41,6 +41,17 @@ const localCache = {
   },
 };
 
+/* `plays` por clave, para desempatar busquedas (model.plays en
+   ListenProvider). Un Map MUTABLE que nunca cambia de identidad: actualizarlo
+   en record() es O(1) en vez de reconstruirlo entero (Object.fromEntries
+   sobre TODO tracks) en cada evento, y al no cambiar de referencia no
+   invalida el memo de ListenProvider que lo usa (P-large-library-scale-5). */
+const playsOf = (tracks) => {
+  const m = new Map();
+  for (const [key, t] of Object.entries(tracks || {})) m.set(key, t?.plays || 0);
+  return m;
+};
+
 /* Escribir en localStorage es sincrono y, con cientos de pistas distintas en
    una sesion larga, el JSON a guardar crece a cientos de KB: hacerlo en CADA
    evento bloquea el hilo principal cada vez mas. Se agrupan los escritos de
@@ -55,10 +66,12 @@ export function createHistory({
   windowRef = typeof window === "undefined" ? null : window,
 } = {}) {
   const cached = cache?.read();
+  const initialTracks = cached?.tracks && typeof cached.tracks === "object" ? cached.tracks : {};
   let state = {
     ...EMPTY,
-    tracks: cached?.tracks && typeof cached.tracks === "object" ? cached.tracks : {},
+    tracks: initialTracks,
     recent: Array.isArray(cached?.recent) ? cached.recent : [],
+    plays: playsOf(initialTracks),
   };
   const listeners = new Set();
   let loading = null;
@@ -106,11 +119,16 @@ export function createHistory({
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error("http");
+        const tracks = d.tracks && typeof d.tracks === "object" ? d.tracks : {};
         emit({
           ready: true,
           error: false,
-          tracks: d.tracks && typeof d.tracks === "object" ? d.tracks : {},
+          tracks,
           recent: Array.isArray(d.recent) ? d.recent.slice(0, RECENT_LIMIT) : [],
+          /* Una recarga entera (arranque o cambio de dispositivo) es la UNICA
+             vez que plays se reconstruye entero: no es un evento por tecla
+             ni por reproduccion. */
+          plays: playsOf(tracks),
         });
       })
       .catch(() => emit({ ready: false, error: true }))
@@ -166,11 +184,13 @@ export function createHistory({
       .sort((a, b) => b.last - a.last)
       .slice(0, RECENT_LIMIT);
 
+    /* La MISMA instancia de Map, mutada: ver playsOf() arriba. */
+    state.plays.set(event.k, track.plays);
     emit({ tracks: { ...state.tracks, [event.k]: track }, recent });
     return true;
   };
 
-  return { subscribe, getState: () => state, load, record, flush };
+  return { subscribe, getState: () => state, load, record, flush, flushCache: flush };
 }
 
 export const history = createHistory();

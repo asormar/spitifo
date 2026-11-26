@@ -58,7 +58,11 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const lists = usePlaylists((s) => s.list);
   const listsReady = usePlaylists((s) => s.ready);
   const savedById = useSaved((s) => s.byId);
-  const hist = useHistory();
+  /* Selector sobre el Map estable (ver playsOf en history.js): un play/skip
+     deja de re-renderizar siquiera ESTE componente, no solo de invalidar el
+     memo de mas abajo (useSyncExternalStore compara por referencia y el Map
+     no cambia de identidad entre eventos). */
+  const plays = useHistory((s) => s.plays);
   const online = useOnline();
 
   /* Archivos y guardadas se juntan en UN useMemo: ni una segunda pasada por
@@ -66,10 +70,6 @@ export default function ListenProvider({ files, nav, leaveNp, locationToken, sto
   const merged = useMemo(() => mergeLibrary(files, savedById), [files, savedById]);
   const { entries, byKey } = merged;
   const index = useMemo(() => buildIndex(entries), [entries]);
-  const plays = useMemo(
-    () => Object.fromEntries(Object.entries(hist.tracks).map(([k, t]) => [k, t.plays])),
-    [hist.tracks]
-  );
   const check = useMemo(() => checkedSummary(entries), [entries]);
   const model = useMemo(
     () => ({ entries, index, byKey, savedById, plays, lists, listsReady, storage, check }),

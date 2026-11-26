@@ -212,6 +212,15 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     for (const key of published.keys()) if (!alive.has(key)) published.delete(key);
     for (const key of resumed.keys()) if (!alive.has(key)) resumed.delete(key);
 
+    /* ids de grupo (el mismo que arma groupItems: el del grupo, o
+       "single:<id>" sin uno) con al menos una pista recien terminada SIN fila
+       esperandola. Se refresca la biblioteca una vez por GRUPO cuando
+       termina, no una vez por pista: un album de 15 hacia 15 rescans
+       completos (P-downloads-pipeline-2, P-render-main-thread-1). Para una
+       descarga suelta su "grupo" es ella misma, asi que sigue refrescando en
+       el acto, como siempre. */
+    const needsLibraryRefresh = new Set();
+
     for (const it of incoming) {
       const prev = prevById.get(it.id);
       if (!firstPayload || BUSY_STATES.has(it.status)) publishJob(it);
@@ -219,10 +228,10 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
       if (it.status === "done" && prev?.status !== "done") {
         if (it.match) verdictStore.setFromDownload(it.track, it.query || "", { match: it.match, real_title: it.real_title });
         /* La fila que espera este item ya refresca la biblioteca al resolverse.
-           El grupo (y el reenganche sin fila) la refresca desde aca, una vez
-           por pista terminada. Al abrir no hay nada que refrescar: App ya pidio
-           /api/library. */
-        if (!firstPayload && !waiters.has(it.id)) hooks.onLibrary?.();
+           Al abrir no hay nada que refrescar: App ya pidio /api/library. */
+        if (!firstPayload && !waiters.has(it.id)) {
+          needsLibraryRefresh.add(it.group?.id || `single:${it.id}`);
+        }
         settleWaiter(it);
       } else if ((it.status === "error" || it.status === "cancelled") && prev?.status !== it.status) {
         settleWaiter(it);
@@ -244,8 +253,9 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
 
     const wasEnded = new Map(prevGroups.map((g) => [g.id, groupSummary(g).ended]));
     for (const g of groups) {
-      if (g.single) continue;
       const s = groupSummary(g);
+      if (needsLibraryRefresh.has(g.id) && s.ended) hooks.onLibrary?.();
+      if (g.single) continue;
       if (s.ended && wasEnded.get(g.id) === false) hooks.onToast?.(groupToast(g.title, s));
     }
 

@@ -92,6 +92,29 @@ describe("art store", () => {
     expect(JSON.parse(fetchFn.mock.calls.at(-1)[1].body)).toEqual({ target: "album:x" });
   });
 
+  it("una recarga forzada con el mismo contenido conserva el Map (P-render-main-thread-7)", async () => {
+    const fetchFn = vi.fn(async () => json({ art: { "album:x": record() } }));
+    const store = createArt({ fetchFn });
+    await store.load();
+    const before = store.getState().byTarget;
+    await store.load(true);
+    expect(store.getState().byTarget).toBe(before);
+  });
+
+  it("una recarga forzada con una foto nueva SI cambia el Map", async () => {
+    let withCover = false;
+    const fetchFn = vi.fn(async () =>
+      json({ art: withCover ? { "album:x": record() } : {} })
+    );
+    const store = createArt({ fetchFn });
+    await store.load();
+    const before = store.getState().byTarget;
+    withCover = true;
+    await store.load(true);
+    expect(store.getState().byTarget).not.toBe(before);
+    expect(store.getState().byTarget.get("album:x")).toEqual(record());
+  });
+
   it("un error de red no deja la foto optimista colgada", async () => {
     const fetchFn = vi.fn(async () => {
       throw new Error("network");

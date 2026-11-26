@@ -2211,11 +2211,36 @@ async def _fileinfo_records(storage) -> dict:
         return {}
 
 
-def _library_body(describe, files: list) -> tuple[bytes, str]:
+#: Columnas de la forma compacta de `/api/library` (P-large-library-scale-1,
+#: P-large-library-scale-8). El array de objetos repite cada nombre de campo
+#: en cada fila; a 20k pistas eso es la mayor parte de los ~7.7 MB del cuerpo.
+#: En columnas el nombre de cada campo sale UNA vez y las filas son arrays sin
+#: etiqueta. `size_mb` no viaja: se recalcula de `bytes` al expandir, es
+#: redundante. El orden importa (lo usa el frontend para expandir) y el
+#: frontend lo espera tal cual: cambiarlo es un cambio de contrato.
+COMPACT_FIELDS = (
+    "key", "filename", "folder", "bytes", "duration_s", "title", "artist",
+    "album", "track_no", "disc_no", "album_id", "modified", "kind",
+    "thumb_key", "has_audio", "thumb_s", "verdict", "meta_src", "file_src",
+    "real",
+)
+
+
+def _compact_rows(files: list[dict]) -> list[list]:
+    """Las mismas filas de `library_scan`/`with_checks`, en columnas."""
+    return [[f.get(name) for name in COMPACT_FIELDS] for f in files]
+
+
+def _library_body(describe, files: list, compact: bool) -> tuple[bytes, str]:
     """JSON de `/api/library` y su ETag. Corre en un hilo: con miles de
     pistas son cerca de un megabyte que no se serializa en el loop."""
-    body = json.dumps({"library": describe, "count": len(files),
-                       "files": files}, ensure_ascii=False,
+    payload = {"library": describe, "count": len(files)}
+    if compact:
+        payload["fields"] = COMPACT_FIELDS
+        payload["rows"] = _compact_rows(files)
+    else:
+        payload["files"] = files
+    body = json.dumps(payload, ensure_ascii=False,
                       separators=(",", ":")).encode("utf-8")
     return body, _library_etag(body)
 
@@ -2237,13 +2262,21 @@ async def library(request: Request):
     """GET /api/library. Con `If-None-Match` vigente, 304 sin cuerpo: evita
     mandar (y que el navegador vuelva a parsear) el JSON entero cuando nada
     cambio desde el ultimo pedido (P-large-library-scale-8, P-network-caching-6).
+
+    `?shape=compact` pide las filas en columnas en vez de un objeto por
+    archivo (ver COMPACT_FIELDS): un frontend viejo nunca manda el parametro y
+    sigue recibiendo `files` como siempre; uno nuevo contra un backend viejo
+    (que ignora el parametro desconocido) tambien sigue andando, solo que sin
+    la columna. Las dos formas quedan bajo URLs distintas, asi que el cache
+    HTTP (ETag) de cada una es independiente.
     """
     storage = get_storage()
+    compact = request.query_params.get("shape") == "compact"
     files, records = await asyncio.gather(
         asyncio.to_thread(library_scan), _fileinfo_records(storage))
     files = with_checks(files, records)
     body, etag = await asyncio.to_thread(_library_body, storage.describe(),
-                                         files)
+                                         files, compact)
     headers = {**_LIBRARY_CACHE, "ETag": etag}
     if_none_match = request.headers.get("if-none-match")
     if if_none_match and etag in [v.strip() for v in if_none_match.split(",")]:
