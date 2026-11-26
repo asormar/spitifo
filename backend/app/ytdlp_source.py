@@ -38,6 +38,39 @@ log = logging.getLogger("spitifo.ytdlp")
 JOBS: dict[str, dict] = {}
 _JOBS_LOCK = threading.Lock()
 
+
+# ------------------------------------------------------- import en background
+# `import yt_dlp` tarda ~1 s en el PC (mas en el telefono): si una ruta lo hace
+# directo en el loop, esa busqueda o ese play se congelan ese tiempo entero. Una
+# sola tarea de fondo lo importa en un hilo apenas arranca la app (no hay que
+# esperar los 4 s del prewarm de red, que es aparte); cualquier ruta que lo
+# necesite espera esta tarea en vez de importar ella misma.
+_IMPORT_TASK: asyncio.Task | None = None
+
+
+def _import_yt_dlp_sync() -> None:
+    import yt_dlp  # noqa: F401
+
+
+async def ensure_yt_dlp_imported() -> None:
+    """Espera a que yt_dlp este importado, sin bloquear el loop si todavia no.
+
+    El modulo se carga una sola vez (Python lo cachea en sys.modules): despues
+    de la primera vez, `import yt_dlp` es practicamente gratis, asi que no hace
+    falta memoizar nada mas que la tarea en si. Una tarea que fallo o se
+    cancelo se vuelve a intentar (un zip de yt-dlp roto no deja la busqueda
+    muerta hasta reiniciar), y `shield` evita que un pedido cancelado (el
+    cliente se fue) cancele el import que esperan todos los demas."""
+    global _IMPORT_TASK
+    task = _IMPORT_TASK
+    if task is not None and task.done() and not task.cancelled() \
+            and task.exception() is None:
+        return
+    if task is None or task.done():
+        task = _IMPORT_TASK = asyncio.ensure_future(
+            asyncio.to_thread(_import_yt_dlp_sync))
+    await asyncio.shield(task)
+
 # Estados finales: un job en cualquiera de estos ya no se va a tocar mas.
 _DONE_STATES = ("done", "error")
 

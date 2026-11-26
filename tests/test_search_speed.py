@@ -19,11 +19,13 @@ class _YtFalso:
     def __init__(self, empezo: asyncio.Event | None = None):
         self.empezo = empezo
         self.cancelada = False
+        self.llamadas = 0
 
     def available(self):
         return True
 
     async def search_candidates(self, q, limit=20):
+        self.llamadas += 1
         if self.empezo:
             self.empezo.set()
         try:
@@ -76,6 +78,25 @@ def test_sin_resultados_de_itunes_se_cancela_la_busqueda_de_youtube(monkeypatch,
 
     assert asyncio.run(correr())["count"] == 0
     assert yt.cancelada
+
+
+def test_la_misma_consulta_repetida_no_vuelve_a_pedir_candidatos(monkeypatch, con_youtube):
+    """Finding #9 (network-caching): la segunda busqueda igual (mayusculas y
+    espacios aparte) sale de la cache de candidatos, sin pedirle nada a
+    YouTube."""
+    yt = con_youtube(_YtFalso())
+
+    async def itunes(self, q, limit=20):
+        return [{"trackId": 1, "trackName": "Dreams", "artistName": "Fleetwood Mac"}]
+
+    monkeypatch.setattr("backend.app.sources.ITunesSource._raw_search", itunes)
+
+    async def correr():
+        await main._search_matched("Fleetwood  Mac dreams", 10)
+        await main._search_matched("fleetwood mac DREAMS", 10)
+
+    asyncio.run(correr())
+    assert yt.llamadas == 1
 
 
 class _YdlFalso:

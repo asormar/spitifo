@@ -92,25 +92,18 @@ def _stream(cliente, url):
 
 # ------------------------------------------------------------------ stream
 def test_stream_catalogo_primero_done_ultimo_y_estados(cliente, monkeypatch):
-    """Catalogo pendiente en orden iTunes, grupos full, puntuales y lazy."""
+    """Catalogo pendiente en orden iTunes; lo que el grupo no empareja queda
+    lazy de una, sin ninguna busqueda suelta dentro del stream."""
     canciones = [_song(i, f"C{i}") for i in range(1, 13)]
-    retardos = {str(i): 0.001 * (11 - i) for i in range(2, 11)}
-    puntuales = []
 
     async def _enrich(tracks, query, ysrc, limit=40, videos=None):
-        if len(tracks) > 1:
-            # El grupo solo empareja C1 y C11 (esta ultima, fuera del top 10).
-            return {str(t["trackId"]): (
-                _video(str(t["trackId"]), t["trackName"])
-                if t["trackId"] in (1, 11) else _miss()) for t in tracks}
-        puntuales.append(query)
-        clave = str(tracks[0]["trackId"])
-        await asyncio.sleep(retardos[clave])
-        if clave in ("2", "3"):
-            return {clave: _video(clave, tracks[0]["trackName"])}
-        return {clave: _miss()}
+        assert len(tracks) > 1  # nunca una busqueda puntual dentro del stream
+        # El grupo solo empareja C1 y C11.
+        return {str(t["trackId"]): (
+            _video(str(t["trackId"]), t["trackName"])
+            if t["trackId"] in (1, 11) else _miss()) for t in tracks}
 
-    yt = _instalar(monkeypatch, canciones, _enrich)
+    _instalar(monkeypatch, canciones, _enrich)
     eventos = _stream(cliente, "/api/search?q=linkin&mode=matched&stream=1")
 
     tipos = [e["type"] for e in eventos]
@@ -130,21 +123,17 @@ def test_stream_catalogo_primero_done_ultimo_y_estados(cliente, monkeypatch):
     assert por_titulo["C1"]["extra"]["match_state"] == "full"
     assert por_titulo["C1"]["extra"]["has_full"] is True
     assert por_titulo["C1"]["extra"]["webpage_url"].startswith("https://www.youtube.com/")
-    # C12 nunca se busca suelta: queda lazy para cuando se haga visible.
-    assert por_titulo["C12"]["extra"]["match_state"] == "lazy"
-    assert por_titulo["C12"]["extra"]["has_full"] is None
+    # Todo lo que el grupo no empareja (este de C2 a C10, aunque esten en el
+    # «top 10») queda lazy para cuando se haga visible: no hay mas busqueda
+    # aca adentro, ni siquiera para las primeras diez filas.
+    for i in (2, 3, 4, 5, 6, 7, 8, 9, 10, 12):
+        assert por_titulo[f"C{i}"]["extra"]["match_state"] == "lazy"
+        assert por_titulo[f"C{i}"]["extra"]["has_full"] is None
     # Un acierto del grupo fuera del top 10 va directo a full.
     assert por_titulo["C11"]["extra"]["match_state"] == "full"
-    assert por_titulo["C2"]["extra"]["has_full"] is True
-    assert por_titulo["C4"]["extra"]["match_state"] == "none"
-    assert por_titulo["C4"]["extra"]["has_full"] is False
 
     done = eventos[-1]
-    assert done == {"type": "done", "full": 4, "count": 12}
-
-    # Solo se buscan sueltas las 9 del top 10 que el grupo no emparejo.
-    assert len(puntuales) == 9
-    assert any(c[1] == 40 for c in yt.llamadas)  # la grupal sigue siendo de 40
+    assert done == {"type": "done", "full": 2, "count": 12}
 
 
 def test_stream_sin_youtube_es_none_y_done(cliente, monkeypatch):
@@ -164,39 +153,28 @@ def test_stream_sin_youtube_es_none_y_done(cliente, monkeypatch):
     assert eventos[-1] == {"type": "done", "full": 0, "count": 2}
 
 
-def test_stream_orden_de_las_puntuales_es_de_finalizacion(cliente, monkeypatch):
-    canciones = [_song(i, f"C{i}") for i in range(1, 4)]
-    retardos = {"1": 0.03, "2": 0.01, "3": 0.02}
-
-    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
-        if len(tracks) > 1:
-            return {}
-        clave = str(tracks[0]["trackId"])
-        await asyncio.sleep(retardos[clave])
-        return {clave: _video(clave, tracks[0]["trackName"])}
-
-    _instalar(monkeypatch, canciones, _enrich)
-    eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
-    lotes = [e["tracks"] for e in eventos if e["type"] == "tracks"]
-    assert [t["title"] for lote in lotes for t in lote] == ["C2", "C3", "C1"]
-
-
-def test_cerrar_el_generador_cancela_las_busquedas_pendientes(monkeypatch):
+def test_cerrar_el_generador_cancela_la_busqueda_de_candidatos(monkeypatch):
+    """Cliente desconectado a mitad del match grupal: la busqueda de
+    candidatos de YouTube (lo unico que el stream arranca por su cuenta,
+    finding #1) no queda volando."""
     empezo = asyncio.Event()
-    canceladas = []
+    cancelada = asyncio.Event()
 
-    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
-        if len(tracks) > 1:
-            return {}
-        empezo.set()
-        try:
-            await asyncio.sleep(10)
-        except asyncio.CancelledError:
-            canceladas.append(str(tracks[0]["trackId"]))
-            raise
-        return {}
+    class _YoutubeLento(_Youtube):
+        async def search_candidates(self, q, limit=40):
+            self.llamadas.append((q, limit))
+            empezo.set()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelada.set()
+                raise
+            return []
 
-    _instalar(monkeypatch, [_song(1, "C1"), _song(2, "C2")], _enrich)
+    # Sin matcher falso: enrich_with_ytdlp real espera a `videos`, igual que
+    # en produccion, asi la cancelacion se propaga hasta search_candidates.
+    _instalar(monkeypatch, [_song(1, "C1"), _song(2, "C2")], None,
+              yt=_YoutubeLento())
 
     async def correr():
         gen = main._search_matched_eventos("x", 10, stream=True)
@@ -208,28 +186,9 @@ def test_cerrar_el_generador_cancela_las_busquedas_pendientes(monkeypatch):
             await paso
         with contextlib.suppress(RuntimeError):
             await gen.aclose()
-        return canceladas
+        return cancelada.is_set()
 
-    assert sorted(asyncio.run(correr())) == ["1", "2"]
-
-
-def test_stream_puntuales_comparten_limite_de_seis(cliente, monkeypatch):
-    canciones = [_song(i, f"C{i}") for i in range(1, 11)]
-    activos = {"n": 0, "pico": 0}
-
-    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
-        if len(tracks) > 1:
-            return {}
-        activos["n"] += 1
-        activos["pico"] = max(activos["pico"], activos["n"])
-        await asyncio.sleep(0.01)
-        activos["n"] -= 1
-        return {}
-
-    _instalar(monkeypatch, canciones, _enrich)
-    eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
-    assert eventos[-1]["type"] == "done"
-    assert activos["pico"] == main._SEARCH_SINGLE_SEMAPHORE == 6
+    assert asyncio.run(correr()) is True
 
 
 def test_stream_fallo_de_itunes_devuelve_502_antes_de_abrir(cliente, monkeypatch):
@@ -295,18 +254,17 @@ def test_stream_estantes_lentos_salen_en_su_evento_entre_lotes(cliente, monkeypa
         return [_ARTISTA]
 
     async def _enrich(tracks, query, ysrc, limit=40, videos=None):
-        if len(tracks) > 1:
-            return {}
+        assert len(tracks) > 1  # el stream no busca puntuales
         await asyncio.sleep(0.4)
-        return {str(tracks[0]["trackId"]): _miss()}
+        return {str(t["trackId"]): _miss() for t in tracks}
 
     _instalar(monkeypatch, [_song(1, "C1"), _song(2, "C2")], _enrich,
               artistas=_artistas)
     eventos = _stream(cliente, "/api/search?q=x&mode=matched&stream=1")
 
-    # Los estantes no esperan a las puntuales: salen en cuanto terminan.
+    # Los estantes no esperan al match grupal: salen en cuanto terminan.
     assert [e["type"] for e in eventos] == [
-        "catalog", "shelves", "tracks", "tracks", "done"]
+        "catalog", "shelves", "tracks", "done"]
     assert "artists" not in eventos[0] and "albums" not in eventos[0]
     assert eventos[1] == {"type": "shelves", "albums": [], "artists": [
         {"id": 777, "name": "Linkin Park", "genre": "Rock"}]}
@@ -353,6 +311,8 @@ def test_json_sigue_igual_y_agrega_match_state(cliente, monkeypatch):
 
     async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         assert len(tracks) == 2  # el JSON no hace busquedas sueltas
+        if asyncio.isfuture(videos) or asyncio.iscoroutine(videos):
+            await videos  # como el real: asi yt.llamadas ve la grupal
         return {str(t["trackId"]): (
             _video("1", "C1") if t["trackId"] == 1 else _miss())
             for t in tracks}
@@ -526,8 +486,12 @@ def test_rate_limit_de_429_tambien_abre_el_circuito(monkeypatch):
     main._breaker_reset()
 
 
-def test_stream_con_circuito_abierto_deja_pending_en_none(cliente, monkeypatch):
-    """Un 429 puntual abre el circuito; las demas filas pasan a none."""
+def test_stream_con_circuito_abierto_deja_todo_lazy(cliente, monkeypatch):
+    """Un 429 en la busqueda GRUPAL (la unica que el stream arranca por su
+    cuenta, finding #1) abre el circuito; sin busquedas sueltas aca adentro,
+    todo lo no emparejado queda lazy para la ruta de match puntual (que ya
+    sabe devolver 503 con el circuito abierto, ver
+    `test_bot_wall_abre_el_circuito_y_el_lazy_devuelve_503`)."""
     canciones = [_song(i, f"C{i}") for i in range(1, 4)]
 
     class _YtConMuro:
@@ -536,9 +500,7 @@ def test_stream_con_circuito_abierto_deja_pending_en_none(cliente, monkeypatch):
 
         async def search_candidates(self, q, limit=40):
             self.llamadas.append((q, limit))
-            if "C1" in q:
-                raise RuntimeError("HTTP 429: try again later")
-            return []
+            raise RuntimeError("HTTP 429: try again later")
 
     yt = _YtConMuro()
     yt.llamadas = []
@@ -548,12 +510,11 @@ def test_stream_con_circuito_abierto_deja_pending_en_none(cliente, monkeypatch):
     assert eventos[-1] == {"type": "done", "full": 0, "count": 3}
     por_titulo = {t["title"]: t for e in eventos if e["type"] == "tracks"
                   for t in e["tracks"]}
-    assert all(t["extra"]["match_state"] == "none"
+    assert all(t["extra"]["match_state"] == "lazy"
                for t in por_titulo.values())
-    # El muro se abrio en C1: C2 y C3 no llegaron a YouTube.
-    assert len(yt.llamadas) == 2
-    assert any("C1" in q and limit == main._ALBUM_TRACK_LIMIT
-               for q, limit in yt.llamadas)
+    # Un solo intento grupal: el muro no se vuelve a golpear fila por fila.
+    assert len(yt.llamadas) == 1
+    assert main._breaker_abierto() is True
 
 
 # ------------------------------------------------------- arreglos de revision
@@ -632,3 +593,29 @@ def test_stream_lo_cacheado_sale_full_en_el_catalogo(cliente, monkeypatch):
                for t in eventos[0]["results"]}
     assert estados == {"1": "pending", "2": "full", "3": "pending"}
     assert grupos == [[1, 3]]
+
+
+# ---------------------------------------------------- cache de candidatos YT
+def test_candidatos_cache_normaliza_ttl_y_tope(monkeypatch):
+    """Finding #2 (search-latency): cache acotada por consulta+limite
+    normalizados, TTL corto (los resultados de YouTube cambian mas seguido
+    que "hay o no hay version entera")."""
+    reloj = {"t": 1000.0}
+    monkeypatch.setattr(main, "_breaker_clock", lambda: reloj["t"])
+
+    main._candidates_cache_put("Linkin Park Numb", 40, [{"id": "v1"}])
+    assert main._candidates_cache_get("  linkin   park  numb ", 40) == [{"id": "v1"}]
+    assert main._candidates_cache_get("Linkin Park Numb", 8) is None  # distinto limite
+
+    reloj["t"] += main._YT_CANDIDATES_TTL_S - 1
+    assert main._candidates_cache_get("Linkin Park Numb", 40) == [{"id": "v1"}]
+    reloj["t"] += 2
+    assert main._candidates_cache_get("Linkin Park Numb", 40) is None  # vencio
+
+    for i in range(main._YT_CANDIDATES_MAX):
+        main._candidates_cache_put(f"q{i}", 40, [])
+        reloj["t"] += 1
+    assert len(main._YT_CANDIDATES_CACHE) == main._YT_CANDIDATES_MAX
+    main._candidates_cache_put("una mas", 40, [])
+    assert len(main._YT_CANDIDATES_CACHE) == main._YT_CANDIDATES_MAX
+    assert main._candidates_cache_get("q0", 40) is None  # la mas vieja, afuera

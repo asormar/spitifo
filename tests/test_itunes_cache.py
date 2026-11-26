@@ -70,6 +70,24 @@ def test_dos_lookups_iguales_hacen_una_sola_peticion():
     assert a == b
 
 
+def test_lookup_track_dos_pedidos_iguales_hacen_una_sola_peticion():
+    """Finding (search-latency): `lookup_track` bypaseaba la cache de iTunes;
+    una fila lazy sin `_TRACK_RAW_CACHE` (expiro o reinicio) pagaba un lookup
+    por pista aunque el mismo id ya se hubiera pedido antes."""
+    pedidos: list[str] = []
+    fuente = _fuente(_transport([CANCION], pedidos))
+
+    async def correr():
+        a = await fuente.lookup_track("1")
+        b = await fuente.lookup_track("1")
+        return a, b
+
+    a, b = asyncio.run(correr())
+    _cerrar(fuente)
+    assert pedidos == ["1"], "la segunda lookup_track sale de la cache"
+    assert a == b
+
+
 def test_album_detail_y_album_match_comparten_la_lookup(cliente, monkeypatch):
     """Ambas rutas pasan por `_album_lookup`: una sola ida a la red."""
     import backend.app.main as main
@@ -93,6 +111,7 @@ def test_album_detail_y_album_match_comparten_la_lookup(cliente, monkeypatch):
 
 
 def test_despues_del_ttl_vuelve_a_buscar(monkeypatch):
+    """TTL de 1800s (media hora, lo que dura una sesion de escucha)."""
     ahora = [1000.0]
     _reloj(monkeypatch, ahora)
     pedidos: list[str] = []
@@ -100,9 +119,9 @@ def test_despues_del_ttl_vuelve_a_buscar(monkeypatch):
 
     async def correr():
         await fuente.lookup("999")
-        ahora[0] += 100.0
-        await fuente.lookup("999")  # dentro de los 300s
-        ahora[0] += 201.0           # 301s: vencio
+        ahora[0] += 1000.0
+        await fuente.lookup("999")  # dentro de los 1800s
+        ahora[0] += 801.0           # 1801s: vencio
         await fuente.lookup("999")
 
     asyncio.run(correr())
