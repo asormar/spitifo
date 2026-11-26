@@ -30,10 +30,8 @@ open to DevTools); everything else comes from the published files.
 | Library scroll, 300 tracks | every refresh (60 Hz PC, 120 Hz Pixel) | 60 fps, under 5% dropped frames | 25–32 fps ❌ | 43–50 fps ❌ | 60 fps, 0% ✅ | `ui.mjs`, by hand |
 | Frames while the library drawer animates, 300 tracks | no frame over 2 refreshes | same | longest 50–67 ms ❌ | longest 125–150 ms ❌ | no drawer since session 17 | `ui.mjs`, by hand |
 | Frames while the map pans and zooms, and "Para ti" opens and closes | no frame over 2 refreshes | same | — | — | 60 fps, longest 17–33 ms ✅ | `ui.mjs`, by hand |
-| JavaScript bundle (raw, all `.js`) | — | 433,924 B | 314,126 B (gzip 88,464 B) | same file | 422,018 B (gzip 161,577 B) | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 135,571 B | 52,787 B (gzip 11,115 B) | same file | 133,125 B (gzip 38,264 B) | CI, `test.yml` |
-| JavaScript bundle (raw, all `.js`) | — | 470,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
-| CSS bundle (raw, all `.css`) | — | 150,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
+| JavaScript bundle (raw, all `.js`) | — | 501,000 B | 314,126 B (gzip 88,464 B) | same file | 369,716 B | CI, `test.yml` |
+| CSS bundle (raw, all `.css`) | — | 159,000 B | 52,787 B (gzip 11,115 B) | same file | 102,395 B | CI, `test.yml` |
 | Windows installer | — | 24,000,000 B | 22,707,225 B | — | 19,952,579 B (local build) | CI, `release.yml` |
 | Android APK | — | 31,000,000 B | — | 29,451,010 B | — | CI, `release.yml` |
 
@@ -45,6 +43,13 @@ open to DevTools); everything else comes from the published files.
   but the room is visible. Raising one is a deliberate change to
   `scripts/perf/budgets.json`, reviewed in its own pull request with the reason
   in the description.
+- **2026-11-25 (phase 17, library pages and playlists at scale)**: JS
+  420,750 → 451,107 B and CSS 131,000 → 139,496 B. The limits grow by exactly
+  the measured bundle growth of this phase against `origin/feat/ds-icons`
+  (JS 408,517 → 438,874 B, +30,357; CSS 128,554 → 137,050 B, +8,496). The new
+  bytes are the playlist tools chunk (search, filters, sorting, folders,
+  import, duplicate warning), its CSS and the extra Phosphor paths; no budget
+  headroom was added beyond the measured change.
 - **2026-11-20**: JS 345,000 → 360,000 B and CSS 123,500 → 128,000 B, before
   the library redesign (saved songs without a file, custom pictures). After
   #69–#71 the bundle sat at 344,700 B of JS and 123,400 B of CSS, with no room
@@ -99,6 +104,12 @@ open to DevTools); everything else comes from the published files.
   buttons on every tab) measured 452,500 B on `main` before it and 460,900 B
   after it (+8,400 B), which went 900 B over the old budget; the raise is that
   growth rounded up to the nearest 10,000 B.
+- **2026-11-26**: JS 470,000 → 501,000 B and CSS 150,000 → 159,000 B for
+  phase 17 (#119, playlists at scale: folders, CSV import, bulk edit, sort and
+  filter, cover and description sheets, duplicate warning). Built on `main`
+  after #118 and on the merged branch: JS 460,922 → 491,145 B (+30,223 B) and
+  CSS about 142,440 → 150,975 B (+8,535 B), each rounded up to the next
+  1,000 B.
 - The speed numbers are medians of several runs (see each section). The PC
   figures were taken with nothing else running: a compile in the background
   made every start-up number about 20% worse.

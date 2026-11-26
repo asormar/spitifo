@@ -73,7 +73,7 @@ from .downloader import (
 from .fileinfo import with_checks
 from .listens import validate_events
 from .models import Track
-from .playlists import Playlist, validate_playlist
+from .playlists import Playlist, validate_playlist, validate_playlist_meta
 from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
                     validate_saved_payload, validate_song_id)
 from .security import TokenAuthMiddleware
@@ -2618,35 +2618,42 @@ def _validate_delete_keys(body: dict) -> list[str]:
 
 
 def _playlists_hold(storage, keys: set[str]) -> bool:
-    """True si alguna lista viva tiene alguna de las claves (o no se sabe)."""
+    """True si alguna lista viva tiene alguna de las claves (o no se sabe).
+
+    El indice `clave -> ids` del libro evita recorrer todas las listas: solo
+    mira las claves que se borran.
+    """
     try:
         book = storage.load_playlists()
     except Exception:
         return True  # que lo intente save_playlist, como antes
-    return any(not p.deleted and keys & set(p.keys)
-               for p in book.playlists.values())
+    return bool(book.owners(keys))
 
 
 def _drop_playlist_keys(storage, keys: set[str], now: float,
-                        rewrite: dict[str, str] | None = None) -> None:
+                        rewrite: dict[str, str] | None = None,
+                        covers: set[str] | None = None) -> None:
     """Saca claves o ids borrados de las listas vivas que los tengan.
 
     `rewrite` son claves de archivo que siguen vivas como canciones guardadas:
     se cambian por su id en vez de sacarlas. Todo lo que suena desde una lista
     esta en la biblioteca: si se borra el archivo o se quita la cancion, la
-    entrada no puede quedar colgada. Reescribir cuesta una subida en la nube,
-    solo se hace si alguna lista tenia algo. Un fallo aqui no invalida el
-    borrado principal.
+    entrada no puede quedar colgada. El indice del libro dice que listas
+    tocar, sin escanearlas todas. Una portada borrada se limpia tambien.
+    Reescribir cuesta una subida en la nube, solo se hace si alguna lista
+    tenia algo. Un fallo aqui no invalida el borrado principal.
     """
     rewrite = rewrite or {}
-    touched = set(keys) | set(rewrite)
+    covers = covers or set()
+    touched = set(keys) | set(rewrite) | covers
     if not touched or not _playlists_hold(storage, touched):
         return
 
     def change(book) -> None:
-        # Las listas quedan, aunque se queden sin ninguna cancion.
-        for pid, playlist in list(book.playlists.items()):
-            if playlist.deleted or not (touched & set(playlist.keys)):
+        # `owners` usa el indice; el libro lo reconstruye al cambiar.
+        for pid in book.owners(touched):
+            playlist = book.playlists.get(pid)
+            if playlist is None or playlist.deleted:
                 continue
             kept: list[str] = []
             for key in playlist.keys:
@@ -2659,9 +2666,14 @@ def _drop_playlist_keys(storage, keys: set[str], now: float,
             if rewrite:
                 # La lista ya podia tener el id y la clave del archivo.
                 kept = list(dict.fromkeys(kept))
+            cover = ("" if playlist.cover_key in keys or playlist.cover_key in covers
+                     else playlist.cover_key)
+            if kept == playlist.keys and cover == playlist.cover_key:
+                continue
             book.upsert(replace(
                 playlist,
                 keys=kept,
+                cover_key=cover,
                 updated_at=_next_updated_at(playlist, now),
             ))
 
@@ -2752,7 +2764,12 @@ def _delete_library_files(storage, keys: list[str],
                     log.warning("no se pudo desvincular guardadas tras borrar: %s", exc)
                     clears.clear()
                     rewrite.clear()
-    _drop_playlist_keys(storage, borradas, time.time(), rewrite)
+    # Las portadas que desaparecieron con su tema tambien pueden ser la
+    # portada elegida de una lista: se limpia esa referencia en el mismo
+    # reindexado, sin buscarla en todas las listas.
+    gone_sides = {side for key in keys for side in sides_of.get(key, ())
+                  if errors.get(side) is None}
+    _drop_playlist_keys(storage, borradas, time.time(), rewrite, gone_sides)
     if deleted:
         # El adapter local guarda duraciones y etiquetas por clave: sacarlas
         # evita que un listado posterior "recuerde" un archivo ya borrado.
@@ -2788,9 +2805,23 @@ async def library_delete(request: Request):
 
 # ---------------------------------------------------------------- playlists
 def _playlist_payload(playlist: Playlist) -> dict:
-    """Forma JSON de una playlist (la que consume el frontend)."""
-    return {"id": playlist.id, "name": playlist.name,
-            "keys": list(playlist.keys), "updated_at": playlist.updated_at}
+    """Forma JSON de una playlist (la que consume el frontend).
+
+    Los campos nuevos son aditivos: una playlist que no los usa devuelve
+    exactamente el JSON de siempre, para que un cliente viejo no tenga que
+    entenderlos.
+    """
+    out = {"id": playlist.id, "name": playlist.name,
+           "keys": list(playlist.keys), "updated_at": playlist.updated_at}
+    if playlist.description:
+        out["description"] = playlist.description
+    if playlist.cover_key:
+        out["cover_key"] = playlist.cover_key
+    if playlist.folder_id:
+        out["folder_id"] = playlist.folder_id
+    if playlist.is_folder:
+        out["is_folder"] = True
+    return out
 
 
 def _next_updated_at(old: Playlist | None, now: float) -> float:
@@ -2818,8 +2849,13 @@ async def playlist_save(request: Request):
     playlist_id = request.path_params["id"]
     body = await _json_body(request)
     try:
+        description, cover_key, folder_id, is_folder = validate_playlist_meta(
+            body.get("description"), body.get("cover_key"),
+            body.get("folder_id"), body.get("is_folder", False))
         name, keys = validate_playlist(playlist_id, body.get("name"),
-                                       body.get("keys"))
+                                       body.get("keys"), is_folder=is_folder)
+        if is_folder and (playlist_id in keys or folder_id == playlist_id):
+            raise ValueError("una carpeta no puede contenerse a si misma")
     except ValueError as exc:
         raise _invalid(["body"], str(exc))
 
@@ -2829,7 +2865,10 @@ async def playlist_save(request: Request):
         book = storage.load_playlists()
         old = book.playlists.get(playlist_id)
         playlist = Playlist(id=playlist_id, name=name, keys=keys,
-                            updated_at=_next_updated_at(old, time.time()))
+                            updated_at=_next_updated_at(old, time.time()),
+                            description=description, cover_key=cover_key,
+                            folder_id=folder_id, is_folder=is_folder,
+                            extra=dict(old.extra) if old else {})
         storage.save_playlist(lambda b: b.upsert(playlist))
         return playlist
 

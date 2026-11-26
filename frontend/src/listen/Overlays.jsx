@@ -51,8 +51,15 @@ const ALBUM_ITEMS = [
   ["remove", "Trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
+const ARTIST_ITEMS = [
+  ["photo", "UploadSimple", "Cambiar foto"],
+];
+
 const LIST_ITEMS = [
   ["rename", "PencilSimple", "Renombrar"],
+  ["description", "Note", "Editar descripción"],
+  ["cover", "Image", "Cambiar portada"],
+  ["import", "FileCsv", "Importar canciones"],
   ["share", "ShareNetwork", "Compartir esta página"],
   ["delete", "Trash", "Borrar lista", "bad"],
 ];
@@ -98,6 +105,16 @@ export function AlbumMenu({ name, anchor, onClose, onPick, onPhoto }) {
         label={`Opciones de ${name}`}
         onPick={(kind) => (kind === "photo" ? onPhoto?.() : onPick(kind))}
       />
+    </Popover>
+  );
+}
+
+/* El artista solo necesita «Cambiar foto»: el play va en la fila, no aquí. */
+export function ArtistMenu({ name, anchor, onClose, onPhoto }) {
+  return (
+    <Popover anchor={anchor} onClose={onClose} width={232}>
+      <MenuItems items={ARTIST_ITEMS} label={`Opciones de ${name}`}
+        onPick={(kind) => (kind === "photo" ? onPhoto?.() : null)} />
     </Popover>
   );
 }
