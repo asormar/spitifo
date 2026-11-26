@@ -177,15 +177,22 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
 
   /* El id de iTunes para Populares se resuelve con la MISMA funcion de «Más
      de»: id guardado en las canciones o busqueda por nombre. Sin id no hay
-     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. */
+     seccion; el resultado se ignora si mientras tanto cambiamos de ficha. La
+     promesa se guarda en un ref para que «Más de» la reuse en vez de pedir lo
+     mismo otra vez: una sola llamada a /api/artists/search por artista y
+     visita, aunque se pulse el boton antes de que esta termine. */
+  const linkPromiseRef = useRef(null);
   const [artistLinkId, setArtistLinkId] = useState(null);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
+      linkPromiseRef.current = null;
       setArtistLinkId(null);
       return undefined;
     }
     let vivo = true;
-    resolveArtistLink(d.name, d.rows).then((vista) => {
+    const promise = resolveArtistLink(d.name, d.rows);
+    linkPromiseRef.current = promise;
+    promise.then((vista) => {
       if (vivo) setArtistLinkId(vista?.id ?? null);
     });
     return () => {
@@ -423,7 +430,7 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
     const seq = ++linkSeq.current;
     loadArtistChunk();
     setLinking(true);
-    const view = await resolveArtistLink(name, rows);
+    const view = await (linkPromiseRef.current || resolveArtistLink(name, rows));
     if (seq !== linkSeq.current) return;
     setLinking(false);
     if (!activeRef.current) return;

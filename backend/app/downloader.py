@@ -16,6 +16,7 @@ import httpx
 
 from .config import IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from . import fileinfo
+from .executors import run_storage
 from .models import Track, safe_name
 from .storage import get_storage
 
@@ -59,9 +60,13 @@ async def _download_to(url: str, dest: Path,
             r.raise_for_status()
             total = int(r.headers.get("content-length") or 0)
             got = 0
+            # `f.write` a un thread: en FUSE (Android) o un disco ocupado,
+            # escribir 64 KiB no es gratis, y antes corria directo en el
+            # event loop una vez por chunk (cientos de veces en un archivo
+            # grande).
             with open(dest, "wb") as f:
                 async for chunk in r.aiter_bytes(65536):
-                    f.write(chunk)
+                    await run_storage(f.write, chunk)
                     got += len(chunk)
                     if progress is not None and total:
                         await progress.put((got, total))
@@ -203,7 +208,7 @@ async def record_download(key: str, size: int, track: Track, *,
             record = fileinfo.record_for_file(track, size, now)
         if record is None:
             return None
-        await asyncio.to_thread(get_storage().save_fileinfo, key, record)
+        await run_storage(get_storage().save_fileinfo, key, record)
         return record
     except Exception as e:
         log.warning("no se pudo guardar el veredicto de %s: %s", key, e)
@@ -244,7 +249,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     # Subcarpeta fresca y exclusiva de esta descarga: asi el .part de un job no
     # se cruza con el de otro (aunque sean la misma pista) y no quedan restos
     # dentro de la carpeta publica de la biblioteca.
-    work = Path(tempfile.mkdtemp(dir=TEMP_DIR))
+    work = Path(await run_storage(tempfile.mkdtemp, dir=TEMP_DIR))
     tmp = work / f".{uuid.uuid4().hex[:8]}{src_ext}"
     tmp_conv: Path | None = None
 
@@ -263,7 +268,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
 
         if needs_conv:
             tmp_conv = work / f".{uuid.uuid4().hex[:8]}{target_ext}"
-            await asyncio.to_thread(_ffmpeg_convert, tmp, tmp_conv)
+            await run_storage(_ffmpeg_convert, tmp, tmp_conv)
             terminado = tmp_conv
         else:
             terminado = tmp
@@ -272,11 +277,11 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
         # buscada (otra cosa): se omiten para no meter la cancion en un album ajeno.
         tags_t = (replace(t, title=base_title, artist=base_artist, album=None,
                           year=None, license=None) if swapped else t)
-        _write_tags(terminado, tags_t)
+        await run_storage(_write_tags, terminado, tags_t)
 
         filename = f"{stem}{target_ext}"
         key = f"{folder}/{filename}"
-        stored = await asyncio.to_thread(get_storage().put_file, key, terminado)
+        stored = await run_storage(get_storage().put_file, key, terminado)
         size = stored.size
         await record_download(key, size, t)
         return {
@@ -287,7 +292,7 @@ async def download_track(t: Track, fmt: str = "original") -> dict:
     finally:
         # Toda la subcarpeta de trabajo se limpia: temporales, el src de una
         # conversion y, si algo fallo, la descarga a medias.
-        shutil.rmtree(work, ignore_errors=True)
+        await run_storage(shutil.rmtree, work, ignore_errors=True)
 
 
 def _thumb_sidecar(key: str) -> str:

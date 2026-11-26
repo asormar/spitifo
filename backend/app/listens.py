@@ -34,6 +34,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import saved
@@ -528,7 +529,13 @@ class ListensStorageMixin:
     # -------------------------------------------------------------- publico
     def append_listens(self, events: list[dict],
                        now: float | None = None) -> int:
-        """Valida, escribe el mes y actualiza el agregado de este dispositivo."""
+        """Valida, escribe el mes y actualiza el agregado de este dispositivo.
+
+        Lee el mes y el agregado en paralelo (archivos distintos) y, si hay
+        mas de un mes en el lote, sube cada mes en paralelo tambien: en un
+        proveedor remoto esto achica la espera de red de un append de ~5
+        llamadas serie a lectura+escritura en paralelo (P-drive-io-5).
+        """
         clean = [validate_event(event) for event in events]
         if not clean:
             return 0
@@ -537,10 +544,6 @@ class ListensStorageMixin:
         with self._listens_lock():
             files = {name: ref for ref, name in self._listens_list()}
             agg_name = agg_file(device)
-            aggregate, unreadable = self._read_aggregate(files.get(agg_name))
-            if unreadable:
-                raise RuntimeError(
-                    f"no se pudo leer {agg_name}: no se sobrescribe")
 
             # Cada evento al archivo de SU mes.
             grouped: dict[str, list[dict]] = {}
@@ -548,15 +551,63 @@ class ListensStorageMixin:
                 event = dict(raw)
                 event["dev"] = device
                 grouped.setdefault(month_of(event["t"]), []).append(event)
-            for month, batch in grouped.items():
-                name = month_file(device, month)
-                ref = files.get(name)
-                month_data, broken = self._read_month(ref)
+            month_names = {month: month_file(device, month)
+                          for month in grouped}
+
+            # El agregado y los meses tocados son archivos distintos: se leen
+            # a la vez en vez de uno despues del otro. Solo vale la pena con
+            # un adapter remoto (`_warm_small` es de `CloudStorage`): en disco
+            # local un hilo de mas por cada play no suma nada.
+            remote = getattr(self, "_warm_small", None) is not None
+            if remote:
+                refs = [files[name] for name in (agg_name, *month_names.values())
+                       if name in files]
+                self._warm_small(refs)
+
+            def read_agg() -> tuple[ListenAggregate, bool]:
+                return self._read_aggregate(files.get(agg_name))
+
+            def read_month(month: str) -> tuple[str, ListenMonth, bool]:
+                name = month_names[month]
+                month_data, broken = self._read_month(files.get(name))
+                return name, month_data, broken
+
+            if remote:
+                with ThreadPoolExecutor(
+                        max_workers=min(4, len(month_names) + 1),
+                        thread_name_prefix="listens-read") as pool:
+                    agg_future = pool.submit(read_agg)
+                    month_futures = [pool.submit(read_month, month)
+                                     for month in grouped]
+                    aggregate, unreadable = agg_future.result()
+                    month_results = [f.result() for f in month_futures]
+            else:
+                aggregate, unreadable = read_agg()
+                month_results = [read_month(month) for month in grouped]
+            if unreadable:
+                raise RuntimeError(
+                    f"no se pudo leer {agg_name}: no se sobrescribe")
+            for name, _month_data, broken in month_results:
                 if broken:
                     raise RuntimeError(
                         f"no se pudo leer {name}: no se sobrescribe")
-                month_data.events.extend(batch)
-                ref = self._listens_write(name, month_data.to_bytes(), ref)
+
+            def write_month(args: tuple[str, ListenMonth, bool]) -> tuple[str, str]:
+                name, month_data, _broken = args
+                month = next(m for m, n in month_names.items() if n == name)
+                month_data.events.extend(grouped[month])
+                ref = self._listens_write(name, month_data.to_bytes(),
+                                          files.get(name))
+                return name, ref
+
+            if remote and len(month_results) > 1:
+                with ThreadPoolExecutor(
+                        max_workers=min(4, len(month_results)),
+                        thread_name_prefix="listens-write") as pool:
+                    written = list(pool.map(write_month, month_results))
+            else:
+                written = [write_month(args) for args in month_results]
+            for name, ref in written:
                 files[name] = ref
 
             if agg_name in files:
