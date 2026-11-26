@@ -50,13 +50,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-height: 78px;
-  margin: 0 -8px;
-  padding: 6px 6px 6px 8px;
-  border-radius: 20px;
+  gap: var(--sp-1);
+  min-height: calc(var(--row-h-phone) + var(--sp-2));
+  margin: 0 calc(var(--sp-2) * -1);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-2);
+  border-radius: var(--r-inner);
   content-visibility: auto;
-  contain-intrinsic-size: auto 78px;
+  contain-intrinsic-size: auto calc(var(--row-h-phone) + var(--sp-2));
   transition: background-color var(--t-quick) ease;
 }
 
@@ -88,10 +88,11 @@
   transform: scale(0.985);
 }
 
-/* La fila que suena lleva el peso, no un boton: titulo en acento y ecualizador
-   en la linea de datos (el mismo de las filas de la biblioteca). */
+/* La fila que suena la reconoce el ecualizador, no el color del titulo: el rosa
+   queda para el boton de reproducir y lo que suena, sin pelearse con el cobalto
+   de las acciones. */
 .res.is-current .res__t {
-  color: var(--pink);
+  color: var(--ink);
 }
 
 /* La estructura y la animacion viven en listen.css (global); aqui solo el
@@ -103,9 +104,20 @@
 }
 
 .res__n,
-.res__src,
-.res__f {
+.res__src {
   display: none;
+}
+
+/* Duracion y formato viajan en una sola celula del mismo tamaño que los datos,
+   en vez de repetirse dentro del cuerpo de la fila. */
+.res__f {
+  display: block;
+  max-width: var(--sp-10);
+  overflow: hidden;
+  color: var(--mut);
+  font-size: var(--fs-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thumb {
@@ -140,21 +152,24 @@
   display: flex;
   flex: 1;
   flex-direction: column;
+  gap: var(--sp-1);
   min-width: 0;
 }
 
+/* Dos tamaños en la fila: el titulo manda y todo lo demas es una sola linea de
+   datos al mismo tamaño. Fuente y datos van a su columna (o al nombre
+   accesible), no se apilan aqui. */
 .res__t {
   overflow: hidden;
-  font: 700 15px / 1.25 var(--font-body);
+  font: 700 var(--fs-body) / 1.25 var(--font-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .res__s {
-  margin-top: 1px;
   overflow: hidden;
   color: var(--mut);
-  font-size: 12.5px;
+  font: 500 var(--fs-caption) / 1.35 var(--font-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -163,27 +178,30 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 7px;
-  margin-top: 5px;
+  gap: var(--sp-1);
   color: var(--mut);
-  font-size: 12px;
+  font-size: var(--fs-caption);
+}
+
+.res__m > .src,
+.res__m > .num {
+  display: none;
 }
 
 .res__m > * {
   white-space: nowrap;
 }
 
-/* Solo 30 s: la etiqueta sustituye al circulo tachado de antes. Mismo cuerpo
+/* «Avance de 30 s» se lee, no se deduce de un chip gris de 11 px. Mismo cuerpo
    que «Buscando»: una fila que pasa de una a otra no cambia de alto. */
 .res__30 {
   flex: none;
-  padding: 1px 5px;
-  border-radius: 5px;
-  background: var(--s2);
-  color: var(--mut);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  padding: 1px var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--near-bg);
+  color: var(--near-t);
+  font-size: var(--fs-caption);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -194,13 +212,12 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 1px 6px;
-  border-radius: 5px;
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
   background: var(--s2);
   color: var(--mut);
-  font-size: 11px;
+  font-size: var(--fs-caption);
   font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
 .res__seek::before {
@@ -729,9 +746,9 @@
 .rm__hdr {
   padding: 1px 6px;
   border-radius: var(--r-pill);
-  background: var(--pink);
-  color: var(--on-pink);
-  font-size: 10px;
+  background: var(--action);
+  color: var(--action-ink);
+  font-size: var(--fs-micro);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -888,10 +905,10 @@
   }
 
   .res {
-    min-height: 74px;
-    padding: 0 8px;
+    min-height: calc(var(--row-h-pc) + var(--sp-2));
+    padding: 0 var(--sp-2);
     border-radius: var(--r-md);
-    contain-intrinsic-size: auto 74px;
+    contain-intrinsic-size: auto calc(var(--row-h-pc) + var(--sp-2));
   }
 
   .res__n {
@@ -919,9 +936,10 @@
 
   .res__f {
     display: block;
+    max-width: none;
     overflow: hidden;
     color: var(--mut);
-    font-size: 13.5px;
+    font-size: var(--fs-caption);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -950,7 +968,7 @@
   }
 
   .res__t {
-    font-size: 14.5px;
+    font-size: var(--fs-body);
   }
 
   .res .res__t {
@@ -960,7 +978,7 @@
   .res .res__s {
     grid-area: 2 / 2;
     margin: 0;
-    font-size: 13px;
+    font-size: var(--fs-caption);
   }
 
   .res .res__m {

@@ -111,6 +111,89 @@
   font: 600 13px / 1.2 var(--font-body);
 }
 
+/* Primer paso con la biblioteca vacia: una muestra que suena ya y sugerencias
+   del catalogo. Una sola explicacion; el estado no se repite bajo el guide. */
+.start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-4) var(--gutter) 0;
+  padding: var(--sp-5);
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.start__t {
+  margin: 0;
+  font: 700 var(--fs-title) / 1.25 var(--font-display);
+}
+
+.start__note,
+.start__label {
+  margin: 0;
+  color: var(--mut);
+  font: 500 var(--fs-caption) / 1.4 var(--font-body);
+}
+
+.start__label {
+  margin-top: var(--sp-2);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.start__play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--hit);
+  padding: 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--action);
+  color: var(--action-ink);
+  font: 700 var(--fs-ui) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.start__play:active {
+  transform: scale(var(--press));
+}
+
+.start__play:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.start__chip {
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--ink);
+  font: 700 var(--fs-label) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.start__chip:active {
+  transform: scale(var(--press));
+}
+
+.start__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .vlist {
   position: relative;
 }
@@ -209,10 +292,13 @@
 }
 
 .cv {
+  container-type: inline-size;
   width: var(--s, 40px);
   height: var(--s, 40px);
   border-radius: var(--r-md);
-  font: 800 calc(var(--s, 40px) * 0.28) / 1 var(--font-display);
+  /* La letra crece con el hueco real, no con --s: una cabecera puede estirar
+     la portada sin arrastrar su tamano de ficha (antes, 340 px en el artista). */
+  font: 800 clamp(11px, 28cqw, 120px) / 1 var(--font-display);
 }
 
 .art {
@@ -222,10 +308,10 @@
   font: 800 16px / 1 var(--font-display);
 }
 
+/* La inicial va al centro: place-items del contenedor ya la alinea, y asi
+   sigue siendo una portada equilibrada en cualquier tamano o recorte. */
 .cv > span:first-child {
-  position: absolute;
-  left: 10%;
-  top: 8%;
+  min-width: 0;
 }
 
 .cv.cv--round {
@@ -266,7 +352,6 @@
 }
 
 .cv--round > span:first-child {
-  position: static;
   font-size: 1.15em;
 }
 
@@ -606,7 +691,7 @@ body.has-mini .lnotice {
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--toast-act);
+  color: var(--action);
   font: 800 14px var(--font-body);
   cursor: pointer;
   pointer-events: auto;

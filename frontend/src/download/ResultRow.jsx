@@ -119,7 +119,7 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
           <span className="res__m">
             {isCurrent && <Bars on={playing} />}
             {chip === "seek" && !resolving && <span className="res__seek">Buscando</span>}
-            {chip === "30" && !resolving && <span className="res__30">30 s</span>}
+            {chip === "30" && !resolving && <span className="res__30">Avance de 30 s</span>}
             {chip === "busy" && !resolving && (
               <span className="res__30" title="YouTube ocupado: suena el avance de 30 s">
                 YouTube ocupado

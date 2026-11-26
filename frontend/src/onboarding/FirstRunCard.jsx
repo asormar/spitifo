@@ -1,23 +1,30 @@
+import { useNav } from "../app/useNav.js";
 import { dismissFirstRun, FALLBACK_FOLDER } from "./firstRun.js";
 import "./firstRun.css";
 
 /* Tarjeta de bienvenida de Inicio. Se trae en su propio chunk solo cuando va a
-   pintarse. La lista es una <ol> de verdad: los numeros los pone CSS, no texto. */
+   pintarse. La lista es una <ol> de verdad: los numeros los pone CSS, no texto.
+   Cada paso tiene su propia accion: la tarjeta no solo explica, tambien hace. */
 export default function FirstRunCard({ folder }) {
+  const nav = useNav();
   const place = folder || FALLBACK_FOLDER;
   const steps = [
-    [
-      "Encuentra tu música",
-      "«Música» busca en el catálogo y encuentra la canción completa. Si no está, te ofrece otras fuentes.",
-    ],
-    [
-      "Toca y suena",
-      "La canción empieza al momento. Con el corazón la guardas en tu biblioteca.",
-    ],
-    [
-      "Descarga para escuchar sin conexión",
-      `Canciones sueltas, discos enteros o la discografía de un artista. Todo queda en ${place}; puedes cambiarlo en Ajustes.`,
-    ],
+    {
+      title: "Encuentra tu música",
+      text: "«Música» busca en el catálogo y encuentra la canción completa. Si no está, te ofrece otras fuentes.",
+      action: "Ir a Buscar",
+      run: () => nav.goTab("search"),
+    },
+    {
+      title: "Toca y suena",
+      text: "La canción empieza al momento. Con el corazón la guardas en tu biblioteca.",
+    },
+    {
+      title: "Descarga para escuchar sin conexión",
+      text: `Canciones sueltas, discos enteros o la discografía de un artista. Todo queda en ${place}.`,
+      action: "Cambiar carpeta",
+      run: () => nav.openSettings("storage"),
+    },
   ];
   return (
     <section className="fr" aria-labelledby="fr-title">
@@ -25,10 +32,15 @@ export default function FirstRunCard({ folder }) {
         Así funciona spitifo
       </h2>
       <ol className="fr__ol" role="list">
-        {steps.map(([title, text]) => (
-          <li key={title} className="fr__li">
-            <b>{title}</b>
-            <span>{text}</span>
+        {steps.map((step) => (
+          <li key={step.title} className="fr__li">
+            <b>{step.title}</b>
+            <span>{step.text}</span>
+            {step.action && (
+              <button type="button" className="fr__act" onClick={step.run}>
+                {step.action}
+              </button>
+            )}
           </li>
         ))}
       </ol>

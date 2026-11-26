@@ -1,5 +1,6 @@
 import { useNav } from "../app/useNav.js";
 import { useListen } from "./ListenProvider.jsx";
+import StarterStep from "./StarterStep.jsx";
 
 /* ---------------------------------------------------------------------------
    ESTADOS DE LA BIBLIOTECA
@@ -60,22 +61,13 @@ export default function LibraryGate({ ready, error, errorCode, onRetry, folder, 
   }
 
   /* Las guardadas viven en entries (van sin archivo), pero por si el registro
-     llega antes que la biblioteca tambien se mira directamente. */
+     llega antes que la biblioteca tambien se mira directamente. En vacio no se
+     repite lo que ya dice la guia: se da un primer paso que suena ya. */
   if (!model.entries.length && !model.savedById?.size && !model.lists.length) {
     /* Inicio lleva su propia vista de invitacion (la Mezcla sigue visible y
-       deshabilitada); Tu biblioteca mantiene la nota de siempre. */
+       deshabilitada); Tu biblioteca da el primer paso que suena ya. */
     if (emptyView) return emptyView;
-    return (
-      <p className="lnote">
-        Todavía no has guardado nada.
-        <br />
-        Tus descargas se guardan en {folder}.
-        <br />
-        <button type="button" className="vf" onClick={() => nav.goTab("search")}>
-          Ir a Buscar
-        </button>
-      </p>
-    );
+    return <StarterStep />;
   }
 
   return children;

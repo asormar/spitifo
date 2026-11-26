@@ -5,6 +5,7 @@ import { requestGenre } from "../discover/genreRequest.js";
 import { genreTiles } from "../discover/genres.js";
 import { reco, useReco } from "../discover/reco.js";
 import { PATTERNS, hash32 } from "../shared/cover.js";
+import { STARTER_GENRES } from "../shared/starters.js";
 
 /* ---------------------------------------------------------------------------
    EXPLORAR POR GENERO
@@ -68,12 +69,42 @@ export default function GenreTiles({ active, empty }) {
 
   const tiles = useMemo(() => (raw || mapFailed ? genreTiles(genres, raw) : []), [genres, raw, mapFailed]);
 
-  if (empty) return null;
   const open = () => nav.goTab("discover");
   const pick = (name) => {
     requestGenre(name);
     open();
   };
+
+  /* Biblioteca vacia: no hay generos propios todavia, pero el mapa funciona
+     desde el primer dia. Se ofrecen los mismos generos semilla que Descubrir. */
+  if (empty) {
+    return (
+      <section className="gsec" aria-labelledby="gsec-h">
+        <h2 className="sh2" id="gsec-h">
+          Para empezar
+        </h2>
+        <ul className="gtiles">
+          {STARTER_GENRES.map((name, i) => (
+            <li key={name} style={{ "--i": i }}>
+              <button
+                type="button"
+                className="gt"
+                style={{ "--c": `var(--genre-${i + 2})` }}
+                aria-label={`Explorar ${name} en Descubrir`}
+                onClick={() => pick(name)}
+              >
+                <span className="gt__n">{name}</span>
+                <span className="gt__p">Para empezar</span>
+                <span className={`cv cv-p${hash32(name) % PATTERNS}`} aria-hidden="true">
+                  <span>{[...name][0]?.toUpperCase()}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
 
   let body;
   if (genres.length === 0) {
