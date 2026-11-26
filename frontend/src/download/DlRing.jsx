@@ -1,5 +1,5 @@
 import { rowKey } from "../shared/api.js";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { useJob } from "./jobsStore.js";
 import { dlState, dlWaiting } from "./searchPlan.js";
 
@@ -44,7 +44,7 @@ export default function DlRing({ t, name, busy, downloaded, onDl, small = false 
           <i />
         </span>
       ) : (
-        <Ico n={done ? "check" : "dl"} size={small ? 18 : 22} />
+        <Icon name={done ? "Check" : "DownloadSimple"} size={small ? "md" : "lg"} />
       )}
     </button>
   );

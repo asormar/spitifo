@@ -5,9 +5,8 @@ import { useShow } from "../listen/Notice.jsx";
 import { coverTone } from "../shared/cover.js";
 import { Cover } from "../listen/cards.jsx";
 import { cx } from "../shared/ui.jsx";
-import { Icon } from "../shared/icons.jsx";
 import Sheet from "../shared/Sheet.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { thumbUrl } from "./artwork.js";
 import { loadAlbumChunk } from "./albumChunk.js";
 import { fetchAlbumMatch } from "./albumApi.js";
@@ -62,7 +61,7 @@ function ArtistPlay({ songs, name, query, btnRef }) {
       aria-label={`${on ? "Pausar" : "Reproducir"} ${name}`}
       onClick={play}
     >
-      <Icon name={on ? "Pause" : "Play"} size={28} weight="fill" />
+      <Icon name={on ? "Pause" : "Play"} size="xl" weight="fill" />
     </button>
   );
 }
@@ -116,7 +115,7 @@ function DiscographySheet({ artist, data, entries, anchor, onClose }) {
         <div className="dsh__top">
           <h2 className="sh2">Descargar discografía</h2>
           <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" data-autofocus onClick={onClose}>
-            <Ico n="x" size={18} />
+            <Icon name="X" size="md" />
           </button>
         </div>
         <p className="dsh__sub">Solo se bajan las canciones con versión completa que todavía no tienes.</p>
@@ -149,7 +148,7 @@ function DiscographySheet({ artist, data, entries, anchor, onClose }) {
                         <span>{row.sub}</span>
                       </span>
                       <span className={cx("dcrow__box", on && "is-on")} aria-hidden="true">
-                        {on && <Ico n="check" size={16} />}
+                        {on && <Icon name="Check" size="sm" />}
                       </span>
                     </button>
                   );
@@ -223,7 +222,7 @@ export function ArtistPage({ view, active }) {
   const artistGroups = [
     {
       label: "Artista",
-      items: [{ kind: "discography", icon: "dl", text: "Descargar discografía…" }],
+      items: [{ kind: "discography", icon: "DownloadSimple", text: "Descargar discografía…" }],
     },
   ];
   const pickArtistMenu = (kind) => {
@@ -309,7 +308,7 @@ export function ArtistPage({ view, active }) {
           aria-haspopup="menu"
           onClick={(e) => nav.open({ type: "downmenu", kind: "artist", anchor: e.currentTarget })}
         >
-          <Ico n="dots" size={22} />
+          <Icon name="DotsThree" size="lg" />
         </button>
         {populares.length > 0 && (
           <ArtistPlay songs={populares} name={data.name} query={view.name || data.name} btnRef={playRef} />

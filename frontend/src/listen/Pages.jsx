@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { NavIcon } from "../app/navIcons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import "../shared/pinkPlay.css";
@@ -42,7 +41,7 @@ export function useFocusBack(ref, on = true) {
 
 export const Back = ({ bref, onClick, className = "hback" }) => (
   <button ref={bref} type="button" className={className} aria-label="Volver" onClick={onClick}>
-    <NavIcon name="back" size={22} />
+    <Icon name="CaretLeft" size="lg" />
   </button>
 );
 
@@ -151,7 +150,7 @@ export const AllPage = memo(function AllPage({ view, index, byKey, lists, listsR
             />
           ) : (
             <button ref={newRef} type="button" className="lbtn lbtn--go" onClick={() => setNaming(true)}>
-              <NavIcon name="plus" size={16} />
+              <Icon name="Plus" size="sm" />
               Nueva lista
             </button>
           )}
@@ -244,10 +243,10 @@ export function LibraryPage({ view, index, storage, check, active, ctx }) {
               title="Reproducir en aleatorio"
               onClick={shuffle}
             >
-              <Icon name="Shuffle" size={24} />
+              <Icon name="Shuffle" size="lg" />
             </button>
             <button type="button" className="pk pk--l" aria-label="Reproducir todo" title="Reproducir todo" onClick={play}>
-              <Icon name="Play" weight="fill" size={28} />
+              <Icon name="Play" weight="fill" size="xl" />
             </button>
           </div>
         </div>

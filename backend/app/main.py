@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections import deque
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -77,6 +78,7 @@ from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
+from .suggest import suggestions_from_raw
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -743,6 +745,42 @@ async def search(request: Request):
         "query": q, "mode": mode, "count": len(tracks),
         "results": [t.to_dict() for t in tracks],
     })
+
+
+#: iTunes acepta unas 20 busquedas por minuto por IP: las sugerencias (una por
+#: pausa al escribir) no pueden gastarse ese cupo y dejar sin resultados a la
+#: busqueda de verdad. Pasado el tope, la respuesta va vacia y el frontend
+#: sigue con las sugerencias de la biblioteca.
+_SUGGEST_MAX_PER_MIN = 8
+_SUGGEST_CALLS: deque = deque()
+
+
+def _suggest_allowed() -> bool:
+    ahora = time.monotonic()
+    while _SUGGEST_CALLS and ahora - _SUGGEST_CALLS[0] > 60:
+        _SUGGEST_CALLS.popleft()
+    if len(_SUGGEST_CALLS) >= _SUGGEST_MAX_PER_MIN:
+        return False
+    _SUGGEST_CALLS.append(ahora)
+    return True
+
+
+async def search_suggest(request: Request):
+    """GET /api/search/suggest: sugerencias baratas mientras se escribe.
+
+    Una sola llamada a iTunes, sin YouTube y sin el stream de Buscar. Un fallo
+    de iTunes deja la lista vacia: escribir nunca debe convertirse en un error.
+    """
+    q = _query_str(request, "q", required=True, min_length=2, max_length=200)
+    limit = _query_int(request, "limit", 6, 1, 12)
+    if not _suggest_allowed():
+        return JSONResponse({"query": q, "suggestions": [], "throttled": True})
+    try:
+        raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
+    except Exception as e:
+        log.warning("suggest search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "suggestions": suggestions_from_raw(raws, limit)})
 
 
 async def search_match(request: Request):
@@ -3751,6 +3789,7 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/search/suggest", search_suggest),
     Route("/api/search/match/{track_id}", search_match),
     Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),

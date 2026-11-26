@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { NavIcon } from "../app/navIcons.jsx";
-import Ico from "../shared/ico.jsx";
 import Sheet from "../shared/Sheet.jsx";
+import { Icon } from "./icons.jsx";
 import { Mosaic } from "./cards.jsx";
 import { mosaicTones, songs } from "./home.js";
 import { playlists, usePlaylists } from "./playlists.js";
@@ -138,7 +137,7 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice, anch
       <div className="sh__bar">
         <h2 className="sh__bt">{label}</h2>
         <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
-          <Ico n="x" size={18} />
+          <Icon name="X" size="sm" />
         </button>
       </div>
       {!ready ? (
@@ -160,7 +159,7 @@ export default function PlaylistPicker({ songKey, title, onClose, onNotice, anch
       ) : (
         <div className="mlist">
           <button ref={newRef} type="button" className="mi" data-autofocus="" onClick={() => setNaming(true)}>
-            <NavIcon name="plus" size={22} />
+            <Icon name="Plus" size="lg" />
             Nueva lista
           </button>
           {naming && (

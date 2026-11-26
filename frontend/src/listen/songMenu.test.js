@@ -42,7 +42,7 @@ describe("songMenuGroups", () => {
       song: { id: "yt:dQw4w9WgXcQ" },
     };
     const groups = songMenuGroups(entry, { fmt: "mp4" });
-    expect(item(groups, "download")).toEqual({ kind: "download", icon: "dl", text: "Descargar", sub: "mp4" });
+    expect(item(groups, "download")).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "mp4" });
     expect(kinds(groups)[1]).toEqual(["list", "download"]);
     expect(flat(groups).map((i) => i.kind)).not.toContain("undownload");
     expect(flat(groups).map((i) => i.kind)).not.toContain("file");
@@ -85,7 +85,7 @@ describe("songMenuGroups", () => {
     const groups = songMenuGroups(base, { closePlayer: true });
     expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Quitar", "Reproductor"]);
     expect(kinds(groups).at(-1)).toEqual(["closePlayer"]);
-    expect(item(groups, "closePlayer")).toEqual({ kind: "closePlayer", icon: "x", text: "Cerrar reproductor" });
+    expect(item(groups, "closePlayer")).toEqual({ kind: "closePlayer", icon: "X", text: "Cerrar reproductor" });
   });
 
   it("never paints an empty group", () => {

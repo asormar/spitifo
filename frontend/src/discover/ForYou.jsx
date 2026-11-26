@@ -537,7 +537,7 @@ export default function ForYou({
             <span className="fy__grip" aria-hidden="true" />
             {title}
             <span className="fy__caret" aria-hidden="true">
-              <Icon name="CaretDown" weight="fill" size={20} />
+              <Icon name="CaretDown" weight="fill" size="md" />
             </span>
           </button>
           <div inert={!open}>{tabs}</div>
@@ -584,7 +584,7 @@ export default function ForYou({
             aria-label="Replegar el panel Para ti"
             onClick={() => fold(true, true)}
           >
-            <Icon name="CaretDown" weight="fill" size={18} />
+            <Icon name="CaretDown" weight="fill" size="md" />
           </button>
         </div>
         {tabs}
@@ -602,7 +602,7 @@ export default function ForYou({
           onClick={() => fold(false, true)}
           {...tabDrag}
         >
-          <Icon name="Sparkle" weight="fill" size={16} />
+          <Icon name="Sparkle" weight="fill" size="sm" />
           <span>Para ti</span>
         </button>
       )}

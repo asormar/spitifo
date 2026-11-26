@@ -16,7 +16,7 @@ describe("resultMenuGroups", () => {
   it("pinta los cuatro grupos en orden con la descarga y el formato", () => {
     const groups = resultMenuGroups(full, { fmt: "m4a" });
     expect(labels(groups)).toEqual(["Escuchar", "Tu biblioteca", "Ir a", "Archivo"]);
-    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "dl", text: "Descargar", sub: "m4a" });
+    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "m4a" });
     expect(groups[2].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",
@@ -35,7 +35,7 @@ describe("resultMenuGroups", () => {
 
   it("la descarga ya hecha sale deshabilitada", () => {
     const groups = resultMenuGroups(full, { downloaded: true });
-    expect(groups[1].items[0]).toEqual({ kind: "downloaded", icon: "check", text: "Descargada", disabled: true });
+    expect(groups[1].items[0]).toEqual({ kind: "downloaded", icon: "Check", text: "Descargada", disabled: true });
   });
 
   it("no ofrece «Ir al álbum» cuando no hay ficha que abrir", () => {

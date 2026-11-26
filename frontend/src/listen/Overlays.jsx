@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import Sheet, { Popover } from "../shared/Sheet.jsx";
 import { keyUrl, rowKey } from "../shared/api.js";
 import { coverTone } from "../shared/cover.js";
@@ -45,13 +45,13 @@ import "./menus.css";
 /* [clave, icono, texto, tono]; la clave es lo que recibe `onPick`. El menu de
    una cancion ya no esta aqui: songMenu.js da los grupos y MenuBody los pinta. */
 const ALBUM_ITEMS = [
-  ["photo", "upload", "Cambiar foto"],
-  ["remove", "trash", "Quitar álbum de tu biblioteca", "bad"],
+  ["photo", "UploadSimple", "Cambiar foto"],
+  ["remove", "Trash", "Quitar álbum de tu biblioteca", "bad"],
 ];
 
 const LIST_ITEMS = [
-  ["rename", "pen", "Renombrar"],
-  ["delete", "trash", "Borrar lista", "bad"],
+  ["rename", "PencilSimple", "Renombrar"],
+  ["delete", "Trash", "Borrar lista", "bad"],
 ];
 
 /* El primer item toma el foco al abrir; las flechas recorren el menu en circulo.
@@ -78,7 +78,7 @@ function MenuItems({ items, label, onPick }) {
           data-autofocus={i === 0 ? "" : undefined}
           onClick={() => onPick(kind)}
         >
-          <Ico n={icon} size={22} />
+          <Icon name={icon} size="lg" />
           {text}
         </button>
       ))}
@@ -108,7 +108,7 @@ export function DeleteAlbumSheet({ copy, anchor, onClose, onConfirm }) {
         <div className="sh__bar">
           <h2 className="sh__bt">{copy.title}</h2>
           <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
-            <Ico n="x" size={18} />
+            <Icon name="X" size="md" />
           </button>
         </div>
         <p className="delsh__body">{copy.body}</p>

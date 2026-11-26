@@ -101,6 +101,54 @@
 
   --gutter: clamp(16px, 4.4vw, 56px);
 
+  /* Sistema de diseño (DESIGN.md). Los componentes migran a estos nombres; un
+     valor fuera de estas escalas en el CSS de un componente es un error.
+     Color con significado: el rosa es sonido (reproducir, lo que suena, su
+     progreso y el corazon) y el cobalto es todo lo demas. */
+  --sound: var(--pink);
+  --sound-ink: var(--on-pink);
+  --sound-tint: var(--pink2);
+  --action: var(--acc);
+  --action-ink: var(--acc-ink);
+
+  /* Nueve tamaños de letra, ninguno por debajo de 11px. */
+  --fs-micro: 11px;
+  --fs-label: 12px;
+  --fs-caption: 13px;
+  --fs-ui: 14px;
+  --fs-body: 15px;
+  --fs-title: 18px;
+  --fs-headline: 22px;
+  --fs-display: 28px;
+  --fs-display-xl: 44px;
+
+  /* Espaciado en pasos de 4px. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* Radios de la escala nueva (sm 12, md 16, lg 24, xl 30, pildora). */
+  --r-lg: 24px;
+  --r-xl: 30px;
+
+  /* Iconos (Phosphor) y objetivos de toque. */
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 32px;
+  --hit: 48px;
+  --btn-h: 48px;
+  --press: 0.97;
+  --press-row: 0.98;
+  --row-h-phone: 64px;
+  --row-h-pc: 56px;
+
   /* Movimiento: una sola curva de entrada y una escala corta de duraciones.
      Solo se animan transform y opacity.
        --t-press  presion        --t-quick  color, hover y toda salida

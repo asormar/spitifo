@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { NavIcon } from "../app/navIcons.jsx";
 import { useNav } from "../app/useNav.js";
+import { Icon } from "../listen/icons.jsx";
 import { requestGenre } from "../discover/genreRequest.js";
 import { requestSearch } from "../download/searchRequest.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
@@ -91,7 +91,7 @@ export function TryCard({ artist, trackKey }) {
                 nav.goTab("search");
               }}
             >
-              <NavIcon name="search" size={20} />
+              <Icon name="MagnifyingGlass" size="md" />
             </button>
           </li>
         ))}
