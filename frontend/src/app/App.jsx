@@ -14,6 +14,7 @@ import { panel, panelMode, usePanel } from "../player/panel.js";
 import { useEngine } from "../player/useEngine.js";
 import { createListenTracker } from "../player/listens.js";
 import { bindMediaSession } from "../player/mediaSession.js";
+import { readSnapshot, writeSnapshot } from "../player/sessionSnapshot.js";
 import StreamErrors from "../player/StreamErrors.jsx";
 import { fetchMapFile } from "../discover/mapFile.js";
 import { requestReveal } from "../listen/revealRequest.js";
@@ -397,6 +398,35 @@ export default function App() {
   useEffect(() => {
     const tracker = createListenTracker(engine);
     return () => tracker.stop();
+  }, []);
+
+  /* Retomar la sesion (R2-robustez-f): si Android (o el usuario) mato la app
+     mientras sonaba algo, un snapshot ligero trae la pista, la cola y la
+     posicion de vuelta, en pausa y sin autoplay (engine.restore no arranca el
+     audio). Solo al arrancar, y solo si no hay nada sonando ya. */
+  useEffect(() => {
+    if (engine.getState().track) return;
+    const snap = readSnapshot();
+    if (snap) engine.restore(snap.track, snap.queue, snap.index, snap.time);
+  }, []);
+
+  /* La foto se guarda cada ~5 s y al ocultarse la app (la pestana pierde foco
+     o Android la manda a segundo plano): es el ultimo momento seguro antes de
+     que el sistema pueda matarla sin aviso. */
+  useEffect(() => {
+    const save = () => {
+      const s = engine.getState();
+      writeSnapshot(s.track, s.queue, s.time);
+    };
+    const id = setInterval(save, 5000);
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") save();
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onHidden);
+    };
   }, []);
 
   /* Si el server no responde, el contador queda en null (consultando) en vez

@@ -14,7 +14,7 @@ import "./shared/motion.css";
 /* Ultimo: el shell ajusta offsets de piezas que viven en otras hojas. */
 import "./app/shell.css";
 
-document.title = "Spitifo: descarga contenido libre";
+document.title = "spitifo: descarga contenido libre";
 
 /* Preload de la cara latina de la fuente de display: Vite resuelve la URL
    con su hash, asi que no hay que acertar el nombre del asset a mano. Se

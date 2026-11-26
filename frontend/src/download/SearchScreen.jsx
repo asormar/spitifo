@@ -358,6 +358,13 @@ export default function SearchScreen({
     (resultsRef.current || msgRef.current)?.focus();
   }, [loading, searched, results, err]);
 
+  /* Un error de busqueda lleva el foco a su aviso, sin esperar a
+     focusPending: es un boton, no un campo, y no abre el teclado del
+     telefono. Un lector de pantalla tiene que oirlo apenas aparece. */
+  useEffect(() => {
+    if (err) msgRef.current?.focus({ preventScroll: true });
+  }, [err]);
+
   const { full: fullCount, shown, filterEmpty } = useMemo(() => summarize(results, filter), [results, filter]);
 
   /* Una sola lista de entradas para los contadores y los filtros: canciones,
@@ -501,10 +508,16 @@ export default function SearchScreen({
       {notice?.tone === "err" && (
         <Strip tone="err" innerRef={msgRef} onClose={dl.notice ? dl.clearNotice : run.clearErr}>
           {notice.text}
-          {notice.cookies && (
+          {notice.cookies ? (
             <button type="button" className="vf vf--retry" onClick={() => onImportCookies()}>
               Importar cookies
             </button>
+          ) : (
+            !dl.notice && (
+              <button type="button" className="vf vf--retry" onClick={() => run.submit()}>
+                Reintentar
+              </button>
+            )
           )}
           {!dl.notice && (
             <button type="button" className="vf vf--retry" onClick={searchRetry}>Reintentar</button>
@@ -522,11 +535,16 @@ export default function SearchScreen({
       )}
       {matchedDead && (
         <Strip tone="warn">
-          YouTube está apagado en el servidor, y es de ahí de donde sale el audio completo. Por eso estos{" "}
-          {results.length} resultados no se pueden descargar: iTunes solo tiene previews de 30 segundos.
+          YouTube no está disponible aquí: estas {results.length} canciones solo tienen audio de 30 s.{" "}
+          <button type="button" className="vf vf--retry" onClick={() => setMode("sources")}>
+            Buscar en todas las fuentes
+          </button>
         </Strip>
       )}
-      {notice && notice.tone !== "err" && (
+      {/* El exito tiene una sola superficie autorizada: la tarjeta de progreso
+          (progress.jsx). Esta franja de pantalla solo queda para "ojo, esto no
+          es lo que buscabas" (warn): un error aparte, no una finalizacion. */}
+      {notice && notice.tone === "warn" && (
         <Strip
           key={notice.key || notice.text}
           tone={notice.tone}
@@ -575,13 +593,13 @@ export default function SearchScreen({
                 : "Ninguno se puede descargar completo"
               : "No está en el catálogo"}
           </h3>
-          {!small && <p>iTunes no tiene «{query}». Puedes buscarla en otro sitio:</p>}
+          {!small && <p>iTunes no tiene «{query}». Prueba en otra fuente:</p>}
           {exits(EXITS.filter(([id]) => !(id === "ytdlp" && ytDead) && !(id === "link" && small)), small)}
         </div>
       )}
 
       {results.length > 0 && (
-        <section className={cx("rsec", loading && "is-stale")} aria-labelledby="rs-h">
+        <section className={cx("rsec", (loading || Boolean(err)) && "is-stale")} aria-labelledby="rs-h">
           <div className="rhead">
             <div>
               <h2 className="sh2" id="rs-h" ref={resultsRef} tabIndex={-1}>

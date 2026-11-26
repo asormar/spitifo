@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEngine } from "./engine.js";
 
 /* <audio> falso: solo lo que el motor usa (EventTarget + campos y metodos del
@@ -729,6 +729,82 @@ describe("endless and source", () => {
     expect(plain.fetches.map((f) => JSON.parse(f.init.body).key)).toEqual(["a"]);
   });
 });
+
+describe("stream colgado: aviso y reintento automatico (R2-robustez)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("8 s sin datos avisa 'stalled' y reintenta con una peticion nueva, no resume()", () => {
+    const { engine, audio } = setup();
+    engine.play(A);
+    const setsBefore = audio().srcSets;
+    audio().dispatchEvent(new Event("waiting"));
+    expect(engine.getState().buffering).toBe(true);
+    expect(engine.getState().stalled).toBe(false);
+    vi.advanceTimersByTime(7999);
+    expect(engine.getState().stalled).toBe(false);
+    /* El FakeAudio de este archivo responde a play() de forma sincrona: el
+       reintento automatico "recupera" en el mismo instante, asi que lo que se
+       observa despues del aviso no es `stalled` (ya volvio a false) sino que
+       de verdad recargo el src en vez de limitarse a reanudar. Un espia
+       confirma que el aviso si se emitio, aunque fuera transitorio. */
+    const seen = [];
+    engine.subscribe(() => seen.push(engine.getState().stalled));
+    vi.advanceTimersByTime(1);
+    expect(seen).toContain(true);
+    expect(audio().srcSets).toBe(setsBefore + 1);
+    expect(engine.getState().playing).toBe(true);
+  });
+
+  it("recuperar antes de los 8 s cancela el aviso, sin reintento", () => {
+    const { engine, audio } = setup();
+    engine.play(A);
+    const setsBefore = audio().srcSets;
+    audio().dispatchEvent(new Event("waiting"));
+    vi.advanceTimersByTime(4000);
+    audio().dispatchEvent(new Event("playing"));
+    vi.advanceTimersByTime(10000);
+    expect(engine.getState().stalled).toBe(false);
+    expect(audio().srcSets).toBe(setsBefore);
+  });
+
+  it("un error real durante el buffering cancela el timer del stall", () => {
+    const { engine, audio } = setup();
+    engine.play(A);
+    audio().dispatchEvent(new Event("waiting"));
+    audio().dispatchEvent(new Event("error"));
+    expect(engine.getState().failed).toBe(true);
+    vi.advanceTimersByTime(10000);
+    expect(engine.getState().stalled).toBe(false);
+  });
+});
+
+describe("retomar la sesion (R2-robustez-f): carga pausada, sin autoplay", () => {
+  it("restore carga la pista, la cola y la posicion sin arrancar el audio", () => {
+    const { engine, audios, started } = setup();
+    engine.restore(A, [A, B], 0, 42);
+    expect(audios).toHaveLength(1);
+    const s = engine.getState();
+    expect(s.track).toBe(A);
+    expect(s.queue).toEqual([A, B]);
+    expect(s.index).toBe(0);
+    expect(s.time).toBe(42);
+    expect(s.playing).toBe(false);
+    expect(s.buffering).toBe(false);
+    expect(audios[0].src).toBe(A.src);
+    expect(audios[0].currentTime).toBe(42);
+    expect(started()).toBe(0);
+  });
+
+  it("desde ahi, un toque normal (resume) arranca donde quedo", () => {
+    const { engine, audio } = setup();
+    engine.restore(A, [A], 0, 10);
+    engine.resume();
+    expect(engine.getState().playing).toBe(true);
+    expect(audio().currentTime).toBe(10);
+  });
+});
+
 
 describe("setArtwork", () => {
   it("restores the original artwork of the current track", () => {

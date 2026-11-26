@@ -86,9 +86,21 @@ function Gone({ d, backRef, ctx, nav, pc }) {
               </>
             )
           ) : kind === "list" ? (
-            "Esta lista ya no existe."
+            <>
+              Esta lista ya no existe.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("home")}>
+                Vuelve a Inicio
+              </button>
+            </>
           ) : (
-            "Ya no está en tu biblioteca."
+            <>
+              Ya no está en tu biblioteca.
+              <br />
+              <button type="button" className="vf" onClick={() => nav.goTab("search")}>
+                Búscala de nuevo
+              </button>
+            </>
           )}
         </p>
       )}
@@ -330,7 +342,13 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
           </>
         )
       ) : (
-        "No hay canciones."
+        <>
+          No hay canciones.
+          <br />
+          <button type="button" className="vf" onClick={() => nav.goTab("search")}>
+            Añade alguna desde Buscar
+          </button>
+        </>
       )}
     </p>
   ) : (

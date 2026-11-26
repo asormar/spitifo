@@ -7,9 +7,17 @@
    de arranque y asi el resto de decisiones de Buscar se queda en el chunk
    perezoso de la pantalla.
    */
+/* El transporte nunca llega al usuario: un motivo corto por error_code, nunca
+   el mensaje crudo de yt-dlp. */
+const FAIL_REASON = {
+  transient: "problema de red",
+  permanent: "archivo no disponible",
+  youtube_bot_check: "verificación de YouTube",
+};
+
 export function dlState({ busy = false, job, downloaded = false }) {
   const s = job?.status;
-  if (s === "error") return { id: "err", pct: 0 };
+  if (s === "error") return { id: "err", pct: 0, reason: FAIL_REASON[job?.error_code] || "no se pudo completar" };
   /* "queued" es la cola del servidor (4 en red / 2 transcodificando);
      "pending" espera el candado de la misma pista. Las fases waiting_* son la
      compuerta de red (R2): el item sigue en cola pero dice POR QUE espera. */
@@ -44,10 +52,10 @@ export const dlWaiting = ({ id }) => WAITING.has(id);
 
 /* El texto del boton de la ficha y, salvo en reposo y listo, el nombre accesible
    de la fila. */
-export function dlText({ id, pct }) {
+export function dlText({ id, pct, reason }) {
+  if (id === "err") return `Falló: ${reason || "no se pudo completar"}`;
   return {
     idle: "Descargar",
-    err: "Falló la descarga",
     queued: "En cola",
     waitwifi: "Esperando Wi-Fi",
     waitroam: "Esperando sin roaming",

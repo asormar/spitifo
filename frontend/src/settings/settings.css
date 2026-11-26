@@ -41,6 +41,50 @@
   letter-spacing: -0.04em;
 }
 
+/* --- Esqueleto (primer fetch de una tarjeta) -------------------------------- */
+
+.settings__skel {
+  display: grid;
+  gap: 10px;
+}
+
+.settings__skelrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+.settings__skelicon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--s2);
+}
+
+.settings__skeltext {
+  display: grid;
+  flex: 1;
+  gap: 6px;
+}
+
+.settings__skeltext i {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--s2);
+}
+
+.settings__skeltext i:last-child {
+  width: 40%;
+  height: 10px;
+}
+
+.settings__skeltext i:first-child {
+  width: 60%;
+}
+
 /* --- Secciones ------------------------------------------------------------- */
 
 .settings__sec {

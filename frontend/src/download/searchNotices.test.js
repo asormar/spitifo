@@ -3,7 +3,7 @@ import { OFFLINE_TEXT, SEARCH_FAIL, SHELF_FAIL, offlineText, searchErrorText, sh
 
 describe("searchNotices", () => {
   it("traduce el fallo de red por fetchErr y el resto con el texto de Buscar", () => {
-    expect(searchErrorText(new TypeError("Failed to fetch"))).toMatch(/No se pudo contactar/);
+    expect(searchErrorText(new TypeError("Failed to fetch"))).toMatch(/El servidor no responde|Sin conexión/);
     expect(searchErrorText(new Error("boom"))).toBe(SEARCH_FAIL);
     expect(searchErrorText(new Error("iTunes no respondio"))).toBe(SEARCH_FAIL);
   });

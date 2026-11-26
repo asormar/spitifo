@@ -79,7 +79,9 @@ export const ResultRow = memo(function ResultRow({ t, i, query, busy, downloaded
   const chip = rowChip(t, plan);
   const { play, isCurrent, playing, resolving } = useResultPlayback({ t, query, queue, source });
   const dls = useDl(t, busy, downloaded);
-  const progress = dlWaiting(dls);
+  /* El anillo se queda en pantalla mientras corre Y mientras esta fallido: un
+     error no puede volver la fila a su estado de "nunca se intento". */
+  const progress = dlWaiting(dls) || dls.id === "err";
 
   /* El nombre accesible empieza por lo que hace el toque. Las comas separan las
      partes (lector encadena "Let Down Radiohead" sin ellas) y el nombre entero

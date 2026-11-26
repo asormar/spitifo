@@ -14,7 +14,7 @@ export function missingSentence(titles = []) {
   if (n === 1) list = shown[0];
   else if (n === 2) list = `${shown[0]} y ${shown[1]}`;
   else if (n === 3) list = `${shown[0]}, ${shown[1]} y ${shown[2]}`;
-  else list = `${shown[0]}, ${shown[1]} y ${shown[2]} y ${n - 3} más`;
+  else list = `${shown[0]}, ${shown[1]}, ${shown[2]} y ${n - 3} más`;
   return `${list} ${n === 1 ? "no tiene" : "no tienen"} versión completa: solo se pued${
     n === 1 ? "e" : "en"
   } escuchar 30 s.`;
