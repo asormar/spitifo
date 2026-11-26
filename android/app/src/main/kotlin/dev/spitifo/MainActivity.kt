@@ -2,11 +2,16 @@ package dev.spitifo
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -79,11 +84,15 @@ class MainActivity : ComponentActivity() {
     private var fullscreenView: View? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingShare: String? = null
+    /** True when the startup refresh was already started from onCreate. */
+    private var tokenRefreshStarted = false
 
     private val listener = object : Backend.Listener {
         override fun onReady(port: Int) {
             showUi(port)
-            refreshDriveTokenIfConnected()
+            // Fallback for an upgrade where the native flag is not set yet:
+            // normally onCreate already started the refresh (P-cold-start-2).
+            if (!tokenRefreshStarted) refreshDriveTokenIfConnected()
         }
 
         override fun onFailed(message: String) = showStatus(message)
@@ -105,6 +114,20 @@ class MainActivity : ComponentActivity() {
         pendingShare = shareUrl(intent)
         if (pendingShare != null) Log.i(TAG, "shared link: $pendingShare")
         showStatus("Starting…")
+        // Drive's silent refresh starts HERE, in parallel with Python boot,
+        // driven by the persisted flag read natively. The old path waited for
+        // onReady plus a Chaquopy round trip and could hand the first library
+        // request a 5 s token wait (P-cold-start-2).
+        val auth = driveAuth
+        if (DriveAuth.persistedConnected(applicationContext)) {
+            tokenRefreshStarted = true
+            Thread({
+                auth.pushCachedToken()
+                runOnUiThread { auth.refreshSilently() }
+            }, "spitifo-drive-startup").apply { isDaemon = true }.start()
+        } else {
+            DriveAuth.forgetCachedToken(applicationContext)
+        }
         backend.addListener(listener)
         MediaActionRelay.register(mediaReceiver)
     }
@@ -152,6 +175,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         hideFullscreen()
+        networkCallback?.let { callback ->
+            (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                ?.unregisterNetworkCallback(callback)
+        }
+        networkCallback = null
         backend.removeListener(listener)
         driveAuth.onDestroy()
         val view = web
@@ -180,6 +208,15 @@ class MainActivity : ComponentActivity() {
      * public classes and methods.
      */
     inner class AndroidBridge {
+        /**
+         * R2: the page needs to know whether the active link is Wi-Fi, mobile
+         * data or roaming before starting downloads. The native
+         * ConnectivityManager is the only reliable source for "roaming" on
+         * Android; navigator.connection cannot tell. `none` means offline.
+         */
+        @JavascriptInterface
+        fun connectionType(): String = this@MainActivity.connectionType()
+
         @JavascriptInterface
         fun connectDrive() {
             // JavascriptInterfaces are called on the WebView's own thread; the
@@ -213,6 +250,62 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** The active transport as a string the JS side understands. */
+    private fun connectionType(): String {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "none"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val net = cm.activeNetwork ?: return "none"
+            val caps = cm.getNetworkCapabilities(net) ?: return "none"
+            return when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ->
+                    if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING))
+                        "cellular" else "roaming"
+                else -> "other"
+            }
+        }
+        @Suppress("DEPRECATION")
+        val info = cm.activeNetworkInfo ?: return "none"
+        @Suppress("DEPRECATION")
+        return when (info.type) {
+            ConnectivityManager.TYPE_WIFI -> "wifi"
+            ConnectivityManager.TYPE_MOBILE ->
+                if (info.isRoaming) "roaming" else "cellular"
+            ConnectivityManager.TYPE_ETHERNET -> "ethernet"
+            else -> "other"
+        }
+    }
+
+    /** Tell the page when the link changes so the download queue can resume. */
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private fun watchNetwork() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = notifyNetwork()
+            override fun onLost(network: Network) = notifyNetwork()
+            override fun onCapabilitiesChanged(
+                network: Network, capabilities: NetworkCapabilities,
+            ) = notifyNetwork()
+        }
+        cm.registerDefaultNetworkCallback(cb)
+        networkCallback = cb
+    }
+
+    private fun notifyNetwork() {
+        val view = web ?: return
+        val type = connectionType()
+        val online = type != "none"
+        view.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('spitifo-network'," +
+                "{detail:{type:'$type',online:$online}}))", null,
+        )
+    }
+
     /** Paints both system bars one colour and picks icons that read on it. */
     private fun applyBars(color: Int, light: Boolean) {
         window.statusBarColor = color
@@ -243,10 +336,10 @@ class MainActivity : ComponentActivity() {
      * On startup the grant is usually already there, so this is the silent path
      * (ADR 0002, section 2: sign-in survives a restart with no user action).
      *
-     * Asks Python whether a Google account is connected — on Android that flag
-     * is persisted, while the token itself is memory-only and lost on restart —
-     * then refreshes in silence. Never on the main thread: Chaquopy can take a
-     * moment and the first frame must not wait for it.
+     * Fallback used when onCreate could not read the native flag (an upgrade
+     * from a build that did not write it). Asks Python whether a Google account
+     * is connected, then refreshes in silence. Never on the main thread:
+     * Chaquopy can take a moment and the first frame must not wait for it.
      */
     private fun refreshDriveTokenIfConnected() {
         Thread({
@@ -382,6 +475,7 @@ class MainActivity : ComponentActivity() {
         }
         setContentView(view)
         web = view
+        watchNetwork()
         val share = pendingShare
         pendingShare = null
         // One load: the backend trades the token for the session cookie and

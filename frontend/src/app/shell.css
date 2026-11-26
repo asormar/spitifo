@@ -692,3 +692,20 @@ html[data-rp="wide"] .screens .eq i {
 .skip-link:focus {
   transform: none;
 }
+/* Aviso de refresco de la biblioteca: aparece sobre la pantalla mientras el
+   escaneo de fondo termina, sin tapar ni bloquear la lista del espejo. */
+.lib-sync {
+  position: fixed;
+  z-index: 60;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--s1);
+  color: var(--mut);
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
+}

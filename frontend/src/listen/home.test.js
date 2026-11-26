@@ -221,6 +221,17 @@ describe("sortEntries", () => {
   it("falls back to recent for an unknown mode", () => {
     expect(sortEntries(LIB, "otro")[0].key).toBe("zoe/video");
   });
+
+  it("caches the sorted array by (entries, mode): same library, same mode, same reference", () => {
+    expect(sortEntries(LIB, "az")).toBe(sortEntries(LIB, "az"));
+    expect(sortEntries(LIB, "az")).not.toBe(sortEntries(LIB, "artist"));
+  });
+
+  it("a different library array does not reuse another one's cached sort", () => {
+    const other = LIB.slice();
+    expect(sortEntries(other, "az")).not.toBe(sortEntries(LIB, "az"));
+    expect(sortEntries(other, "az")).toEqual(sortEntries(LIB, "az"));
+  });
 });
 
 describe("recentEntries", () => {

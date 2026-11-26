@@ -292,7 +292,7 @@ def test_album_match_album_primero_y_puntuales_solo_para_las_que_faltan(
     llamadas = []
     activos = {"n": 0, "max": 0}
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         llamadas.append((len(tracks), query, limit))
         clave = str(tracks[0]["trackId"])
         if len(tracks) > 1:
@@ -369,7 +369,7 @@ def test_album_match_las_puntuales_usan_el_artista_de_la_pista(
 
     consultas = []
 
-    async def _enrich(tracks, query, ysrc, limit=40):
+    async def _enrich(tracks, query, ysrc, limit=40, videos=None):
         consultas.append(query)
         return {}  # todas quedan sin video: se buscan sueltas
 

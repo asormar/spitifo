@@ -47,11 +47,24 @@ describe("art store", () => {
 
     ok = true;
     expect(await store.upload("song:a", "BIG", "SMALL", { url: "blob:big" })).toBe(true);
-    expect(store.getState().byTarget.get("song:a")).toEqual({ ...record("upload"), url: "blob:big" });
+    /* Sin `url`: el data: URL de la subida (unos 2.7 MB en la app real) no se
+       queda en memoria para siempre, solo el registro confirmado. */
+    expect(store.getState().byTarget.get("song:a")).toEqual(record("upload"));
     expect(JSON.parse(fetchFn.mock.calls.at(-1)[1].body)).toEqual({
       target: "song:a",
       image: "BIG",
       small: "SMALL",
+    });
+  });
+
+  it("from-url SI conserva la URL confirmada (la usa la hoja para la marca Actual)", async () => {
+    const fetchFn = vi.fn(async () => json({ target: "artist:x", ...record("youtube") }));
+    const store = createArt({ fetchFn });
+    const ok = await store.fromUrl("artist:x", "https://i.ytimg.com/vi/x/hqdefault.jpg", "youtube");
+    expect(ok).toBe(true);
+    expect(store.getState().byTarget.get("artist:x")).toEqual({
+      ...record("youtube"),
+      url: "https://i.ytimg.com/vi/x/hqdefault.jpg",
     });
   });
 
@@ -77,6 +90,29 @@ describe("art store", () => {
     expect(await store.reset("album:x")).toBe(true);
     expect(store.getState().byTarget.size).toBe(0);
     expect(JSON.parse(fetchFn.mock.calls.at(-1)[1].body)).toEqual({ target: "album:x" });
+  });
+
+  it("una recarga forzada con el mismo contenido conserva el Map (P-render-main-thread-7)", async () => {
+    const fetchFn = vi.fn(async () => json({ art: { "album:x": record() } }));
+    const store = createArt({ fetchFn });
+    await store.load();
+    const before = store.getState().byTarget;
+    await store.load(true);
+    expect(store.getState().byTarget).toBe(before);
+  });
+
+  it("una recarga forzada con una foto nueva SI cambia el Map", async () => {
+    let withCover = false;
+    const fetchFn = vi.fn(async () =>
+      json({ art: withCover ? { "album:x": record() } : {} })
+    );
+    const store = createArt({ fetchFn });
+    await store.load();
+    const before = store.getState().byTarget;
+    withCover = true;
+    await store.load(true);
+    expect(store.getState().byTarget).not.toBe(before);
+    expect(store.getState().byTarget.get("album:x")).toEqual(record());
   });
 
   it("un error de red no deja la foto optimista colgada", async () => {

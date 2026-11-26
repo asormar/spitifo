@@ -97,4 +97,10 @@ describe("rowChip", () => {
     expect(rowChip(ola("none"))).toBe("30");
     expect(rowChip({ source: "itunes", extra: { match_state: "full", webpage_url: "https://www.youtube.com/watch?v=abcdefghijk" } })).toBeNull();
   });
+
+  it("YouTube ocupado (circuito abierto) se avisa distinto del «30 s» comun", () => {
+    const t = { source: "itunes", source_id: "1", preview_url: "https://a/p.m4a",
+                extra: { match_state: "none", youtube_busy: true } };
+    expect(rowChip(t)).toBe("busy");
+  });
 });
