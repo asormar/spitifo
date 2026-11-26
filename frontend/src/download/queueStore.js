@@ -210,6 +210,7 @@ export function createQueueStore(fetchImpl = (...a) => fetch(...a)) {
     const alive = new Set(incoming.map((i) => i.id));
 
     for (const key of published.keys()) if (!alive.has(key)) published.delete(key);
+    for (const key of resumed.keys()) if (!alive.has(key)) resumed.delete(key);
 
     /* ids de grupo (el mismo que arma groupItems: el del grupo, o
        "single:<id>" sin uno) con al menos una pista recien terminada SIN fila

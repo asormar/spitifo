@@ -2,6 +2,7 @@ import { memo } from "react";
 import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { keyUrl } from "../shared/api.js";
+import { addBoundedSet } from "../shared/bounded.js";
 import { clock } from "../shared/format.js";
 import { coverTone, toneClass, toneVars } from "../shared/cover.js";
 import { VerdictPill } from "../shared/Verdict.jsx";
@@ -38,7 +39,10 @@ export const Bars = ({ on }) => (
 );
 
 /* Miniaturas que dieron error: una fila que se vuelve a montar (lista
-   virtual) no reintenta un 404. */
+   virtual) no reintenta un 404. Acotado: una sesion larga con muchas
+   portadas caidas no puede crecer sin limite; la mas vieja se desaloja y, en
+   el peor caso, esa fila reintenta una vez mas. */
+const BAD_ART_CAP = 200;
 const BAD_ART = new Set();
 
 /* Sin `onMenu` la fila no lleva boton de opciones (la reusa Buscar); con el, lo
@@ -173,7 +177,7 @@ export const SongRow = memo(function SongRow({
                 decoding="async"
                 fetchpriority="low"
                 onError={(e) => {
-                  BAD_ART.add(src);
+                  addBoundedSet(BAD_ART, src, BAD_ART_CAP);
                   e.currentTarget.hidden = true;
                 }}
               />

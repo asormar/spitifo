@@ -411,6 +411,10 @@ async def _resolve_uncached(url: str, vid: str) -> StreamInfo:
 
     t0 = time.monotonic()
     try:
+        # Si el pool esta vacio (play antes de que termine el prewarm),
+        # `_pooled` construye un YoutubeDL nuevo EN EL LOOP: sin esto, esa
+        # primera construccion pagaria el import de yt_dlp ahi mismo.
+        await ytdlp_source.ensure_yt_dlp_imported()
         visitor = await ensure_visitor()
         if not visitor:
             # Sin visitor_data el camino rapido choca con el muro: ni se intenta.
