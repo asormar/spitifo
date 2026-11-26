@@ -30,7 +30,7 @@ describe("missingSentence", () => {
 
   it("corta a tres y dice cuantos faltan", () => {
     expect(missingSentence(["A", "B", "C", "D", "E"])).toBe(
-      "«A», «B» y «C» y 2 más no tienen versión completa: solo se pueden escuchar 30 s."
+      "«A», «B», «C» y 2 más no tienen versión completa: solo se pueden escuchar 30 s."
     );
   });
 });

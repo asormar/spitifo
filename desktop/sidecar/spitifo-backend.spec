@@ -42,9 +42,18 @@ a = Analysis(
     # - watchfiles, yaml, websockets, httptools, dotenv: uvicorn[standard]
     #   extras for --reload, YAML log config, WebSockets, the C HTTP parser and
     #   .env files. The app uses none of them; uvicorn falls back to h11.
+    # - bz2, lzma: zipfile imports both defensively in try/except, so PyInstaller
+    #   collects them even though no runtime code uses them (grep of backend and
+    #   of yt-dlp, starlette, uvicorn, httpx, mutagen and their dependencies).
+    #   zipfile sets each to None when absent, and the yt-dlp update archive is
+    #   a deflate zip, so dropping them is safe. Measured in the 3.11 build:
+    #   _bz2.pyd 72,704 B + _lzma.pyd 152,576 B = 225,280 B out of _internal.
+    # pytest/pydoc/doctest/distutils are already absent from the PYZ, and
+    # OpenSSL (libcrypto + libssl + _ssl) is required by httpx for HTTPS: there
+    # is no second copy of either DLL to remove.
     excludes=["pytest", "tkinter", "_pytest", "pygments", "sqlite3", "_sqlite3",
               "watchfiles", "yaml", "_yaml", "websockets", "httptools",
-              "dotenv"],
+              "dotenv", "bz2", "lzma"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

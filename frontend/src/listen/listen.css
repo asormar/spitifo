@@ -111,6 +111,89 @@
   font: 600 13px / 1.2 var(--font-body);
 }
 
+/* Primer paso con la biblioteca vacia: una muestra que suena ya y sugerencias
+   del catalogo. Una sola explicacion; el estado no se repite bajo el guide. */
+.start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-4) var(--gutter) 0;
+  padding: var(--sp-5);
+  border-radius: var(--r-card);
+  background: var(--s1);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.start__t {
+  margin: 0;
+  font: 700 var(--fs-title) / 1.25 var(--font-display);
+}
+
+.start__note,
+.start__label {
+  margin: 0;
+  color: var(--mut);
+  font: 500 var(--fs-caption) / 1.4 var(--font-body);
+}
+
+.start__label {
+  margin-top: var(--sp-2);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.start__play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--hit);
+  padding: 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--action);
+  color: var(--action-ink);
+  font: 700 var(--fs-ui) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.start__play:active {
+  transform: scale(var(--press));
+}
+
+.start__play:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.start__chip {
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--s2);
+  color: var(--ink);
+  font: 700 var(--fs-label) var(--font-body);
+  cursor: pointer;
+  transition: var(--tr-btn);
+}
+
+.start__chip:active {
+  transform: scale(var(--press));
+}
+
+.start__list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .vlist {
   position: relative;
 }
@@ -209,10 +292,13 @@
 }
 
 .cv {
+  container-type: inline-size;
   width: var(--s, 40px);
   height: var(--s, 40px);
   border-radius: var(--r-md);
-  font: 800 calc(var(--s, 40px) * 0.28) / 1 var(--font-display);
+  /* La letra crece con el hueco real, no con --s: una cabecera puede estirar
+     la portada sin arrastrar su tamano de ficha (antes, 340 px en el artista). */
+  font: 800 clamp(11px, 28cqw, 120px) / 1 var(--font-display);
 }
 
 .art {
@@ -222,10 +308,10 @@
   font: 800 16px / 1 var(--font-display);
 }
 
+/* La inicial va al centro: place-items del contenedor ya la alinea, y asi
+   sigue siendo una portada equilibrada en cualquier tamano o recorte. */
 .cv > span:first-child {
-  position: absolute;
-  left: 10%;
-  top: 8%;
+  min-width: 0;
 }
 
 .cv.cv--round {
@@ -266,8 +352,17 @@
 }
 
 .cv--round > span:first-child {
-  position: static;
   font-size: 1.15em;
+}
+
+/* Portada sin imagen: dos tonos del genero y un disco, en vez de una letra que
+   se parecia al esqueleto de carga. Sobre el color de la trama cv-p*. */
+.cv > span.cv__gen {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--c) 42%, #fff) 0 16%, transparent 16.5%),
+    linear-gradient(135deg, var(--c) 0 50%, color-mix(in srgb, var(--c) 60%, #11111c) 50%);
 }
 
 .cv-p0 {
@@ -349,6 +444,25 @@
   font-size: 12.5px;
   line-height: 1.3;
 }
+
+/* Los nombres de artista y album de los metadatos son enlaces. Cobalto, nunca
+   rosa: no son sonido. Sobre el telefono el objetivo de toque es de 48 px. */
+.srow__link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--action);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--action) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.srow__link:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
 
 .srow__d {
   flex: none;
@@ -506,7 +620,9 @@
   right: 16px;
   bottom: calc(max(24px, env(safe-area-inset-bottom)) + var(--nav-h) + 8px);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   pointer-events: none;
 }
 
@@ -515,6 +631,8 @@ body.has-mini .lnotice {
 }
 
 .ltoast {
+  position: relative;
+  overflow: hidden;
   padding: 14px 16px;
   border-radius: var(--r-cover);
   background: var(--ink);
@@ -527,6 +645,26 @@ body.has-mini .lnotice {
   pointer-events: auto;
   touch-action: pan-y;
   user-select: none;
+}
+
+/* Cuanto le queda a un deshacer: el tiempo real, no una promesa. Un aviso
+   nuevo nunca la reinicia ni la acorta (cada una tiene su propio --dismiss). */
+.ltoast__bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--acc);
+  transform: scaleX(1);
+  transform-origin: left;
+  animation: ltoast-shrink var(--dismiss, 5000ms) linear forwards;
+}
+
+@keyframes ltoast-shrink {
+  to {
+    transform: scaleX(0);
+  }
 }
 
 /* Mientras se arrastra manda el transform del dedo, no el de la entrada. */
@@ -555,7 +693,7 @@ body.has-mini .lnotice {
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: var(--toast-act);
+  color: var(--action);
   font: 800 14px var(--font-body);
   cursor: pointer;
   pointer-events: auto;

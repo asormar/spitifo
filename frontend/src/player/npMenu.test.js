@@ -45,13 +45,13 @@ describe("menu ⋯ de Ahora suena: que menu toca", () => {
 });
 
 describe("grupos del menu ⋯ de un stream suelto", () => {
-  it("Escuchar, Tu biblioteca con el formato, Ir a, Archivo y Reproductor al final", () => {
+  it("Escuchar, Tu biblioteca, Ir a, Archivo y Reproductor al final", () => {
     const groups = npMenuGroups(stream, { fmt: "flac" });
     expect(groups.map((g) => g.label)).toEqual([
       "Escuchar", "Tu biblioteca", "Ir a", "Archivo", "Reproductor",
     ]);
     expect(groups[0].items.map((i) => i.kind)).toEqual(["next", "end"]);
-    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar", sub: "flac" });
+    expect(groups[1].items[0]).toEqual({ kind: "download", icon: "DownloadSimple", text: "Descargar" });
     expect(groups[2].items.map((i) => i.text)).toEqual([
       "Ir al álbum «Pablo Honey»",
       "Ir a Radiohead",

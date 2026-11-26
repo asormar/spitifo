@@ -28,6 +28,7 @@ Free-licence catalogues + YouTube as a last resort · Identity verification on e
 - [How the sources work](#how-the-sources-work)
 - [The matcher](#the-matcher)
 - [The app](#the-app)
+- [Installation](#installation)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [Embedding the backend](#embedding-the-backend)
@@ -222,6 +223,47 @@ ListenBrainz, and your listening history stays here.
 (`frontend/src/shared/tokens.test.js`): every text pair reaches the WCAG AA threshold of
 4.5:1, and the pink play glyphs, which are graphics, reach 3:1. Motion honours
 `prefers-reduced-motion`.
+
+## Installation
+
+Don't want to build it yourself? Grab a prebuilt release.
+
+Go to the [latest release](https://github.com/asormar/spitifo/releases/latest) and
+download the file for your device:
+
+| Device | File |
+| --- | --- |
+| Android phone (arm64) | `spitifo-x.y.z-android.apk` |
+| Windows PC | `spitifo-x.y.z-windows-setup.exe` |
+
+### Android: allowing "unknown apps"
+
+Android blocks APKs that don't come from the Play Store by default. Opening the
+downloaded file for the first time asks to allow it — **Settings → Security →
+Install unknown apps**, for whichever app you used to open it (your browser or
+file manager). Allow it once, then open the APK again. The file itself is
+signed by the project; it's just not distributed through the Play Store.
+
+### Windows: "Windows protected your PC"
+
+SmartScreen will likely show this warning. That's because spitifo is free,
+open-source software with too little download history yet for SmartScreen's
+reputation system — not because anything is wrong with the file — and because
+the installer isn't code-signed (the project applied to [SignPath
+Foundation](https://signpath.org)'s free signing for open-source projects, but
+wasn't accepted). Click **More info** → **Run anyway**.
+
+If you'd rather verify the file first, every release includes
+`SHA256SUMS.txt`. Compare it against the hash of what you downloaded:
+
+```powershell
+CertUtil -hashfile spitifo-x.y.z-windows-setup.exe SHA256
+```
+
+### Updating on Android
+
+Install the new APK **over** the old one — never uninstall first. Uninstalling
+wipes your settings and your view of your music; installing over it keeps both.
 
 ## Getting started
 

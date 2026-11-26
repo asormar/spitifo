@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { API } from "../shared/api.js";
+import { sameMap } from "../shared/mapEq.js";
 
 /* ---------------------------------------------------------------------------
    CANCIONES GUARDADAS
@@ -44,7 +45,12 @@ export function createSaved({ fetchFn = (...a) => fetch(...a) } = {}) {
         songs.forEach((s) => {
           if (s && s.id) byId.set(s.id, s);
         });
-        emit({ ready: true, error: false, byId });
+        /* Una recarga forzada (App.jsx pide /api/saved en CADA refresco de
+           biblioteca) casi siempre trae lo mismo: si el contenido no cambio,
+           se conserva el Map viejo para que mergeLibrary en ListenProvider no
+           vuelva a juntar los 20k archivos por nada (P-large-library-scale-6,
+           P-render-main-thread-7). */
+        emit({ ready: true, error: false, byId: sameMap(byId, state.byId) ? state.byId : byId });
       })
       .catch(() => emit({ ready: false, error: true }))
       .finally(() => {

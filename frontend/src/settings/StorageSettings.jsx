@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icons.jsx";
 import { API, fetchErr } from "../shared/api.js";
 import { connectErrorText, driveSub } from "./storageInfo.js";
+import { isBackgrounded } from "../shared/screenState.js";
 import QuotaBar from "./QuotaBar.jsx";
+import SettingsSkeleton from "./SettingsSkeleton.jsx";
 
 const IS_ANDROID = /android/i.test(navigator.userAgent);
 /* Cuerpo de la seccion Almacenamiento. Era un <dialog>; ahora es una seccion
@@ -13,6 +15,10 @@ export default function StorageSettings({ active, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [authUrl, setAuthUrl] = useState(null);
+  /* Guardar el proveedor no puede ser optimista (depende de que el backend lo
+     confirme): un spinner de 16 px dentro de la propia tarjeta, no solo
+     cursor:progress (invisible al tacto). */
+  const [switching, setSwitching] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -32,12 +38,16 @@ export default function StorageSettings({ active, onChanged }) {
   }, [active, load]);
 
   /* Mientras el sign-in esta pendiente se sondea; al conectar, la biblioteca
-     cambia sola en el backend y la app tiene que recargarla. */
+     cambia sola en el backend y la app tiene que recargarla. Con la pestana
+     tapada o la pantalla apagada no se hace trabajo de red (ver
+     shared/screenState.js); al volver, el siguiente tick lo reanuda. */
   const pending = info?.connect?.state === "pending";
   const wasPending = useRef(false);
   useEffect(() => {
     if (!active || !pending) return undefined;
-    const t = setInterval(load, 1500);
+    const t = setInterval(() => {
+      if (!isBackgrounded()) load();
+    }, 1500);
     return () => clearInterval(t);
   }, [active, pending, load]);
   useEffect(() => {
@@ -90,9 +100,14 @@ export default function StorageSettings({ active, onChanged }) {
 
   const pickLocal = async () => {
     if (activeProvider === "local" || locked) return;
-    if (await post("use", { provider: "local" })) {
-      await load();
-      onChanged();
+    setSwitching("local");
+    try {
+      if (await post("use", { provider: "local" })) {
+        await load();
+        onChanged();
+      }
+    } finally {
+      setSwitching(null);
     }
   };
 
@@ -104,9 +119,14 @@ export default function StorageSettings({ active, onChanged }) {
        la unica salida de un 503 reconnect_required. */
     if (google.connected && !viaAndroid) {
       if (activeProvider === "google") return;
-      if (await post("use", { provider: "google" })) {
-        await load();
-        onChanged();
+      setSwitching("google");
+      try {
+        if (await post("use", { provider: "google" })) {
+          await load();
+          onChanged();
+        }
+      } finally {
+        setSwitching(null);
       }
       return;
     }
@@ -138,10 +158,26 @@ export default function StorageSettings({ active, onChanged }) {
   const connectErr = connectErrorText(info?.connect?.error);
   const deviceIcon = IS_ANDROID ? "DeviceMobile" : "Laptop";
 
+  if (!info && !err) {
+    return (
+      <div className="store">
+        <p className="settings__lead">¿Dónde guardas tu música?</p>
+        <SettingsSkeleton label="Comprobando almacenamiento…" />
+      </div>
+    );
+  }
+
   const sub = driveSub(info, { pending, viaAndroid });
 
   let driveSubNode = sub.text;
-  if (sub.state) {
+  if (switching === "google") {
+    driveSubNode = (
+      <span className="store__state">
+        <Icon name="ArrowClockwise" size="sm" className="spin" />
+        Guardando…
+      </span>
+    );
+  } else if (sub.state) {
     driveSubNode = (
       <span className="store__state">
         {sub.state === "pending" ? (
@@ -153,6 +189,15 @@ export default function StorageSettings({ active, onChanged }) {
       </span>
     );
   }
+  const localSubNode =
+    switching === "local" ? (
+      <span className="store__state">
+        <Icon name="ArrowClockwise" size="sm" className="spin" />
+        Guardando…
+      </span>
+    ) : (
+      "Sin conexión, solo aquí"
+    );
 
   return (
     <div className="store">
@@ -163,6 +208,7 @@ export default function StorageSettings({ active, onChanged }) {
           type="button"
           role="radio"
           aria-checked={activeProvider === "local"}
+          aria-busy={switching === "local" || undefined}
           className="store__opt"
           onClick={pickLocal}
           disabled={busy}
@@ -170,7 +216,7 @@ export default function StorageSettings({ active, onChanged }) {
           <Icon name={deviceIcon} size="lg" className="store__icon" />
           <span>
             <span className="store__name">Este dispositivo</span>
-            <span className="store__sub">Sin conexión, solo aquí</span>
+            <span className="store__sub">{localSubNode}</span>
           </span>
           <span className="store__radio" aria-hidden="true" />
         </button>
@@ -180,6 +226,7 @@ export default function StorageSettings({ active, onChanged }) {
           role="radio"
           aria-checked={activeProvider === "google"}
           aria-disabled={!google?.configured || undefined}
+          aria-busy={switching === "google" || undefined}
           className="store__opt"
           onClick={pickDrive}
           disabled={busy}
@@ -212,7 +259,9 @@ export default function StorageSettings({ active, onChanged }) {
       {activeProvider === "google" && <QuotaBar quota={info?.quota} />}
 
       {locked && (
-        <p className="settings__note">Fijado por SPITIFO_STORAGE: se cambia desde el entorno.</p>
+        <p className="settings__note">
+          La ubicación de tu música la fijó quien configuró la app. No se puede cambiar desde aquí.
+        </p>
       )}
       {(err || connectErr) && (
         <p className="settings__err" role="alert">

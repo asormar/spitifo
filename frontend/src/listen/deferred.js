@@ -20,8 +20,8 @@ export function createDeferred(run) {
         run();
       }, ms);
     },
-    /* Otro aviso pisa a este, o la pagina se desmonta: lo que esperaba se
-       ejecuta ya. Cancelarlo dejaria la fila oculta sin borrar el archivo. */
+    /* Se deslizo el aviso (ya lo vi) o la pagina se desmonta: lo que esperaba
+       se ejecuta ya. Cancelarlo dejaria la fila oculta sin borrar el archivo. */
     flush() {
       if (timer === null) return;
       clearTimeout(timer);

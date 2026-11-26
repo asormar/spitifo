@@ -104,6 +104,18 @@ describe("detailOf a list", () => {
     expect(all.gone).toBe(true);
   });
 
+  it("un cliente viejo ve una carpeta como una lista vacía, sin error", () => {
+    /* Las claves de una carpeta son IDs de playlist: ninguna es una canción.
+       detailOf no las puede resolver, pero no lanza: muestra la lista vacía
+       que ya existía antes de que existieran las carpetas. */
+    const folder = { ...list(["l1", "l2"], "c1", "Viajes"), is_folder: true };
+    const d = detailOf({ type: "list", id: "c1" }, env({ lists: [folder] }));
+    expect(d.state).toBe("ok");
+    expect(d.rows).toEqual([]);
+    expect(d.gone).toBe(true);
+    expect(() => detailMeta(d, "Google Drive")).not.toThrow();
+  });
+
   it("is loading, failed or missing while the lists are not there", () => {
     const view = { type: "list", id: "p9" };
     expect(detailOf(view, env({ listsReady: false })).state).toBe("loading");

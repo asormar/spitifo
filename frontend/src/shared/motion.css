@@ -221,6 +221,17 @@ body.is-hidden :is(.eq i, .fy-btn.is-busy svg, .gmap__pulse, .breathe),
   animation: spin 1.15s linear infinite;
 }
 
+/* Pestaña tapada o pantalla apagada (shared/screenState.js pone data-bg en
+   <html>): ninguna animacion necesita producir cuadros cuando nadie mira.
+   Cubre las quince animaciones infinitas y cualquier otra que se anada, sin
+   tocar el <audio>: la reproduccion sigue igual. */
+html[data-bg],
+html[data-bg] *,
+html[data-bg] *::before,
+html[data-bg] *::after {
+  animation-play-state: paused !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -237,7 +248,7 @@ body.is-hidden :is(.eq i, .fy-btn.is-busy svg, .gmap__pulse, .breathe),
   .eq i,
   .logo__o,
   .pbtn::after,
-  .rec__spin,
+  .mz__spin,
   .sfield.is-scanning .sfield__icon {
     animation: none !important;
   }

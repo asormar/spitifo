@@ -124,8 +124,13 @@ describe("fetchTrackMatch", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/api/search/match/7");
   });
 
-  it("503 de YouTube cae a 'none' como si no hubiera video", async () => {
+  it("503 de YouTube cae a 'none' y avisa youtube_busy en la fila", async () => {
     fetchMock.mockResolvedValue({ status: 503, ok: false, json: async () => ({ code: "youtube_busy" }) });
+    expect(await fetchTrackMatch(fila("42"))).toEqual(busyResult(fila("42"), true));
+  });
+
+  it("otro fallo (no youtube_busy) cae a 'none' sin el aviso", async () => {
+    fetchMock.mockResolvedValue({ status: 502, ok: false, json: async () => ({}) });
     expect(await fetchTrackMatch(fila("42"))).toEqual(busyResult(fila("42")));
   });
 });

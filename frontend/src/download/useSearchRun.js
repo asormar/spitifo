@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API, errMsg, rowKey } from "../shared/api.js";
+import { isOnline } from "../shared/online.js";
 import { buildSearchParams, prepareTopStreams, warmTopResults } from "./api.js";
 import { mergeMatchedTracks, searchAlbums } from "./albumApi.js";
 import { searchArtists } from "./artistApi.js";
@@ -7,6 +8,7 @@ import { searchBusy, searchDraft, useSearchDraft } from "./searchDraft.js";
 import { parseUrl, planSubmit, searchSig, shouldResync, uniqueResults, urlFor } from "./searchPlan.js";
 import { subscribeSearch, takeSearch } from "./searchRequest.js";
 import { consumeWaves, createWaveQueue, fetchTrackMatch, matchState } from "./searchWaves.js";
+import { searchErrorText } from "./searchNotices.js";
 
 /* Los adelantos dedupean por URL: llamarlos por lote no cuesta red de mas. */
 const paint = (list) => { warmTopResults(list); prepareTopStreams(list); };
@@ -43,6 +45,9 @@ export default function useSearchRun({ onRequest } = {}) {
   /* Estantes de esta busqueda todavia en camino: la pantalla les guarda el
      hueco para que no empujen a las canciones al llegar. */
   const [shelvesPending, setShelvesPending] = useState(false);
+  /* Los estantes vinieron aparte (no en la ola) y fallaron: se ofrece reintentar
+     sin repetir la busqueda de canciones. */
+  const [shelfFailed, setShelfFailed] = useState(false);
   /* La respuesta termino (done, JSON o error). Lo que depende del match de
      todas las filas (el recuento de completas, «ninguno se puede descargar»)
      espera a esto. */
@@ -68,6 +73,14 @@ export default function useSearchRun({ onRequest } = {}) {
      corta los pedidos que quedaron volando. */
   const listRef = useRef(null);
   const waveQueue = useRef(null);
+  /* Un lote no reconstruye el observador: se crea por busqueda y solo observa
+     las filas nuevas. La lista actual se lee de un ref, no del closure. */
+  const ioRef = useRef(null);
+  const observedRows = useRef(new WeakSet());
+  const resultsRef = useRef(results);
+  resultsRef.current = results;
+  /* El reintento de estantes usa la misma busqueda (texto y numero de orden). */
+  const shelvesRetry = useRef(null);
   /* El modo que vale ahora, para las funciones estables (run, el pedido). */
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -96,6 +109,7 @@ export default function useSearchRun({ onRequest } = {}) {
     setLoading(true);
     setStreamDone(false);
     setErr(null);
+    setShelfFailed(false);
     setSearched(true);
     setFilter("all");
     setRuns((n) => n + 1);
@@ -122,25 +136,34 @@ export default function useSearchRun({ onRequest } = {}) {
     if (matched) setShelvesPending(true);
     else setShelves({});
     /* Server sin estantes en la ola: se piden aparte, como antes, y su fallo
-       no toca ni las canciones ni el otro estante. */
-    const requestShelves = () => {
+       no toca ni las canciones ni el otro estante. Ahora se dice y se puede
+       reintentar con la misma busqueda. */
+    const requestShelves = (forSeq = seq, text = t) => {
       const aa = new AbortController();
       albumAbort.current = aa;
-      searchAlbums(t, aa.signal)
+      searchAlbums(text, aa.signal)
         .then((list) => {
-          if (seq === searchSeq.current && !aa.signal.aborted) setAlbums(list);
+          if (forSeq === searchSeq.current && !aa.signal.aborted) setAlbums(list);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (forSeq === searchSeq.current && !aa.signal.aborted) setShelfFailed(true);
+        });
       const ra = new AbortController();
       artistAbort.current = ra;
-      searchArtists(t, 3, ra.signal)
+      searchArtists(text, 3, ra.signal)
         .then((list) => {
-          if (seq === searchSeq.current && !ra.signal.aborted) {
+          if (forSeq === searchSeq.current && !ra.signal.aborted) {
             setArtists(list);
-            setArtistQuery(t);
+            setArtistQuery(text);
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (forSeq === searchSeq.current && !ra.signal.aborted) setShelfFailed(true);
+        });
+    };
+    shelvesRetry.current = () => {
+      setShelfFailed(false);
+      requestShelves(seq, t);
     };
     let gotShelves = false;
     try {
@@ -165,11 +188,13 @@ export default function useSearchRun({ onRequest } = {}) {
           if (seq !== searchSeq.current) return;
           gotShelves = Boolean(shelves);
           if (matched) setShelves(shelves || {}, !shelves);
+          if (shelves) setShelfFailed(false);
           show(list, ev);
         },
         onShelves: (shelves) => {
           if (seq !== searchSeq.current) return;
           gotShelves = true;
+          setShelfFailed(false);
           setShelves(shelves);
         },
         onTracks: (tracks) => {
@@ -192,10 +217,19 @@ export default function useSearchRun({ onRequest } = {}) {
       show(uniqueResults(d.results), d);
     } catch (e) {
       if (e.name === "AbortError" || seq !== searchSeq.current) return;
-      setErr(e.message);
-      setResults([]);
-      setCatalog("");
-      setShelves({});
+      /* Una caida de red deja ver lo que ya habia (atenuado): un fetch roto no
+         puede borrar resultados que el usuario ya estaba mirando. Un error de
+         verdad del servidor (4xx/5xx con mensaje propio) si limpia, como antes. */
+      if (/failed to fetch|networkerror|load failed/i.test(e.message || "")) {
+        setErr(isOnline() ? "El servidor no responde. Vuelve a intentarlo." : "Sin conexión. Busca cuando vuelva la red.");
+      } else {
+        /* fetchErr traduce el ingles crudo del fetch; el resto del mensaje del
+           servidor se respeta. */
+        setErr(searchErrorText(e));
+        setResults([]);
+        setCatalog("");
+        setShelves({});
+      }
     } finally {
       if (seq === searchSeq.current) {
         setLoading(false);
@@ -208,6 +242,10 @@ export default function useSearchRun({ onRequest } = {}) {
   /* Enter / "Buscar": pegar un enlace en otro modo lleva a "YouTube", que es
      el unico que lo entiende. run fija la firma, asi que el efecto de cambio de
      modo no repite la peticion. Devuelve si habia algo que buscar. */
+  /* Cierra el error de busqueda sin tocar los resultados: a diferencia de
+     reset(), no es "volver a la pantalla de reposo". */
+  const clearErr = useCallback(() => setErr(null), []);
+
   const submit = useCallback(() => {
     const plan = planSubmit({ q: searchDraft.get(), mode: modeRef.current });
     if (!plan) return false;
@@ -231,6 +269,8 @@ export default function useSearchRun({ onRequest } = {}) {
     setArtists([]);
     setArtistQuery("");
     setShelvesPending(false);
+    setShelfFailed(false);
+    shelvesRetry.current = null;
     setStreamDone(true);
     setQuery("");
     setErr(null);
@@ -305,24 +345,42 @@ export default function useSearchRun({ onRequest } = {}) {
     return () => { q.abort(); waveQueue.current = null; };
   }, [mode, runs, mergeIntoResults]);
 
-  /* Un solo observador para toda la lista. Cada fila "lazy" que entra (con
-     200 px de anticipo) pasa a la cola; las demas se ignoran. */
+  /* Un solo observador por busqueda. Antes cada lote de la ola reconstruia el
+     IntersectionObserver y volvia a observar toda la lista; ahora el observador
+     se crea al cambiar de busqueda (o de modo) y el efecto de filas solo anade
+     las que aún no se habian visto. */
   useEffect(() => {
     const root = listRef.current;
-    if (!root || typeof IntersectionObserver === "undefined") return;
+    if (!root || typeof IntersectionObserver === "undefined") return undefined;
     const io = new IntersectionObserver((entries) => {
       for (const en of entries) {
         if (!en.isIntersecting) continue;
         io.unobserve(en.target);
-        const t = results.find((x) => rowKey(x) === en.target.dataset.k);
+        observedRows.current.delete(en.target);
+        const t = resultsRef.current.find((x) => rowKey(x) === en.target.dataset.k);
         /* La fila no dice nada hasta su match (pasa directo a entera o a
            30 s); la cola la marca como ocupada mientras vuela, asi no se pide
            dos veces aunque vuelva a observarse. */
         if (t && matchState(t) === "lazy") waveQueue.current?.add(t);
       }
     }, { rootMargin: "200px" });
-    root.querySelectorAll('[data-wave="lazy"]').forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    ioRef.current = io;
+    return () => {
+      io.disconnect();
+      ioRef.current = null;
+      observedRows.current = new WeakSet();
+    };
+  }, [runs, mode]);
+
+  useEffect(() => {
+    const root = listRef.current;
+    const io = ioRef.current;
+    if (!root || !io) return;
+    root.querySelectorAll('[data-wave="lazy"]').forEach((el) => {
+      if (observedRows.current.has(el)) return;
+      observedRows.current.add(el);
+      io.observe(el);
+    });
   }, [results, runs, mode, filter]);
 
   /* La barra de arriba (en escritorio) lee este bit para su "Buscando". */
@@ -333,6 +391,8 @@ export default function useSearchRun({ onRequest } = {}) {
 
   return {
     q, setQ, mode, setMode, query, results, catalog, albums, artists, artistQuery, loading, searched, err, filter, setFilter,
-    shelvesPending, streamDone, resultsRun, runs, run, submit, reset, listRef,
+    shelvesPending, shelfFailed, retryShelves: () => shelvesRetry.current?.(),
+    clearErr,
+    streamDone, resultsRun, runs, run, submit, reset, listRef,
   };
 }

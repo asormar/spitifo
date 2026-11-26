@@ -52,26 +52,83 @@ button.allsongs__main:active {
   transform: scale(0.98);
 }
 
+/* --- Inicio: saludo y entrada de busqueda ----------------------------------- */
+
+/* El saludo nombra la hora y cuanta musica hay lista, sin saludar a nadie. */
+.hm__greet {
+  margin: var(--sp-2) 0 0;
+  color: var(--mut);
+  font: 500 var(--fs-caption) / 1.4 var(--font-body);
+}
+
+.apphead__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-right: -8px;
+}
+
+.apphead__search {
+  width: var(--hit);
+  height: var(--hit);
+  color: var(--ink);
+}
+
+/* --- Inicio: biblioteca vacia ------------------------------------------------ */
+
+/* La Mezcla se queda a la vista (deshabilitada) y dos estantes de invitacion
+   ocupan el alto del esqueleto: de la carga al contenido no hay salto. */
+.hempty .mezcla--off .mz__play {
+  background: var(--s3);
+  color: var(--dim);
+}
+
+.hempty__note {
+  margin: var(--sp-6) 0 0;
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--s1);
+  color: var(--mut);
+  font: 500 var(--fs-body) / 1.5 var(--font-body);
+}
+
+.hempty__note b {
+  color: var(--ink);
+}
+
+.hempty__note .btn {
+  margin-top: var(--sp-3);
+}
+
+.hempty__folder {
+  margin: var(--sp-4) 0 0;
+  color: var(--dim);
+  font: 500 var(--fs-caption) / 1.4 var(--font-body);
+  text-align: center;
+}
+
 /* --- Inicio: la Mezcla --------------------------------------------------------------- */
 
-/* El hero y sus chips (y Seguir escuchando) son lo unico que sube al ver el
-   inicio por primera vez (.screen[data-seen] apaga --sec-move). */
+/* El hero, los atajos y "Seguir escuchando" suben la primera vez que se ve el
+   inicio (.screen[data-seen] apaga --sec-move). */
 .mezcla,
+.shortcuts,
 .mixes,
 .sec--cont {
   --rise: 10px;
   animation: var(--sec-move);
 }
 
-/* El azul es el mismo en los dos temas: el texto blanco sobre #3045ff pasa 6:1. */
+/* El azul es el mismo en los dos temas: el texto blanco sobre #3045ff pasa 6:1.
+   180 px y el disco de adorno dejan que la musica propia entre antes del pliegue. */
 .mezcla {
   --hero: var(--acc);
   position: relative;
-  height: 328px;
+  height: 180px;
   margin: 10px calc(14px - var(--gutter)) 0;
-  padding: 24px 22px;
+  padding: var(--sp-4);
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: var(--r-lg);
   background: var(--hero);
   box-shadow: 0 18px 40px color-mix(in srgb, var(--hero) 35%, transparent);
   color: #fff;
@@ -81,54 +138,86 @@ button.allsongs__main:active {
   --hero: #3045ff;
 }
 
-.mz__txt {
+/* La pildora de mezcla: 48 px de alto, el minimo de toque. */
+.mz__pill {
   position: relative;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: 100%;
+  height: var(--hit);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, #fff 18%, transparent);
 }
 
-.mezcla h2 {
-  margin: 0;
-  font: 800 40px / 1 var(--font-display);
-  letter-spacing: -0.05em;
+.mz__txt {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.mezcla p {
-  max-width: 170px;
-  margin: 10px 0 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
+.mz__txt b {
+  overflow: hidden;
+  font: 700 var(--fs-ui) / 1.2 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mz__txt small {
+  overflow: hidden;
+  font: 500 var(--fs-label) / 1.2 var(--font-body);
   opacity: 0.9;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.mezcla small {
-  display: block;
-  margin-top: 14px;
-  font-size: 12.5px;
-  font-weight: 700;
-  opacity: 0.85;
+.mz__play {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--hit);
+  height: var(--hit);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sound);
+  color: var(--sound-ink);
+  cursor: pointer;
+  transition: var(--tr-btn);
 }
 
-/* El disco y su boton: el boton va centrado en el disco, que se sale del hero. */
-.recwrap {
+.mz__play:active {
+  transform: scale(var(--press));
+}
+
+.mz__play[aria-disabled] {
+  opacity: 0.55;
+}
+
+.mz__play-i {
+  margin-left: 2px;
+}
+
+/* El disco queda de adorno en la esquina; ya no manda en la primera pantalla. */
+.mz__rec {
   position: absolute;
-  right: -64px;
-  bottom: -62px;
-  width: 300px;
-  height: 300px;
-}
-
-.rec {
-  position: absolute;
-  inset: 0;
+  right: -56px;
+  bottom: -56px;
+  width: 180px;
+  height: 180px;
   border-radius: 50%;
   background: radial-gradient(circle, #11111c 0 30%, #262638 30.5% 31.5%, #11111c 32% 44%, #262638 44.5% 45.5%, #11111c 46% 58%, #262638 58.5% 59.5%, #11111c 60% 72%, #262638 72.5% 73.5%, #11111c 74%);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  opacity: 0.7;
 }
 
 /* Solo el brillo gira (transform), mientras suena ESTA mezcla y el hero esta a
    la vista; sin data-vis (otra pantalla, fuera del scroll) se queda en pausa. */
-.rec__spin {
+.mz__spin {
   --a1: 0.07;
   --a2: 0.06;
   position: absolute;
@@ -137,51 +226,62 @@ button.allsongs__main:active {
   background: conic-gradient(from 20deg, transparent 0 12%, rgba(255, 255, 255, var(--a1)) 14% 18%, transparent 20% 62%, rgba(255, 255, 255, var(--a2)) 64% 68%, transparent 70%);
 }
 
-.mezcla.is-on .rec__spin {
+.mezcla.is-on .mz__spin {
   animation: spin 2.4s linear infinite;
   will-change: transform;
 }
 
-.mezcla.is-on:not([data-vis]) .rec__spin {
+.mezcla.is-on:not([data-vis]) .mz__spin {
   animation-play-state: paused;
 }
 
-.rec__label {
-  position: absolute;
-  left: 50%;
-  top: 50%;
+/* Cuatro atajos por fila: lo mas escuchado y lo mas reciente, al instante. */
+.shortcuts {
   display: grid;
-  place-items: center;
-  width: 104px;
-  height: 104px;
-  margin: -52px 0 0 -52px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-3) calc(14px - var(--gutter)) 0;
+}
+
+.shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  min-height: var(--hit);
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: var(--pink);
-  box-shadow: 0 0 0 6px rgba(255, 79, 163, 0.25);
-  color: var(--on-pink);
+  background: none;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
   transition: var(--tr-press);
 }
 
-.rec__label:active {
-  transform: scale(0.94);
+.shortcut:active {
+  transform: scale(var(--press-row));
 }
 
-.rec__label[aria-disabled] {
-  opacity: 0.55;
+.shortcut .cv {
+  --s: 64px;
+  width: var(--s);
+  height: var(--s);
 }
 
-.rec__play {
-  margin-left: 4px;
+.shortcut__t {
+  max-width: 100%;
+  overflow: hidden;
+  font: 500 var(--fs-caption) / 1.2 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Las cuatro mezclas: en el telefono una fila que se desplaza bajo el hero. */
+/* Las cuatro mezclas: una fila que se desplaza bajo los atajos. */
 .mixes {
   display: flex;
-  gap: 8px;
-  margin: 14px calc(var(--gutter) * -1) 0;
+  gap: var(--sp-2);
+  margin: var(--sp-3) calc(var(--gutter) * -1) 0;
   padding: 4px var(--gutter) 3px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -190,8 +290,8 @@ button.allsongs__main:active {
 .mix {
   position: relative;
   flex: none;
-  min-height: 38px;
-  padding: 0 15px;
+  min-height: var(--hit);
+  padding: 0 var(--sp-4);
   background: var(--s1);
 }
 
@@ -202,7 +302,7 @@ button.allsongs__main:active {
   left: 0;
   right: 0;
   top: 50%;
-  height: 44px;
+  height: var(--hit);
   transform: translateY(-50%);
 }
 
@@ -210,6 +310,16 @@ button.allsongs__main:active {
 
 .sec {
   margin-top: 30px;
+}
+
+/* Lo ya escuchado es un estante aparte, mas quieto que los demas. */
+.sec--done .sh2 {
+  font-size: var(--fs-caption);
+  color: var(--mut);
+}
+
+.sec--done .cv {
+  opacity: 0.7;
 }
 
 .shead {
@@ -367,6 +477,11 @@ button.allsongs__main:active {
 .card.is-current .card__t {
   color: var(--acc);
 }
+
+/* Lo que suena es sonido: rosa en el titulo y las barras sobre la portada. */
+.card.is-playing .card__t { color: var(--sound); }
+.card.is-playing > .mos, .card.is-playing > .cv { box-shadow: 0 0 0 2px var(--sound); }
+.mos img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .card--art {
   --s: 118px;
@@ -686,7 +801,7 @@ button.allsongs__main {
 }
 
 .tile svg {
-  color: var(--pink);
+  color: var(--action);
 }
 
 .sentinel {
@@ -778,55 +893,38 @@ button.allsongs__main {
 /* --- Escritorio: dos columnas ------------------------------------------------------------------------------- */
 
 @media (min-width: 960px) {
-  /* Inicio: el hero con los chips dentro, rejillas de cinco y tabla. */
+  /* Inicio: la pildora y los chips dentro del hero, el disco al lado. */
   .mezcla {
-    height: 300px;
+    height: 180px;
     margin: 6px 0 0;
-    padding: 38px 44px;
-    border-radius: 36px;
+    padding: var(--sp-6);
+    border-radius: var(--r-panel);
     box-shadow: 0 18px 40px color-mix(in srgb, var(--hero) 30%, transparent);
   }
 
-  .mz__txt {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    max-width: 640px;
-  }
-
-  .mezcla h2 {
-    font-size: 58px;
-    letter-spacing: -0.055em;
-  }
-
-  .mezcla p {
-    max-width: none;
-    margin-top: 12px;
-    font-size: 15px;
-    opacity: 0.92;
-  }
-
-  .mezcla small {
-    margin-top: 6px;
-    font-size: 13px;
-    opacity: 0.9;
+  .mz__pill {
+    max-width: 360px;
   }
 
   .mixes {
+    position: absolute;
+    left: var(--sp-6);
+    bottom: var(--sp-6);
     flex-wrap: wrap;
-    margin: auto 0 0;
+    gap: var(--sp-2);
+    margin: 0;
     padding: 0;
     overflow: visible;
     animation: none;
   }
 
   .mix {
-    min-height: 36px;
-    padding: 0 13px;
+    min-height: var(--sp-8);
+    padding: 0 var(--sp-3);
     background: rgba(10, 14, 70, 0.32);
     box-shadow: none;
     color: #fff;
-    font-size: 13px;
+    font-size: var(--fs-label);
   }
 
   .mix.is-on {
@@ -834,33 +932,23 @@ button.allsongs__main {
     color: #3045ff;
   }
 
-  .recwrap {
-    right: -96px;
-    top: -50px;
+  .mz__rec {
+    right: -40px;
+    top: -56px;
     bottom: auto;
-    width: 420px;
-    height: 420px;
+    width: 300px;
+    height: 300px;
   }
 
-  .rec__spin {
+  .mz__spin {
     --a1: 0.08;
     --a2: 0.07;
   }
 
-  .rec__label {
-    width: 128px;
-    height: 128px;
-    margin: -64px 0 0 -64px;
-    box-shadow: 0 0 0 7px rgba(255, 79, 163, 0.25);
-  }
-
-  .rec__label svg {
-    width: 44px;
-    height: 44px;
-  }
-
-  .rec__play {
-    margin-left: 5px;
+  .shortcuts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: 640px;
+    margin-inline: 0;
   }
 
   .sec {

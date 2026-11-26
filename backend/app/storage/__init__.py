@@ -107,15 +107,28 @@ class Storage(Protocol):
 
     def list(self) -> Iterable[StoredFile]: ...
 
-    def stat(self, key: str) -> StoredFile: ...
+    def stat(self, key: str, *, allow_force: bool = True) -> StoredFile:
+        """`allow_force=False`: no fuerza una relectura de red si la clave no
+        esta en la vista en memoria (p. ej. un chequeo de "ya existe" antes de
+        subir algo nuevo, donde un miss real es el camino esperado)."""
+        ...
 
     def open_range(self, key: str, start: int = 0,
                    end: int | None = None) -> Iterator[bytes]: ...
 
     def put_file(self, key: str, src: Path) -> StoredFile: ...
 
-    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
-        """Como `put_file` para varios: en la nube, UNA sola escritura del indice."""
+    def put_files(self, items: list[tuple[str, Path]], *,
+                  journal: bool = False,
+                  fileinfo: tuple[str, dict] | None = None,
+                  on_bytes: Callable[[int, int], None] | None = None
+                  ) -> list[StoredFile]:
+        """Como `put_file` para varios: en la nube, UNA sola escritura del indice.
+
+        `journal` registra el cambio en el journal local en vez de re-subir el
+        indice; `fileinfo` mete el veredicto en el mismo lote; `on_bytes` avisa
+        del progreso de la subida.
+        """
         ...
 
     def delete(self, key: str) -> None: ...
