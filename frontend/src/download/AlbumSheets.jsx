@@ -5,11 +5,10 @@ import { keyUrl, rowKey } from "../shared/api.js";
 import { Cover } from "../listen/cards.jsx";
 import { useListen } from "../listen/ListenProvider.jsx";
 import Sheet from "../shared/Sheet.jsx";
-import Ico from "../shared/ico.jsx";
 import { useDownloadFormat } from "../settings/downloadPrefs.js";
 import { thumbUrl } from "./artwork.js";
 import { fetchAlbumDetail, mergeMatchedTracks, streamAlbumMatch } from "./albumApi.js";
-import { Icon } from "../shared/icons.jsx";
+import { Icon } from "./icons.jsx";
 import { loadArtistChunk } from "./artistChunk.js";
 import { resolveArtistLink } from "./artistLink.js";
 import { ResultRow, Skeleton } from "./ResultRow.jsx";
@@ -229,7 +228,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
       items: [
         {
           kind: "download",
-          icon: "dl",
+          icon: "DownloadSimple",
           text: "Descargar álbum",
           sub: downloadSub,
           disabled: ytOff || full === 0,
@@ -240,7 +239,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
   if (header.artist) {
     albumGroups.push({
       label: "Ir a",
-      items: [{ kind: "artist", icon: "user", text: `Ir a ${header.artist}` }],
+      items: [{ kind: "artist", icon: "User", text: `Ir a ${header.artist}` }],
     });
   }
   const songGroups = (t) => {
@@ -279,7 +278,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
       <div className="als">
         <div className="als__top">
           <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar el álbum" onClick={onClose}>
-            <Ico n="x" size={18} />
+            <Icon name="X" size="md" />
           </button>
         </div>
         <div className="als__head">
@@ -312,7 +311,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
               disabled={saveDisabled && !isSaved ? true : undefined}
               onClick={toggleSave}
             >
-              <Ico n={isSaved ? "heart-fill" : "heart"} size={22} />
+              <Icon name="Heart" weight={isSaved ? "fill" : "regular"} size="lg" />
             </button>
             <button
               type="button"
@@ -322,7 +321,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
               aria-haspopup="menu"
               onClick={(e) => nav.open({ type: "downmenu", kind: "album", anchor: e.currentTarget })}
             >
-              <Ico n="dots" size={22} />
+              <Icon name="DotsThree" size="lg" />
             </button>
             {running && <span className="sp" aria-hidden="true" />}
             {lista.length > 0 && (
@@ -333,7 +332,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
                 title="Aleatorio"
                 onClick={aleatorio}
               >
-                <Icon name="Shuffle" size={20} />
+                <Icon name="Shuffle" size="md" />
               </button>
             )}
             {lista.length > 0 && (
@@ -344,7 +343,7 @@ export function AlbumSheet({ album, query, anchor, onClose }) {
                 aria-label={`${onAir ? "Pausar" : "Reproducir"} ${header.title || album.title}`}
                 onClick={playPause}
               >
-                <Icon name={onAir ? "Pause" : "Play"} size={28} weight="fill" />
+                <Icon name={onAir ? "Pause" : "Play"} size="xl" weight="fill" />
               </button>
             )}
           </div>
@@ -469,7 +468,7 @@ export function QueueSheet({ anchor, onClose }) {
         <div className="qsh__top">
           <h2 className="sh2">Descargas</h2>
           <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar descargas" onClick={onClose}>
-            <Ico n="x" size={18} />
+            <Icon name="X" size="md" />
           </button>
         </div>
         <div className="qsh__body">
@@ -520,7 +519,7 @@ export function QueueSheet({ anchor, onClose }) {
                           aria-label={`Cancelar ${i.title}`}
                           onClick={() => queueStore.cancel(i.id)}
                         >
-                          <Ico n="x" size={18} />
+                          <Icon name="X" size="md" />
                         </button>
                       )}
                       {(i.status === "failed" || i.status === "error" || i.status === "cancelled") && (

@@ -73,7 +73,7 @@ function Best({ best, all, q, ctx }) {
         </span>
       </button>
       <button type="button" className="pk pk--s" aria-label={`${on ? "Pausar" : "Reproducir"} ${name}`} onClick={play}>
-        <Icon name={on ? "Pause" : "Play"} weight="fill" size={22} />
+        <Icon name={on ? "Pause" : "Play"} weight="fill" size="lg" />
       </button>
     </div>
   );

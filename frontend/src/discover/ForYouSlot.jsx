@@ -39,7 +39,7 @@ function Frame({ narrow, collapsed, covered }) {
             <span className="fy__grip" />
             <PanelTitle head={head} />
             <span className="fy__caret">
-              <Icon name="CaretDown" weight="fill" size={20} />
+              <Icon name="CaretDown" weight="fill" size="md" />
             </span>
           </div>
         </div>

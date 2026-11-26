@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { keyUrl } from "../shared/api.js";
-import Ico from "../shared/ico.jsx";
 import { cx } from "../shared/ui.jsx";
 import { toneClass, toneVars } from "../shared/cover.js";
-import { NavIcon } from "../app/navIcons.jsx";
 import { Icon } from "./icons.jsx";
 import { Bars, initial } from "./rows.jsx";
 import { albumTone, mosaicTones, songs, toneOf } from "./home.js";
@@ -72,7 +70,7 @@ export function Mosaic({ tones, className }) {
   if (!tones.length) {
     return (
       <span className={cx("mos mos--empty", className)} aria-hidden="true">
-        <Ico n="music" size={22} />
+        <Icon name="MusicNotes" size="lg" />
       </span>
     );
   }
@@ -191,7 +189,7 @@ export const NewListCard = ({ ctx }) => (
     onClick={() => ctx.open({ type: "all", what: "lists", naming: true })}
     cover={
       <span className="cv card__add">
-        <NavIcon name="plus" size={28} />
+        <Icon name="Plus" size="xl" />
       </span>
     }
     title="Crear tu primera lista"
@@ -249,11 +247,11 @@ export function AllSongs({ n, storage, check, onOpen, onPlay, onShuffle }) {
       )}
       {onPlay && (
         <button type="button" className="cbtn cbtn--soft allsongs__play" aria-label="Reproducir todo" onClick={onPlay}>
-          <Icon name="Play" weight="fill" size={24} />
+          <Icon name="Play" weight="fill" size="lg" />
         </button>
       )}
       <button type="button" className="pk" aria-label="Reproducir en aleatorio" onClick={onShuffle}>
-        <Icon name="Shuffle" size={26} />
+        <Icon name="Shuffle" size="lg" />
       </button>
     </div>
   );
@@ -275,6 +273,6 @@ export const Prog = ({ p }) => (
 /* Boton rosa que aparece sobre la portada con el raton (solo escritorio). */
 export const PlayOverlay = () => (
   <span className="po" aria-hidden="true">
-    <Icon name="Play" weight="fill" size={22} />
+    <Icon name="Play" weight="fill" size="lg" />
   </span>
 );

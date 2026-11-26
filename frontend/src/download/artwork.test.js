@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { thumbUrl } from "./artwork.js";
+import { shelfThumbUrl, thumbUrl } from "./artwork.js";
 
 describe("thumbUrl", () => {
   it("pide 200 px a iTunes", () => {
@@ -23,5 +23,17 @@ describe("thumbUrl", () => {
     expect(thumbUrl(null)).toBeNull();
     expect(thumbUrl(undefined)).toBeUndefined();
     expect(thumbUrl("")).toBe("");
+  });
+});
+
+describe("shelfThumbUrl", () => {
+  it("pide la miniatura de 100 px para las ocho portadas del estante", () => {
+    expect(shelfThumbUrl("https://is1-ssl.mzstatic.com/image/thumb/Music/a.jpg/300x300bb.jpg")).toBe(
+      "https://is1-ssl.mzstatic.com/image/thumb/Music/a.jpg/100x100bb.jpg"
+    );
+    expect(shelfThumbUrl("https://i.ytimg.com/vi/abc123/hqdefault.jpg")).toBe(
+      "https://i.ytimg.com/vi/abc123/mqdefault.jpg"
+    );
+    expect(shelfThumbUrl(null)).toBeNull();
   });
 });

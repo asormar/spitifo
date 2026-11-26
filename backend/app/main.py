@@ -20,6 +20,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import deque
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -37,7 +38,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import activity, downloads, ytdlp_update
+from . import activity, downloads, lyrics, ytdlp_update
 from .config import AUDIO_EXTS, IMAGE_EXTS, USER_AGENT, VIDEO_EXTS
 from .executors import run_prefetch, run_storage
 from .library_snapshot import SnapshotStore
@@ -78,6 +79,7 @@ from .saved import (MAX_SONGS, SavedBook, SavedSong, song_id_for_track,
 from .security import TokenAuthMiddleware
 from .sources import ALL_SOURCES, BY_NAME, search_all, _register_ytdlp
 from .storage import InvalidKey, get_storage, reset_storage, validate_key
+from .suggest import suggestions_from_raw
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -510,6 +512,31 @@ def _query_int(request: Request, name: str, default: int, ge: int, le: int) -> i
     return n
 
 
+def _query_int_or_none(request: Request, name: str, *, ge: int, le: int) -> int | None:
+    v = request.query_params.get(name)
+    if v is None:
+        return None
+    try:
+        n = int(v)
+    except ValueError:
+        raise _invalid(["query", name], "Input should be a valid integer")
+    if n < ge or n > le:
+        raise _invalid(["query", name], f"Input should be between {ge} and {le}")
+    return n
+
+
+def _query_list(request: Request, name: str, *, max_items: int,
+                max_length: int) -> list[str]:
+    items = request.query_params.getlist(name)
+    if len(items) > max_items:
+        raise _invalid(["query", name], f"At most {max_items} items")
+    for v in items:
+        if len(v) > max_length:
+            raise _invalid(["query", name],
+                           f"String should have at most {max_length} characters")
+    return items
+
+
 def _query_bool(request: Request, name: str, default: bool) -> bool:
     v = request.query_params.get(name)
     if v is None:
@@ -770,6 +797,42 @@ async def search(request: Request):
     })
 
 
+#: iTunes acepta unas 20 busquedas por minuto por IP: las sugerencias (una por
+#: pausa al escribir) no pueden gastarse ese cupo y dejar sin resultados a la
+#: busqueda de verdad. Pasado el tope, la respuesta va vacia y el frontend
+#: sigue con las sugerencias de la biblioteca.
+_SUGGEST_MAX_PER_MIN = 8
+_SUGGEST_CALLS: deque = deque()
+
+
+def _suggest_allowed() -> bool:
+    ahora = time.monotonic()
+    while _SUGGEST_CALLS and ahora - _SUGGEST_CALLS[0] > 60:
+        _SUGGEST_CALLS.popleft()
+    if len(_SUGGEST_CALLS) >= _SUGGEST_MAX_PER_MIN:
+        return False
+    _SUGGEST_CALLS.append(ahora)
+    return True
+
+
+async def search_suggest(request: Request):
+    """GET /api/search/suggest: sugerencias baratas mientras se escribe.
+
+    Una sola llamada a iTunes, sin YouTube y sin el stream de Buscar. Un fallo
+    de iTunes deja la lista vacia: escribir nunca debe convertirse en un error.
+    """
+    q = _query_str(request, "q", required=True, min_length=2, max_length=200)
+    limit = _query_int(request, "limit", 6, 1, 12)
+    if not _suggest_allowed():
+        return JSONResponse({"query": q, "suggestions": [], "throttled": True})
+    try:
+        raws = await BY_NAME["itunes"]._raw_search(q, limit=limit * 2)
+    except Exception as e:
+        log.warning("suggest search fallo: %s", e)
+        raws = []
+    return JSONResponse({"query": q, "suggestions": suggestions_from_raw(raws, limit)})
+
+
 async def search_match(request: Request):
     """GET /api/search/match/{track_id}: match suelto de una fila `lazy`.
 
@@ -811,6 +874,26 @@ async def search_match(request: Request):
     track.extra["match_state"] = (
         "full" if (match or {}).get("video") else "none")
     return JSONResponse({"track": track.to_dict()})
+
+
+async def lyrics_route(request: Request):
+    """GET /api/lyrics -> letra sincronizada via LRCLIB, nunca rompe la pagina.
+
+    200 con nulls si LRCLIB no tiene la cancion, y 200 con nulls mas
+    `error: "unavailable"` si la red fallo: la UI decide cuando mostrar
+    "Letra no disponible ahora", nunca un error HTTP.
+    """
+    title = _query_str(request, "title", required=True, min_length=1, max_length=200)
+    artist = _query_str(request, "artist", required=True, min_length=1, max_length=200)
+    album = _query_str(request, "album", default=None, max_length=200)
+    duration = _query_int_or_none(request, "duration", ge=0, le=36000)
+    alt_titles = _query_list(request, "alt_title", max_items=5, max_length=200)
+    alt_artists = _query_list(request, "alt_artist", max_items=5, max_length=200)
+
+    resultado = await lyrics.get_lyrics(
+        title=title, artist=artist, album=album, duration=duration,
+        alt_titles=alt_titles, alt_artists=alt_artists)
+    return JSONResponse(resultado)
 
 
 # ------------------------------------------------------------------- albumes
@@ -1904,6 +1987,24 @@ async def downloads_enqueue(request: Request):
     return JSONResponse({"items": downloads.enqueue(specs, group)})
 
 
+async def downloads_network(request: Request):
+    """POST /api/downloads/network: informa la conexion y las preferencias.
+
+    La UI (Bridge de Android o `navigator.connection`) dice si hay red, si es
+    Wi-Fi y si el usuario exige Wi-Fi / prohibe roaming. Con eso la cola decide
+    si un item puede empezar o debe esperar con fase «Esperando Wi-Fi».
+    """
+    body = await _json_body(request)
+    tipo = body.get("type")
+    if tipo is not None and not isinstance(tipo, str):
+        raise _invalid(["body", "type"], "Input should be a valid string")
+    return JSONResponse(downloads.set_network(
+        type=tipo,
+        online=body.get("online"),
+        wifi_only=body.get("wifi_only"),
+        roaming_allowed=body.get("roaming_allowed")))
+
+
 async def downloads_cancel(request: Request):
     """POST /api/downloads/{id}/cancel: cancela un item en cola o en curso."""
     item_id = request.path_params["id"]
@@ -2441,8 +2542,8 @@ async def library(request: Request):
         files, records = await asyncio.gather(
             run_storage(library_scan, storage), _fileinfo_records(storage))
         files = with_checks(files, records)
-        body, etag = await asyncio.to_thread(_library_body, storage.describe(),
-                                             files, compact)
+        body, etag = await run_storage(_library_body, storage.describe(),
+                                       files, compact)
     else:
         if signature != state.signature:
             state.trigger()
@@ -3587,6 +3688,11 @@ def _storage_payload(flow) -> dict:
         "quota": quota,
         # Como se firma el sign-in en este dispositivo: la UI decide con esto si
         # abre un link o si le pide el token al shell nativo.
+        # Cuanto pode estar atrasada una version antigua que solo lee el
+        # indice: los cambios del journal se funden en el al cerrar un grupo,
+        # al quedar idle o al apagar. Se muestra en Ajustes.
+        "index_journal": (storage.journal_stats()
+                          if hasattr(storage, "journal_stats") else None),
         "connect_via": "android" if android else "browser",
         "providers": [{
             "id": "google",
@@ -3904,7 +4010,9 @@ def _exception_handlers() -> dict:
 routes = [
     Route("/api/health", health),
     Route("/api/search", search),
+    Route("/api/search/suggest", search_suggest),
     Route("/api/search/match/{track_id}", search_match),
+    Route("/api/lyrics", lyrics_route),
     Route("/api/albums/search", albums_search),
     Route("/api/artists/search", artists_search),
     Route("/api/album/{id}/match", album_match),
@@ -3918,6 +4026,7 @@ routes = [
     Route("/api/downloads", downloads_list, methods=["GET"]),
     Route("/api/downloads", downloads_enqueue, methods=["POST"]),
     Route("/api/downloads/cancel", downloads_cancel_group, methods=["POST"]),
+    Route("/api/downloads/network", downloads_network, methods=["POST"]),
     Route("/api/downloads/{id}/cancel", downloads_cancel, methods=["POST"]),
     Route("/api/downloads/{id}/retry", downloads_retry, methods=["POST"]),
     Route("/api/setlist", setlist),
@@ -3960,9 +4069,34 @@ routes = [
     Route("/api/covers/candidates", covers_candidates),
     Route("/api/covers/apply", covers_apply, methods=["POST"]),
 ]
+# Cache-Control del frontend compilado: los chunks de Vite bajo assets/ llevan
+# el hash en el nombre (un ano es seguro, el nombre cambia si cambian los
+# bytes); index.html apunta a esos chunks y no se cachea; el resto
+# (genre-map.json, el favicon) usa un max-age corto. Sin esto StaticFiles solo
+# manda ETag/Last-Modified: cada recarga revalida (304) hasta el ultimo chunk.
+_STATIC_HASHED_CACHE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_STATIC_HTML_CACHE = {"Cache-Control": "no-cache"}
+_STATIC_DEFAULT_CACHE = {"Cache-Control": "public, max-age=3600"}
+
+
+class _FrontendStaticFiles(StaticFiles):
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        path = Path(full_path)
+        if path.name == "index.html":
+            cache = _STATIC_HTML_CACHE
+        elif path.parent.name == "assets":
+            cache = _STATIC_HASHED_CACHE
+        else:
+            cache = _STATIC_DEFAULT_CACHE
+        for k, v in cache.items():
+            response.headers[k] = v
+        return response
+
+
 # Sirve el frontend compilado si existe (produccion single-port)
 if FRONTEND_DIST.is_dir():
-    routes.append(Mount("/", StaticFiles(directory=FRONTEND_DIST, html=True),
+    routes.append(Mount("/", _FrontendStaticFiles(directory=FRONTEND_DIST, html=True),
                         name="frontend"))
 
 

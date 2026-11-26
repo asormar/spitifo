@@ -19,10 +19,6 @@ const HALF_LIFE_DAYS = 60;
 const DAY_SECONDS = 86400;
 const RECENT_LIMIT = 30;
 const FINISHED_MS = 10_000;
-/* Cuanto se espera antes de escribir el espejo de localStorage tras un
-   evento: un play/skip/progreso ya no lo hace sincronico (P-large-library-
-   scale-9). `pagehide` lo adelanta si la app se cierra antes del plazo. */
-const CACHE_FLUSH_MS = 1000;
 
 /* Con Drive el resumen tarda mas de un segundo: sin foto previa "Seguir
    escuchando" apareceria tarde arriba de todo y empujaria la pantalla. Igual
@@ -56,10 +52,18 @@ const playsOf = (tracks) => {
   return m;
 };
 
+/* Escribir en localStorage es sincrono y, con cientos de pistas distintas en
+   una sesion larga, el JSON a guardar crece a cientos de KB: hacerlo en CADA
+   evento bloquea el hilo principal cada vez mas. Se agrupan los escritos de
+   un segundo en uno: el estado en memoria (lo que lee la UI) sigue
+   actualizandose al instante, solo el disco se retrasa un poco. */
+const WRITE_DEBOUNCE_MS = 1_000;
+
 export function createHistory({
   fetchFn = (...a) => fetch(...a),
   now = () => Date.now() / 1000,
   cache = localCache,
+  windowRef = typeof window === "undefined" ? null : window,
 } = {}) {
   const cached = cache?.read();
   const initialTracks = cached?.tracks && typeof cached.tracks === "object" ? cached.tracks : {};
@@ -71,37 +75,42 @@ export function createHistory({
   };
   const listeners = new Set();
   let loading = null;
-  let flushTimer = null;
-  let pendingCache = null;
+  let writeTimer = null;
 
-  const flushCache = () => {
-    clearTimeout(flushTimer);
-    flushTimer = null;
-    if (pendingCache) {
-      cache?.write(pendingCache);
-      pendingCache = null;
+  /* Escribe ya mismo y cancela el aviso pendiente, si lo habia. Se usa al
+     cerrar la pagina: un timer de setTimeout no llega a disparar despues de
+     eso, asi que el ultimo evento se perderia sin este flush. */
+  const flush = () => {
+    if (writeTimer) {
+      clearTimeout(writeTimer);
+      writeTimer = null;
     }
+    cache?.write({ tracks: state.tracks, recent: state.recent });
   };
-  if (typeof window !== "undefined") {
-    window.addEventListener("pagehide", flushCache);
-  }
+
+  const scheduleWrite = () => {
+    if (!cache || writeTimer) return;
+    writeTimer = setTimeout(() => {
+      writeTimer = null;
+      cache.write({ tracks: state.tracks, recent: state.recent });
+    }, WRITE_DEBOUNCE_MS);
+  };
 
   const emit = (patch) => {
     state = { ...state, ...patch };
-    if ("tracks" in patch || "recent" in patch) {
-      /* La escritura en si no es sincronica con el evento: un play/skip/
-         progreso ya no paga un JSON.stringify de toda `tracks` en el hilo
-         principal en el momento (P-large-library-scale-9); `flushCache`
-         (el plazo, o pagehide si la app se cierra antes) la manda despues. */
-      pendingCache = { tracks: state.tracks, recent: state.recent };
-      if (!flushTimer) flushTimer = setTimeout(flushCache, CACHE_FLUSH_MS);
-    }
+    if ("tracks" in patch || "recent" in patch) scheduleWrite();
     listeners.forEach((fn) => fn());
   };
   const subscribe = (fn) => {
     listeners.add(fn);
     return () => listeners.delete(fn);
   };
+  windowRef?.addEventListener("pagehide", flush);
+  /* En Android la app pasa a segundo plano sin pagehide: al ocultarse se
+     escribe lo pendiente, por si el sistema la cierra despues. */
+  windowRef?.document?.addEventListener?.("visibilitychange", () => {
+    if (writeTimer && windowRef.document.visibilityState === "hidden") flush();
+  });
 
   const load = (force = false) => {
     if (loading) return loading;
@@ -181,7 +190,7 @@ export function createHistory({
     return true;
   };
 
-  return { subscribe, getState: () => state, load, record, flushCache };
+  return { subscribe, getState: () => state, load, record, flush, flushCache: flush };
 }
 
 export const history = createHistory();

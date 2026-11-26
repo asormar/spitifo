@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { useSaveTarget } from "./saveSong.js";
 import "./saveHeart.css";
@@ -13,7 +13,7 @@ import "./saveHeart.css";
    ListenProvider, no aqui.
    ------------------------------------------------------------------------- */
 
-export default function SaveHeart({ t, track, query = "", size = 20, className }) {
+export default function SaveHeart({ t, track, query = "", size = "md", className }) {
   const [pop, setPop] = useState(false);
   const { show, filled, title, toggle } = useSaveTarget({ t, track, query });
   if (!show) return null;
@@ -34,7 +34,7 @@ export default function SaveHeart({ t, track, query = "", size = 20, className }
       }}
       onAnimationEnd={() => setPop(false)}
     >
-      <Ico n={filled ? "heart-fill" : "heart"} size={size} />
+      <Icon name="Heart" weight={filled ? "fill" : "regular"} size={size} />
     </button>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { AlbumCard, AllSongs, ArtistCard, Cards, ListCard, NewListCard, SectionHead, Shelf } from "./cards.jsx";
@@ -26,7 +26,7 @@ const FILTERS = [
 
 const Tile = ({ n, icon, label, onClick }) => (
   <button type="button" className="tile" onClick={onClick}>
-    {icon ? <Ico n={icon} size={24} /> : <b className="num">{n}</b>}
+    {icon ? <Icon name={icon} size="lg" /> : <b className="num">{n}</b>}
     <span>{label}</span>
   </button>
 );
@@ -57,8 +57,8 @@ export default function LibraryHome({ model, ctx }) {
       <div className="lhome">
         <div className="tiles">
           {allSongs}
-          <Tile icon="stats" label="Lo que más escuchas" onClick={open("top")} />
-          <Tile icon="clock" label="Añadido hace poco" onClick={open("recent")} />
+          <Tile icon="ChartBar" label="Lo que más escuchas" onClick={open("top")} />
+          <Tile icon="Clock" label="Añadido hace poco" onClick={open("recent")} />
         </div>
         <div className="chips" role="group" aria-label="Qué mostrar">
           {FILTERS.map(([id, label]) => (
@@ -89,7 +89,7 @@ export default function LibraryHome({ model, ctx }) {
         <Tile n={nLists} label="Listas" onClick={open("lists")} />
         <Tile n={count.albums} label="Álbumes" onClick={open("albums")} />
         <Tile n={count.artists} label="Artistas" onClick={open("artists")} />
-        <Tile icon="stats" label="Lo que más escuchas" onClick={open("top")} />
+        <Tile icon="ChartBar" label="Lo que más escuchas" onClick={open("top")} />
       </div>
       {listsReady && (
         <section className="sec" aria-labelledby="l-lis">

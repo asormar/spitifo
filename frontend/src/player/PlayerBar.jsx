@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { clock } from "../shared/format.js";
 import { cx } from "../shared/ui.jsx";
 import { VerdictChip } from "../shared/Verdict.jsx";
@@ -92,9 +92,9 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
       <div className="dock__end">
         <Volume className="dock__vol" />
         {[
-          [1, "Cola", "queue"],
-          [2, "Ficha del archivo", "file"],
-        ].map(([i, label, n]) => (
+          [1, "Cola", "Queue"],
+          [2, "Ficha del archivo", "File"],
+        ].map(([i, label, name]) => (
           <button
             key={i}
             type="button"
@@ -104,7 +104,7 @@ export default function PlayerBar({ onOpen, npOpen, tab = -1 }) {
             aria-label={label}
             title={label}
           >
-            <Ico n={n} size={22} />
+            <Icon name={name} size="lg" />
           </button>
         ))}
       </div>

@@ -380,11 +380,37 @@ class LocalStorage(ListensStorageMixin, ArtistInfoStorageMixin,
         shutil.move(str(src), str(p))
         return self._stored(p, key)
 
-    def put_files(self, items: list[tuple[str, Path]]) -> list[StoredFile]:
-        """Varios archivos de una descarga (audio y portadas): uno por uno."""
+    def put_files(self, items: list[tuple[str, Path]], *,
+                  journal: bool = False,
+                  fileinfo: tuple[str, dict] | None = None,
+                  on_bytes: Callable[[int, int], None] | None = None
+                  ) -> list[StoredFile]:
+        """Varios archivos de una descarga (audio y portadas): uno por uno.
+
+        En disco local no hay indice remoto que agrupar ni journal: los args
+        extra existen para que el puerto sea el mismo en los dos adapters. El
+        veredicto se escribe igual, best effort, como en la nube.
+        """
         for key, _src in items:
             validate_key(key)
-        return [self.put_file(key, src) for key, src in items]
+        total = sum(Path(src).stat().st_size for _key, src in items
+                    if Path(src).exists())
+        done = 0
+        out = []
+        for key, src in items:
+            out.append(self.put_file(key, src))
+            done += out[-1].size
+            if on_bytes is not None:
+                try:
+                    on_bytes(done, total)
+                except Exception:
+                    pass
+        if fileinfo is not None:
+            try:
+                self.save_fileinfo(*fileinfo)
+            except Exception:
+                pass
+        return out
 
     def delete(self, key: str) -> None:
         p = self._path(key)

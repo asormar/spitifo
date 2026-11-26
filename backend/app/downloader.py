@@ -187,6 +187,20 @@ def _ffmpeg_convert(src: Path, out_path: Path) -> Path:
     return out_path
 
 
+def build_download_record(track: Track, size: int, *, via: str = "file",
+                          query: str | None = None,
+                          video_title: str | None = None,
+                          vacuous: bool = False) -> dict | None:
+    """Arma el veredicto sin escribirlo. Puro, para poder pasarlo al mismo lote
+    de subida que el audio y las portadas (P-downloads-pipeline-6)."""
+    now = time.time()
+    if via == "ytdlp":
+        return fileinfo.record_for_ytdlp(
+            track, size, now, query=query, video_title=video_title,
+            vacuous=vacuous)
+    return fileinfo.record_for_file(track, size, now)
+
+
 async def record_download(key: str, size: int, track: Track, *,
                           via: str = "file", query: str | None = None,
                           video_title: str | None = None,
@@ -198,13 +212,9 @@ async def record_download(key: str, size: int, track: Track, *,
     sale de comparar el titulo del video con lo buscado.
     """
     try:
-        now = time.time()
-        if via == "ytdlp":
-            record = fileinfo.record_for_ytdlp(
-                track, size, now, query=query, video_title=video_title,
-                vacuous=vacuous)
-        else:
-            record = fileinfo.record_for_file(track, size, now)
+        record = build_download_record(
+            track, size, via=via, query=query, video_title=video_title,
+            vacuous=vacuous)
         if record is None:
             return None
         await run_storage(get_storage().save_fileinfo, key, record)

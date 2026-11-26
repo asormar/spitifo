@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useShow } from "../listen/Notice.jsx";
-import { Icon } from "../shared/icons.jsx";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { engine } from "../player/engine.js";
 import { useEngine } from "../player/useEngine.js";
 import { auditionKey, auditionTrack } from "./streamTrack.js";
@@ -80,11 +79,11 @@ export default function ArchiveListenButton({ t, query, text = false }) {
       onClick={toggle}
     >
       {loading ? (
-        <Icon name="CircleNotch" size={text ? 18 : 20} weight="bold" className="spin" />
+        <Icon name="CircleNotch" size="md" weight="bold" className="spin" />
       ) : playing ? (
-        <Ico n="pause" size={text ? 18 : 20} />
+        <Icon name="Pause" size="md" weight="fill" />
       ) : (
-        <Icon name="Play" size={text ? 16 : 18} weight="fill" />
+        <Icon name="Play" size={text ? "sm" : "md"} weight="fill" />
       )}
       {text && (playing ? "Pausar" : "Escuchar")}
     </button>

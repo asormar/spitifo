@@ -3,8 +3,10 @@ import { songs } from "../listen/home.js";
 import { usePlaylists } from "../listen/playlists.js";
 import BrandLogo from "./BrandLogo.jsx";
 import { ITEMS } from "./Nav.jsx";
-import { NavIcon } from "./navIcons.jsx";
+import { Icon } from "../shared/icons.jsx";
 import { useNav } from "./useNav.js";
+
+const TAB_ICON = { home: "House", search: "MagnifyingGlass", library: "Books", discover: "VinylRecord" };
 
 /* ---------------------------------------------------------------------------
    MENU LATERAL (escritorio)
@@ -73,7 +75,7 @@ export default function LeftNav() {
             aria-current={active ? "page" : undefined}
             onClick={() => nav.goTab(id)}
           >
-            <NavIcon name={id} filled={active} size={24} />
+            <Icon name={TAB_ICON[id]} weight={active ? "fill" : "regular"} size="lg" />
             {label}
           </button>
         );
@@ -82,7 +84,7 @@ export default function LeftNav() {
       <div className="leftnav__head">
         <h2>Tus listas</h2>
         <button type="button" className="cbtn" aria-label="Nueva lista" title="Nueva lista" onClick={newList}>
-          <NavIcon name="plus" size={20} />
+          <Icon name="Plus" size="md" />
         </button>
       </div>
       <div className="leftnav__lists" role="group" aria-label="Listas">
@@ -101,7 +103,7 @@ export default function LeftNav() {
         aria-pressed={settingsOpen}
         onClick={nav.toggleSettings}
       >
-        <NavIcon name="settings" filled={settingsOpen} size={24} />
+        <Icon name="GearSix" weight={settingsOpen ? "fill" : "regular"} size="lg" />
         Ajustes
       </button>
     </nav>

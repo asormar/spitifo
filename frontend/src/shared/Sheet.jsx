@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Ico from "./ico.jsx";
+import { Icon } from "./icons.jsx";
 import { clamp, cx } from "./ui.jsx";
 import { usePc } from "./viewport.js";
 import "./sheet.css";
@@ -31,7 +31,7 @@ export function SheetBar({ title, onClose, quiet }) {
     <div className="sh__bar">
       <h2 className={quiet ? "sr-only" : "sh__bt"}>{title}</h2>
       <button type="button" className="cbtn cbtn--sm" aria-label="Cerrar" onClick={onClose}>
-        <Ico n="x" size={18} />
+        <Icon name="X" size="sm" />
       </button>
     </div>
   );

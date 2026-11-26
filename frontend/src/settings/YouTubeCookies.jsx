@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 import { API, errMsg, fetchErr } from "../shared/api.js";
 import { cookieStatus } from "./storageInfo.js";
 
@@ -94,7 +94,7 @@ export default function YouTubeCookies({ focus }) {
     <div className="settings__card" ref={boxRef}>
       <div className="settings__ckhead">
         <span className="settings__cklabel">
-          <Ico n="cookie" size={16} />
+          <Icon name="Cookie" size="sm" />
           Estado
         </span>
         <span className="settings__ckstate">{state}</span>
@@ -122,7 +122,7 @@ export default function YouTubeCookies({ focus }) {
             onClick={remove}
             disabled={busy}
           >
-            <Ico n="trash" size={15} />
+            <Icon name="Trash" size="sm" />
             Quitar
           </button>
         )}

@@ -6,7 +6,7 @@ import { cx } from "../shared/ui.jsx";
 import { usePc } from "../shared/viewport.js";
 import { fetchFormats, formatsCache } from "./api.js";
 import { menuKeys } from "./menuKeys.js";
-import Ico from "../shared/ico.jsx";
+import { Icon } from "./icons.jsx";
 
 /* ---------------------------------------------------------------------------
    RESOLUCIONES DE UN VIDEO DE YOUTUBE
@@ -85,7 +85,7 @@ function Body({ st, load, title, onPick }) {
           <p className="rm__msg rm__msg--err">{st.error}</p>
           <button type="button" role="menuitem" className="rm__i" onClick={load}>
             <span className="rm__h">
-              <Ico n="retry" size={16} />
+              <Icon name="ArrowClockwise" size="sm" />
               Reintentar
             </span>
           </button>

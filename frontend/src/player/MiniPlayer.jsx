@@ -70,7 +70,7 @@ function MiniPlayer({ onOpen, npOpen }) {
           </span>
         </button>
         {saveHeart}
-        <PlayButton icon={d.icon} playing={d.playing} label={d.label} size={18} />
+        <PlayButton icon={d.icon} playing={d.playing} label={d.label} size="md" />
       </div>
       {/* Hilo de progreso en el borde de abajo; tambien se puede arrastrar. */}
       <div className="mini__bar">

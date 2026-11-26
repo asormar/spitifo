@@ -283,7 +283,7 @@ function VideoHost() {
                 aria-label={`${playing ? "Pausar" : "Reproducir"}: ${label}`}
                 title={playing ? "Pausar" : "Reproducir"}
               >
-                {playing ? <Icon name="Pause" size={16} weight="fill" /> : <Icon name="Play" size={16} weight="fill" />}
+                {playing ? <Icon name="Pause" size="sm" weight="fill" /> : <Icon name="Play" size="sm" weight="fill" />}
               </button>
               <button
                 type="button"
@@ -292,7 +292,7 @@ function VideoHost() {
                 aria-label="Ampliar el vídeo"
                 title="Ampliar el vídeo"
               >
-                <Icon name="CornersOut" size={16} />
+                <Icon name="CornersOut" size="sm" />
               </button>
               <button
                 type="button"
@@ -301,7 +301,7 @@ function VideoHost() {
                 aria-label="Cerrar el vídeo"
                 title="Cerrar el vídeo"
               >
-                <Icon name="X" size={16} />
+                <Icon name="X" size="sm" />
               </button>
             </div>
           )}
@@ -323,7 +323,7 @@ function VideoHost() {
                   onClick={toggleFs}
                   aria-label={fs ? "Salir de pantalla completa" : "Pantalla completa"}
                 >
-                  {fs ? <Icon name="ArrowsIn" size={16} /> : <Icon name="ArrowsOut" size={16} />}
+                  {fs ? <Icon name="ArrowsIn" size="sm" /> : <Icon name="ArrowsOut" size="sm" />}
                   <span className="vhost__lbl">{fs ? "Salir" : "Pantalla completa"}</span>
                 </button>
               )}
@@ -335,7 +335,7 @@ function VideoHost() {
                   aria-label="Otra ventana"
                   title={pip ? "Volver a traer la ventana flotante" : "Ver en una ventana flotante"}
                 >
-                  <Icon name="PictureInPicture" size={16} />
+                  <Icon name="PictureInPicture" size="sm" />
                   <span className="vhost__lbl">Otra ventana</span>
                 </button>
               )}
@@ -346,11 +346,11 @@ function VideoHost() {
                 aria-label="Minireproductor"
                 title="Ver en el minireproductor"
               >
-                <Icon name="CornersIn" size={16} />
+                <Icon name="CornersIn" size="sm" />
                 <span className="vhost__lbl">Minireproductor</span>
               </button>
               <button type="button" className="vhb" onClick={close} aria-label="Cerrar el vídeo">
-                <Icon name="X" size={16} />
+                <Icon name="X" size="sm" />
                 <span className="vhost__lbl">Cerrar</span>
               </button>
             </div>

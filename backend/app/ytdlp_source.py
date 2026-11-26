@@ -540,9 +540,11 @@ def is_bot_check_error(error: BaseException | str) -> bool:
 def postprocessor_opts(fmt: str) -> list[dict]:
     """Postprocessors de yt-dlp para el `fmt` pedido.
 
-    mp3 y m4a recodifican. "original" usa preferredcodec "best": yt-dlp extrae
-    la pista de audio a su contenedor natural SIN recodificar (opus -> .opus,
-    aac -> .m4a, vorbis -> .ogg). Cualquier otro valor cae a mp3 como siempre.
+    "original" usa preferredcodec "best": yt-dlp extrae la pista de audio a su
+    contenedor natural SIN recodificar (opus -> .opus, aac -> .m4a, vorbis ->
+    .ogg). m4a prefiere la pista AAC del origen, asi que tampoco recodifica
+    cuando YouTube la publica. SOLO mp3 (una eleccion explicita del usuario)
+    fuerza una conversion real, y su coste se avisa en Ajustes.
     """
     if fmt == "original":
         codec = "best"
@@ -552,6 +554,16 @@ def postprocessor_opts(fmt: str) -> list[dict]:
         codec = "mp3"
     return [{"key": "FFmpegExtractAudio", "preferredcodec": codec,
              "preferredquality": "2"}]
+
+
+def is_transcode(fmt: str, media: str = "audio") -> bool:
+    """True si este trabajo quema CPU de verdad (conversion a mp3).
+
+    La cola usa esto para separar el semaforo de red del de CPU: un album en
+    m4a/original puede bajar varias pistas a la vez porque solo espera bytes;
+    uno en mp3 comparte el limite de 2 transcodificaciones simultaneas.
+    """
+    return media == "audio" and (fmt not in ("original", "m4a"))
 
 
 # ------------------------------------------------------------- tipo de media
@@ -572,6 +584,11 @@ M4A_AUDIO_SELECTOR = "bestaudio[ext=m4a]/bestaudio/best"
 
 #: Timeout de la bajada de la miniatura: es un extra, no puede colgar el job.
 THUMB_TIMEOUT_S = 15.0
+
+#: Cuanto espera la descarga a las portadas antes de dar el tema por terminado.
+#: Antes esperaba hasta 5 s por un JPEG que no hace falta para escuchar: ahora
+#: se marca `done` y una portada lenta se puede backfill con «Buscar portadas».
+COVER_WAIT_S = 1.0
 
 #: Alturas (px) que acepta el picker de resolucion y el `height` del request.
 MIN_HEIGHT = 144
@@ -1309,7 +1326,7 @@ class YtDlpSource(Source):
         import yt_dlp
         # import perezoso: downloader importa sources, que importa ytdlp_source
         from .covers import fetch_itunes_covers
-        from .downloader import (TEMP_DIR, _write_tags, record_download,
+        from .downloader import (TEMP_DIR, _write_tags, build_download_record,
                                  thumb_small_sidecar)
         from .identify import verdict
         from .storage import get_storage
@@ -1588,18 +1605,51 @@ class YtDlpSource(Source):
                 filename = key.rsplit("/", 1)[-1]
                 with _JOBS_LOCK:
                     JOBS[job_id]["phase"] = "saving"
+                # Las portadas se pidieron al empezar la bajada. Si el CDN tarda
+                # mas que el audio, NO se espera: el tema queda usable y la
+                # portada se puede backfill despues («Buscar portadas»).
+                covers = None
+                if cover_task is not None and use_itunes:
+                    try:
+                        covers = await asyncio.wait_for(cover_task, COVER_WAIT_S)
+                    except Exception:
+                        covers = None
                 # Audio con ficha de iTunes: su portada en dos tamanos va junto
-                # al audio, en un solo `put_files` (en Drive, una escritura del
-                # indice). Best effort: sin portada la descarga sigue igual.
-                covers = (await cover_task
-                          if cover_task is not None and use_itunes else None)
+                # al audio, en un solo `put_files`. El registro del veredicto
+                # entra EN EL MISMO lote de subida, no como un PUT serial mas.
                 items = [(key, path)]
                 if covers:
                     items += [(thumb_sidecar_key(key), covers[0]),
                               (thumb_small_sidecar(key), covers[1])]
+
+                referencia = identity_best_reference(
+                    query, track, info_title, info_title or track.title)
+                estado, etiqueta = verdict(referencia, info_title)
+                size_esperado = path.stat().st_size
+                record = build_download_record(
+                    track, size_esperado, via="ytdlp", query=referencia,
+                    video_title=info_title,
+                    vacuous=bool(query and parse_youtube_url(query))
+                    or (not query and not track.extra.get("from_itunes")))
+
+                def _on_upload_bytes(done: int, total: int) -> None:
+                    with _JOBS_LOCK:
+                        JOBS[job_id]["phase"] = "uploading"
+                        JOBS[job_id]["progress"] = (
+                            round(done / total * 100, 1) if total else 100.0)
+                    if on_progress is not None:
+                        on_progress()
+
+                with _JOBS_LOCK:
+                    JOBS[job_id]["phase"] = "uploading"
+                    JOBS[job_id]["progress"] = 0.0
+                if on_progress is not None:
+                    on_progress()
                 try:
                     stored = (await run_storage(
-                        get_storage().put_files, items))[0]
+                        get_storage().put_files, items, journal=True,
+                        fileinfo=(key, record) if record else None,
+                        on_bytes=_on_upload_bytes))[0]
                 except Exception as e:
                     if not covers:
                         raise
@@ -1611,6 +1661,9 @@ class YtDlpSource(Source):
                         raise e
                     covers = None
                 size = stored.size
+                with _JOBS_LOCK:
+                    JOBS[job_id]["phase"] = "saving"
+                    JOBS[job_id]["progress"] = 100.0
                 # Miniatura best effort SOLO para video: si falla, la descarga
                 # sigue y `thumb_key` queda en None (nunca tumba el job).
                 if kind == "video":
@@ -1618,22 +1671,9 @@ class YtDlpSource(Source):
                 else:
                     thumb_key = thumb_sidecar_key(key) if covers else None
 
-                # Veredicto de identidad sobre el ARCHIVO que se acaba de bajar. Se
-                # calcula aca y no antes de la descarga porque hasta ahora no se
-                # publicaba en ningun lado del camino con job_id: la UI recibia
-                # status=done sin `match` y no podia avisar nada. La referencia es la
-                # ficha elegida o lo escrito (`identity_reference`); el titulo, la otra.
-                referencia = identity_best_reference(
-                    query, track, info_title, info_title or track.title)
-                estado, etiqueta = verdict(referencia, info_title)
-                # Se guarda ANTES de decir `done`: la biblioteca que se recarga al
-                # terminar ya trae el veredicto. Sin ficha y sin consulta, o con un
-                # enlace pegado, el titulo del video se compara consigo mismo: no vale.
-                await record_download(
-                    key, size, track, via="ytdlp", query=referencia,
-                    video_title=info_title,
-                    vacuous=bool(query and parse_youtube_url(query))
-                    or (not query and not track.extra.get("from_itunes")))
+                # El veredicto ya se escribio DENTRO de `put_files` (mismo lote
+                # de hilos que el audio), asi que `_finish` puede marcar `done`
+                # sin una segunda request serial a la nube.
                 # `height` es la altura PEDIDA (None si no se eligio): la UI la
                 # muestra como "1080p" del archivo que acaba de bajar.
                 altura = (int(height) if height is not None
