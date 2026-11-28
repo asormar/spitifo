@@ -241,7 +241,8 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   const recoArtists = useReco((s) => s.artists);
   /* linkKey y no `name`: `name` se declara mas abajo (tras el return de
      Gone), y leerlo aqui, en las dependencias, rompe la ficha entera. */
-  const similar = useMemo(() => relatedArtists(linkKey, recoArtists, 6), [linkKey, recoArtists]);
+  const isArtist = d.state === "ok" && d.kind === "artist";
+  const similar = useMemo(() => (isArtist ? relatedArtists(linkKey, recoArtists, 6) : []), [isArtist, linkKey, recoArtists]);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
       linkPromiseRef.current = null;
