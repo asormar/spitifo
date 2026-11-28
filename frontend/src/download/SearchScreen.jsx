@@ -284,6 +284,12 @@ export default function SearchScreen({
     el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }, [notice]);
 
+  /* Antes que onSubmit y runExample: sus dependencias leen `record` durante
+     el render, y leerlo antes de su const rompia Buscar entero. */
+  const record = useCallback((text, m) => {
+    if (text?.trim()) rememberRecent(undefined, text.trim(), m);
+  }, []);
+
   const onSubmit = useCallback(
     (e) => {
       e.preventDefault();
@@ -423,10 +429,6 @@ export default function SearchScreen({
     () => (searched && !results.length ? didYouMean(query, libraryNames, 3) : []),
     [searched, results.length, query, libraryNames]
   );
-
-  const record = useCallback((text, m) => {
-    if (text?.trim()) rememberRecent(undefined, text.trim(), m);
-  }, []);
 
   /* Con yt-dlp apagado el modo "YouTube" no devuelve nada. No se
      deshabilita (el usuario podria estar reactivandolo desde otra pestana),
