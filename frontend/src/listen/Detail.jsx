@@ -239,7 +239,9 @@ export default memo(function DetailPage({ view, index, byKey, savedById, lists, 
   /* Artistas similares: se usan los datos que Descubrir ya dejo en el
      dispositivo. La vista es estable (el selector devuelve la foto entera). */
   const recoArtists = useReco((s) => s.artists);
-  const similar = useMemo(() => relatedArtists(name, recoArtists, 6), [name, recoArtists]);
+  /* linkKey y no `name`: `name` se declara mas abajo (tras el return de
+     Gone), y leerlo aqui, en las dependencias, rompe la ficha entera. */
+  const similar = useMemo(() => relatedArtists(linkKey, recoArtists, 6), [linkKey, recoArtists]);
   useEffect(() => {
     if (d.state !== "ok" || d.kind !== "artist") {
       linkPromiseRef.current = null;
